@@ -55,8 +55,8 @@ On the games page, choose it in **Source**.
 
 GameFlex tests the share, then reads its list of games. **A share brings games only**, and **a game
 is copied to your library before you play it**: in **Settings › Games**, choose the share as the
-**Source**, then download the game. Passwords and tokens are kept unencrypted in the accounts
-database (`databases/`): protect that folder and its backups.
+**Source**, then download the game. Passwords and tokens are stored encrypted with your
+`GAMEFLEX_SECRET`: if you change it, enter them again.
 
 ## Saves
 

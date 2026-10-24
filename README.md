@@ -18,6 +18,9 @@ plays a PlayStation 3 game, as long as the computer at home can run it.
 
 - **Anywhere.** On your couch, in another room, or across the world: the same library, the same
   saves, wherever you are.
+- **Away from home, without opening your server to the Internet.** GameFlex comes with an optional
+  WireGuard VPN: your phone or laptop joins your home network from wherever it is, and only the
+  devices you add can reach GameFlex.
 - **On any device.** Windows, macOS, Linux, Android, iOS, a smart TV: if it has a modern web
   browser, it can play. A real controller, the on-screen controller (with buttons you place
   yourself), or the keyboard.
@@ -83,19 +86,40 @@ emulators: RPCS3, xemu, shadPS4, KytyPS5, Eden, Citron, Cemu and Xenia Canary.
 ## Good to know before you start
 
 - **GameFlex ships no game, no BIOS and no emulator.** It plays the files you put in your library.
-- **You need a Linux computer (x86-64) with Docker.** A recent graphics card is recommended for the
-  recent consoles. [Install GameFlex](docs/install.md) lists what you need.
-- **It is made for your home network.** To play away from home, put GameFlex behind an HTTPS
-  proxy. Some networks will still block the connection: GameFlex does not include a relay (TURN)
-  server yet.
+- **All you need to install is Docker,** with Compose, on an x86-64 computer. A recent graphics card
+  is recommended for the recent consoles. [Install GameFlex](docs/install.md) lists what you need.
+- **It is made for your home network.** To play away from home, turn on its WireGuard VPN, or put
+  GameFlex behind an HTTPS proxy ([Play away from home](docs/remote-access.md)). Without the VPN,
+  some networks block the video: GameFlex does not include a relay (TURN) server yet.
 - **The administrator password is yours.** GameFlex refuses to start without it; the setup
   script can make one up and shows it to you once.
 - **It is still in development, a personal project with no warranty.** Read the
   [disclaimer](DISCLAIMER.md).
 
+## What has been tested
+
+GameFlex is tested on one setup so far. What follows has been seen working there; anything else
+should work, but has not been tried.
+
+- **The server:** a Linux PC with an AMD Ryzen 7 255 and its Radeon 780M graphics, which encode
+  the video (VA-API). NVIDIA and Intel graphics have not been tried, nor Windows and macOS (Docker
+  Desktop).
+- **The browser:** Google Chrome, on Linux and on Android.
+- **Recent consoles,** a few games each, played past their title screen: PlayStation 3 (Final
+  Fantasy XIII), PlayStation 4 (Sonic Mania Plus), PlayStation 5 (Final Fantasy VII Remake,
+  Richman 11), Switch (Mini Metro, EA Sports FC 27), Wii U (New Super Mario Bros. U, as a disc
+  image and extracted), Xbox (Dead or Alive 3), Xbox 360 (Halo 3). Every game is different: see
+  the known limitations in [Consoles](docs/consoles.md).
+- **Remote Play:** with a PlayStation 5. The PlayStation 4 has not been tried: we have none.
+- **The WireGuard VPN:** a retro game played through it, from a client on the same computer. Not
+  yet from a phone on mobile data.
+- **The Android app:** on a Samsung Galaxy S25 (Snapdragon). The recent consoles on the phone need a
+  Snapdragon (Adreno) graphics chip.
+- **Not tried yet:** playing with friends over the phone's own hotspot, without Internet.
+
 ## Quick start
 
-On a Linux computer with Docker:
+On a computer with Docker:
 
 ```bash
 mkdir ~/gameflex && cd ~/gameflex
@@ -119,7 +143,8 @@ check, troubleshoot and report an issue on your behalf, and what to ask you firs
    for your friends.
 5. [Controllers and playing together](docs/controllers.md): the on-screen controller, real
    controllers, the keyboard, and sharing a game.
-6. [Play away from home](docs/remote-access.md): the HTTPS proxy, the router, and keeping it safe.
+6. [Play away from home](docs/remote-access.md): the WireGuard VPN, or an HTTPS proxy and the
+   router, and keeping it safe.
 7. [Remote Play](docs/remote-play.md): your own PS4 or PS5.
 8. [Share with friends: federation](docs/federation.md): give a friend access to your server, add
    theirs, copy or play their games.

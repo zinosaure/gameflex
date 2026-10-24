@@ -166,3 +166,51 @@ services:
         profiles: [ "xbox360" ]
         entrypoint: [ "true" ]
         restart: "no"
+
+    # Optional: a WireGuard VPN (wg-easy), to play away from home without
+    # putting GameFlex on the Internet. Turn it on with `wireguard` in
+    # COMPOSE_PROFILES, then open its page at http://<GAMEFLEX_PUBLIC_HOST>:51821.
+    # The guide: docs/remote-access.md. Forward only UDP 51820 on your router,
+    # never 51821.
+    gameflex-wireguard:
+        image: ghcr.io/wg-easy/wg-easy:15
+        container_name: ${GAMEFLEX_NAME:-gameflex}-wireguard
+        profiles: [ "wireguard" ]
+        restart: unless-stopped
+        environment:
+            # Its page is for your home network, without HTTPS.
+            - INSECURE=true
+            - DISABLE_IPV6=true
+            # The devices you connect send only what goes to GameFlex through
+            # your home; the rest of their traffic stays on their own network.
+            - INIT_ENABLED=true
+            - INIT_ALLOWED_IPS=${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}/32
+        volumes:
+            - wireguard:/etc/wireguard
+            - /lib/modules:/lib/modules:ro
+        ports:
+            - "51820:51820/udp"
+            - "51821:51821/tcp"
+        cap_add:
+            - NET_ADMIN
+            - SYS_MODULE
+        sysctls:
+            - net.ipv4.ip_forward=1
+            - net.ipv4.conf.all.src_valid_mark=1
+        # The image routes with the old iptables (legacy), which recent Linux
+        # systems no longer load: there it switches to nftables, which Docker
+        # itself uses.
+        entrypoint:
+            - sh
+            - -c
+            - |
+              iptables-legacy -t nat -S >/dev/null 2>&1 || {
+                  ln -sf iptables-nft /usr/sbin/iptables
+                  ln -sf iptables-nft-save /usr/sbin/iptables-save
+                  ln -sf iptables-nft-restore /usr/sbin/iptables-restore
+              }
+              exec docker-entrypoint.sh /usr/bin/dumb-init node server/index.mjs
+
+volumes:
+    # The VPN's keys and devices.
+    wireguard:

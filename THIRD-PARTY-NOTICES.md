@@ -10,6 +10,11 @@ notices are in [THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt).
 The console images unpack the emulator file that *you* place in `cores/<console>/` when a game is
 launched; cores, BIOS files and games are always supplied by the user.
 
+**The optional WireGuard VPN is not a GameFlex artifact either.** `docker-compose.yml` names the
+image of [wg-easy](https://github.com/wg-easy/wg-easy) (`ghcr.io/wg-easy/wg-easy`, AGPL-3.0), which
+Docker downloads from its publisher when you turn the VPN on; GameFlex neither modifies nor
+redistributes it.
+
 This inventory was made on the builds that became GameFlex **0.3.0** by reading the artifacts themselves: the Go build
 information embedded in each binary, the Debian package database of each image, the webpack
 module list of the web interface, the Gradle dependency tree and the files inside the APK, and a

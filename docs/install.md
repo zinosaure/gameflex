@@ -4,12 +4,15 @@
 
 **Before you start:**
 
-- **A Linux computer, x86-64**, that stays on while you play. It does the emulation, so the more
-  recent the consoles you want, the more powerful it must be.
-- **Docker Engine with Compose v2.** Check with `docker compose version`. If it is missing, follow
-  [Install Docker Engine](https://docs.docker.com/engine/install/).
-- **A graphics card that Linux exposes in `/dev/dri`** (AMD or Intel recommended). GameFlex uses it
-  to encode the video.
+- **A computer, x86-64**, that stays on while you play. It does the emulation, so the more recent
+  the consoles you want, the more powerful it must be.
+- **Docker with Compose v2**: it is all there is to install. Check with `docker compose version`.
+  If it is missing, follow [Install Docker Engine](https://docs.docker.com/engine/install/).
+  GameFlex has only been tried on Linux. On Windows and macOS, Docker Desktop runs the containers
+  in a virtual machine; whether the graphics card, the virtual controllers and the video reach
+  them there has not been tried.
+- **A graphics card that Docker can hand to the containers, in `/dev/dri`** (AMD or Intel
+  recommended). GameFlex uses it to encode the video.
 - **For the recent consoles, `/dev/uinput`**, which gives them virtual controllers. Load it with
   `sudo modprobe uinput`, and keep it loaded after a restart with
   `echo uinput | sudo tee /etc/modules-load.d/uinput.conf`.
@@ -39,7 +42,8 @@ Afterwards, the same script runs GameFlex for you:
 | `./launch.sh update` | Downloads the latest version and restarts. |
 | `./launch.sh stop` | Stops GameFlex. Your library and settings stay. |
 | `./launch.sh status` | Shows what is running. |
-| `./launch.sh logs kernel` | Follows the log of a service: `edge`, `kernel`, `credential`, `gateway` or `remoteplay`. |
+| `./launch.sh logs kernel` | Follows the log of a service: `edge`, `kernel`, `credential`, `gateway`, `remoteplay` or `wireguard`. |
+| `./launch.sh wireguard` | Turns on the optional WireGuard VPN, to play away from home (see [Play away from home](remote-access.md)). |
 | `./launch.sh setup` | Asks the questions again. |
 
 ## Step by step, without the script
@@ -133,8 +137,8 @@ All settings live in `.env`.
 |---|---|---|---|
 | `GAMEFLEX_LIBRARY` | yes | | Your library folder on this computer. |
 | `GAMEFLEX_PUBLIC_HOST` | yes | | The address of this computer on your home network. Players and the services reach GameFlex through it. |
-| `GAMEFLEX_ROOT_PASSWORD` | yes | | The administrator's password. GameFlex does not start without it (`launch.sh` can make one up). It is set again from `.env` at every start: change it here, then run `docker compose up -d`. |
-| `GAMEFLEX_SECRET` | yes | | The secret the services share to sign sessions. Changing it signs everyone out. |
+| `GAMEFLEX_ROOT_PASSWORD` | yes | | The administrator's password. GameFlex does not start without it (`launch.sh` can make one up). It only creates the administrator account, at the first start: change the password afterwards in GameFlex (**Settings › Profile**). Lost it? `./launch.sh reset-password` sets it back to this one. |
+| `GAMEFLEX_SECRET` | yes | | The secret the services share to sign sessions; it also encrypts the passwords of network shares. Changing it signs everyone out, and those passwords must be entered again. |
 | `GAMEFLEX_VERSION` | no | `latest` | The version of the images, such as `0.3.0`. |
 | `GAMEFLEX_PORT` | no | `10200` | The port of the web page. |
 | `GAMEFLEX_ICE_INTERFACE` | no | every physical interface | The network interfaces the video may use, such as `eth0`, separated by commas. Empty, Docker bridges and VPN tunnels (`wg0`, `tun0`) are skipped. |
@@ -142,7 +146,7 @@ All settings live in `.env`.
 | `GAMEFLEX_MAX_PLAYERS` | no | `4` | Virtual controllers created for a recent console's game, never fewer than the console's own player count. How many play is set per console (see [Consoles](consoles.md)). |
 | `GAMEFLEX_CONSOLE_LIMITS` | no | one of each | How many games of each recent console can run at once, as `console:number` pairs. |
 | `GAMEFLEX_MIRROR_URL` | no | | A mirror for emulators and BIOS files. When set, the settings screens show a link to it. It must be a full `http://` or `https://` address, or GameFlex does not start. |
-| `COMPOSE_PROFILES` | no | none | The recent consoles whose images you want, separated by commas: `ps3`, `ps4`, `ps5`, `switch`, `wiiu`, `xbox`, `xbox360`. |
+| `COMPOSE_PROFILES` | no | none | The recent consoles whose images you want, separated by commas: `ps3`, `ps4`, `ps5`, `switch`, `wiiu`, `xbox`, `xbox360`. Add `wireguard` for the optional VPN (see [Play away from home](remote-access.md)). |
 | `GAMEFLEX_NAME` | no | `gameflex` | The name of the containers (`gameflex-kernel`…). Change it only to run a second GameFlex on the same computer, which then also needs other ports: `GAMEFLEX_PORT`, and the fixed ports in `docker-compose.yml`. |
 
 ### Volumes
@@ -154,6 +158,7 @@ All settings live in `.env`.
 | `GAMEFLEX_LIBRARY/cache/profiles` | `/profiles` (gameflex-kernel) | Controller layouts, written by GameFlex when it starts. |
 | `/var/run/docker.sock` | same (gameflex-kernel) | Lets GameFlex start a container for each game. |
 | any other disk | `/mnt/<name>` (gameflex-kernel) | More games: add one line per disk to the volumes of `gameflex-kernel`. |
+| the Docker volume `gameflex_wireguard` | `/etc/wireguard` (gameflex-wireguard) | The optional VPN's keys and devices, once you turn it on. |
 
 **Back up `GAMEFLEX_LIBRARY`**: it holds everything that is yours, saves and accounts included.
 
@@ -165,10 +170,12 @@ Docker on this computer. Run GameFlex on a machine you trust, and don't expose p
 | Port | Protocol | Used for | Open it to |
 |---|---|---|---|
 | `10200` | TCP | the web page | your network (or your HTTPS proxy) |
-| `9201`–`9300` | UDP | the game video | your network, and the Internet to play away from home |
+| `9201`–`9300` | UDP | the game video | your network; the Internet only to play away from home without the VPN |
 | `10201` | TCP | the server, for the game containers | nobody: this computer only |
 | `10202`, `10205` | TCP | the video gateway and Remote Play | nobody on the Internet: never forward them on your router. If you firewall this computer, let the web container reach them |
 | `9001`–`9100` | TCP | the running games | nobody on the Internet: never forward them on your router |
+| `51820` | UDP | the optional WireGuard VPN | the Internet: forward it on your router, once you turn the VPN on |
+| `51821` | TCP | the VPN's settings page | your network only: never forward it on your router |
 
 ### The compose file
 
@@ -341,6 +348,54 @@ services:
         profiles: [ "xbox360" ]
         entrypoint: [ "true" ]
         restart: "no"
+
+    # Optional: a WireGuard VPN (wg-easy), to play away from home without
+    # putting GameFlex on the Internet. Turn it on with `wireguard` in
+    # COMPOSE_PROFILES, then open its page at http://<GAMEFLEX_PUBLIC_HOST>:51821.
+    # The guide: docs/remote-access.md. Forward only UDP 51820 on your router,
+    # never 51821.
+    gameflex-wireguard:
+        image: ghcr.io/wg-easy/wg-easy:15
+        container_name: ${GAMEFLEX_NAME:-gameflex}-wireguard
+        profiles: [ "wireguard" ]
+        restart: unless-stopped
+        environment:
+            # Its page is for your home network, without HTTPS.
+            - INSECURE=true
+            - DISABLE_IPV6=true
+            # The devices you connect send only what goes to GameFlex through
+            # your home; the rest of their traffic stays on their own network.
+            - INIT_ENABLED=true
+            - INIT_ALLOWED_IPS=${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}/32
+        volumes:
+            - wireguard:/etc/wireguard
+            - /lib/modules:/lib/modules:ro
+        ports:
+            - "51820:51820/udp"
+            - "51821:51821/tcp"
+        cap_add:
+            - NET_ADMIN
+            - SYS_MODULE
+        sysctls:
+            - net.ipv4.ip_forward=1
+            - net.ipv4.conf.all.src_valid_mark=1
+        # The image routes with the old iptables (legacy), which recent Linux
+        # systems no longer load: there it switches to nftables, which Docker
+        # itself uses.
+        entrypoint:
+            - sh
+            - -c
+            - |
+              iptables-legacy -t nat -S >/dev/null 2>&1 || {
+                  ln -sf iptables-nft /usr/sbin/iptables
+                  ln -sf iptables-nft-save /usr/sbin/iptables-save
+                  ln -sf iptables-nft-restore /usr/sbin/iptables-restore
+              }
+              exec docker-entrypoint.sh /usr/bin/dumb-init node server/index.mjs
+
+volumes:
+    # The VPN's keys and devices.
+    wireguard:
 ```
 
 ### The settings file
@@ -398,7 +453,9 @@ GAMEFLEX_CONSOLE_LIMITS=switch:1,ps3:1,xbox:1,ps4:1,ps5:1,wiiu:1,xbox360:1
 GAMEFLEX_MIRROR_URL=
 
 # The recent consoles whose images you want, separated by commas: ps3, ps4,
-# ps5, switch, wiiu, xbox, xbox360. Docker Compose reads this setting itself.
+# ps5, switch, wiiu, xbox, xbox360. Add wireguard for the optional VPN that lets
+# you play away from home (docs/remote-access.md). Docker Compose reads this
+# setting itself.
 COMPOSE_PROFILES=
 
 # The name of this installation's containers (gameflex-kernel…). Change it only

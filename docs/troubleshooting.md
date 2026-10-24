@@ -27,7 +27,7 @@
 | A friend's server refuses access | [Federation](federation.md#if-something-goes-wrong) |
 | The PS4 or PS5 console does not answer | [Remote Play](remote-play.md#if-something-goes-wrong) |
 | The disk is full | **Settings › Cache** and **Settings › Logs** ([Storage](storage.md)) |
-| The administrator password does not work after a restart | GameFlex sets it from `.env` at every start: use the one in `.env` |
+| The administrator password is lost | `./launch.sh reset-password` sets it back to the one in `.env` (without the script: `docker compose exec gameflex-credential /app/auth reset-root-password`) |
 
 Each console also has its known limitations: see [Consoles](consoles.md#known-limitations-in-this-version).
 

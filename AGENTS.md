@@ -19,12 +19,14 @@ behalf.
   let them decide.
 - **Ask before anything that changes the machine beyond this folder:** installing Docker, loading a
   kernel module, opening firewall or router ports, using `sudo`.
-- **Do not expose GameFlex to the Internet** unless the person asks; then follow their reverse
-  proxy setup. Never publish port 10201.
+- **Do not expose GameFlex to the Internet** unless the person asks. To play away from home, offer
+  the optional WireGuard VPN first (`./launch.sh wireguard`, see
+  [docs/remote-access.md](docs/remote-access.md)): it opens a single UDP port. If they want a reverse
+  proxy instead, follow their setup. Never publish port 10201, nor the VPN's settings page (51821).
 
 ## Install
 
-1. **Check the machine** (Linux, x86-64):
+1. **Check the machine** (x86-64, with Docker; GameFlex has only been tried on Linux):
 
    ```bash
    uname -m                      # x86_64
@@ -73,9 +75,10 @@ behalf.
    curl -fsS -o /dev/null http://127.0.0.1:10200/ && echo ok
    ```
 
-   Then tell the person to open `http://<address>:10200` and sign in as `root`. The administrator
-   password is set again from `.env` at every start: to change it, edit `.env` and run
-   `docker compose up -d`, never only in the web page.
+   Then tell the person to open `http://<address>:10200` and sign in as `root`. The password in
+   `.env` only creates the administrator account, at the first start: tell them to change it in
+   GameFlex (**Settings › Profile**). If it is lost, `./launch.sh reset-password` sets it back to
+   the one in `.env`.
 
 ## Everyday tasks
 
@@ -83,10 +86,11 @@ behalf.
 |---|---|
 | Start | `./launch.sh` |
 | Add recent consoles | `./launch.sh consoles ps3 switch` |
+| Play away from home (VPN) | `./launch.sh wireguard` (ask first: the person forwards UDP 51820 on their router) |
 | Update | `./launch.sh update` |
 | Stop (data stays) | `./launch.sh stop` |
 | What runs | `./launch.sh status` |
-| Read a log | `docker compose logs --tail 200 gameflex-kernel` (services: `gameflex-edge`, `gameflex-kernel`, `gameflex-credential`, `gameflex-gateway`, `gameflex-remoteplay`) |
+| Read a log | `docker compose logs --tail 200 gameflex-kernel` (services: `gameflex-edge`, `gameflex-kernel`, `gameflex-credential`, `gameflex-gateway`, `gameflex-remoteplay`, `gameflex-wireguard`) |
 | Change a setting | edit `.env`, then `docker compose up -d` |
 
 `./launch.sh logs` follows the log forever: prefer `docker compose logs --tail` in a script.

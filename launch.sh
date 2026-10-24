@@ -6,11 +6,15 @@
 #   ./launch.sh setup            answer the questions again (rewrites .env), then start
 #   ./launch.sh consoles ps3 switch
 #                                download recent consoles (ps3 ps4 ps5 switch wiiu xbox xbox360)
+#   ./launch.sh wireguard        turn on the optional WireGuard VPN, to play away from home
+#                                without putting GameFlex on the Internet
 #   ./launch.sh update           download the latest version and restart
 #   ./launch.sh stop             stop GameFlex (your library and settings stay)
 #   ./launch.sh status           show what is running
 #   ./launch.sh logs [service]   follow the log of a service: edge, kernel, credential,
-#                                gateway or remoteplay (the gameflex- prefix is optional)
+#                                gateway, remoteplay or wireguard (the gameflex- prefix is optional)
+#   ./launch.sh reset-password   set the administrator password back to the one in .env
+#                                (it only sets it at the first start; use this if you lost it)
 #
 # Every answer can also come from the environment, for an install without
 # questions: GAMEFLEX_LIBRARY, GAMEFLEX_PUBLIC_HOST, GAMEFLEX_ROOT_PASSWORD,
@@ -20,6 +24,8 @@ cd "$(dirname "$0")"
 
 RAW=https://raw.githubusercontent.com/zinosaure/gameflex/main
 CONSOLES="ps3 ps4 ps5 switch wiiu xbox xbox360"
+# The optional services, turned on the same way as the consoles (COMPOSE_PROFILES).
+EXTRAS="wireguard"
 
 say() { printf '%s\n' "$*"; }
 fail() { printf 'Error: %s\n' "$*" >&2; exit 1; }
@@ -135,7 +141,8 @@ setup() {
         say "Write it down: you sign in as root with it."
     fi
 
-    profiles=${COMPOSE_PROFILES-$(ask "Recent consoles to download ($CONSOLES), separated by spaces" "")}
+    profiles=${COMPOSE_PROFILES-$(ask "Recent consoles to download ($CONSOLES), separated by spaces" \
+        "$(get_setting COMPOSE_PROFILES | tr ',' ' ')")}
 
     set_setting GAMEFLEX_LIBRARY "$library"
     set_setting GAMEFLEX_PUBLIC_HOST "$address"
@@ -146,7 +153,7 @@ setup() {
     set_setting GAMEFLEX_ROOT_PASSWORD "'$password'"
     [ -n "$(get_setting GAMEFLEX_SECRET)" ] || set_setting GAMEFLEX_SECRET "$(make_secret)"
     # shellcheck disable=SC2086 # the answer is a list: split it on spaces.
-    set_setting COMPOSE_PROFILES "$(consoles_list $profiles)"
+    set_setting COMPOSE_PROFILES "$(profiles_list $profiles)"
 
     # From now on .env decides: Compose would otherwise prefer these variables,
     # as they came, over what was just written (a relative folder, for one).
@@ -157,17 +164,17 @@ setup() {
     say "Settings saved in .env."
 }
 
-# consoles_list ps3 switch… — the valid names, comma-separated, as Compose wants them.
-consoles_list() {
+# profiles_list ps3 switch… — the valid names, comma-separated, as Compose wants them.
+profiles_list() {
     local argument name list=""
     for argument in "$@"; do
         for name in ${argument//,/ }; do
             case ",$list," in
                 *",$name,"*) continue ;;
             esac
-            case " $CONSOLES " in
+            case " $CONSOLES $EXTRAS " in
                 *" $name "*) list="${list:+$list,}$name" ;;
-                *) say "Unknown console '$name' (known: $CONSOLES)." >&2 ;;
+                *) say "Unknown name '$name' (known: $CONSOLES $EXTRAS)." >&2 ;;
             esac
         done
     done
@@ -177,6 +184,8 @@ consoles_list() {
 # ── Running ─────────────────────────────────────────────────────────
 
 start() {
+    # Also when .env was written beforehand, by hand or by an agent.
+    need_file docker-compose.yml
     say "Downloading GameFlex (the first time takes a few minutes)…"
     docker compose pull
     docker compose up -d
@@ -209,9 +218,21 @@ case "${1:-}" in
     consoles)
         shift
         [ -f .env ] || fail "run ./launch.sh first"
-        set_setting COMPOSE_PROFILES "$(consoles_list "$(get_setting COMPOSE_PROFILES)" "$@")"
+        set_setting COMPOSE_PROFILES "$(profiles_list "$(get_setting COMPOSE_PROFILES)" "$@")"
         docker compose pull
         say "Consoles ready: $(get_setting COMPOSE_PROFILES)"
+        ;;
+    wireguard)
+        [ -f .env ] || fail "run ./launch.sh first"
+        set_setting COMPOSE_PROFILES "$(profiles_list "$(get_setting COMPOSE_PROFILES)" wireguard)"
+        docker compose up -d gameflex-wireguard
+        say ""
+        say "WireGuard is running. Next:"
+        say "  1. Open http://$(get_setting GAMEFLEX_PUBLIC_HOST):51821 and create its administrator."
+        say "     As the host, give your home's public address or a domain name pointing to it."
+        say "  2. On your router, forward UDP port 51820 to this computer. Nothing else."
+        say "  3. Add a device on that page, and scan its QR code with the WireGuard app."
+        say "The guide: docs/remote-access.md"
         ;;
     update)
         docker compose pull
@@ -225,6 +246,10 @@ case "${1:-}" in
     status)
         docker compose ps
         ;;
+    reset-password)
+        docker compose exec gameflex-credential /app/auth reset-root-password
+        say "The administrator password is the one in .env again."
+        ;;
     logs)
         shift
         services=()
@@ -234,7 +259,7 @@ case "${1:-}" in
         docker compose logs -f --tail 100 "${services[@]}"
         ;;
     *)
-        sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
         exit 2
         ;;
 esac
