@@ -18,15 +18,24 @@ With the setup script:
 ./launch.sh update
 ```
 
-Without it:
+It downloads the new images, including those of the recent consoles listed in `COMPOSE_PROFILES`,
+and the new `docker-compose.yml` and `launch.sh`, then restarts GameFlex. At start, GameFlex
+updates its database by itself.
+
+- **The disks you added** (the `/mnt/<name>` lines, see [Storage](storage.md)) move into the new
+  `docker-compose.yml` by themselves. Your previous file stays next to it, in
+  `docker-compose.yml.old`: if you changed anything else in it, copy that change over.
+- **If the script cannot place your disks,** it leaves your `docker-compose.yml` as it is and saves
+  the new one as `docker-compose.yml.new`. Copy your changes into it, then rename it
+  `docker-compose.yml`.
+
+Without the script: download the new `docker-compose.yml` (see [Install GameFlex](install.md)),
+copy your disk lines into it, then:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
-
-Docker downloads the new images, including those of the recent consoles listed in
-`COMPOSE_PROFILES`, and restarts GameFlex. At start, GameFlex updates its database by itself.
 
 ## What you should see
 
@@ -36,12 +45,13 @@ Docker downloads the new images, including those of the recent consoles listed i
 ## Stay on a version
 
 By default (`GAMEFLEX_VERSION=latest`), an update takes the newest version. To stay on one, set it
-in `.env`, such as `GAMEFLEX_VERSION=0.3.0`, then run `docker compose up -d`.
+in `.env`, such as `GAMEFLEX_VERSION=0.4.0`: `./launch.sh update` then takes the images and the
+files of that version.
 
 ## Go back to the previous version
 
 1. Set the previous version in `.env`: `GAMEFLEX_VERSION=<previous version>`.
-2. Run `docker compose up -d`.
+2. Run `./launch.sh update`: it takes the images and the files of that version.
 3. If GameFlex misbehaves, restore the `databases/` folder you backed up: a newer version may have
    changed it.
 

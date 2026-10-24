@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-25
+
+Version 0.4.1 was skipped: its changes come with this one.
+
+### Fixed
+
+- `./launch.sh update` only downloaded the new images: an install never received the new
+  services and settings of `docker-compose.yml`. It now also downloads the `docker-compose.yml` and
+  `launch.sh` of the version in `.env`. The disks you added (the `/mnt/<name>` lines) move into the
+  new compose file, and the previous one stays in `docker-compose.yml.old`. **Installed 0.4.0?**
+  Download `launch.sh` once more before updating:
+  `curl -fLO https://raw.githubusercontent.com/zinosaure/gameflex/main/launch.sh`
+- The Android app showed an old version (0.2.0) at the bottom of its pages: its built-in
+  interface took the version from where it was built, not from the release.
+
 ## [0.4.0] - 2026-10-24
 
 ### Added

@@ -8,7 +8,8 @@
 #                                download recent consoles (ps3 ps4 ps5 switch wiiu xbox xbox360)
 #   ./launch.sh wireguard        turn on the optional WireGuard VPN, to play away from home
 #                                without putting GameFlex on the Internet
-#   ./launch.sh update           download the latest version and restart
+#   ./launch.sh update           download the latest version, with its docker-compose.yml
+#                                (your disks kept) and launch.sh, then restart
 #   ./launch.sh stop             stop GameFlex (your library and settings stay)
 #   ./launch.sh status           show what is running
 #   ./launch.sh logs [service]   follow the log of a service: edge, kernel, credential,
@@ -50,6 +51,82 @@ need_file() {
     [ -f "$1" ] && return 0
     say "Downloading $1…"
     curl -fsSL -o "$1" "$RAW/$1" || fail "could not download $1 from $RAW"
+}
+
+# ── Updating the files ──────────────────────────────────────────────
+
+# files_url — where the files of the version in .env are: its tag when
+# GAMEFLEX_VERSION names one (0.4.0), the newest otherwise (latest).
+files_url() {
+    local version
+    version=$(get_setting GAMEFLEX_VERSION)
+    case "$version" in
+        [0-9]*.[0-9]*.[0-9]*) printf '%s\n' "${RAW%/main}/v$version" ;;
+        *) printf '%s\n' "$RAW" ;;
+    esac
+}
+
+# carry_disks OLD NEW — prints NEW with the disks added to OLD: every
+# `<folder>:/mnt/<name>` line, with the comments just above it, goes after
+# the example line `# - /media/games:/mnt/games`. Fails when NEW has no such
+# line to put them after.
+carry_disks() {
+    awk -v example='# - /media/games:/mnt/games' '
+        FNR == 1 { file++ }
+        file == 1 { seen[$0] = 1; next }
+        file == 2 {
+            if ($0 ~ /^[ \t]*#/) {
+                if (!($0 in seen)) comments = comments $0 "\n"
+                next
+            }
+            if ($0 ~ /^[ \t]*-[ \t]*[^# \t][^#]*:\/mnt\// && !($0 in seen)) disks = disks comments $0 "\n"
+            comments = ""
+            next
+        }
+        { print }
+        !done && index($0, example) { printf "%s", disks; done = 1 }
+        END { if (disks != "" && !done) exit 1 }
+    ' "$2" "$1" "$2"
+}
+
+# update_files — docker-compose.yml, launch.sh and .env.example of the version
+# to run. The disks you added move into the new compose file, and the previous
+# one stays in docker-compose.yml.old.
+update_files() {
+    local base temporary self
+    base=$(files_url)
+    self=$(basename "$0")
+    # Next to the files, so that moving one in place is a rename: bash is
+    # still reading this script, and keeps reading the old one.
+    temporary=$(mktemp -d ./.update.XXXXXX)
+    if ! curl -fsSL -o "$temporary/docker-compose.yml" "$base/docker-compose.yml" ||
+        ! curl -fsSL -o "$temporary/launch.sh" "$base/launch.sh" ||
+        ! curl -fsSL -o "$temporary/.env.example" "$base/.env.example"; then
+        rm -rf "$temporary"
+        say "Warning: could not download the files of this version from $base; yours stay as they are."
+        return 0
+    fi
+    mv "$temporary/.env.example" .env.example
+
+    if carry_disks docker-compose.yml "$temporary/docker-compose.yml" > "$temporary/merged" &&
+        docker compose -f "$temporary/merged" --project-directory . config --quiet 2>/dev/null; then
+        if ! cmp -s "$temporary/merged" docker-compose.yml; then
+            cp docker-compose.yml docker-compose.yml.old
+            mv "$temporary/merged" docker-compose.yml
+            say "docker-compose.yml updated, with your disks; the previous one is in docker-compose.yml.old."
+        fi
+    else
+        mv "$temporary/docker-compose.yml" docker-compose.yml.new
+        say "Warning: docker-compose.yml could not be updated by itself. The new one is"
+        say "docker-compose.yml.new: copy your changes into it, then rename it docker-compose.yml."
+    fi
+
+    if ! cmp -s "$temporary/launch.sh" "$self"; then
+        chmod +x "$temporary/launch.sh"
+        mv "$temporary/launch.sh" "$self"
+        say "launch.sh updated."
+    fi
+    rm -rf "$temporary"
 }
 
 # ── .env ────────────────────────────────────────────────────────────
@@ -235,6 +312,8 @@ case "${1:-}" in
         say "The guide: docs/remote-access.md"
         ;;
     update)
+        [ -f .env ] || fail "run ./launch.sh first"
+        update_files
         docker compose pull
         docker compose up -d
         docker image prune -f >/dev/null
@@ -259,7 +338,7 @@ case "${1:-}" in
         docker compose logs -f --tail 100 "${services[@]}"
         ;;
     *)
-        sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
         exit 2
         ;;
 esac

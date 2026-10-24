@@ -32,6 +32,7 @@ Your games don't all fit on one disk? Add others, as many as you like.
    ```
 
    The name (`games` here) starts with a letter or a digit, and uses letters, digits, `.`, `-` and `_`.
+   `./launch.sh update` keeps these lines when it brings a new `docker-compose.yml`.
 3. Restart: `docker compose up -d`.
 
 **What you should see:** the disk in **Settings › Internal resources**, with its number of games.

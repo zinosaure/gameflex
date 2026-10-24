@@ -39,7 +39,7 @@ Afterwards, the same script runs GameFlex for you:
 |---|---|
 | `./launch.sh` | Starts GameFlex. |
 | `./launch.sh consoles ps3 switch` | Adds recent consoles and downloads their images. |
-| `./launch.sh update` | Downloads the latest version and restarts. |
+| `./launch.sh update` | Downloads the latest version, with its `docker-compose.yml` (your disks kept) and `launch.sh`, and restarts (see [Update GameFlex](update.md)). |
 | `./launch.sh stop` | Stops GameFlex. Your library and settings stay. |
 | `./launch.sh status` | Shows what is running. |
 | `./launch.sh logs kernel` | Follows the log of a service: `edge`, `kernel`, `credential`, `gateway`, `remoteplay` or `wireguard`. |

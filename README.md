@@ -2,6 +2,8 @@
 
 **Self-hosted cloud gaming. Play anywhere, with anyone, on any device with a web browser.**
 
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/zinosaure)
+
 > **GameFlex is still in development.** Expect bugs, rough edges and changes between versions,
 > especially on the consoles marked *experimental*. It is a personal project, provided as is, with
 > no warranty. Please read the [disclaimer](DISCLAIMER.md) before you install it.
@@ -111,6 +113,8 @@ should work, but has not been tried.
   image and extracted), Xbox (Dead or Alive 3), Xbox 360 (Halo 3). Every game is different: see
   the known limitations in [Consoles](docs/consoles.md).
 - **Remote Play:** with a PlayStation 5. The PlayStation 4 has not been tried: we have none.
+- **A friend's server (federation):** Final Fantasy VII Remake in 720p, played smoothly from a phone
+  on mobile data.
 - **The WireGuard VPN:** a retro game played through it, from a client on the same computer. Not
   yet from a phone on mobile data.
 - **The Android app:** on a Samsung Galaxy S25 (Snapdragon). The recent consoles on the phone need a
@@ -237,7 +241,9 @@ links to them. A security problem goes through [SECURITY.md](SECURITY.md), not a
 ## Support GameFlex
 
 GameFlex is a personal project, built in spare time. If you enjoy it and want to support its
-development, you can [buy me a coffee](https://buymeacoffee.com/zinosaure).
+development, you can buy me a coffee:
+
+<a href="https://buymeacoffee.com/zinosaure"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy me a coffee" height="50"></a>
 
 ## License
 
