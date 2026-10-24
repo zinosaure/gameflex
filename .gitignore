@@ -1,0 +1,2 @@
+# Your settings and secrets (launch.sh writes them): never commit them.
+.env

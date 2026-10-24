@@ -1,0 +1,78 @@
+name: Bug report
+description: Something in GameFlex does not work as it should.
+labels: [ "bug" ]
+body:
+    - type: markdown
+      attributes:
+          value: |
+              Thanks for taking the time to report it. Please search the existing issues first: your problem may already be known.
+
+              **Never paste a password, your `.env` file or a token.** Remove them from logs before you paste.
+    - type: input
+      id: version
+      attributes:
+          label: GameFlex version
+          description: "`GAMEFLEX_VERSION` in your `.env`, or the version shown by `docker compose images`."
+          placeholder: "0.3.0"
+      validations:
+          required: true
+    - type: dropdown
+      id: where
+      attributes:
+          label: Where does it happen?
+          options:
+              - In a web browser, on a computer
+              - In a web browser, on a phone or tablet
+              - In the Android app
+              - On the server (installation, start, update)
+      validations:
+          required: true
+    - type: input
+      id: device
+      attributes:
+          label: The device you play on
+          description: The device and its browser, or the app version.
+          placeholder: "Pixel 8, Chrome 130"
+    - type: input
+      id: server
+      attributes:
+          label: The server computer
+          description: Its Linux distribution, processor and graphics card.
+          placeholder: "Ubuntu 24.04, Ryzen 7 7700, Radeon RX 7800 XT"
+    - type: textarea
+      id: what
+      attributes:
+          label: What happened
+          description: What you did, and what you saw. Error messages word for word.
+      validations:
+          required: true
+    - type: textarea
+      id: expected
+      attributes:
+          label: What you expected
+    - type: textarea
+      id: steps
+      attributes:
+          label: How to make it happen again
+          placeholder: |
+              1. Open …
+              2. Press …
+              3. …
+    - type: textarea
+      id: logs
+      attributes:
+          label: Logs
+          description: "The output of `./launch.sh logs kernel` (or `docker compose logs --tail 200 gameflex-kernel`), or a log from **Settings › Logs**."
+          render: shell
+    - type: textarea
+      id: screenshots
+      attributes:
+          label: Screenshots
+          description: Drop images here if they help.
+    - type: checkboxes
+      id: privacy
+      attributes:
+          label: Before you send
+          options:
+              - label: I removed passwords, tokens and private addresses from what I pasted.
+                required: true

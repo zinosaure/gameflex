@@ -1,0 +1,168 @@
+# GameFlex: self-hosted cloud gaming.
+#
+# Put this file and `.env` in the same folder, fill in `.env` (start from
+# `.env.example`), then run:
+#
+#   docker compose up -d
+#
+# The guide: docs/install.md.
+
+name: ${GAMEFLEX_NAME:-gameflex}
+
+services:
+    # The web page, and the door to every other service. Open
+    # http://<GAMEFLEX_PUBLIC_HOST>:<GAMEFLEX_PORT> in a browser.
+    gameflex-edge:
+        image: zinosaure/gameflex-edge:${GAMEFLEX_VERSION:-latest}
+        container_name: ${GAMEFLEX_NAME:-gameflex}-edge
+        restart: unless-stopped
+        ports:
+            - "${GAMEFLEX_PORT:-10200}:8080"
+        environment:
+            - KERNEL_BACKEND_PROXY_TARGET=http://gameflex-kernel:8080
+            - CREDENTIAL_BACKEND_PROXY_TARGET=http://gameflex-credential:8080
+            - GATEWAY_WEBRTC_PROXY_TARGET=http://${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}:10202
+            - REMOTEPLAY_BACKEND_PROXY_TARGET=http://${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}:10205
+
+    # The server: your library, the games, and the containers that run them.
+    gameflex-kernel:
+        image: zinosaure/gameflex-kernel:${GAMEFLEX_VERSION:-latest}
+        container_name: ${GAMEFLEX_NAME:-gameflex}-kernel
+        restart: unless-stopped
+        ports:
+            # This computer only: the game containers reach it here.
+            - "127.0.0.1:10201:8080"
+        environment:
+            - GAMEFLEX_JWT_SECRET=${GAMEFLEX_SECRET:?set GAMEFLEX_SECRET in .env}
+            - GAMEFLEX_INTERNAL_SECRET=${GAMEFLEX_SECRET:?set GAMEFLEX_SECRET in .env}
+            - GAMEFLEX_PUBLIC_HOST=${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}
+            # Its games carry this name: two GameFlex on one machine keep theirs apart.
+            - GAMEFLEX_STACK_NAME=${GAMEFLEX_NAME:-gameflex}
+            # The same folders as the volumes below, seen from this machine.
+            - GAMEFLEX_STORAGE_PATH=${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}
+            - GAMEFLEX_PROFILES_HOST_DIR=${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}/cache/profiles
+            - GAMEFLEX_CREDENTIAL_URL=http://gameflex-credential:8080
+            - GAMEFLEX_KERNEL_URL=http://127.0.0.1:10201
+            - GAMEFLEX_GATEWAY_URL=http://127.0.0.1:10202
+            - GAMEFLEX_REMOTEPLAY_CONTROL_URL=http://${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}:10205
+            - GAMEFLEX_PORT_RANGE=9001-9100
+            - GAMEFLEX_MAX_PLAYERS=${GAMEFLEX_MAX_PLAYERS:-4}
+            - GAMEFLEX_CONSOLE_LIMITS=${GAMEFLEX_CONSOLE_LIMITS:-switch:1,ps3:1,xbox:1,ps4:1,ps5:1,wiiu:1,xbox360:1}
+            - GAMEFLEX_MIRROR_URL=${GAMEFLEX_MIRROR_URL:-}
+            - GAMEFLEX_RETRO_IMAGE=zinosaure/gameflex-retrogaming:${GAMEFLEX_VERSION:-latest}
+            - GAMEFLEX_REMOTEPLAY_IMAGE=zinosaure/gameflex-remoteplay:${GAMEFLEX_VERSION:-latest}
+            - GAMEFLEX_PS3_IMAGE=zinosaure/gameflex-ps3:${GAMEFLEX_VERSION:-latest}
+            - GAMEFLEX_PS4_IMAGE=zinosaure/gameflex-ps4:${GAMEFLEX_VERSION:-latest}
+            - GAMEFLEX_PS5_IMAGE=zinosaure/gameflex-ps5:${GAMEFLEX_VERSION:-latest}
+            - GAMEFLEX_SWITCH_IMAGE=zinosaure/gameflex-switch:${GAMEFLEX_VERSION:-latest}
+            - GAMEFLEX_SWITCH_EDEN_IMAGE=zinosaure/gameflex-switch-eden:${GAMEFLEX_VERSION:-latest}
+            - GAMEFLEX_WIIU_IMAGE=zinosaure/gameflex-wiiu:${GAMEFLEX_VERSION:-latest}
+            - GAMEFLEX_XBOX_IMAGE=zinosaure/gameflex-xbox:${GAMEFLEX_VERSION:-latest}
+            - GAMEFLEX_XBOX360_IMAGE=zinosaure/gameflex-xbox360:${GAMEFLEX_VERSION:-latest}
+        volumes:
+            # GameFlex starts the games in their own containers.
+            - /var/run/docker.sock:/var/run/docker.sock
+            - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}:/gameflex
+            - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}/cache/profiles:/profiles
+            # More disks with games: one line each, <folder on this machine>:/mnt/<name>.
+            # - /media/games:/mnt/games
+
+    # Accounts and sign-in.
+    gameflex-credential:
+        image: zinosaure/gameflex-credential:${GAMEFLEX_VERSION:-latest}
+        container_name: ${GAMEFLEX_NAME:-gameflex}-credential
+        restart: unless-stopped
+        environment:
+            - GAMEFLEX_JWT_SECRET=${GAMEFLEX_SECRET:?set GAMEFLEX_SECRET in .env}
+            - GAMEFLEX_INTERNAL_SECRET=${GAMEFLEX_SECRET:?set GAMEFLEX_SECRET in .env}
+            - GAMEFLEX_ROOT_USERNAME=${GAMEFLEX_ROOT_USERNAME:-root}
+            - GAMEFLEX_ROOT_PASSWORD=${GAMEFLEX_ROOT_PASSWORD:?set GAMEFLEX_ROOT_PASSWORD in .env}
+        volumes:
+            - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}/databases:/data
+
+    # The video: carries the picture and sound of every game to the players.
+    gameflex-gateway:
+        image: zinosaure/gameflex-gateway-webrtc:${GAMEFLEX_VERSION:-latest}
+        container_name: ${GAMEFLEX_NAME:-gameflex}-gateway
+        restart: unless-stopped
+        network_mode: host
+        environment:
+            - HTTP_PORT=10202
+            - GAMEFLEX_INTERNAL_SECRET=${GAMEFLEX_SECRET:?set GAMEFLEX_SECRET in .env}
+            - GAMEFLEX_ICE_INTERFACE=${GAMEFLEX_ICE_INTERFACE:-}
+            - GATEWAY_ICESERVERS_URL=http://127.0.0.1:10205/api/v1/remoteplay/streaming/webrtc/config
+            - ICE_PORT_MIN=9201
+            - ICE_PORT_MAX=9300
+
+    # Remote Play: your own PlayStation 4 or 5.
+    gameflex-remoteplay:
+        image: zinosaure/gameflex-remoteplay:${GAMEFLEX_VERSION:-latest}
+        container_name: ${GAMEFLEX_NAME:-gameflex}-remoteplay
+        restart: unless-stopped
+        network_mode: host
+        environment:
+            - HTTP_PORT=10205
+            - GAMEFLEX_KERNEL_URL=http://127.0.0.1:10201
+            - GAMEFLEX_INTERNAL_SECRET=${GAMEFLEX_SECRET:?set GAMEFLEX_SECRET in .env}
+            - GAMEFLEX_JWT_SECRET=${GAMEFLEX_SECRET:?set GAMEFLEX_SECRET in .env}
+            - GAMEFLEX_PUBLIC_HOST=${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}
+        volumes:
+            - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}/databases:/data
+        healthcheck:
+            test: [ "CMD-SHELL", "wget -qO- http://localhost:10205/api/v1/playstation/health || exit 1" ]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 30s
+
+    # Retro consoles. Kept here so that its image is downloaded with the others;
+    # GameFlex starts one of these for every retro game.
+    gameflex-retrogaming:
+        image: zinosaure/gameflex-retrogaming:${GAMEFLEX_VERSION:-latest}
+        container_name: ${GAMEFLEX_NAME:-gameflex}-retrogaming
+        restart: "no"
+
+    # Recent consoles: one image each, downloaded only when you ask for it,
+    # for example `docker compose --profile ps3 pull`. These never run on their
+    # own: GameFlex starts them for each game. They hold no emulator: download
+    # it from Settings › Emulators, into cores/<console>/.
+    gameflex-ps3:
+        image: zinosaure/gameflex-ps3:${GAMEFLEX_VERSION:-latest}
+        profiles: [ "ps3" ]
+        entrypoint: [ "true" ]
+        restart: "no"
+    gameflex-ps4:
+        image: zinosaure/gameflex-ps4:${GAMEFLEX_VERSION:-latest}
+        profiles: [ "ps4" ]
+        entrypoint: [ "true" ]
+        restart: "no"
+    gameflex-ps5:
+        image: zinosaure/gameflex-ps5:${GAMEFLEX_VERSION:-latest}
+        profiles: [ "ps5" ]
+        entrypoint: [ "true" ]
+        restart: "no"
+    gameflex-switch:
+        image: zinosaure/gameflex-switch:${GAMEFLEX_VERSION:-latest}
+        profiles: [ "switch" ]
+        entrypoint: [ "true" ]
+        restart: "no"
+    gameflex-switch-eden:
+        image: zinosaure/gameflex-switch-eden:${GAMEFLEX_VERSION:-latest}
+        profiles: [ "switch" ]
+        entrypoint: [ "true" ]
+        restart: "no"
+    gameflex-wiiu:
+        image: zinosaure/gameflex-wiiu:${GAMEFLEX_VERSION:-latest}
+        profiles: [ "wiiu" ]
+        entrypoint: [ "true" ]
+        restart: "no"
+    gameflex-xbox:
+        image: zinosaure/gameflex-xbox:${GAMEFLEX_VERSION:-latest}
+        profiles: [ "xbox" ]
+        entrypoint: [ "true" ]
+        restart: "no"
+    gameflex-xbox360:
+        image: zinosaure/gameflex-xbox360:${GAMEFLEX_VERSION:-latest}
+        profiles: [ "xbox360" ]
+        entrypoint: [ "true" ]
+        restart: "no"

@@ -1,0 +1,78 @@
+name: A game or a console does not work
+description: A game does not appear, does not start, or does not play right.
+labels: [ "compatibility" ]
+body:
+    - type: markdown
+      attributes:
+          value: |
+              Please check [Consoles](https://github.com/zinosaure/gameflex/blob/main/docs/consoles.md) first: the formats each console accepts, the files it needs, and the known limitations.
+
+              **Do not share games, BIOS files or links to them.** Issues with such links are closed.
+    - type: input
+      id: version
+      attributes:
+          label: GameFlex version
+          placeholder: "0.3.0"
+      validations:
+          required: true
+    - type: input
+      id: console
+      attributes:
+          label: Console
+          placeholder: "PlayStation 2"
+      validations:
+          required: true
+    - type: input
+      id: game
+      attributes:
+          label: Game
+          description: Its title, its region, and the format of the file (`.iso`, `.chd`, a folder…).
+          placeholder: "Final Fantasy X, Europe, .iso"
+      validations:
+          required: true
+    - type: dropdown
+      id: problem
+      attributes:
+          label: What goes wrong?
+          options:
+              - It does not appear in the library
+              - It does not start, or stops at once
+              - Black or frozen screen
+              - It crashes while playing
+              - It is slow
+              - Sound problem
+              - Controller problem
+              - Something else
+      validations:
+          required: true
+    - type: textarea
+      id: files
+      attributes:
+          label: BIOS, firmware and emulator
+          description: "The BIOS or firmware files you use (names only), and for a recent console the emulator file in `cores/<console>/`."
+    - type: textarea
+      id: what
+      attributes:
+          label: What happens
+          description: What you did, and what you saw. Error messages word for word.
+      validations:
+          required: true
+    - type: textarea
+      id: logs
+      attributes:
+          label: Logs
+          description: "The game's log from **Settings › Logs**, or `./launch.sh logs kernel`."
+          render: shell
+    - type: textarea
+      id: screenshots
+      attributes:
+          label: Screenshots
+    - type: checkboxes
+      id: rules
+      attributes:
+          label: Before you send
+          options:
+              - label: I play a copy of a game I own, and I share no game, BIOS or link to them.
+                required: true
+              - label: I removed passwords, tokens and private addresses from what I pasted.
+                required: true

@@ -1,0 +1,20 @@
+name: Idea or request
+description: Suggest something GameFlex could do.
+labels: [ "enhancement" ]
+body:
+    - type: textarea
+      id: need
+      attributes:
+          label: What would you like to do?
+          description: The situation, and what is missing today.
+      validations:
+          required: true
+    - type: textarea
+      id: idea
+      attributes:
+          label: How could it work?
+    - type: textarea
+      id: other
+      attributes:
+          label: Anything else
+          description: Other ways you tried, examples from other software, screenshots.
