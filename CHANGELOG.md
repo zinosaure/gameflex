@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-25
+
+### Fixed
+
+- Remote Play: after **Turn on**, a console stayed on *Standby* until you left the page and came
+  back. A console lent by a federated server never updated; one of your own stopped updating once
+  the page's connection had dropped (a proxy closes a quiet connection after a minute).
+
 ## [0.4.2] - 2026-10-25
 
 Version 0.4.1 was skipped: its changes come with this one.

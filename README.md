@@ -71,6 +71,7 @@ plays a PlayStation 3 game, as long as the computer at home can run it.
 | ![Final Fantasy VII Remake, a PlayStation 5 game, playing in the browser](docs/images/playing-ps5.png) | ![The Legend of Zelda: Ocarina of Time, on Nintendo 64, with the on-screen controller](docs/images/playing-n64.png) |
 | ![Sonic Mania Plus, a PlayStation 4 game, playing in the browser](docs/images/playing-ps4.png) | ![The home page: a game live now, ready to watch or join](docs/images/home-live.png) |
 | ![A console's library](docs/images/library.png) | ![A game's page: emulator, BIOS and Play](docs/images/game.png) |
+| ![Black Myth: Wukong on a PlayStation 5, through Remote Play, on a phone held upright](docs/images/remoteplay-ps5-portrait.jpg) | ![The same game on the same phone held sideways, the on-screen controller over the picture](docs/images/remoteplay-ps5-landscape.jpg) |
 
 ## What it can play
 
@@ -112,7 +113,8 @@ should work, but has not been tried.
   Richman 11), Switch (Mini Metro, EA Sports FC 27), Wii U (New Super Mario Bros. U, as a disc
   image and extracted), Xbox (Dead or Alive 3), Xbox 360 (Halo 3). Every game is different: see
   the known limitations in [Consoles](docs/consoles.md).
-- **Remote Play:** with a PlayStation 5. The PlayStation 4 has not been tried: we have none.
+- **Remote Play:** with a PlayStation 5 (Black Myth: Wukong), from a phone. The PlayStation 4 has
+  not been tried: we have none.
 - **A friend's server (federation):** Final Fantasy VII Remake in 720p, played smoothly from a phone
   on mobile data.
 - **The WireGuard VPN:** a retro game played through it, from a client on the same computer. Not
