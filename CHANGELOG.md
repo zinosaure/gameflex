@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-25
+
+### Added
+
+- The page footer links to the GitHub repository and to Buy Me a Coffee.
+- **Live now** shows how long each game has been running.
+- An administrator can end somebody else's game from **Live now**, after two confirmations.
+- The federation guide shows every step with screenshots, and how to play on a friend's server.
+
+### Fixed
+
+- Remote Play: starting a stream after opening the console list stopped the session container
+  (the server answered 502). Introduced in 0.4.3.
+- Two players in the same game no longer crash the video gateway: their inputs were written to the
+  game at the same time, and every crash cut the picture for everyone watching.
+- A game no longer stays without a picture for good when the video gateway restarts: a failed
+  reconnection is now retried.
+- **Settings › Federations › Add a server** no longer says that a friend's game is fetched to your
+  server to be played: it runs on theirs.
+
+### Changed
+
+- The Android app's server listens on port **10200**, like a GameFlex server, instead of 18400. The
+  addresses, QR codes and federation tokens a phone gave before must be given again.
+- The menu says **Retro gaming** instead of *Embedded consoles*, translated like the rest.
+
 ## [0.4.3] - 2026-10-25
 
 ### Fixed

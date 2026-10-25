@@ -108,7 +108,7 @@ While the app runs, other devices on **the same Wi-Fi** can join the games of yo
    and press **Request to take control** to play. You accept from your phone.
 
 **To let someone use GameFlex on their own device:** create an account for them in **Settings ›
-Members**. They open the address shown under **Join on the network**, such as `http://192.168.1.40:18400`, or scan its QR code, and sign in. They can then join
+Members**. They open the address shown under **Join on the network**, such as `http://192.168.1.40:10200`, or scan its QR code, and sign in. They can then join
 or watch the games in progress from the dashboard.
 
 Good to know:

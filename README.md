@@ -78,13 +78,19 @@ plays a PlayStation 3 game, as long as the computer at home can run it.
 | | Consoles |
 |---|---|
 | **Retro** | NES, Super Nintendo, Game Boy and Game Boy Color, Game Boy Advance, Virtual Boy, Nintendo 64, Nintendo DS, GameCube, Wii, Master System, Mega Drive / Genesis, Saturn, Dreamcast, PlayStation, PlayStation 2, PSP, Neo Geo, Neo Geo Pocket, Capcom CPS-1 and CPS-2, PC Engine, PC-FX, Atari 2600, 7800, Lynx and Jaguar, WonderSwan, ColecoVision, Vectrex, Commodore 64, Amstrad CPC, ZX Spectrum, Doom |
-| **Recent** | PlayStation 3, Xbox, and, still experimental, PlayStation 4, PlayStation 5, Nintendo Switch, Wii U and Xbox 360 |
+| **Recent, with Streamex** | PlayStation 3, Xbox, and, still experimental, PlayStation 4, PlayStation 5, Nintendo Switch, Wii U and Xbox 360 |
 | **Remote Play** | your own PlayStation 4 or PlayStation 5 |
 
 The full list, with the files each console needs, is in [Consoles](docs/consoles.md).
 
 Retro consoles run on [libretro](https://www.libretro.com) cores. Recent consoles run on their own
-emulators: RPCS3, xemu, shadPS4, KytyPS5, Eden, Citron, Cemu and Xenia Canary.
+Linux emulators: RPCS3, xemu, shadPS4, KytyPS5, Eden, Citron, Cemu and Xenia Canary.
+
+**Streamex** is what plays them: GameFlex's own engine for the recent consoles, the same skeleton in
+every console's image. It starts the console's emulator, captures its picture and sound, encodes the
+video on your graphics card and streams it all to the players' browsers. Their controllers come
+back as virtual controllers that the emulator takes for its own. A new console is a new emulator in
+the same skeleton.
 
 ## Good to know before you start
 
@@ -119,8 +125,11 @@ should work, but has not been tried.
   on mobile data.
 - **The WireGuard VPN:** a retro game played through it, from a client on the same computer. Not
   yet from a phone on mobile data.
-- **The Android app:** on a Samsung Galaxy S25 (Snapdragon). The recent consoles on the phone need a
-  Snapdragon (Adreno) graphics chip.
+- **The Android app:** on a Samsung Galaxy S25 (Snapdragon 8 Elite, Adreno 830 graphics, 12 GB of
+  RAM). The recent consoles on the phone need a Snapdragon (Adreno) graphics chip. PlayStation 4 and
+  PlayStation 5 games start and play on the S25 itself — Sonic Mania Plus and Kingdom Hearts III
+  (PS4), Richman 11 (PS5) — but this is not finished: they run well below full speed, and none has
+  been played through.
 - **Not tried yet:** playing with friends over the phone's own hotspot, without Internet.
 
 ## Quick start
@@ -153,7 +162,7 @@ check, troubleshoot and report an issue on your behalf, and what to ask you firs
    router, and keeping it safe.
 7. [Remote Play](docs/remote-play.md): your own PS4 or PS5.
 8. [Share with friends: federation](docs/federation.md): give a friend access to your server, add
-   theirs, copy or play their games.
+   theirs, copy their games or play them on their server, step by step with screenshots.
 9. [Emulator settings](docs/emulator-settings.md): tune the recent consoles' emulators, keep and
    share presets.
 10. [Storage](docs/storage.md): more disks, network shares, saves, cache and logs.
