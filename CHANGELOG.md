@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-26
+
+### Changed
+
+- **Retro games are *Playable* by default**: a console of libretro cores that no administrator
+  has set reads *Playable*; the recent consoles stay *Untested*. **Settings › Games › Status of a
+  whole console** shows the default that applies.
+- **Emulators updated**: shadPS4 0.20.0, KytyPS5 2026-10-26 (`597137e`), RPCS3 0.0.43-20404,
+  xemu 0.8.139 and Xenia Canary `291f0c9`, on the server and in the Android app. Download them
+  from **Settings › Emulators**; the previous files stay and can be removed there.
+- **KytyPS5 keeps each game's shaders**: they are compiled again when the game starts, before its
+  first frame, instead of the first time a scene appears. **Shader cache** in its settings, on by
+  default.
+
+### Fixed
+
+- RPCS3 0.0.43-20404 crashed before every game: its Qt 6.12 looked for PipeWire, which GameFlex
+  does not run. Qt's sound now goes through PulseAudio.
+
 ## [0.6.0] - 2026-10-26
 
 ### Added
