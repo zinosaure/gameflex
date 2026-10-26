@@ -46,7 +46,7 @@ The app opens on its home screen, in English, or in French on a phone set to Fre
 | **Storage** | Where your library is, and how much space is left. **Change location** uses another folder: accounts, saves and logs are copied there; games, BIOS files and cores are not. |
 | **Internal disks** | SD cards and USB keys with games. **Add a disk**. |
 | **Accounts** | **Root password** makes a new administrator password. |
-| **Join on the network** | The phone's address, as a QR code and a link, for the people who join you. |
+| **Join on the network** | **Share**: the phone's address, as a QR code and a link, for the people who join you. **Join**: open another GameFlex in the app, by its QR code or its link. |
 | **Launch the app** | **Open** opens GameFlex itself: your games, your settings. |
 
 ## First start
@@ -108,8 +108,18 @@ While the app runs, other devices on **the same Wi-Fi** can join the games of yo
    and press **Request to take control** to play. You accept from your phone.
 
 **To let someone use GameFlex on their own device:** create an account for them in **Settings ›
-Members**. They open the address shown under **Join on the network**, such as `http://192.168.1.40:10200`, or scan its QR code, and sign in. They can then join
-or watch the games in progress from the dashboard.
+Members**. They open the address shown under **Join on the network** › **Share**, such as
+`http://192.168.1.40:10200`, or scan its QR code, and sign in. They can then join or watch the
+games in progress from the dashboard.
+
+**If they have the app too**, they join from it rather than from a browser: on their home screen,
+**Join on the network** › **Join**, then **Scan a QR code** (Google's reader, which needs Google
+Play services and installs itself the first time), or type the link and press **Join**. The app
+checks that a GameFlex answers there, then opens it: they play under their account on your phone,
+as in a browser. To come back to their own home screen: the Back button, or **Settings › Back to
+the app's home screen**. The servers they joined stay listed under **Servers you joined**; **Open**
+brings back their own GameFlex. Someone without the app, or with an iPhone, scans the same QR code
+with the camera and joins in the browser.
 
 Good to know:
 

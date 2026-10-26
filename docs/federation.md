@@ -9,6 +9,10 @@ on the other's server.
 - **Access goes through a token**, a long key that an administrator creates for one person. A token
   opens **only the catalog**: games, BIOS files, emulators, patches, emulator settings, and, if you
   choose, your Remote Play consoles. It opens no game session, no save and no administration.
+- **You send an invitation, not the token.** An invitation is a link, also shown as a QR code,
+  that works **once** and for **12 hours**. Your friend's server exchanges it with yours for the
+  token, so the token itself never goes through a messaging app. The old way, sending the link and
+  the token, still works.
 - **Each side decides.** Your friend sees your catalog once you give them a token; you see theirs
   once they give you one. You can revoke a token at any time.
 - **Nothing is replaced.** What you copy from a friend lands in your own library, and never over a
@@ -31,24 +35,39 @@ on the other's server.
 2. In **Who is it for?**, give a name you will recognize, such as *Marc's server*. It is shown next
    to your games on their side, and lets you cut off this access alone.
 3. To also show them your Remote Play consoles, tick **Also share the consoles**.
-4. Press **Create token**.
+4. Press **Create the invitation**.
 
    ![Settings › Federations › Generate a federation token: the name of the person it is for](images/federation-token-create.png)
 
-5. GameFlex shows a **Server link** and a **Token**. Send both to your friend, in a private message.
-   **The token is shown only once:** if it is lost, revoke it and create another.
+5. GameFlex shows the invitation: a **QR code** and its **Invitation link**. Send it to your friend
+   in a private message: **Download the QR** and send the image, **Share**, or copy the link. It
+   works once, within 12 hours; after that, create another one.
 
-   ![The new token: the server link and the token, each with a copy button](images/federation-token-created.png)
+   ![The invitation: its QR code, how long it is valid, its link, Download the QR and Share](images/federation-invitation.png)
+
+Until your friend uses it, the invitation waits under **Pending invitations**, where you can revoke
+it. Once used, it becomes a token of the list below it, with the name you gave.
+
+**The old way:** press **Rather the link and the token** instead of **Create the invitation**.
+GameFlex shows a **Server link** and a **Token**: send both, in a private message. The token is
+shown only once: if it is lost, revoke it and create another.
 
 ## Add a friend's server
 
-1. Ask your friend for their server link and a token (the steps above, on their side).
+1. Ask your friend for an invitation (the steps above, on their side).
 2. In **Settings › Federations**, press **Add a server**.
-3. Fill in a **Display name**, the **URL** they gave you, and the **Access token**.
-4. Press **Save**. GameFlex checks the link and the token right away: their server joins the list,
-   with its processor, memory and graphics card.
+3. On the **Invitation** tab, paste the **Invitation link**, or choose the image of the QR (the one
+   they sent you, or a screenshot of it): GameFlex reads it and fills in the link. A **Display name**
+   is optional.
+4. Press **Save**. Your server exchanges the invitation with theirs for a token, and checks it right
+   away: their server joins the list, with its processor, memory and graphics card.
 
-   ![Add a server: a display name, the link and the token your friend gave you](images/federation-add-server.png)
+   ![Add a server: paste the invitation link, or choose the image of its QR](images/federation-add-server.png)
+
+If they sent you a link and a token instead, fill them in on the **Link and token** tab.
+
+Opened in a browser (by a phone camera, for example), an invitation link shows a page that says
+where to paste it. Opening it uses nothing up.
 
 ## Use their catalog
 
@@ -88,14 +107,17 @@ member of your GameFlex who wants to play there needs their own account over the
 **On your side:**
 
 3. Sign in on your friend's GameFlex page with that account. In **Settings › Profile**, under
-   **My token**, copy the **Token**.
+   **My token**, press **My QR**: GameFlex shows an invitation for your account, valid once within
+   12 hours. Copy its link, or download or share its QR.
 
    ![Settings › Profile › My token, on the friend's server](images/federation-my-token.png)
 
 4. Back on your own GameFlex, open one of their games (their server chosen in **Source**). Under
-   **Play at <their server>**, paste the token and press **Use this token**.
+   **Play at <their server>**, on the **Invitation** tab, paste the link or choose the image of the
+   QR, then press **Use this invitation**. You can also copy the **Token** itself from their
+   **Settings › Profile** and paste it on the **Token** tab.
 
-   ![A friend's game: paste the token of your account over there](images/federation-play-token.png)
+   ![A friend's game: paste the invitation of your account over there](images/federation-play-token.png)
 
 5. The panel now says which account you play under over there. Press **Play**.
 
@@ -119,7 +141,8 @@ GameFlex keeps a copy of their list. When they add games, press the refresh butt
 ## Stop sharing
 
 - **Cut off a friend:** in **Settings › Federations**, find their token and press **Revoke**. Their
-  server immediately loses access to yours.
+  server immediately loses access to yours. An invitation not used yet is revoked the same way,
+  under **Pending invitations**.
 - **Stop a friend playing on your server:** in **Settings › Members**, open their account and press
   **Disable the token**. The games they opened with it stop at once.
 - **Remove a friend's server:** delete it from **Settings › Federations**. What you copied from it
@@ -131,6 +154,11 @@ GameFlex keeps a copy of their list. When they add games, press the refresh butt
 |---|---|
 | *This address did not answer* | The URL, and that their server is reachable from yours (HTTPS proxy, firewall). |
 | Their server refuses your token | The token was revoked or mistyped: ask for a new one. |
+| *This invitation was already used, has expired or was revoked* | Ask for a new one: an invitation works once, within 12 hours. |
+| *This invitation goes elsewhere* | A server invitation goes in **Add a server**, an account one in **Play at…**. It was not used up: paste it in the right place. |
+| *The token of this account is disabled over there* | Ask your friend to enable the token of your account. The invitation was not used up. |
+| *No QR could be read in this image* | Choose a sharper image, or paste the link instead. |
+| *Too many refused invitations* | Wait a few minutes, then try again. |
 | **Play at <their server>** refuses your account token | It was disabled, expired or regenerated: ask your friend to enable it again, then copy it from **Settings › Profile** on their GameFlex. |
 | A game is listed but unavailable there | Your account on their server has no access to this console: they can grant it in **Settings › Members**. |
 | A download says the file already exists | You already have one: delete yours first to take theirs. |

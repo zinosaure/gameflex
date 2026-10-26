@@ -65,6 +65,15 @@ Change them in **Settings › Controllers and devices**, with *Keyboard* as the 
 
 The picture quality (resolution, frame rate, bitrate) is set on the game's page, before **Play**.
 
+**When your network weakens**, the picture drops to a 540p stream at 30 frames per second, and goes
+back once the network has been stable for about thirty seconds. Each screen follows its own network:
+a friend on a weak connection does not lower the picture for the others. In the game menu, **Video**
+› **Stream** chooses: **Automatic** (the default), **Current stream** (always the one the game was
+started with) or **Low quality (540p, 30 fps)**. The thumbnails under **Live now** always use the
+540p stream. This applies to the recent consoles (PS3 to PS5, Switch, Wii U, Xbox, Xbox 360) when
+their stream is above 540p at 30; retro consoles and Remote Play keep a single stream, and so does
+the Android app for now.
+
 ## Play together
 
 How many players share a game depends on the console: four on the Super Nintendo, Nintendo 64,

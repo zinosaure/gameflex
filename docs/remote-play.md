@@ -31,7 +31,7 @@ Your console shows its state: **Online**, **Standby** or **Offline**.
 
 - **Turn on** wakes it from rest mode.
 - **Play** starts the stream. Choose the picture quality first: 720p at 60 frames per second by
-  default, from 360p to 1080p; **Auto** adapts the bitrate to your connection.
+  default, from 540p to 1080p; **Auto** adapts the bitrate to your connection.
 - **Watch** looks on while someone else plays.
 
 One player holds the controller at a time; the others watch, and the controller can be lent or

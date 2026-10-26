@@ -136,6 +136,22 @@ GameFlex keeps a list of what your library holds. After you copy files by hand, 
 - or press the refresh button next to the **Source** list, on the Games, Emulators and Firmware
   screens: it refreshes that section only.
 
+## Say which games play
+
+Every game shows a status next to its name: **Playable**, **Crashes in game**, **Not playable**
+or **Untested**, the default. An administrator sets it in **Settings › Games**:
+
+- **a whole console at once**: press **Status of a whole console**, choose the console and the
+  status. Every game of that console takes it, games added later included, except the ones with a
+  status of their own;
+- **one game**: press its line, choose the status, the emulators it applies to (all of them by
+  default) and, if you like, a note such as *crashes in chapter 2*. GameFlex notes the emulator
+  versions in the game's history, which only administrators see.
+
+Players see the status on the **Games** page, can filter the list by status, and read the notes
+in a game's panel. Friends who federate with your server see your statuses too: they tell them what
+plays on your machine.
+
 ## What you should see
 
 - The **Games** page lists your games under their console.
@@ -157,5 +173,7 @@ GameFlex keeps a list of what your library holds. After you copy files by hand, 
   Wii U graphic packs: `patches/wiiu/<pack name>/rules.txt`.
 - **`params/<console>/`** holds emulator settings. Change them from **Settings › Emulator settings**
   rather than by hand: see [Emulator settings](emulator-settings.md).
+- **`status/`** holds the status of your games, one file per console. Change it from
+  **Settings › Games** rather than by hand.
 - **`saves/`**, **`databases/`**, **`logs/`** and **`cache/`** belong to GameFlex. Back them up,
   but don't edit them. **Settings › Cache** shows what the cache holds and lets you clear it.
