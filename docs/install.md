@@ -227,6 +227,10 @@ services:
             - GAMEFLEX_CREDENTIAL_URL=http://gameflex-credential:8080
             - GAMEFLEX_KERNEL_URL=http://127.0.0.1:10201
             - GAMEFLEX_GATEWAY_URL=http://127.0.0.1:10202
+            # Where the kernel itself reaches the video gateway (host network):
+            # it opens a launch's stream there, the intro the game page shows
+            # while the game starts.
+            - GAMEFLEX_GATEWAY_CONTROL_URL=http://${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}:10202
             - GAMEFLEX_REMOTEPLAY_CONTROL_URL=http://${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}:10205
             - GAMEFLEX_PORT_RANGE=9001-9100
             - GAMEFLEX_MAX_PLAYERS=${GAMEFLEX_MAX_PLAYERS:-4}

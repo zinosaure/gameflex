@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-27
+
+### Added
+
+- **An intro before every game**: three silent seconds with the GameFlex name and the address of
+  its repository, played by the video gateway to everyone who opens a game — the player and every
+  spectator, each time they open it. Live now thumbnails skip it, and so does a page that only
+  reconnects.
+- **Disk read in the Performance panel**: how many megabytes per second the emulator reads from
+  its disk — how fast the game loads. For the desktop consoles on the server, and for every game
+  on the Android app.
+- **Two PlayStation 4 settings in the Android app**: *Adreno driver workaround (Turnip)*, for a
+  game whose log ends with “Device lost”, and *CPU shown to the game*.
+
+### Changed
+
+- **The launch screen shows the intro's first picture** as its background while the game starts,
+  and the steps on a single line at the bottom; a failed launch says its whole error. On the recent
+  consoles, whose emulator window stays black while the game loads, the intro waits for the game's
+  first real picture (five minutes at most) and the screen says *The game is loading*. The screen
+  lifts on the game's first picture, not the intro's.
+- **A PlayStation 4 game starts sooner in the Android app**: the processor shown to shadPS4 is now
+  an AMD one, like the console's, and shadPS4 no longer scans the whole game at every start for
+  instructions it has nothing to change on it. *Final Fantasy VII Remake* on a Galaxy S25 reaches
+  its first videos in 2 min 06 instead of about 3 min 45.
+- **The Android app spends less processor time on a slow game**: its screen capture no longer
+  converts a picture that has not changed since the previous one.
+- **PlayStation 4 games need far less processor in the Android app**: Box64 no longer checks the
+  game's code each time it runs it. That check took 62 % of the processor time of *Final Fantasy
+  VII Remake* on a Galaxy S25. The setting is *Game code in shared memory*, on by default.
+
+### Fixed
+
+- **Final Fantasy VII Remake** died at its start in the Android app: Box64 lost the x86 flags
+  around an empty `rep cmps`, and the game's own `memcmp` compared wrong. Box64 now keeps the flags
+  safest by default for the PlayStation 4 (*Flags safety*, 2).
+
 ## [0.6.1] - 2026-10-26
 
 ### Changed
