@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-28
+
+### Added
+
+- **The game engine on a game's page**: Unity, Unreal, Frostbite or RAGE, recognised when the
+  library is scanned, for the PlayStation 4 and 5 games.
+- **Settings per game engine**: the PlayStation 4 and 5 emulator panels get *Settings per game
+  engine*, a preset applied at launch to every game of that engine.
+- **The sources of the emulators on the mirror**: a `src/` folder next to `cores/` says, for each
+  emulator file, which upstream version it comes from and, for GameFlex's own builds, the patches
+  and scripts exactly as they were when the file was built. A written offer covers the rest.
+- **A script to copy the mirror at home**, `gameflex-mirror.py`: it only downloads what changed,
+  resumes a cut transfer and never deletes anything.
+
+### Changed
+
+- **PlayStation 4 and 5 games start much sooner in the Android app**: Box64's call/return
+  optimisation is now off by default. On a Galaxy S25, *Kingdom Hearts III* reaches its first
+  pictures in 42 s instead of 159 s, *Final Fantasy VII Remake* in 40 s instead of 109 s, and a
+  PlayStation 5 game uses about a third less processor for the same picture.
+- **The Android app keeps the desktop emulators' saves under the account that plays**, in the same
+  place as the server does, instead of a private folder of the app.
+- **The launch line shows on every path**, and in the Android app the intro waits for the emulator
+  to draw its first picture; for a PlayStation 4 or 5 game it says that loading takes two to three
+  minutes.
+- **My QR is at the top of the account token** in **Settings › Profile**, instead of below every
+  other action, and it shows greyed out while the token is disabled.
+
+### Fixed
+
+- **PlayStation 4 games made with Unity no longer freeze at their first garbage collection**, on the
+  server and in the Android app: *Kingdom Hearts Melody of Memory* stopped for good on its loading
+  screen. shadPS4 now delivers a game's signal only where the console would.
+- **PlayStation 4 games no longer stop at their first video**, on the server and in the Android
+  app: shadPS4's video player kept a lock while it told the game a video had started, and the
+  game's answer took it again. *Kingdom Hearts Melody of Memory* is now playable.
+- **FIFA 22 no longer hangs at boot one launch out of two** on the PlayStation 4, on the server and in
+  the Android app: shadPS4 lost a timer the game had just set when its service thread was going
+  back to sleep, and the game waited for it forever.
+- **FIFA 22 no longer stops before its menu** on the PlayStation 4: shadPS4 could not copy an image
+  with several mipmap levels, and it stopped when the game's sound engine finished a batch for a
+  sound it had already dropped. The game still stops after a few minutes of a match, on other
+  limits of shadPS4's renderer.
+- **The PlayStation 4 of the server runs the latest shadPS4 under development** instead of its last
+  release, with GameFlex's fixes on top: *Grand Theft Auto V*, *Kingdom Hearts III*, *Final Fantasy
+  VII Remake* and *Melody of Memory* play as before.
+- **The PlayStation 4 of the Android app takes four players**, as on the server, instead of one:
+  shadPS4 now reads the app's controllers as four real gamepads, with analog sticks, where it only
+  had one set of keyboard keys.
+- **Options, Share and the touchpad did nothing on the PlayStation 4 and 5 of the Android app**,
+  from the controller on screen or a controller plugged in: Options now acts as Start, and Share
+  and the touchpad press the touchpad, as on the server.
+- **A game whose emulator exits by itself ends the game**, and the page says the game stopped,
+  instead of showing a frozen picture. KytyPS5 no longer crashes when a game exits.
+- **The Android app refuses an emulator package that is not the expected version**, instead of
+  running a stale one without controllers.
+- **Floating panels fit narrow screens.**
+
+### Security
+
+- **Everyone has to sign in again once after this update.** Tokens are now signed with Ed25519,
+  and a game's container only receives the key that checks a token, never the server's secrets.
+  A token pasted for a friend's server has to be pasted again once that server is updated too.
+- **The desktop consoles and Remote Play only stream to the GameFlex video gateway**: their
+  connection to it is sealed, and a gateway that cannot prove it is GameFlex's gets nothing.
+- **A player could read, overwrite or delete another account's save states.** Fixed.
+- **Importing a game from a friend's server could write outside the library** (administrators
+  only). Fixed.
+- **An account could launch a console that was not given to it.** Fixed.
+- **A Remote Play game could be stopped by anyone who reached its container.** It now asks for a
+  token, and only its owner or an administrator ends it.
+- **A session opened from a friend's server can only play** here: it no longer reaches the server
+  list, the shared folders or the invitations.
+- **Checking a server before adding it is for administrators**, as adding it is.
+- **An emulator core that the console does not declare is refused at launch.**
+
 ## [0.7.0] - 2026-10-27
 
 ### Added

@@ -207,9 +207,20 @@ out like a GameFlex library:
 - **User name:** `gameflex`
 - **Password:** `gameflex`
 
-Download what you need and put it in the same folder of your library. To show this link in
-GameFlex's settings, set `GAMEFLEX_MIRROR_URL` to its address. The mirror is not part of
-GameFlex: it can change or disappear.
+Download what you need and put it in the same folder of your library. To copy all of it, or one
+part, at once: take `gameflex-mirror.py` from its root and give it your library folder (Python 3.9
+or newer, nothing to install). Run it again later: it only downloads what changed.
+
+```bash
+python3 gameflex-mirror.py /path/to/your/library                  # everything (about 6 GB)
+python3 gameflex-mirror.py /path/to/your/library --only cores/ps4  # one part
+```
+
+Its `src/` folder says where the source of each emulator file is: the exact upstream revision, and
+for the builds we patch (shadPS4, KytyPS5, Eden, Box64 on the phone), our patches and build scripts.
+
+To show this link in GameFlex's settings, set `GAMEFLEX_MIRROR_URL` to its address. The mirror is
+not part of GameFlex: it can change or disappear.
 
 ## Thanks
 
