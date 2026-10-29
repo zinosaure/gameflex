@@ -1,0 +1,10 @@
+# Configuration PulseAudio minimale pour le conteneur Xbox 360 (mode --system).
+#
+# - auth-anonymous=1 : pas de cookie d'authentification.
+# - sink null xbox360_sink : Xenia y envoie son audio (par SDL), streamex
+#   capture son monitor.
+
+load-module module-null-sink sink_name=xbox360_sink sink_properties=device.description=Xbox360
+load-module module-native-protocol-unix auth-anonymous=1
+set-default-sink xbox360_sink
+set-default-source xbox360_sink.monitor

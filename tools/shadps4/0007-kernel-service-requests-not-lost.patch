@@ -1,0 +1,24 @@
+diff --git a/src/core/libraries/kernel/kernel.cpp b/src/core/libraries/kernel/kernel.cpp
+--- a/src/core/libraries/kernel/kernel.cpp
++++ b/src/core/libraries/kernel/kernel.cpp
+@@ -67,6 +67,11 @@
+         {
+             std::unique_lock lock{m_asio_req};
+             Common::CondvarWait(cv_asio_req, lock, stoken, [] { return asio_requests != 0; });
++            // GameFlex: the requests are taken BEFORE running. Reset after run() returned, a
++            // request made in between — a timer scheduled as run() ran out of work — was wiped
++            // out: this thread slept again with that timer pending, and a game waiting for it
++            // waited forever (EA's FIFA 22 and FC 27 at boot, one launch out of two).
++            asio_requests = 0;
+         }
+         if (stoken.stop_requested()) {
+             break;
+@@ -74,8 +79,6 @@
+ 
+         io_context.run();
+         io_context.restart();
+-
+-        asio_requests = 0;
+     }
+ }
+ 

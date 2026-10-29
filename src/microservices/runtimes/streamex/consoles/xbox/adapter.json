@@ -1,0 +1,21 @@
+{
+  "window_name": "xemu",
+  "games": {
+    "dir": "/opt/game",
+    "rules": [
+      { "extension": ".iso" }
+    ],
+    "scan_dir_for": { "extension": ".iso" }
+  },
+  "launch": {
+    "bin": "/opt/xemu/squashfs-root/AppRun",
+    "cwd": "/opt/xemu/squashfs-root",
+    "base_args": ["-full-screen", "-dvd_path"],
+    "process_group": true
+  },
+  "stop": { "mode": "pgroup" },
+  "gamepad": { "enabled": true, "swap_xy_from_slot": 1 },
+  "tools": [
+    { "name": "route_audio" }
+  ]
+}

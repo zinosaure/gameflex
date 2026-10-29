@@ -1,0 +1,10 @@
+# Configuration PulseAudio minimale pour le conteneur PS3 (mode --system).
+#
+# - auth-anonymous=1 : pas de cookie d'authentification (le cookie échoue
+#   quand HOME du daemon pointe vers un dossier non lisible par l'user pulse).
+# - sink null rpcs3_sink : RPCS3 y envoie son audio, streamex capture son monitor.
+
+load-module module-null-sink sink_name=rpcs3_sink sink_properties=device.description=RPCS3
+load-module module-native-protocol-unix auth-anonymous=1
+set-default-sink rpcs3_sink
+set-default-source rpcs3_sink.monitor

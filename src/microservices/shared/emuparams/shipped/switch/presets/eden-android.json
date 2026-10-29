@@ -1,0 +1,26 @@
+{
+  "name": "Android",
+  "description": "Eden's own values for an Android phone — low GPU accuracy, no reactive flushing, asynchronous presentation, dynamic state off, handheld mode. The starting point for the phone.",
+  "override": false,
+  "system": "Eden",
+  "values": {
+    "resolution": "auto",
+    "consoleMode": "0",
+    "asyncShaders": false,
+    "gpuAccuracy": "0",
+    "cpuAccuracy": "0",
+    "vsync": "2",
+    "multiCore": true,
+    "antiAliasing": "0",
+    "scalingFilter": "1",
+    "videoDecoding": "1",
+    "reactiveFlushing": false,
+    "asyncPresentation": true,
+    "dynamicState": "0",
+    "vertexInputDynamicState": false,
+    "nativeExecution": "auto",
+    "volume": "100",
+    "turnipDebug": "auto",
+    "ir3Debug": "auto"
+  }
+}

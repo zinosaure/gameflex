@@ -1,0 +1,26 @@
+{
+  "name": "S25, trial 2: SPU loop detection",
+  "description": "SPUs waiting in a loop give their core back instead of holding it. A single difference from “Default”: compare Tekken 6's frames per second in a fight with those of “Default”.",
+  "override": false,
+  "system": "RPCS3",
+  "values": {
+    "resolutionScale": "auto",
+    "frameLimit": "Auto",
+    "msaa": "Auto",
+    "shaderMode": "Async Recompiler with Shader Interpreter",
+    "multithreadedRsx": true,
+    "writeColorBuffers": false,
+    "relaxedZcull": false,
+    "accurateZcull": true,
+    "asyncTextureStreaming": false,
+    "performanceOverlay": false,
+    "spuBlockSize": "Mega",
+    "maxSpursThreads": "6",
+    "preferredSpuThreads": "0",
+    "spuLoopDetection": true,
+    "threadScheduler": "Operating System",
+    "llvmThreads": "8",
+    "timeStretching": true,
+    "audioBuffer": "34"
+  }
+}

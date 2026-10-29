@@ -9,9 +9,17 @@ no emulator. It plays the files you put in your own library.
 disappear between versions, and some consoles are experimental. Back up your library and your
 saves.
 
-**A personal project, with no warranty.** GameFlex is provided as is, without warranty of any kind,
-under the terms of its MIT License (see [LICENSE](LICENSE)). Problems are reported through the
+**A personal project, with no warranty.** GameFlex is provided as is, without warranty of any kind:
+its source code under the MIT License (see [LICENSE](LICENSE)), the parts published only as binaries
+under the [GameFlex binary license](LICENSE-BINARIES.md). Problems are reported through the
 repository's issues; nothing commits anyone to a delay or a fix.
+
+## Your own builds
+
+Part of GameFlex is open source, and you may build it yourself, change it or fork it. **What you
+build is yours:** the authors answer neither for how it behaves nor for its security. Only the
+images published on Docker Hub as `zinosaure/gameflex-*` and the app on this repository's Releases
+page are releases of GameFlex. A modified or rebuilt version must not present itself as one.
 
 ## Not affiliated
 
@@ -45,6 +53,14 @@ GameFlex does not distribute emulators or cores. Your server downloads them from
 or you bring them yourself, from a federated server or a mirror. Each one keeps its own license and
 terms. Emulation projects are named in the documentation to tell you where to find them; none of
 them is associated with GameFlex.
+
+**Our patched builds are ours.** The builds of shadPS4, KytyPS5, Eden and Box64 made with the
+patches in `tools/` are not those of their projects, which neither made nor support them. Report
+their problems to GameFlex, not to the upstream projects.
+
+**Remote Play** talks to a PlayStation console you own, registered with your own account, the way
+other independent Remote Play clients do. Sony neither makes nor supports it, and may change what
+it relies on at any time.
 
 The mirror mentioned in the [README](README.md) is not part of the GameFlex project. There is no
 guarantee that it stays online or unchanged, and you remain responsible for what you download from

@@ -1,0 +1,24 @@
+--- a/src/core/arm/nce/arm_nce_asm_definitions.h
++++ b/src/core/arm/nce/arm_nce_asm_definitions.h
+@@ -5,8 +5,21 @@
+ 
+ #define __ASSEMBLY__
+ 
++// Les en-têtes du noyau récents (linux-api-headers 7.3 d'Arch) testent
++// __ASSEMBLER__ et non plus __ASSEMBLY__ : sans lui, asm-generic/signal.h
++// redéfinit sigset_t, que la glibc a déjà posé. Posé le temps de ces deux
++// inclusions seulement — la glibc lit aussi __ASSEMBLER__, pour cacher ses
++// déclarations C (GameFlex, tools/eden/0002).
++#ifndef __ASSEMBLER__
++#define GAMEFLEX_ASSEMBLER_FOR_KERNEL_HEADERS
++#define __ASSEMBLER__
++#endif
+ #include <asm-generic/signal.h>
+ #include <asm-generic/unistd.h>
++#ifdef GAMEFLEX_ASSEMBLER_FOR_KERNEL_HEADERS
++#undef __ASSEMBLER__
++#undef GAMEFLEX_ASSEMBLER_FOR_KERNEL_HEADERS
++#endif
+ 
+ #define ReturnToRunCodeByExceptionLevelChangeSignal SIGUSR2
+ #define BreakFromRunCodeSignal SIGURG

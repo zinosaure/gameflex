@@ -1,0 +1,9 @@
+# Configuration PulseAudio minimale pour le conteneur PS4 (mode --system).
+#
+# - auth-anonymous=1 : pas de cookie d'authentification.
+# - sink null ps4_sink : shadPS4 y envoie son audio, streamex capture son monitor.
+
+load-module module-null-sink sink_name=ps4_sink sink_properties=device.description=PS4
+load-module module-native-protocol-unix auth-anonymous=1
+set-default-sink ps4_sink
+set-default-source ps4_sink.monitor

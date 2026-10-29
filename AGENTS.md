@@ -1,9 +1,10 @@
 # AGENTS.md: GameFlex for AI agents
 
 You are helping someone install, run or troubleshoot **GameFlex**, a self-hosted cloud gaming
-server. This repository is the **distribution only**: Docker images on Docker Hub
-(`zinosaure/gameflex-*`), a compose file, a setup script and documentation. There is no source code
-to build here.
+server. This repository holds the distribution — Docker images on Docker Hub
+(`zinosaure/gameflex-*`), a compose file, a setup script and documentation — and the open part of
+the source code (`src/`, `tools/`). Installing never needs a build: the published images are
+ready. Rebuilding them is described in the README, under *Source code*.
 
 The human guides are in `docs/`. This file tells you how to do the same work safely on someone's
 behalf.

@@ -1,0 +1,52 @@
+# Configuration RPCS3 minimale pour le conteneur (seedée dans ~/.config/rpcs3/).
+# L'entrypoint ne l'écrase jamais (copie seulement si absente).
+#
+# - Vulkan + fullscreen : le jeu couvre tout l'écran → crop no-op pour streamex.
+# - pad_handler evdev + Device ci-dessous : PAD1 lit le pad virtuel uinput
+#   "streamex pad ps3" (vrai analogique). P2-P4 sont dans
+#   input_configs/global/Default.yml (seedé pareil, jamais écrasé). Les DEUX
+#   fichiers sont STATIQUES — plus de patch Go au lancement : le nom de pad
+#   est déterministe (STREAMEX_PAD_NAME par défaut = "streamex pad ps3[-pN]"),
+#   donc plus rien à générer dynamiquement. Si tu surcharges
+#   STREAMEX_PAD_NAME, ces deux fichiers doivent être mis à jour à la main —
+#   c'est la responsabilité du déploiement qui change le nom, pas de streamex.
+# - keyboard_handler "Basic" : indépendant de pad_handler, gère les propres
+#   hotkeys/menus de RPCS3 au clavier — sans rapport avec la manette du jeu.
+# - Audio : sortie sur le sink null rpcs3_sink (capturé par streamex).
+#   NOTE: Cubeb récent ne résout plus "PulseAudio" comme dev_id — il faut
+#   donner directement le nom du sink (rpcs3_sink), sinon cellAudio échoue
+#   et il n'y a aucun son.
+
+# Max LLVM Compile Threads : 8, et non plus 2. La compilation du code d'un jeu
+# (« Compiling PPU Modules ») se fait une fois par jeu et par version de RPCS3 ;
+# le 2 datait de l'époque où l'encodage vidéo prenait le processeur. Mesuré le
+# 2026-10-08 sur Tekken 6 (71 modules, cache froid) : ~2 min 10 avec 2 fils,
+# ~47 s avec 8 — l'intro du jeu à 90 s au lieu de 180. L'entrypoint migre
+# les configs déjà semées qui portaient encore 2.
+Core:
+  PPU Decoder: Recompiler (LLVM)
+  PPU Threads: 2
+  Max LLVM Compile Threads: 8
+
+Video:
+  Renderer: Vulkan
+  Resolution: 1280x720
+  Resolution Scale: 100
+  Start games in fullscreen mode: true
+
+Input:
+  pad_handler: evdev
+  keyboard_handler: Basic
+  Player 1 Input:
+    Device: streamex pad ps3
+
+Audio:
+  # Explicite plutôt que le défaut compilé : une future build RPCS3 qui
+  # changerait son backend par défaut (OpenAL/FAudio) ignorerait "Audio
+  # Device" en silence — aucune erreur, juste pas de son. Cubeb est le seul
+  # backend qui résout "Audio Device" comme un nom de sink PulseAudio.
+  Renderer: Cubeb
+  Audio Device: rpcs3_sink
+  Dump to file: false
+  Convert to 16 bit: false
+  Downmix to Stereo: true

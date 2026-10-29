@@ -145,6 +145,7 @@ All settings live in `.env`.
 | `GAMEFLEX_ROOT_USERNAME` | no | `root` | The administrator's user name. |
 | `GAMEFLEX_MAX_PLAYERS` | no | `4` | Virtual controllers created for a recent console's game, never fewer than the console's own player count. How many play is set per console (see [Consoles](consoles.md)). |
 | `GAMEFLEX_CONSOLE_LIMITS` | no | one of each | How many games of each recent console can run at once, as `console:number` pairs. |
+| `GAMEFLEX_GPU` | no | the first one | The graphics card games run on, when the machine has several (a chip in the processor and a card added over OCuLink, for example): its PCI address, such as `0000:03:00.0`. `ls /dev/dri/by-path` lists them, and the kernel log says at start-up which one games use. |
 | `GAMEFLEX_MIRROR_URL` | no | | A mirror for emulators and BIOS files. When set, the settings screens show a link to it. It must be a full `http://` or `https://` address, or GameFlex does not start. |
 | `GAMEFLEX_STAGING` | no | | `1` marks a test server: GameFlex writes *staging* next to its name, and **Settings › Download the GameFlex app** gives the APK this server builds (in `/downloads`) instead of the GitHub Release. Leave empty for a normal server. |
 | `COMPOSE_PROFILES` | no | none | The recent consoles whose images you want, separated by commas: `ps3`, `ps4`, `ps5`, `switch`, `wiiu`, `xbox`, `xbox360`. Add `wireguard` for the optional VPN (see [Play away from home](remote-access.md)). |
@@ -236,6 +237,7 @@ services:
             - GAMEFLEX_MAX_PLAYERS=${GAMEFLEX_MAX_PLAYERS:-4}
             - GAMEFLEX_CONSOLE_LIMITS=${GAMEFLEX_CONSOLE_LIMITS:-switch:1,ps3:1,xbox:1,ps4:1,ps5:1,wiiu:1,xbox360:1}
             - GAMEFLEX_MIRROR_URL=${GAMEFLEX_MIRROR_URL:-}
+            - GAMEFLEX_GPU=${GAMEFLEX_GPU:-}
             - GAMEFLEX_STAGING=${GAMEFLEX_STAGING:-}
             - GAMEFLEX_RETRO_IMAGE=zinosaure/gameflex-retrogaming:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_REMOTEPLAY_IMAGE=zinosaure/gameflex-remoteplay:${GAMEFLEX_VERSION:-latest}
@@ -457,6 +459,11 @@ GAMEFLEX_CONSOLE_LIMITS=switch:1,ps3:1,xbox:1,ps4:1,ps5:1,wiiu:1,xbox360:1
 # A mirror where you download emulators and BIOS files yourself. When set,
 # GameFlex shows a link to it in its settings.
 GAMEFLEX_MIRROR_URL=
+
+# The graphics card games run on, when the machine has several: its PCI
+# address, such as 0000:03:00.0 (ls /dev/dri/by-path lists them). Empty: the
+# first one.
+GAMEFLEX_GPU=
 
 # A test server: GameFlex writes "staging" next to its name, and its app
 # download gives the APK this server builds instead of the GitHub Release.

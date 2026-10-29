@@ -1,6 +1,7 @@
 # Third-party notices
 
-GameFlex's own code is released under the MIT License (see [LICENSE](LICENSE)). The artifacts
+GameFlex's own source code is released under the MIT License (see [LICENSE](LICENSE)); the parts
+published only as binaries are under the [GameFlex binary license](LICENSE-BINARIES.md). The artifacts
 published for GameFlex also contain software written by other people, each part under its own
 license. This file lists that software, artifact by artifact, with the version found in the
 artifact, its license and where its source code can be found. The full license texts and copyright

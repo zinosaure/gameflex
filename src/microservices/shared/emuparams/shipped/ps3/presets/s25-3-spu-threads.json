@@ -1,0 +1,26 @@
+{
+  "name": "S25, trial 3: two SPU threads at once",
+  "description": "At most two SPU threads on sensitive stages, instead of letting RPCS3 decide: fewer contended cores. A single difference from “Default”: compare Tekken 6's frames per second in a fight with those of “Default”.",
+  "override": false,
+  "system": "RPCS3",
+  "values": {
+    "resolutionScale": "auto",
+    "frameLimit": "Auto",
+    "msaa": "Auto",
+    "shaderMode": "Async Recompiler with Shader Interpreter",
+    "multithreadedRsx": true,
+    "writeColorBuffers": false,
+    "relaxedZcull": false,
+    "accurateZcull": true,
+    "asyncTextureStreaming": false,
+    "performanceOverlay": false,
+    "spuBlockSize": "Mega",
+    "maxSpursThreads": "6",
+    "preferredSpuThreads": "2",
+    "spuLoopDetection": false,
+    "threadScheduler": "Operating System",
+    "llvmThreads": "8",
+    "timeStretching": true,
+    "audioBuffer": "34"
+  }
+}

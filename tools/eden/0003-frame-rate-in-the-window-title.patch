@@ -1,0 +1,21 @@
+--- a/src/yuzu/main_window.cpp
++++ b/src/yuzu/main_window.cpp
+@@ -4206,6 +4206,18 @@
+ 
+     emu_frametime_label->setText(tr("Frame: %1 ms").arg(results.frametime * 1000.0, 0, 'f', 2));
+ 
++    // GameFlex : la cadence aussi dans le titre de la fenêtre, que le téléphone lit
++    // (sessionstatus.TitleFPS) — sa barre d'état, elle, ne se voit pas.
++    QString title = windowTitle();
++    const qsizetype cut = title.indexOf(QStringLiteral(" | FPS: "));
++    if (cut >= 0) {
++        title.truncate(cut);
++    }
++    setWindowTitle(title % QStringLiteral(" | FPS: %1 | Speed: %2% | Frame: %3 ms")
++                               .arg(results.average_game_fps, 0, 'f', 1)
++                               .arg(results.emulation_speed * 100.0, 0, 'f', 0)
++                               .arg(results.frametime * 1000.0, 0, 'f', 1));
++
+     res_scale_label->setVisible(true);
+     emu_speed_label->setVisible(!Settings::values.use_multi_core.GetValue());
+     game_fps_label->setVisible(true);

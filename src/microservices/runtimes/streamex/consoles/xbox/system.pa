@@ -1,0 +1,9 @@
+# Configuration PulseAudio minimale pour le conteneur Xbox (mode --system).
+#
+# - auth-anonymous=1 : pas de cookie d'authentification.
+# - sink null xbox_sink : xemu y envoie son audio, streamex capture son monitor.
+
+load-module module-null-sink sink_name=xbox_sink sink_properties=device.description=Xbox
+load-module module-native-protocol-unix auth-anonymous=1
+set-default-sink xbox_sink
+set-default-source xbox_sink.monitor

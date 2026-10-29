@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<content>
+    <!-- Configuration initiale de Cemu pour une session GameFlex.
+         `check_update` et `receive_untested_updates` : une session ne se met
+         pas à jour toute seule, l'image le fait.
+         `gp_download` désactivé : rien ne doit sortir chercher sur le réseau
+         pendant qu'une partie démarre.
+         `fullscreen` : c'est le seul mode qui existe ici, il n'y a pas de
+         bureau derrière.
+         L'absence de cette configuration ouvrirait l'assistant « Getting
+         started », une fenêtre modale que personne ne peut fermer dans une
+         session sans souris — voir l'entrypoint. -->
+    <logflag>0</logflag>
+    <advanced_ppc_logging>false</advanced_ppc_logging>
+    <use_discord_presence>false</use_discord_presence>
+    <fullscreen_menubar>false</fullscreen_menubar>
+    <fullscreen>true</fullscreen>
+    <check_update>false</check_update>
+    <receive_untested_updates>false</receive_untested_updates>
+    <save_screenshot>false</save_screenshot>
+    <did_show_graphic_pack_download>true</did_show_graphic_pack_download>
+    <did_show_macos_disclaimer>true</did_show_macos_disclaimer>
+    <GraphicPack/>
+    <Graphic>
+        <api>1</api>
+        <VSync>0</VSync>
+        <GX2DrawdoneSync>true</GX2DrawdoneSync>
+        <UpscaleFilter>1</UpscaleFilter>
+        <DownscaleFilter>0</DownscaleFilter>
+        <FullscreenScaling>0</FullscreenScaling>
+        <AsyncCompile>true</AsyncCompile>
+    </Graphic>
+    <Audio>
+        <!-- 3 = Cubeb, LE SEUL BACKEND QUI EXISTE ICI.
+             L'énumération de Cemu (src/audio/IAudioAPI.h) est DirectSound = 0,
+             XAudio27 = 1, XAudio2 = 2, Cubeb = 3 : `0` réclamait donc un
+             backend Windows. Son journal le disait à chaque lancement
+             (« DirectSound: not supported … Cubeb: available ») et
+             `IAudioAPI.cpp` ne se rabat sur RIEN — Cemu n'ouvrait aucun flux,
+             d'où une Wii U muette et aucune ligne `[audio] emulator stream …
+             moved to sink` dans les journaux de session, là où la PS4 en a une
+             (2026-09-12).
+             `api 3` ne suffit pas : il faut AUSSI nommer le périphérique.
+             `CreateDeviceFromConfig` commence par
+             `if (selectedDevice.empty()) return {};` — un <TVDevice> vide ne
+             vaut donc pas « périphérique par défaut », il vaut AUCUN
+             périphérique, sans une ligne dans le journal. Mesuré le
+             2026-09-12 : avec `api 3` seul, le puits ne portait encore que des
+             zéros et Cemu n'avait ouvert aucun flux. -->
+        <api>3</api>
+        <!-- « default » n'est pas un mot choisi par nous : c'est
+             l'identifiant de l'entrée que Cubeb met en tête de sa liste de
+             périphériques — `CubebDeviceDescription(nullptr, "default",
+             L"Default Device")`, dont `GetIdentifier()` rend le DEUXIÈME
+             argument. Son `devid` nul dit à cubeb « prends le périphérique par
+             défaut », c'est-à-dire celui que `PULSE_SINK` désigne dans
+             l'entrypoint : notre puits `wiiu_sink`. -->
+        <TVDevice>default</TVDevice>
+        <TVChannels>1</TVChannels>
+        <TVVolume>100</TVVolume>
+    </Audio>
+</content>

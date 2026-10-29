@@ -1,0 +1,36 @@
+{
+  "window_name": "Cemu",
+  "games": {
+    "dir": "/opt/game",
+    "rules": [
+      { "extension": ".wux" },
+      { "extension": ".wud" },
+      { "extension": ".wua" },
+      { "extension": ".iso" },
+      { "extension": ".rpx" }
+    ],
+    "scan_dir_for": { "extension": ".wux" }
+  },
+  "launch": {
+    "bin": "/opt/cemu/squashfs-root/AppRun",
+    "cwd": "/opt/cemu/squashfs-root",
+    "base_args": ["-f", "-g"],
+    "process_group": true
+  },
+  "stop": { "mode": "pgroup" },
+  "gamepad": { "enabled": true },
+  "tools": [
+    { "name": "route_audio" },
+    { "name": "cemuhook" },
+    {
+      "name": "template_file",
+      "source": "/opt/cemu-config/controllerProfiles/controller0.xml",
+      "file": "Cemu/controllerProfiles/controller0.xml"
+    },
+    {
+      "name": "template_file",
+      "source": "/opt/cemu-config/controllerProfiles/controller1.xml",
+      "file": "Cemu/controllerProfiles/controller1.xml"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "console": "wiiu",
+  "name": "SDL gamepad (virtual pad)",
+  "buttons": [
+    { "id": "a", "label": "A", "key": "gp:A" },
+    { "id": "b", "label": "B", "key": "gp:B" },
+    { "id": "x", "label": "X", "key": "gp:X" },
+    { "id": "y", "label": "Y", "key": "gp:Y" },
+    { "id": "l", "label": "L", "key": "gp:L1" },
+    { "id": "r", "label": "R", "key": "gp:R1" },
+    { "id": "zl", "label": "ZL", "key": "gp:L2" },
+    { "id": "zr", "label": "ZR", "key": "gp:R2" },
+    { "id": "plus", "label": "PLUS", "key": "gp:Start" },
+    { "id": "minus", "label": "MINUS", "key": "gp:Select" },
+    { "id": "lstick", "label": "LS", "key": "gp:L3" },
+    { "id": "rstick", "label": "RS", "key": "gp:R3" },
+    { "id": "dup", "label": "Up", "key": "gp:Up" },
+    { "id": "ddown", "label": "Down", "key": "gp:Down" },
+    { "id": "dleft", "label": "Left", "key": "gp:Left" },
+    { "id": "dright", "label": "Right", "key": "gp:Right" },
+    { "id": "upleft", "label": "UP-LEFT", "key": "gp:UpLeft" },
+    { "id": "upright", "label": "UP-RIGHT", "key": "gp:UpRight" },
+    { "id": "downleft", "label": "DOWN-LEFT", "key": "gp:DownLeft" },
+    { "id": "downright", "label": "DOWN-RIGHT", "key": "gp:DownRight" }
+  ]
+}

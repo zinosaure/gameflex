@@ -1,0 +1,74 @@
+diff --git a/src/core/libraries/avplayer/avplayer_state.cpp b/src/core/libraries/avplayer/avplayer_state.cpp
+index c81f9e1..aa6ae37 100644
+--- a/src/core/libraries/avplayer/avplayer_state.cpp
++++ b/src/core/libraries/avplayer/avplayer_state.cpp
+@@ -175,22 +175,31 @@ bool AvPlayerState::GetStreamInfo(u32 stream_index, AvPlayerStreamInfo& info) {
+ 
+ // Called inside GAME thread
+ bool AvPlayerState::Start() {
++    // GameFlex: m_source_mutex is released before Stop(), which takes it, and before the game's
++    // event, whose callback runs on this thread and calls back into AvPlayer. glibc refuses a
++    // thread relocking the rwlock it holds for writing (EDEADLK), std::shared_mutex throws, and
++    // the emulator ended: Kingdom Hearts Melody of Memory, at its first video. The same rule as
++    // UpdateEndOfFileState.
++    if (m_current_state != AvState::Ready && m_current_state != AvState::Stop && !Stop()) {
++        LOG_ERROR(Lib_AvPlayer, "Could not start playback.");
++        return false;
++    }
+     std::unique_lock lock(m_source_mutex);
+-    if (m_current_state == AvState::Ready || m_current_state == AvState::Stop || Stop()) {
+-        m_eof_stop_event_sent = false;
+-        SetState(AvState::Starting);
+-        if (!m_up_source->Start()) {
+-            LOG_ERROR(Lib_AvPlayer, "Could not start playback.");
+-            SetState(AvState::Error);
+-            return false;
+-        }
+-        SetState(AvState::Play);
+-        OnPlaybackStateChanged(AvState::Play);
+-        return true;
++    if (m_up_source == nullptr) {
++        LOG_ERROR(Lib_AvPlayer, "Could not start playback: no source.");
++        return false;
+     }
+-
+-    LOG_ERROR(Lib_AvPlayer, "Could not start playback.");
+-    return false;
++    m_eof_stop_event_sent = false;
++    SetState(AvState::Starting);
++    if (!m_up_source->Start()) {
++        LOG_ERROR(Lib_AvPlayer, "Could not start playback.");
++        SetState(AvState::Error);
++        return false;
++    }
++    SetState(AvState::Play);
++    lock.unlock();
++    OnPlaybackStateChanged(AvState::Play);
++    return true;
+ }
+ 
+ // Called inside GAME thread
+@@ -209,6 +218,7 @@ bool AvPlayerState::Pause() {
+     if (!SetState(AvState::Pause)) {
+         return false;
+     }
++    lock.unlock(); // GameFlex: not across the game's event, see Start()
+     OnPlaybackStateChanged(AvState::Pause);
+     return true;
+ }
+@@ -223,6 +233,7 @@ bool AvPlayerState::Resume() {
+     m_up_source->Resume();
+     const auto state = m_previous_state.load();
+     SetState(state);
++    lock.unlock(); // GameFlex: not across the game's event, see Start()
+     OnPlaybackStateChanged(state);
+     return true;
+ }
+@@ -290,6 +301,7 @@ bool AvPlayerState::Stop() {
+         return false;
+     }
+     m_eof_stop_event_sent = true;
++    lock.unlock(); // GameFlex: not across the game's event, see Start()
+     OnPlaybackStateChanged(AvState::Stop);
+     return true;
+ }

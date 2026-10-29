@@ -1,0 +1,52 @@
+diff --git a/src/core/cpu_patches.cpp b/src/core/cpu_patches.cpp
+index 605fcf3..d03ecee 100644
+--- a/src/core/cpu_patches.cpp
++++ b/src/core/cpu_patches.cpp
+@@ -270,6 +270,18 @@ static bool FilterIntelCPU(const ZydisDecodedOperand*) {
+     return cpu.has(Cpu::tINTEL);
+ }
+ 
++bool CpuPatchesCanApply() noexcept {
++#if defined(__APPLE__)
++    return true;
++#else
++    static const bool can_apply = [] {
++        Cpu cpu;
++        return !cpu.has(Cpu::tSSE4a) || cpu.has(Cpu::tINTEL);
++    }();
++    return can_apply;
++#endif
++}
++
+ static void GenerateReciprocalInstruction(void* address, const ZydisDecodedInstruction& instruction,
+                                           const ZydisDecodedOperand* operands,
+                                           Xbyak::CodeGenerator& c, bool rsqrt, bool vex) {
+diff --git a/src/core/cpu_patches.h b/src/core/cpu_patches.h
+index 1af2eab..8f955c6 100644
+--- a/src/core/cpu_patches.h
++++ b/src/core/cpu_patches.h
+@@ -90,4 +90,10 @@ RedZonePatchResult PatchRedZoneMemoryInstructions(u64 segment_addr, u64 segment_
+ RedZonePatchResult PatchCpuInstructionsStatically(u64 segment_addr, u64 segment_size,
+                                                   std::span<const uintptr_t> function_starts);
+ 
++/// Whether a CPU patch can apply on this CPU: the SSE4a ones without SSE4a, the reciprocal ones on
++/// an Intel CPU. Without one, the static pass has nothing to patch: only the FS accesses remain, and
++/// the ahead-of-time pass patches those. (GameFlex: that pass took 108 s for Final Fantasy VII
++/// Remake under Box64 on a phone, for nothing, once Box64 reported an AMD CPU with SSE4a.)
++bool CpuPatchesCanApply() noexcept;
++
+ } // namespace Core
+diff --git a/src/core/module.cpp b/src/core/module.cpp
+index cd226a1..7374585 100644
+--- a/src/core/module.cpp
++++ b/src/core/module.cpp
+@@ -186,7 +186,8 @@ void Module::LoadModuleToMemory(u32& max_tls_index) {
+ #if defined(_WIN32)
+     const bool use_static_patching = WindowsGuestRedZoneProtection::IsStaticPatchingEnabled();
+ #else
+-    constexpr bool use_static_patching = true;
++    // GameFlex: nothing to patch statically when no CPU patch can apply (CpuPatchesCanApply).
++    const bool use_static_patching = CpuPatchesCanApply();
+ #endif
+     std::vector<std::pair<VAddr, u64>> executable_segments;
+     std::vector<uintptr_t> function_starts;

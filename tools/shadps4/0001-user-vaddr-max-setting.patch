@@ -1,0 +1,68 @@
+diff --git a/src/core/address_space.cpp b/src/core/address_space.cpp
+index 10b0bc3..faa79c2 100644
+--- a/src/core/address_space.cpp
++++ b/src/core/address_space.cpp
+@@ -677,6 +677,22 @@ struct AddressSpace::Impl {
+         system_managed_size = SystemManagedSize;
+         system_reserved_size = SystemReservedSize;
+         user_size = UserSize;
++        // A smaller user range on request (user_vaddr_max_in_gbytes): a kernel
++        // with a 39-bit user address space (Android GKI, 512 GiB) cannot hold
++        // the default range. shadPS4 already caps it at 1 TiB on Windows for
++        // SDK >= 3.00 titles, and its arm64 fork at 256 GiB on Android.
++        const s32 user_vaddr_max_gb = EmulatorSettings.GetUserVaddrMaxInGBytes();
++        if (user_vaddr_max_gb > 0) {
++            const u64 requested_max = (static_cast<u64>(user_vaddr_max_gb) << 30) - 1;
++            if (requested_max > USER_MIN && requested_max < USER_MAX) {
++                user_size = requested_max - USER_MIN + 1;
++                LOG_WARNING(Kernel_Vmm, "User virtual range capped at {} GiB: {:#x} - {:#x}",
++                            user_vaddr_max_gb, USER_MIN, requested_max);
++            } else {
++                LOG_ERROR(Kernel_Vmm, "user_vaddr_max_in_gbytes={} ignored: outside {:#x}-{:#x}",
++                          user_vaddr_max_gb, USER_MIN, USER_MAX);
++            }
++        }
+ 
+         constexpr int protection_flags = PROT_READ | PROT_WRITE;
+         int map_flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED; // compiler knows its constexpr
+diff --git a/src/core/emulator_settings.h b/src/core/emulator_settings.h
+index f36308a..a255231 100644
+--- a/src/core/emulator_settings.h
++++ b/src/core/emulator_settings.h
+@@ -189,6 +189,10 @@ struct GeneralSettings {
+     Setting<bool> dev_kit_mode{false};
+     Setting<int> extra_dmem_in_mbytes{0};
+     Setting<int> extra_fmem_in_mbytes{0};
++    // Highest guest user address, in GiB (0 = platform default). A kernel with
++    // a 39-bit user address space (Android GKI: 512 GiB) cannot hold the
++    // default Linux range; 256 matches the arm64 fork's layout.
++    Setting<int> user_vaddr_max_in_gbytes{0};
+     Setting<bool> trophy_popup_disabled{false};
+     Setting<double> trophy_notification_duration{6.0};
+     Setting<std::string> trophy_notification_side{"right"};
+@@ -209,6 +213,8 @@ struct GeneralSettings {
+                                            &GeneralSettings::extra_dmem_in_mbytes),
+             make_override<GeneralSettings>("extra_fmem_in_mbytes",
+                                            &GeneralSettings::extra_fmem_in_mbytes),
++            make_override<GeneralSettings>("user_vaddr_max_in_gbytes",
++                                           &GeneralSettings::user_vaddr_max_in_gbytes),
+             make_override<GeneralSettings>("trophy_popup_disabled",
+                                            &GeneralSettings::trophy_popup_disabled),
+             make_override<GeneralSettings>("trophy_notification_duration",
+@@ -224,7 +230,7 @@ struct GeneralSettings {
+ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(GeneralSettings, install_dirs, addon_install_dir, home_dir,
+                                    sys_modules_dir, font_dir, volume_slider, neo_mode, dev_kit_mode,
+                                    extra_dmem_in_mbytes, extra_fmem_in_mbytes,
+-                                   trophy_popup_disabled, trophy_notification_duration, show_splash,
++                                   user_vaddr_max_in_gbytes, trophy_popup_disabled, trophy_notification_duration, show_splash,
+                                    trophy_notification_side, discord_rpc_enabled, show_fps_counter,
+                                    console_language, big_picture_scale, big_picture_folder_depth,
+                                    redzone_patches)
+@@ -672,6 +678,7 @@ public:
+     SETTING_FORWARD_BOOL(m_general, DevKit, dev_kit_mode)
+     SETTING_FORWARD(m_general, ExtraDmemInMBytes, extra_dmem_in_mbytes)
+     SETTING_FORWARD(m_general, ExtraFmemInMBytes, extra_fmem_in_mbytes)
++    SETTING_FORWARD(m_general, UserVaddrMaxInGBytes, user_vaddr_max_in_gbytes)
+     bool IsShadNetEnabled() const {
+         return m_network.shad_net_enabled.get(m_configMode) &&
+                !m_shadnet_session_disabled.load(std::memory_order_relaxed);

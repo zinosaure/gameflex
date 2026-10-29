@@ -1,0 +1,185 @@
+{
+  "enabled": true,
+  "name": "PlayStation 4",
+  "description": "shadPS4's own options, then the settings given to Box64 before every PS4 game starts on the phone — shadPS4 is x86-64 code that Box64 translates. The server runs it natively and ignores the Box64 ones.",
+  "system": "shadPS4",
+  "requirements": [],
+  "params": {
+    "sound": {
+      "type": "select",
+      "label": "Sound",
+      "description": "The session's sound through the phone, or nothing: the emulator still decodes audio, but SDL plays none of it — a little lighter.",
+      "config": "Environment > SDL_AUDIO_DRIVER",
+      "value": "auto",
+      "options": {
+        "auto": "The session's sound",
+        "dummy": "Off — nothing is played"
+      }
+    },
+    "pipelineCache": {
+      "type": "switch",
+      "label": "Pipeline cache",
+      "description": "shadPS4 keeps the GPU pipelines it compiles, and reuses them at the next start instead of compiling them again: a shorter start, fewer stutters the first time a scene appears. The first game still compiles everything once.",
+      "config": "Vulkan > pipeline_cache_enabled",
+      "value": true
+    },
+    "turnipDebug": {
+      "type": "select",
+      "label": "Adreno driver workaround (Turnip)",
+      "description": "A debug option of Turnip, the graphics driver of Adreno phones: it changes how the driver renders, to work around its bugs. For a game whose log ends with “Device lost” — Final Fantasy VII Remake on the S25 (2026-10-26). It has no effect on another graphics processor.",
+      "config": "Environment > TU_DEBUG",
+      "value": "auto",
+      "options": {
+        "auto": "None",
+        "sysmem": "sysmem — never render in tiles",
+        "nolrz": "nolrz — no early depth test",
+        "noubwc": "noubwc — no image compression",
+        "nocb": "nocb — no concurrent binning",
+        "noconcurrentresolves,noconcurrentunresolves": "noconcurrentresolves — no concurrent resolves",
+        "sysmem,nolrz,noubwc": "sysmem, nolrz and noubwc together",
+        "flushall": "flushall — empty the GPU caches after every draw (slower)",
+        "syncdraw": "syncdraw — one draw at a time (slow)"
+      }
+    },
+    "dynarec": {
+      "type": "switch",
+      "label": "Translator (DynaRec)",
+      "description": "Box64 translates the game's x86-64 code into ARM code. Off, it interprets it instead: many times slower, but exact — the way to tell a translation fault from the game's own.",
+      "config": "Environment > BOX64_DYNAREC",
+      "value": true
+    },
+    "cpuType": {
+      "type": "select",
+      "label": "CPU shown to the game",
+      "description": "The processor Box64 tells shadPS4 and the game it runs on. The PS4's is an AMD one: told an Intel without SSE4a (Box64's own default), shadPS4 rewrites thousands of the game's instructions, and scans the whole game for them at every start — 108 s of the start of Final Fantasy VII Remake on the S25 (2026-10-26).",
+      "config": "Environment > BOX64_CPUTYPE",
+      "value": "1",
+      "options": {
+        "0": "Intel (Box64's own default)",
+        "1": "AMD, like the console"
+      }
+    },
+    "trustShared": {
+      "type": "switch",
+      "label": "Game code in shared memory",
+      "description": "shadPS4 maps all the game's memory, its code included, from one shared file. Box64 cannot see a write made to that code through another view of the file, so on its own it checks every piece of the game's code it translated each time it runs it: 62 % of the processor time of Final Fantasy VII Remake on the S25 (2026-10-27). On, Box64 protects that code like ordinary memory and checks it only after a write. A PS4 game never writes its own code.",
+      "config": "Environment > BOX64_DYNAREC_TRUSTSHARED",
+      "value": true
+    },
+    "strongMemory": {
+      "type": "select",
+      "label": "Memory ordering",
+      "description": "How faithfully the translator keeps the x86 memory ordering, which ARM relaxes. Stricter is slower; “Strong” is the usual fix for a multithreaded program that misbehaves.",
+      "config": "Environment > BOX64_DYNAREC_STRONGMEM",
+      "value": "0",
+      "options": {
+        "0": "Native (fastest)",
+        "1": "Light",
+        "2": "Strong",
+        "3": "Strongest"
+      }
+    },
+    "safeFlags": {
+      "type": "select",
+      "label": "Flags safety",
+      "description": "How carefully the translator preserves the x86 flags across calls and returns. Box64 ships with 1; the PS4 needs 2 on the phone — with 1, a “rep cmps” given a zero count loses the flags of the instruction before it, so the games' own memcmp compares wrong, and Final Fantasy VII Remake dies at its start (2026-10-26). The PS5 needs 2 too, and it costs nothing measurable there.",
+      "config": "Environment > BOX64_DYNAREC_SAFEFLAGS",
+      "value": "2",
+      "options": {
+        "0": "Fastest",
+        "1": "Box64's own default",
+        "2": "Safest (what the PS4 needs)"
+      }
+    },
+    "bigBlock": {
+      "type": "select",
+      "label": "Block size",
+      "description": "How much code the translator handles in one block. Smaller blocks are slower but closer to the x86 instruction by instruction.",
+      "config": "Environment > BOX64_DYNAREC_BIGBLOCK",
+      "value": "2",
+      "options": {
+        "0": "Smallest",
+        "1": "Small",
+        "2": "Default",
+        "3": "Largest"
+      }
+    },
+    "callRet": {
+      "type": "select",
+      "label": "Call/return optimisation",
+      "description": "A shortcut for the x86 call and return instructions. Off is the safest, and on the phone the fastest to start: with Default, Kingdom Hearts III shows its first picture after 159 s, against 42 s with Off (Melody of Memory 123 s against 18 s, 2026-10-27), for the same frame rate afterwards.",
+      "config": "Environment > BOX64_DYNAREC_CALLRET",
+      "value": "0",
+      "options": {
+        "0": "Off",
+        "1": "Basic",
+        "2": "Default",
+        "3": "Full"
+      }
+    },
+    "fastNaN": {
+      "type": "switch",
+      "label": "Fast NaN",
+      "description": "Skips the exact propagation of NaN values in floating-point maths. Off is exact and slower.",
+      "config": "Environment > BOX64_DYNAREC_FASTNAN",
+      "value": true
+    },
+    "fastRound": {
+      "type": "select",
+      "label": "Fast rounding",
+      "description": "How the translator rounds floating-point results.",
+      "config": "Environment > BOX64_DYNAREC_FASTROUND",
+      "value": "1",
+      "options": {
+        "0": "Exact",
+        "1": "Default",
+        "2": "Fastest"
+      }
+    },
+    "x87Double": {
+      "type": "select",
+      "label": "x87 precision",
+      "description": "The precision of the legacy x87 floating-point unit.",
+      "config": "Environment > BOX64_DYNAREC_X87DOUBLE",
+      "value": "0",
+      "options": {
+        "0": "Native (fastest)",
+        "1": "Double",
+        "2": "Double, always"
+      }
+    },
+    "alignedAtomics": {
+      "type": "switch",
+      "label": "Aligned atomics",
+      "description": "Treats the x86 atomic operations as aligned. Off is the default.",
+      "config": "Environment > BOX64_DYNAREC_ALIGNED_ATOMICS",
+      "value": false
+    },
+    "nativeFlags": {
+      "type": "switch",
+      "label": "Native flags",
+      "description": "Uses the ARM flags to compute the x86 ones. Off is slower and exact.",
+      "config": "Environment > BOX64_DYNAREC_NATIVEFLAGS",
+      "value": true
+    },
+    "selfTest": {
+      "type": "switch",
+      "label": "Translator self-test",
+      "description": "Runs every instruction through the interpreter as well and reports the first difference. Extremely slow: diagnostics only.",
+      "config": "Environment > BOX64_DYNAREC_TEST",
+      "value": false
+    },
+    "log": {
+      "type": "select",
+      "label": "Box64 log",
+      "description": "How much Box64 writes to the game's log.",
+      "config": "Environment > BOX64_LOG",
+      "value": "1",
+      "options": {
+        "0": "Quiet",
+        "1": "Default",
+        "2": "Debug"
+      }
+    }
+  }
+}

@@ -41,7 +41,7 @@ On the games page, choose it in **Source**.
 - **Its games play from the disk.** Its emulators, BIOS files, patches and settings are copied into
   your library from their screens, with the disk as the source.
 - **A game on two disks** plays from your library first, then from the disks in the order of their
-  names. It keeps its favorites and saves.
+  names. It keeps its saves.
 - **A disk shown as *Missing*** was unplugged, or not mounted when GameFlex started. For an external
   disk, prefer a fixed mount point (`/etc/fstab`) to the one your desktop creates when you sign in.
 
@@ -63,7 +63,7 @@ is copied to your library before you play it**: in **Settings › Games**, choos
 
 **Settings › Saves** shows, for each account, how many files its saves hold and their size.
 **Download** gives them as a zip; deleting removes every save of that account, games in progress
-included. Each player also sees their own in **My favourites and saves**.
+included. Each player also sees their own in **My saves**.
 
 ## Cache
 

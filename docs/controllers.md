@@ -54,12 +54,15 @@ Change them in **Settings › Controllers and devices**, with *Keyboard* as the 
 
 ## The game menu
 
-- **Open it:** the **Menu** button at the bottom left, **Esc** on a keyboard, or hold
-  **Select + Start for 5 seconds** on a controller.
-- **What it holds:** the sound, full screen, the controller options, and, for the player who
-  started the game on a retro console: **Saves** (ten save slots), **Rewind** and **Fast forward**,
-  **Cheats**, the **Disc** of a multi-disc game, and **Reset the console**. **Show connection
-  statistics** shows the frame rate, the bitrate and the machine's load.
+- **Open it:** the **Menu** button at the bottom left, **Esc** on a keyboard, or, on a controller,
+  hold **L2**, then press **Home**, for a second. While L2 is held, Home does not reach the game.
+- **What it holds:** the sound, full screen (in a web browser: the Android app is always full
+  screen), the controller options, and, for the player who started the game on a retro console:
+  **Saves** (ten save slots), **Rewind** and **Fast forward**, **Cheats**, the **Disc** of a
+  multi-disc game, and **Reset the console**. On a recent console, **Write some text** types into
+  the field the game has open (a profile name, for instance), letter by letter, then Enter.
+  **Show connection statistics** shows the frame rate, the bitrate and the machine's load; in the
+  Android app, the phone's temperature and battery come first.
 - **Quit the game** offers to **Leave the game running**, to pause it, or to **End the session**
   for everyone.
 

@@ -1,0 +1,12 @@
+# Le frontal ne voit que ce qu'il construit (voir le Dockerfile).
+**
+!webapp/src/app
+!webapp/src/public
+!webapp/src/package.json
+!webapp/src/package-lock.json
+!webapp/src/webpack.config.js
+!webapp/src/api-domains.json
+!microservices/edge/src
+!microservices/shared/webpage
+# L'APK et les émulateurs du téléphone : jamais dans une image.
+webapp/src/public/downloads

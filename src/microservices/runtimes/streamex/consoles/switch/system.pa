@@ -1,0 +1,11 @@
+# Configuration PulseAudio minimale pour le conteneur (mode --system).
+# Chargée via PULSE_CONFIG_PATH par l'entrypoint.
+#
+# - auth-anonymous=1 : pas de cookie d'authentification (le cookie échoue
+#   quand HOME du daemon pointe vers un dossier non lisible par l'user pulse).
+# - sink null citron_sink : Citron y envoie son audio, streamex capture son monitor.
+
+load-module module-null-sink sink_name=citron_sink sink_properties=device.description=Citron
+load-module module-native-protocol-unix auth-anonymous=1
+set-default-sink citron_sink
+set-default-source citron_sink.monitor

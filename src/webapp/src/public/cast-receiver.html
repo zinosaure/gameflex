@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8" />
+    <title>GameFlex — Cast Receiver</title>
+    <!--
+        Standalone static page (Phase B1/B2 of the "Mode Console +
+        Chromecast" plan) — deliberately NOT part of the main React app
+        bundle. The receiver no longer re-implements a platform protocol:
+        it embeds the app's own streaming page (/streaming, no ?role= — see
+        that page's own doc) in a same-origin iframe. That page already
+        speaks the viewer flow of all three platforms (retro WS, streamex
+        gateway, remoteplay viewer) and decides owner/player/spectate
+        itself from session.me.role, which for this iframe (no login, no
+        token — the Cast device has no access to the phone's localStorage)
+        always comes back spectate — exactly what a receiver needs, without
+        the page needing to know it's a receiver at all. Keeping the CAF
+        framework running in THIS page is what prevents the Cast platform
+        from auto-terminating an "idle" receiver (see disableIdleTimeout
+        below).
+
+        Hosting: must be served over HTTPS (Google Cast requirement) and
+        registered as a Custom Web Receiver in the Google Cast SDK Developer
+        Console (manual, one-time step — see the plan's own doc, not
+        something this file can do). Assumes same-origin as the Go backend's
+        WebSocket endpoint (matches how the rest of the app already resolves
+        its own backend — see SessionPool.js/use-retro-streaming-connection.js's
+        identical `window.location.host` pattern).
+    -->
+    <style>
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+        #screen-frame { width: 100%; height: 100%; border: 0; background: #000; }
+        #status {
+            position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+            color: #fff; font: 500 28px/1.4 system-ui, sans-serif; text-align: center; padding: 24px;
+            background: #000;
+        }
+    </style>
+</head>
+<body>
+    <div id="status">En attente d'une session GameFlex…</div>
+    <!-- Autoplay is allowed on the Cast device (trusted platform surface:
+         the "user gesture" already happened on the sender when Cast was
+         tapped). Same-origin iframe: the webpack proxy and WebSocket paths
+         resolve exactly like a normal browser tab. -->
+    <iframe id="screen-frame" style="display:none"
+            allow="autoplay; fullscreen; picture-in-picture"
+            allowfullscreen></iframe>
+
+    <!-- Cast Application Framework (CAF) receiver SDK — provides
+         cast.framework.CastReceiverContext, the standard way a custom
+         receiver gets started/stopped by the Cast platform and exchanges
+         custom messages with the sender (see attachSessionListener below). -->
+    <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+    <script>
+        // Must match the sender's own CUSTOM_NAMESPACE (gameflex/shared/cast.js,
+        // Phase B2) exactly — Cast's custom message channel is namespaced,
+        // an unregistered/mismatched namespace is simply never delivered.
+        const CUSTOM_NAMESPACE = "urn:x-cast:com.gameflex.session";
+
+        const statusEl = document.getElementById("status");
+        const frameEl = document.getElementById("screen-frame");
+
+        function setStatus(text) {
+            statusEl.textContent = text;
+            statusEl.style.display = text ? "flex" : "none";
+            frameEl.style.display = text ? "none" : "block";
+        }
+
+        // The app's watch route takes over as soon as the iframe loads —
+        // hide the waiting overlay (any real error surfaces inside the
+        // watch page itself, same as in a normal browser tab).
+        frameEl.addEventListener("load", () => setStatus(null));
+
+        // The receiver no longer re-implements a platform protocol: it embeds
+        // the app's own streaming page (/streaming, no ?role=), which already
+        // speaks the viewer flow of all three platforms (retro WS, streamex
+        // gateway, remoteplay viewer) and decides spectate on its own — this
+        // iframe has no login/token, and "not authenticated" always resolves
+        // to spectate (see Streaming.jsx's own doc). Same origin → webpack
+        // proxy and WebSocket paths resolve without the receiver needing to
+        // authenticate at all.
+        function attachToSession(sessionId) {
+            setStatus("Connexion à la session…");
+            frameEl.src =
+                "/streaming?" +
+                new URLSearchParams({ sessionId }).toString();
+        }
+
+        function start() {
+            const context = cast.framework.CastReceiverContext.getInstance();
+
+            // The sender (Phase B2) sends {sessionId} once its own Cast
+            // session is established — this receiver does nothing at all
+            // until that first message arrives (no session to show yet).
+            context.addCustomMessageListener(CUSTOM_NAMESPACE, (event) => {
+                const sessionId = event.data && event.data.sessionId;
+                if (sessionId) attachToSession(sessionId);
+            });
+
+            // This receiver never reports media status through the standard
+            // PlayerManager/MediaStatus APIs (it drives its own raw WebRTC
+            // connection instead) — from the Cast platform's point of view
+            // that looks identical to an app that's just sitting idle, and
+            // it auto-terminates idle receivers on its own default timeout.
+            // Confirmed via real testing: a live cast stopped itself after
+            // almost exactly 5 minutes with a clean connection close and no
+            // error, no reconnect attempt — a deliberate platform shutdown,
+            // not a network/decode failure. disableIdleTimeout tells it this
+            // app manages its own lifecycle.
+            context.start({ disableIdleTimeout: true });
+        }
+
+        start();
+    </script>
+</body>
+</html>

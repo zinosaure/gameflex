@@ -1,0 +1,175 @@
+diff --git a/src/libs/libVideoDec2.cpp b/src/libs/libVideoDec2.cpp
+index 75d8149..194aa2e 100644
+--- a/src/libs/libVideoDec2.cpp
++++ b/src/libs/libVideoDec2.cpp
+@@ -4,6 +4,7 @@
+ #include "libs/videoDec2Decoder.h"
+ #include "loader/symbolDatabase.h"
+ 
++#include <algorithm>
+ #include <cstddef>
+ #include <cstdint>
+ #include <cstring>
+@@ -200,7 +201,7 @@ static void ApplyDecodedOutput(const Decoder::Output& decoded, Videodec2FrameBuf
+ 	output_info->frame_buffer_size = decoded.buffer_size;
+ 	if (output_info->this_size == sizeof(Videodec2OutputInfo)) {
+ 		output_info->frame_format         = VIDEODEC2_FRAME_FORMAT_DEFAULT;
+-		output_info->frame_pitch_in_bytes = decoded.pitch;
++		output_info->frame_pitch_in_bytes = decoded.pitch_in_bytes;
+ 	}
+ }
+ 
+@@ -301,6 +302,19 @@ static int32_t KYTY_SYSV_ABI ReleaseComputeQueue(Videodec2ComputeQueue compute_q
+ 	return compute_queue != nullptr ? OK : VIDEODEC2_ERROR_COMPUTE_QUEUE_ID;
+ }
+ 
++// The largest frame this decoder hands out: rows aligned to 256 samples, the luma plane and the
++// interleaved chroma after it, two bytes per sample in a 10-bit profile (P010). Without a maximum
++// size in the configuration, the largest picture Videodec2 decodes (4096x2160).
++static size_t MaxFrameBufferSize(const Videodec2DecoderConfigInfo* config) {
++	const auto width =
++	    static_cast<size_t>(config->max_frame_width > 0 ? config->max_frame_width : 4096);
++	const auto height =
++	    static_cast<size_t>(config->max_frame_height > 0 ? config->max_frame_height : 2160);
++	const auto sample = Decoder::HighBitDepthProfile(config->codec_type, config->profile) ? 2u : 1u;
++	const auto pitch  = ((width + 255u) & ~size_t {255}) * sample;
++	return std::max(VIDEODEC2_MIN_MEMORY_SIZE, pitch * (height + (height + 1u) / 2u));
++}
++
+ static int32_t KYTY_SYSV_ABI QueryDecoderMemoryInfo(const Videodec2DecoderConfigInfo* config,
+                                                     Videodec2DecoderMemoryInfo*       memory_info) {
+ 	PRINT_NAME();
+@@ -325,7 +339,7 @@ static int32_t KYTY_SYSV_ABI QueryDecoderMemoryInfo(const Videodec2DecoderConfig
+ 	memory_info->gpu_memory             = nullptr;
+ 	memory_info->cpu_gpu_memory_size    = VIDEODEC2_MIN_MEMORY_SIZE;
+ 	memory_info->cpu_gpu_memory         = nullptr;
+-	memory_info->max_frame_buffer_size  = VIDEODEC2_MIN_MEMORY_SIZE;
++	memory_info->max_frame_buffer_size  = MaxFrameBufferSize(config);
+ 	memory_info->frame_buffer_alignment = 0x100;
+ 	memory_info->reserved0              = 0;
+ 
+@@ -364,7 +378,8 @@ static int32_t KYTY_SYSV_ABI CreateDecoder(const Videodec2DecoderConfigInfo* con
+ 	}
+ 
+ 	auto* state =
+-	    Decoder::Create({config->codec_type, config->max_frame_width, config->max_frame_height});
++	    Decoder::Create({config->codec_type, config->max_frame_width, config->max_frame_height, 2u,
++	                     Decoder::HighBitDepthProfile(config->codec_type, config->profile)});
+ 	if (state == nullptr) {
+ 		return VIDEODEC2_ERROR_API_FAIL;
+ 	}
+diff --git a/src/libs/videoDec2Decoder.cpp b/src/libs/videoDec2Decoder.cpp
+index 2f05732..0b10cd7 100644
+--- a/src/libs/videoDec2Decoder.cpp
++++ b/src/libs/videoDec2Decoder.cpp
+@@ -305,36 +305,41 @@ private:
+ 		const auto width       = static_cast<uint32_t>(frame->width);
+ 		const auto height      = static_cast<uint32_t>(frame->height);
+ 		const auto pitch       = AlignUp(width, 256);
++		const auto sample      = m_config.sixteen_bit ? 2u : 1u;
++		const auto row_bytes   = pitch * sample;
+ 		const auto chroma_rows = (static_cast<uint64_t>(height) + 1u) / 2u;
+-		const auto required =
+-		    static_cast<uint64_t>(pitch) * height + static_cast<uint64_t>(pitch) * chroma_rows;
++		const auto required    = static_cast<uint64_t>(row_bytes) * height +
++		                         static_cast<uint64_t>(row_bytes) * chroma_rows;
+ 		if (required > frame_buffer.size) {
+ 			return Result::FrameBufferSize;
+ 		}
+ 
+ 		auto* dst = static_cast<uint8_t*>(frame_buffer.data);
+ 		std::memset(dst, 0, static_cast<size_t>(required));
+-		if (frame->format == AV_PIX_FMT_NV12) {
++		const auto target = m_config.sixteen_bit ? AV_PIX_FMT_P010LE : AV_PIX_FMT_NV12;
++		if (frame->format == target) {
+ 			for (uint32_t y = 0; y < height; y++) {
+-				std::memcpy(dst + static_cast<size_t>(y) * pitch,
+-				            frame->data[0] + static_cast<ptrdiff_t>(y) * frame->linesize[0], width);
++				std::memcpy(dst + static_cast<size_t>(y) * row_bytes,
++				            frame->data[0] + static_cast<ptrdiff_t>(y) * frame->linesize[0],
++				            static_cast<size_t>(width) * sample);
+ 			}
+-			auto* chroma = dst + static_cast<size_t>(pitch) * height;
++			auto* chroma = dst + static_cast<size_t>(row_bytes) * height;
+ 			for (uint32_t y = 0; y < chroma_rows; y++) {
+-				std::memcpy(chroma + static_cast<size_t>(y) * pitch,
+-				            frame->data[1] + static_cast<ptrdiff_t>(y) * frame->linesize[1], width);
++				std::memcpy(chroma + static_cast<size_t>(y) * row_bytes,
++				            frame->data[1] + static_cast<ptrdiff_t>(y) * frame->linesize[1],
++				            static_cast<size_t>(width) * sample);
+ 			}
+ 		} else {
+-			m_sws = sws_getCachedContext(m_sws, frame->width, frame->height,
+-			                             static_cast<AVPixelFormat>(frame->format), frame->width,
+-			                             frame->height, AV_PIX_FMT_NV12, SWS_FAST_BILINEAR, nullptr,
+-			                             nullptr, nullptr);
++			m_sws = sws_getCachedContext(
++			    m_sws, frame->width, frame->height, static_cast<AVPixelFormat>(frame->format),
++			    frame->width, frame->height, target, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
+ 			if (m_sws == nullptr) {
+ 				return Result::ApiFail;
+ 			}
+-			uint8_t* output_planes[4]  = {dst, dst + static_cast<size_t>(pitch) * height, nullptr,
+-			                              nullptr};
+-			int      output_strides[4] = {static_cast<int>(pitch), static_cast<int>(pitch), 0, 0};
++			uint8_t* output_planes[4] = {dst, dst + static_cast<size_t>(row_bytes) * height,
++			                             nullptr, nullptr};
++			int output_strides[4] = {static_cast<int>(row_bytes), static_cast<int>(row_bytes), 0,
++			                         0};
+ 			if (sws_scale(m_sws, frame->data, frame->linesize, 0, frame->height, output_planes,
+ 			              output_strides) != frame->height) {
+ 				return Result::ApiFail;
+@@ -347,6 +352,7 @@ private:
+ 		output->codec_type      = m_config.codec_type;
+ 		output->width           = width;
+ 		output->pitch           = pitch;
++		output->pitch_in_bytes  = row_bytes;
+ 		output->height          = height;
+ 		output->buffer          = frame_buffer.data;
+ 		output->buffer_size     = frame_buffer.size;
+@@ -380,6 +386,11 @@ private:
+ 	std::unordered_set<void*> m_picture_buffers;
+ };
+ 
++bool HighBitDepthProfile(uint32_t codec_type, uint32_t profile) {
++	return (codec_type == CODEC_TYPE_VP9 && profile >= 2u) ||
++	       (codec_type == CODEC_TYPE_HEVC && profile == 2u);
++}
++
+ bool IsCodecSupported(uint32_t codec_type) {
+ 	return GetAvCodecId(codec_type) != AV_CODEC_ID_NONE;
+ }
+diff --git a/src/libs/videoDec2Decoder.h b/src/libs/videoDec2Decoder.h
+index 0667a77..23bb9cd 100644
+--- a/src/libs/videoDec2Decoder.h
++++ b/src/libs/videoDec2Decoder.h
+@@ -23,6 +23,9 @@ struct Config {
+ 	int32_t  max_width          = -1;
+ 	int32_t  max_height         = -1;
+ 	uint32_t max_pending_frames = 2;
++	// A decoder opened in a 10-bit profile hands out P010 frames — 16 bits per sample, the
++	// value in the high bits — whatever the stream's own depth (HighBitDepthProfile).
++	bool sixteen_bit = false;
+ };
+ 
+ struct Input {
+@@ -46,6 +49,7 @@ struct Output {
+ 	uint32_t codec_type      = 0;
+ 	uint32_t width           = 0;
+ 	uint32_t pitch           = 0;
++	uint32_t pitch_in_bytes  = 0;
+ 	uint32_t height          = 0;
+ 	void*    buffer          = nullptr;
+ 	size_t   buffer_size     = 0;
+@@ -144,6 +148,11 @@ static_assert(sizeof(AvcPictureInfo) == 120);
+ class Instance;
+ 
+ [[nodiscard]] bool      IsCodecSupported(uint32_t codec_type);
++// The profiles whose frames the game reads as P010: VP9 profiles 2 and 3, HEVC Main 10. Final
++// Fantasy VII Remake opens its VP9 movies in profile 2 and copies each frame as P010 — luma
++// rows of twice the pitch in bytes, the interleaved chroma right after — even for an 8-bit
++// stream; an NV12 frame left its chroma texture empty, and the video green.
++[[nodiscard]] bool      HighBitDepthProfile(uint32_t codec_type, uint32_t profile);
+ [[nodiscard]] Instance* Create(const Config& config);
+ void                    Destroy(Instance* instance);
+ [[nodiscard]] uint32_t  GetCodecType(const Instance* instance);

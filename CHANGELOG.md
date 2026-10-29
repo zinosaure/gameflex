@@ -7,6 +7,73 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-29
+
+### Added
+
+- **The source code of GameFlex**, in this repository, under the MIT License: the kernel, the
+  accounts service, the retro engine, the front server, their shared modules, the web interface,
+  the console recipes and the patches of our emulator builds, with what it takes to rebuild every
+  image (see *Source code* in the README). The video gateway, Remote Play, streamex and the Android
+  app stay published as binaries only, free to use and to redistribute unmodified, under the new
+  [GameFlex binary license](LICENSE-BINARIES.md). Pull requests are welcome: see
+  [CONTRIBUTING.md](CONTRIBUTING.md).
+- **Saves by source in *My saves***, for the retro consoles and the PlayStation 3, 4 and 5, Switch,
+  Wii U and Xbox: *Saves from* shows this device's saves or the ones you have on a federated
+  server. **Backup** sets a game's saves aside, **Send to…** copies them to a federated server,
+  where they land in its copies and replace nothing, **Download** brings a copy home, and
+  **Restore** puts a copy back, one game at a time (one slot for a retro console); what it
+  replaces goes into the backups first. On the server and in the Android app.
+- **Write some text, in the game menu** of the recent consoles: a field that opens the phone's
+  keyboard, typed into the game letter by letter, then Enter — a profile name, for instance.
+- **The temperature and the battery in the Android app**: the phone's own, at the top of the
+  Performance panel and in two circles next to the menu button, wherever the game runs; then,
+  when it runs on a server or on another phone, that machine's.
+- **The change since the game started**, in brackets in the Performance panel: the temperature,
+  the battery, the processor, the memory and the video memory.
+- **`GAMEFLEX_GPU`, the graphics card games run on**, on a machine that has several (a chip in the
+  processor and a card added over OCuLink, for example): its PCI address. Empty, the first one.
+  A game now receives that card only, and the Performance panel reads that card's load.
+
+### Changed
+
+- **The Android app is a release build**: 25 MB instead of 45 MB. It installs over the previous
+  version.
+- **The game menu opens with L2, then Home**, held for a second, instead of Select + Start: holding
+  Start turns some controllers off.
+- **A controller labelled like Nintendo's** (A on the right, such as the GameSir Pocket Taco) gets
+  each button by its position. A mapping already saved for it stays as it was until **Auto** in
+  the controller mapping settings.
+- **The launch screen**: the step under a spinner in the middle, and a round cross at the top
+  right that closes the game — also once a step has failed, with *Report error* in place of the
+  spinner. The Android app no longer says a game takes two to three minutes to start.
+- **The Performance panel spans the whole width**, in columns, over a lighter veil.
+- **The Android app has no full-screen switch any more**: it is always full screen.
+
+### Removed
+
+- **Favourites**: the switches in the game menu and on a game's sheet, and the page that listed
+  them. The favourites saved so far are deleted at the first start.
+- **Synchronise with…** in *My saves*, replaced by the sources above.
+
+### Fixed
+
+- **No keyboard reached the recent consoles that use virtual controllers**: streamex dropped every
+  key. A plugged-in keyboard, and *Write some text*, now reach the emulator.
+- **The Xbox 360 signs in the account's profile at every game** when it has only one, so the game
+  can save: Xenia forgot the signed-in profile, because a game ends by being stopped.
+- **The Android app offered Rewind and Fast forward for a recent console**, where they did nothing.
+
+### Security
+
+- **What an account can send is bounded**: a save state over 512 MB is refused, error reports
+  stop after 60 an hour, and wrong invitation codes are slowed down after five.
+- **A token naming an unknown account is refused**, and a new account's name is limited to
+  letters, digits, `.`, `_` and `-`, 3 to 32 characters: the names the kernel accepts for a game.
+- **A retro game's title comes from the library**, not from the request that launches it: it
+  showed in *Live now*.
+- **A game's container has a process limit.**
+
 ## [0.8.0] - 2026-10-28
 
 ### Added

@@ -1,0 +1,79 @@
+diff --git a/src/libtools/signals.c b/src/libtools/signals.c
+index 0575a8bdb..18d7e45eb 100644
+--- a/src/libtools/signals.c
++++ b/src/libtools/signals.c
+@@ -348,6 +348,38 @@ void leave_critical_section()
+     emu->deferred_signal_processing = 0;
+ }
+ 
++#ifdef __aarch64__
++// The kernel appends an ESR record to the signal frame of a data abort (asm/sigcontext.h:
++// esr_context, ESR_MAGIC) and keeps its WnR bit for userspace: whether the native access
++// was a write. Data aborts are exception classes 0x24 (lower EL) and 0x25 (same EL).
++static int arm64_fault_esr(ucontext_t* uc, uint64_t* esr_out)
++{
++    typedef struct { uint32_t magic; uint32_t size; } aarch64_ctx_t;
++    const uint8_t* cursor = (const uint8_t*)uc->uc_mcontext.__reserved;
++    const uint8_t* end = cursor + sizeof(uc->uc_mcontext.__reserved);
++    while(cursor + sizeof(aarch64_ctx_t) + sizeof(uint64_t) <= end) {
++        const aarch64_ctx_t* head = (const aarch64_ctx_t*)cursor;
++        if(!head->magic || head->size < sizeof(aarch64_ctx_t))
++            return 0;
++        if(head->magic == 0x45535201) {   // ESR_MAGIC
++            *esr_out = *(const uint64_t*)(cursor + sizeof(aarch64_ctx_t));
++            return 1;
++        }
++        cursor += head->size;
++    }
++    return 0;
++}
++
++static int arm64_fault_is_write(ucontext_t* uc)
++{
++    uint64_t esr = 0;
++    if(!arm64_fault_esr(uc, &esr))
++        return 0;
++    uint32_t ec = (uint32_t)(esr >> 26) & 0x3f;
++    return (ec == 0x24 || ec == 0x25) && ((esr >> 6) & 1);
++}
++#endif
++
+ int my_sigactionhandler_oldcode_64(x64emu_t* emu, int32_t sig, int simple, siginfo_t* info, void * ucntx, int* old_code, void* cur_db, uintptr_t x64pc)
+ {
+     int Locks = unlockMutex();
+@@ -511,8 +543,34 @@ int my_sigactionhandler_oldcode_64(x64emu_t* emu, int32_t sig, int simple, sigin
+         } else {
+             sigcontext->uc_mcontext.gregs[X64_TRAPNO] = 14;
+             sigcontext->uc_mcontext.gregs[X64_ERR] = 4|((sysmapped && !(real_prot&PROT_READ))?0:1);
+-            if(write_opcode(sigcontext->uc_mcontext.gregs[X64_RIP], (uintptr_t)pc, (R_CS==0x23)))
++            int opcode_write = write_opcode(sigcontext->uc_mcontext.gregs[X64_RIP], (uintptr_t)pc, (R_CS==0x23));
++            if(opcode_write)
++                sigcontext->uc_mcontext.gregs[X64_ERR] |= 2;
++#ifdef __aarch64__
++            // The native access says it, whatever x86 opcode led to it: write_opcode decodes
++            // only some stores, and one it does not know (a VEX store, a string op, a wrapped
++            // native memcpy...) was reported as a read. Emulators that track guest memory by
++            // page faults (shadPS4, Kyty) take a different path for each.
++            {
++                // The first faults handed to the x86 handler, as Box64 saw them (BOX64_LOG=1):
++                // what an emulator that tracks memory by page faults is told.
++                static int forwarded = 0;
++                if(forwarded < 8) {
++                    ++forwarded;
++                    uint64_t esr = 0;
++                    int has_esr = ucntx ? arm64_fault_esr((ucontext_t*)ucntx, &esr) : 0;
++                    printf_log(LOG_INFO, "SIGSEGV to x86 handler #%d: addr=%p rip=%p code=%d prot=0x%x opcode_write=%d native_ctx=%d esr=%s0x%llx\n", forwarded, info->si_addr, (void*)sigcontext->uc_mcontext.gregs[X64_RIP], info->si_code, prot, opcode_write, ucntx?1:0, has_esr?"":"(none) ", (unsigned long long)esr);
++                }
++            }
++            if(ucntx && arm64_fault_is_write((ucontext_t*)ucntx)) {
++                static int reported = 0;
++                if(!opcode_write && reported < 5) {
++                    ++reported;
++                    printf_log(LOG_INFO, "Write fault at %p (x86 rip %p): opcode not decoded as a write, ESR says write\n", info->si_addr, (void*)sigcontext->uc_mcontext.gregs[X64_RIP]);
++                }
+                 sigcontext->uc_mcontext.gregs[X64_ERR] |= 2;
++            }
++#endif
+         }
+         if(info->si_code == SEGV_ACCERR && old_code)
+             *old_code = -1;

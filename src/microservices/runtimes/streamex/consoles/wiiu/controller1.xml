@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Profil du joueur 2 de la Wii U pour Cemu : une TÉLÉCOMMANDE WII tenue à
+  l'horizontale (#441). C'est ce que les jeux à plusieurs de la Wii U
+  demandent : New Super Mario Bros. U refuse la manette Pro à son écran
+  « Utilisez la télécommande Wii » (relevé sur la dev le 2026-10-23).
+  Recopié par streamex avant chaque lancement (outil template_file de
+  adapter.json), comme controller0.xml : la manette DSU 1 du même serveur.
+
+  mapping : bouton de la télécommande (WiimoteController::ButtonId de Cemu) :
+            1 A, 2 B, 3 « 1 », 4 « 2 », 7 Plus, 8 Moins, 9-12 la croix (haut,
+            bas, gauche, droite).
+  button  : entrée DSU, voir controller0.xml.
+
+  À L'HORIZONTALE, la croix tourne d'un quart de tour : la gauche du joueur
+  est le haut de la télécommande, sa droite le bas, son haut la droite, son
+  bas la gauche. A (Rond) donne « 2 » — sauter, valider —, B (Croix) « 1 » —
+  courir, revenir.
+-->
+<emulated_controller>
+	<type>Wiimote</type>
+	<controller>
+		<api>DSUController</api>
+		<uuid>1</uuid>
+		<display_name>Controller 2</display_name>
+		<ip>127.0.0.1</ip>
+		<port>{cemuhook_port}</port>
+		<mappings>
+			<entry><mapping>4</mapping><button>13</button></entry><!-- 2 : Rond (A) -->
+			<entry><mapping>3</mapping><button>14</button></entry><!-- 1 : Croix (B) -->
+			<entry><mapping>1</mapping><button>12</button></entry><!-- A : Triangle (X) -->
+			<entry><mapping>2</mapping><button>15</button></entry><!-- B : Carré (Y) -->
+			<entry><mapping>7</mapping><button>3</button></entry><!-- Plus : Options -->
+			<entry><mapping>8</mapping><button>0</button></entry><!-- Moins : Share -->
+			<entry><mapping>9</mapping><button>7</button></entry><!-- haut : croix gauche -->
+			<entry><mapping>10</mapping><button>5</button></entry><!-- bas : croix droite -->
+			<entry><mapping>11</mapping><button>6</button></entry><!-- gauche : croix bas -->
+			<entry><mapping>12</mapping><button>4</button></entry><!-- droite : croix haut -->
+		</mappings>
+	</controller>
+</emulated_controller>

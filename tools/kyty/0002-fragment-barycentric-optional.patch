@@ -1,0 +1,173 @@
+diff --git a/src/graphics/host_gpu/graphicContext.h b/src/graphics/host_gpu/graphicContext.h
+index a80af20..9cace86 100644
+--- a/src/graphics/host_gpu/graphicContext.h
++++ b/src/graphics/host_gpu/graphicContext.h
+@@ -34,6 +34,7 @@ struct GraphicContext {
+ 	// bool fp64_denorm_preserve = false; // Temporarily disabled.
+ 	bool                               attachment_feedback_loop_enabled      = false;
+ 	bool                               provoking_vertex_last_enabled         = false;
++	bool                               fragment_shader_barycentric_enabled   = false;
+ 	bool                               maintenance8_enabled                  = false;
+ 	bool                               conditional_rendering_enabled         = false;
+ 	bool                               occlusion_queries_enabled             = false;
+diff --git a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
+index 1f41d75..fb5d337 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
+@@ -464,6 +464,7 @@ PipelineCache::PipelineCache(GraphicContext&                         graphics,
+     : m_graphics(graphics), m_image_heap(image_heap),
+       m_next_driver_cache_save(std::chrono::steady_clock::now() + DriverCacheSaveInterval) {
+ 	EXIT_NOT_IMPLEMENTED(!Common::Thread::IsMainThread());
++	ShaderRecompiler::SetFragmentBarycentricSupported(graphics.fragment_shader_barycentric_enabled);
+ 	InitializeDriverCache();
+ 	WarmUp(shader_store);
+ }
+diff --git a/src/graphics/presentation/window/vulkanWindow.cpp b/src/graphics/presentation/window/vulkanWindow.cpp
+index 8a9fe9c..c2b3457 100644
+--- a/src/graphics/presentation/window/vulkanWindow.cpp
++++ b/src/graphics/presentation/window/vulkanWindow.cpp
+@@ -26,6 +26,7 @@
+ #include <algorithm>
+ #include <cmath>
+ #include <cstdio>
++#include <cstdlib>
+ #include <cstring>
+ #include <fmt/format.h>
+ #include <memory>
+@@ -89,6 +90,12 @@ static bool HasExtension(const std::vector<const char*>& extensions, const char*
+ 	                   [name](const char* ext) { return strcmp(ext, name) == 0; });
+ }
+ 
++// VK_KHR_fragment_shader_barycentric is optional (Turnip has none; see ShaderRecompiler.h).
++// KYTY_NO_FRAGMENT_BARYCENTRIC leaves it unused on a device that has it, to try that path.
++static bool FragmentBarycentricWanted() {
++	return std::getenv("KYTY_NO_FRAGMENT_BARYCENTRIC") == nullptr;
++}
++
+ static bool HasLayer(const std::vector<vk::LayerProperties>& layers, const char* name) {
+ 	return std::any_of(layers.begin(), layers.end(),
+ 	                   [name](const auto& layer) { return strcmp(layer.layerName, name) == 0; });
+@@ -538,6 +545,12 @@ static vk::Device VulkanCreateDevice(GraphicContext& graphics,
+ 	physical_device.getFeatures2(&supported_features2);
+ 	const bool barycentric_supported =
+ 	    barycentric_extension && supported_barycentric.fragmentShaderBarycentric == VK_TRUE;
++	graphics.fragment_shader_barycentric_enabled = barycentric_supported;
++	// On the console: the one line that says which path the pixel shaders take here.
++	Log::WriteToConsoleAndLog(fmt::format("Vulkan fragment shader barycentric: {}\n",
++	                                      barycentric_supported
++	                                          ? "true"
++	                                          : "false (pixel inputs are host-interpolated)"));
+ 	if (!barycentric_supported) {
+ 		Log::WriteToConsoleAndLog(
+ 		    "WARNING: Your GPU is not fully supported (fragmentShaderBarycentric is unavailable). "
+@@ -1119,7 +1132,6 @@ void WindowContext::CreateVulkan() {
+ 		                             VK_EXT_MESH_SHADER_EXTENSION_NAME,
+ 		                             VK_KHR_WORKGROUP_MEMORY_EXPLICIT_LAYOUT_EXTENSION_NAME,
+ 		                             VK_EXT_DEPTH_RANGE_UNRESTRICTED_EXTENSION_NAME,
+-		                             VK_KHR_FRAGMENT_SHADER_BARYCENTRIC_EXTENSION_NAME,
+ 		                             VK_EXT_CONDITIONAL_RENDERING_EXTENSION_NAME,
+ 		                             VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME}) {
+ 			if (HasExtension(available_extensions, extension)) {
+@@ -1131,6 +1143,12 @@ void WindowContext::CreateVulkan() {
+ 			device_extensions.push_back(VK_EXT_ATTACHMENT_FEEDBACK_LOOP_LAYOUT_EXTENSION_NAME);
+ 			device_extensions.push_back(VK_EXT_ATTACHMENT_FEEDBACK_LOOP_DYNAMIC_STATE_EXTENSION_NAME);
+ 		}
++#if !defined(__APPLE__)
++		if (FragmentBarycentricWanted() &&
++		    HasExtension(available_extensions, VK_KHR_FRAGMENT_SHADER_BARYCENTRIC_EXTENSION_NAME)) {
++			device_extensions.push_back(VK_KHR_FRAGMENT_SHADER_BARYCENTRIC_EXTENSION_NAME);
++		}
++#endif
+ 		Vr::OpenXrAppendExtensions(device_extensions, available_extensions, true);
+ 	}
+ 
+diff --git a/src/graphics/shader/recompiler/ShaderRecompiler.cpp b/src/graphics/shader/recompiler/ShaderRecompiler.cpp
+index dc9a973..3aeeb9c 100644
+--- a/src/graphics/shader/recompiler/ShaderRecompiler.cpp
++++ b/src/graphics/shader/recompiler/ShaderRecompiler.cpp
+@@ -19,6 +19,7 @@
+ 
+ #include <algorithm>
+ #include <array>
++#include <atomic>
+ #include <chrono>
+ #include <fmt/format.h>
+ #include <functional>
+@@ -28,6 +29,18 @@
+ 
+ namespace Libs::Graphics::ShaderRecompiler {
+ 
++namespace {
++std::atomic_bool g_fragment_barycentric_supported {true};
++} // namespace
++
++void SetFragmentBarycentricSupported(bool supported) {
++	g_fragment_barycentric_supported.store(supported, std::memory_order_relaxed);
++}
++
++bool FragmentBarycentricSupported() {
++	return g_fragment_barycentric_supported.load(std::memory_order_relaxed);
++}
++
+ namespace {
+ 
+ std::string MakeIrDump(std::string_view cfg, const IR::Program& ir) {
+diff --git a/src/graphics/shader/recompiler/ShaderRecompiler.h b/src/graphics/shader/recompiler/ShaderRecompiler.h
+index 1dd5a40..97a36ee 100644
+--- a/src/graphics/shader/recompiler/ShaderRecompiler.h
++++ b/src/graphics/shader/recompiler/ShaderRecompiler.h
+@@ -81,6 +81,13 @@ const Decoder::Program& RefreshShaderSource(ShaderSource& source, const IR::SrtR
+                                            const IR::ResourceSpecialization& specialization,
+ 	                                       uint32_t push_data_start_dword = 0);
+ 
++// Whether the host device has VK_KHR_fragment_shader_barycentric (Turnip on Adreno has not).
++// Without it, a pixel parameter is read as a host-interpolated varying - as a flat one already
++// is - instead of three per-vertex inputs blended with gl_BaryCoordKHR, and the barycentric
++// inputs read as zero (v_interp_p2 ignores them). Default: supported.
++void               SetFragmentBarycentricSupported(bool supported);
++[[nodiscard]] bool FragmentBarycentricSupported();
++
+ } // namespace Libs::Graphics::ShaderRecompiler
+ 
+ #endif /* EMULATOR_INCLUDE_EMULATOR_GRAPHICS_SHADER_RECOMPILER_SHADERRECOMPILER_H_ */
+diff --git a/src/graphics/shader/recompiler/ir/passes/ShaderInfoCollection.cpp b/src/graphics/shader/recompiler/ir/passes/ShaderInfoCollection.cpp
+index 744d84c..833fb63 100644
+--- a/src/graphics/shader/recompiler/ir/passes/ShaderInfoCollection.cpp
++++ b/src/graphics/shader/recompiler/ir/passes/ShaderInfoCollection.cpp
+@@ -1,6 +1,7 @@
+ #include "graphics/shader/recompiler/ir/passes/ShaderInfoCollection.h"
+ 
+ #include "common/assert.h"
++#include "graphics/shader/recompiler/ShaderRecompiler.h"
+ #include "graphics/shader/recompiler/ir/ShaderIR.h"
+ 
+ #include <algorithm>
+@@ -101,6 +102,12 @@ void CollectPixelInputs(const ShaderPixelInputInfo* pixel, ShaderInfo& info,
+ 			}
+ 		}
+ 	}
++	if (!FragmentBarycentricSupported()) {
++		// No VK_KHR_fragment_shader_barycentric on the host: every parameter is a
++		// host-interpolated varying, the way a flat one already is (v_interp_p2 reads it
++		// directly, so the I/J inputs are not needed). Mixed-mode aliases lose their split.
++		per_vertex.fill(false);
++	}
+ 	for (uint32_t input = 0; input < pixel->input_num; input++) {
+ 		AddInput(info, StageInputKind::Parameter, input, 4, fmt::format("in_param_{}", input),
+ 		         per_vertex[input]);
+@@ -617,7 +624,14 @@ void CollectShaderInfo(Program& program, ShaderStageInputInfo input_info) {
+ 		default: return Fail("unsupported shader stage for info collection");
+ 	}
+ 	for (uint32_t i = 0; i < inputs.builtin_count; i++) {
+-		AddBuiltinInput(info, inputs.builtins[i]);
++		const auto kind = inputs.builtins[i];
++		if (!FragmentBarycentricSupported() &&
++		    (kind == StageInputKind::BaryCoordSmooth || kind == StageInputKind::BaryCoordSmoothSample ||
++		     kind == StageInputKind::BaryCoordSmoothCentroid ||
++		     kind == StageInputKind::BaryCoordNoPerspective)) {
++			continue; // Read as zero by the emitter: no gl_BaryCoordKHR input.
++		}
++		AddBuiltinInput(info, kind);
+ 	}
+ 	program.shader_info_complete = true;
+ }

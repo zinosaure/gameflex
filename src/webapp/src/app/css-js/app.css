@@ -1,0 +1,153 @@
+/** custom styles for the app */
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: system-ui, sans-serif;
+}
+
+.container {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+/* Console/Device/Game cards — clean hover effect */
+.console-card,
+.device-card,
+.game-card {
+    border-radius: 12px !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    cursor: pointer;
+}
+
+.console-card:hover,
+.device-card:hover,
+.game-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.12) !important;
+}
+
+
+/* Streaming menu action row — slide-out auto-hide (see shared/StreamingMenu.jsx).
+   Bootstrap has no utility for a translate transition, so it lives here in the
+   app stylesheet (the designated place for app-specific CSS). */
+.menu-actions-row {
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.menu-actions-hidden {
+    transform: translateY(140%);
+    opacity: 0;
+    pointer-events: none;
+}
+.menu-actions-visible {
+    transform: translateY(0);
+    opacity: 1;
+}
+/* Top-bar controls (participants + performance) slide OUT of the top edge
+   on auto-hide — same timing, opposite direction. */
+.menu-top-row {
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.menu-top-hidden {
+    transform: translateY(-140%);
+    opacity: 0;
+    pointer-events: none;
+}
+.menu-top-visible {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.btn {
+    text-transform: uppercase !important;
+}
+
+.table td {
+    white-space: nowrap !important;
+}
+
+.section-panel-borderless + .section-panel-borderless,
+.inter-section {
+    margin-top: 2rem !important;
+    border-top: 1px dashed var(--bs-border-color) !important;
+    padding-top: 2rem !important;
+}
+
+/* DES ONGLETS APRÈS UNE SECTION (le porteur, 2026-10-28) : sans section
+   encadrée, rien ne séparait le bouton de la section (« Oublier mon jeton »)
+   de la barre d'onglets qui la suit (la synchronisation des sauvegardes). Le
+   même écart qu'entre deux sections, écrit une fois pour toute barre. */
+.section-panel-borderless + .nav {
+    margin-top: 2rem !important;
+}
+
+.list-element + .list-element {
+    margin-top: 0.5rem !important;
+}
+/* L'anneau de téléchargement sans pourcentage : le serveur qui zippe à la
+   volée n'annonce pas de taille, et une barre figée à zéro mentirait. Une
+   rotation ne promet rien d'autre que « ça travaille ». */
+@keyframes gameflex-ring-spin {
+    to { transform: rotate(360deg); }
+}
+
+.gameflex-ring-spin {
+    animation: gameflex-ring-spin 1s linear infinite;
+    transform-origin: 50% 50%;
+}
+
+/* LA HAUTEUR DE L'ÉCRAN, pour tout composant : jamais 100vh, cette variable
+   (#410). Elle vaut la hauteur visible, sauf en demi-écran, où elle ne compte
+   que ce que la manette laisse voir.
+
+   100dvh ET NON 100vh (le porteur, 2026-10-22, Chrome Android hors plein
+   écran) : 100vh est la hauteur barre d'adresse CACHÉE. Barre affichée, la
+   page dépassait de sa hauteur, Chrome la faisait glisser, et le haut de la
+   page de jeu — son bouton de menu compris — passait sous la barre. 100dvh
+   suit la barre. 100vh reste pour un navigateur qui ne connaît pas dvh. */
+:root {
+    --gameflex-covered-height: 0px;
+    --gameflex-visible-height: 100vh;
+}
+
+@supports (height: 100dvh) {
+    :root {
+        --gameflex-visible-height: 100dvh;
+    }
+}
+
+/* LE DEMI-ÉCRAN DES MANETTES CLIPSÉES (#410, libs/screenOrientation.js).
+   Toute la page tient dans le haut de l'écran : <body> prend la hauteur
+   visible et devient le bloc de référence de tout ce qui est en
+   `position: fixed` (contain: layout) — panneaux, fenêtres, toasts et voiles,
+   que Skeleton accroche à <body>. C'est #root qui défile, pour que ces calques
+   restent en place quand on fait défiler la page. Sous la manette, du noir. */
+html[data-half-screen] {
+    --gameflex-visible-height: calc(100dvh - var(--gameflex-covered-height));
+    overflow: hidden;
+    background: #000;
+}
+
+html[data-half-screen] body {
+    height: var(--gameflex-visible-height);
+    overflow: hidden;
+    contain: layout;
+}
+
+html[data-half-screen] #root {
+    height: 100%;
+    overflow-y: auto;
+}
+
+/* En plein écran, le navigateur impose à l'élément tout l'écran : la part
+   cachée devient une bordure noire, et l'élément le bloc de référence des
+   calques qui le suivent (skeleton.js, overlayRoot). L'image, le bouton du
+   menu et la manette à l'écran tiennent dans le reste. <html> lui-même en
+   plein écran n'en a pas besoin : <body> s'y règle déjà sur l'écran. */
+html[data-half-screen] :not(:root):fullscreen {
+    border-bottom: var(--gameflex-covered-height) solid #000;
+    contain: layout;
+}

@@ -1,0 +1,40 @@
+diff --git a/src/graphics/host_gpu/renderer/pipeline/pipelineSerialization.cpp b/src/graphics/host_gpu/renderer/pipeline/pipelineSerialization.cpp
+index 8b86479..a983f3b 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/pipelineSerialization.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/pipelineSerialization.cpp
+@@ -5,6 +5,7 @@
+ #include "graphics/host_gpu/vulkanCommon.h"
+ #include "graphics/shader/recompiler/ShaderRecompiler.h"
+ #include "graphics/shader/recompiler/ir/Serialize.h"
++#include "kytyGitVersion.h"
+ 
+ #include <algorithm>
+ #include <chrono>
+@@ -66,8 +67,11 @@ std::vector<uint8_t> StoreHeader(const GraphicContext& graphics) {
+ 	if (stamp == 0) {
+ 		return {};
+ 	}
++	// The Kyty revision as well: under Box64, /proc/self/exe is Box64 itself, whose date stays the
++	// same when Kyty changes - a store written by another Kyty would pass for this one's.
++	const uint64_t revision = XXH3_64bits(KYTY_GIT_REVISION, sizeof(KYTY_GIT_REVISION) - 1);
+ 	Writer header;
+-	IoAll(header, stamp, SpirvProfile(graphics),
++	IoAll(header, stamp, revision, SpirvProfile(graphics),
+ 	      graphics.GetPhysicalDeviceProperties().limits.maxComputeSharedMemorySize);
+ 	return std::move(header.bytes);
+ }
+diff --git a/src/main.cpp b/src/main.cpp
+index e459802..44ba130 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -234,6 +234,10 @@ static bool ParseArgs(int argc, char* argv[], RunOptions& options, bool& show_he
+ 	if (const char* occlusion = std::getenv("KYTY_OCCLUSION_QUERIES"); occlusion != nullptr) {
+ 		options.config.occlusion_queries_enabled = std::string_view(occlusion) != "0";
+ 	}
++	// KYTY_SHADER_CACHE=1 (0 to disable) sets --shader-cache the same way.
++	if (const char* shader_cache = std::getenv("KYTY_SHADER_CACHE"); shader_cache != nullptr) {
++		options.config.shader_cache_enabled = std::string_view(shader_cache) != "0";
++	}
+ 
+ 	for (int i = 1; i < argc; i++) {
+ 		std::string arg = std::string(argv[i]);

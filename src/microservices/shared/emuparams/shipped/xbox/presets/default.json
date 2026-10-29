@@ -1,0 +1,16 @@
+{
+  "name": "Default",
+  "description": "The values shipped with GameFlex: xemu's own, and the resolution of the stream.",
+  "override": false,
+  "system": "xemu",
+  "values": {
+    "surfaceScale": "auto",
+    "filtering": "linear",
+    "aspectRatio": "auto",
+    "vsync": true,
+    "cacheShaders": true,
+    "hardFpu": true,
+    "dsp": false,
+    "hrtf": true
+  }
+}

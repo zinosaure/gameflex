@@ -1,0 +1,23 @@
+{
+  "window_name": "rpcs3",
+  "games": {
+    "dir": "/opt/game",
+    "rules": [
+      { "extension": ".iso" },
+      { "extension": ".pkg", "args": ["--installpkg"] }
+    ],
+    "scan_dir_for": { "extension": ".iso" }
+  },
+  "launch": {
+    "bin": "/opt/rpcs3/squashfs-root/AppRun",
+    "cwd": "/opt/rpcs3/squashfs-root",
+    "base_args": ["--no-gui"],
+    "process_group": true
+  },
+  "stop": { "mode": "pgroup" },
+  "gamepad": { "enabled": true, "swap_xy_from_slot": 0 },
+  "sticks": {
+    "left":  { "up": "KeyW", "down": "KeyS", "left": "KeyA", "right": "KeyD" },
+    "right": { "up": "Home", "down": "End",  "left": "Delete", "right": "PageDown" }
+  }
+}

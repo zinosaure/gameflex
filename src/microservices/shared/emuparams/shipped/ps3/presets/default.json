@@ -1,0 +1,33 @@
+{
+  "name": "Default",
+  "description": "The values shipped with GameFlex: what the phone app imposed on RPCS3 before this file, and RPCS3's own for the rest.",
+  "override": false,
+  "system": "RPCS3",
+  "values": {
+    "resolutionScale": "auto",
+    "frameLimit": "Auto",
+    "msaa": "Auto",
+    "shaderMode": "Async Recompiler with Shader Interpreter",
+    "shaderPrecision": "High",
+    "multithreadedRsx": true,
+    "writeColorBuffers": false,
+    "relaxedZcull": false,
+    "accurateZcull": true,
+    "disableZcullQueries": false,
+    "disableVertexCache": false,
+    "strictRendering": false,
+    "asyncTextureStreaming": false,
+    "performanceOverlay": false,
+    "spuBlockSize": "Mega",
+    "xfloatAccuracy": "Approximate",
+    "maxSpursThreads": "6",
+    "preferredSpuThreads": "0",
+    "spuLoopDetection": false,
+    "threadScheduler": "Operating System",
+    "llvmThreads": "8",
+    "timeStretching": true,
+    "audioBuffer": "34",
+    "turnipDebug": "auto",
+    "ir3Debug": "auto"
+  }
+}

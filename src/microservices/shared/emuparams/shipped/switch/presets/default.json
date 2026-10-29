@@ -1,0 +1,22 @@
+{
+  "name": "Default",
+  "description": "The values shipped with GameFlex: Citron's own, and the resolution of the stream.",
+  "override": false,
+  "system": "Citron",
+  "values": {
+    "resolution": "auto",
+    "consoleMode": "1",
+    "asyncShaders": false,
+    "gpuAccuracy": "1",
+    "cpuAccuracy": "0",
+    "vsync": "2",
+    "multiCore": true,
+    "antiAliasing": "0",
+    "scalingFilter": "1",
+    "videoDecoding": "2",
+    "reactiveFlushing": true,
+    "volume": "100",
+    "turnipDebug": "auto",
+    "ir3Debug": "auto"
+  }
+}

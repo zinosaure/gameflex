@@ -1,0 +1,21 @@
+{
+  "name": "Translator, safest",
+  "description": "The translator with every shortcut off — strong memory ordering, safest flags, smallest blocks, exact floats. Slower; the first thing to try when a game stops where it shouldn't.",
+  "override": false,
+  "system": "KytyPS5",
+  "values": {
+    "sound": "auto",
+    "dynarec": true,
+    "strongMemory": "2",
+    "safeFlags": "2",
+    "bigBlock": "0",
+    "callRet": "0",
+    "fastNaN": false,
+    "fastRound": "0",
+    "x87Double": "0",
+    "alignedAtomics": false,
+    "nativeFlags": false,
+    "selfTest": false,
+    "log": "1"
+  }
+}

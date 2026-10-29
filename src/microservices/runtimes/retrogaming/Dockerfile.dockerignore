@@ -1,0 +1,5 @@
+# Le contexte est ./src : sans ce filtre, chaque build envoie la page et
+# l'application Android (plus d'un gigaoctet) pour n'en lire que deux dossiers.
+**
+!microservices/runtimes/retrogaming/src
+!microservices/shared

@@ -58,8 +58,7 @@ Only one level of folder is read: don't put a game folder inside another folder.
 The formats each console accepts are listed in [Consoles](consoles.md).
 
 > **Choose your names before you play.** GameFlex recognizes a game by its file or folder name.
-> If you rename it later, it becomes a new game: its favorites, history and saves stay with the old
-> name.
+> If you rename it later, it becomes a new game: its history and saves stay with the old name.
 
 ### 2. Add the BIOS files your consoles need
 

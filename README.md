@@ -16,6 +16,9 @@ nothing to install to play: a web browser is enough, and an Android app is there
 Because the screen in your hands only shows a video, it does not need to be powerful. A modest phone
 plays a PlayStation 3 game, as long as the computer at home can run it.
 
+No computer? A phone can be the server too: the [Android app](#the-android-app) runs a complete
+GameFlex on the phone, which plays its own games and streams them to the screens around it.
+
 ### Play anywhere, on anything
 
 - **Anywhere.** On your couch, in another room, or across the world: the same library, the same
@@ -59,6 +62,8 @@ plays a PlayStation 3 game, as long as the computer at home can run it.
 
 - **Saves follow you.** Your saves belong to your account, on every device. On the retro consoles,
   quit a game with a save state and pick it up later, from the same point, on another screen.
+  Back up a game's saves, or send them to a friend's server and fetch them back. Not yet
+  implemented for the Xbox 360.
 - **Rewind and fast forward** on the retro consoles: step back through the last 20 seconds, or run
   the game four times faster.
 - **Cheat codes** on the retro consoles (Game Genie, Action Replay, GameShark…), kept with your
@@ -184,6 +189,38 @@ Download the latest `gameflex.apk` from the
 page for updates and installs them itself. Everything else is in
 [GameFlex on Android](docs/android.md).
 
+## Source code
+
+Most of GameFlex is open source, in this repository, under the [MIT License](LICENSE):
+
+- **the services:** the kernel that runs the sessions (`src/microservices/kernel/`), the accounts
+  service (`kernel/extras/credential/`), the retro engine (`runtimes/retrogaming/`), the front
+  server (`edge/`) and the modules they share (`shared/`);
+- **the web interface** (`src/webapp/`);
+- **the console recipes:** each recent console's Dockerfile, entry point and settings
+  (`runtimes/streamex/consoles/`, `profiles/`);
+- **our emulator builds:** the patches and build scripts for shadPS4, KytyPS5, Eden and Box64
+  (`tools/`). Those patches are under the license of the emulator they change.
+
+A few parts are only published as binaries, under the [GameFlex binary license](LICENSE-BINARIES.md):
+the video gateway, Remote Play, streamex (the program that runs and streams the recent consoles)
+and the Android app. They are free to use and to redistribute unmodified.
+
+**Rebuild the images yourself.** Check out the tag of a version, then:
+
+```bash
+GAMEFLEX_VERSION=x.y.z docker compose -f docker-compose.build.yml build
+```
+
+The open services build from this repository; the closed binaries come from the images published
+for the same version. The rebuilt images take the names that `docker-compose.yml` runs. To start
+them, set `GAMEFLEX_VERSION=x.y.z` in `.env`, then run `docker compose up -d`: `./launch.sh` and
+`./launch.sh update` download the published images again, over yours. The details are at the top
+of [docker-compose.build.yml](docker-compose.build.yml).
+
+**Contribute.** Pull requests on the open part are welcome: [CONTRIBUTING.md](CONTRIBUTING.md) says
+how they travel to a release.
+
 ## Where to find emulators and BIOS files
 
 GameFlex ships none of them, but you can find them here. None of these sites is part of GameFlex,
@@ -269,8 +306,12 @@ development, you can buy me a coffee:
 
 ## License
 
-GameFlex is released under the [MIT License](LICENSE). Its Docker images and Android app also
-contain software by others, each part under its own license: see
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), and the full texts in
+GameFlex's source code is released under the [MIT License](LICENSE). The parts published only as
+binaries (the video gateway, Remote Play, streamex and the Android app) are under the
+[GameFlex binary license](LICENSE-BINARIES.md): free to use and to redistribute unmodified, not for
+sale. Versions 0.3.0 to 0.8.0 were published under the MIT License alone, and remain so.
+
+The Docker images and the Android app also contain software by others, each part under its own
+license: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), and the full texts in
 [THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt). GameFlex is not affiliated with any console
 maker or game publisher. See the [disclaimer](DISCLAIMER.md).

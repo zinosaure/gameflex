@@ -1,0 +1,76 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 80f7a28..60e8dc7 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -49,6 +49,12 @@ include("${KYTY_SOURCE_DIR}/utils.cmake")
+ include(CTest)
+ 
+ option(KYTY_ENABLE_CLANG_TIDY "Run clang-tidy checks during builds" OFF)
++# Guest address space below 512 GiB, for hosts with a 39-bit user address space
++# (Android GKI). See src/kernel/memory.h.
++option(KYTY_COMPACT_ADDRESS_SPACE "Keep the guest address space below 512 GiB" OFF)
++if(KYTY_COMPACT_ADDRESS_SPACE)
++	add_compile_definitions(KYTY_COMPACT_ADDRESS_SPACE)
++endif()
+ 
+ set(KYTY_BUILD_ORIGIN "Source" CACHE STRING "Build provenance shown in diagnostics")
+ set_property(CACHE KYTY_BUILD_ORIGIN PROPERTY STRINGS Source Official Fork)
+diff --git a/src/graphics/host_gpu/regionDefinitions.h b/src/graphics/host_gpu/regionDefinitions.h
+index b6bd162..2bae3a7 100644
+--- a/src/graphics/host_gpu/regionDefinitions.h
++++ b/src/graphics/host_gpu/regionDefinitions.h
+@@ -11,8 +11,15 @@ namespace Libs::Graphics {
+ 
+ constexpr uint64_t TRACKER_PAGE_SIZE    = 4ull * 1024ull;
+ constexpr uint64_t TRACKER_REGION_SIZE  = 4ull * 1024ull * 1024ull;
++#if defined(KYTY_COMPACT_ADDRESS_SPACE)
++// Everything below 512 GiB; the fold point equals kExtendedMemoryBase, so the
++// packed page index space is contiguous (see memory.h).
++constexpr uint64_t TRACKER_ADDRESS_SIZE = 1ull << 39u;
++constexpr uint64_t LOWER_ADDRESS_SIZE   = 1ull << 38u;
++#else
+ constexpr uint64_t TRACKER_ADDRESS_SIZE = 1ull << 44u;
+ constexpr uint64_t LOWER_ADDRESS_SIZE   = 1ull << 40u;
++#endif
+ constexpr size_t   TRACKER_REGION_PAGES = TRACKER_REGION_SIZE / TRACKER_PAGE_SIZE;
+ 
+ struct GuestRange {
+diff --git a/src/kernel/memory.h b/src/kernel/memory.h
+index 4b82e41..a818871 100644
+--- a/src/kernel/memory.h
++++ b/src/kernel/memory.h
+@@ -24,8 +24,17 @@ struct Lifecycle {
+ using callback_func_t = void (*)(uintptr_t addr, size_t size);
+ 
+ constexpr uint32_t KERNEL_MAXIMUM_NAME_LENGTH = 32;
++#if defined(KYTY_COMPACT_ADDRESS_SPACE)
++// A 39-bit user address space (Android GKI: 512 GiB) cannot hold the default
++// layout, whose extended region sits at 8 TiB. Everything moves below 512 GiB:
++// the user range ends at 256 GiB (HOST_USER_MAX), the extended region follows
++// it, and the GPU-side fold point (LOWER_ADDRESS_SIZE) equals its base.
++constexpr uint64_t kExtendedMemoryBase       = 0x4000000000ull;
++constexpr uint64_t kExtendedMemorySize       = 128ull * 1024 * 1024 * 1024;
++#else
+ constexpr uint64_t kExtendedMemoryBase       = 0x080000000000ull;
+ constexpr uint64_t kExtendedMemorySize       = 512ull * 1024 * 1024 * 1024;
++#endif
+ 
+ struct VirtualQueryInfo {
+ 	uintptr_t start;
+diff --git a/src/kernel/memoryAddressSpace.inc b/src/kernel/memoryAddressSpace.inc
+index 47e916f..ea9b4ac 100644
+--- a/src/kernel/memoryAddressSpace.inc
++++ b/src/kernel/memoryAddressSpace.inc
+@@ -10,7 +10,12 @@ static constexpr uint64_t HOST_USER_MIN            = 0x7000000000ull;
+ static constexpr uint64_t HOST_SYSTEM_RESERVED_MAX = 0x0fffffffffull;
+ static constexpr uint64_t HOST_USER_MIN            = 0x1000000000ull;
+ #endif
++#if defined(KYTY_COMPACT_ADDRESS_SPACE)
++// 256 GiB: the extended region starts right above (kExtendedMemoryBase).
++static constexpr uint64_t HOST_USER_MAX = 0x3fffffffffull;
++#else
+ static constexpr uint64_t HOST_USER_MAX = 0xfbffffffffull;
++#endif
+ 
+ static bool GuestFreeRangeContains(uint64_t base, uint64_t range_size, uint64_t candidate,
+                                    uint64_t size) {

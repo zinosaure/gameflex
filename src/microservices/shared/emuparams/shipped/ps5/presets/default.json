@@ -1,0 +1,23 @@
+{
+  "name": "Default",
+  "description": "Kyty's occlusion queries and shader cache on, and Box64's own values — the translator on, its usual shortcuts, the session's sound — except two: the flags kept safest — with Box64's own value the game dies a few seconds after the start on the phone (bisected on the S25, 2026-10-14), and the safest flags cost nothing measurable — and the call/return shortcut off, which costs a third more processor for the same frame rate (2026-10-28).",
+  "override": false,
+  "system": "KytyPS5",
+  "values": {
+    "sound": "auto",
+    "occlusionQueries": true,
+    "shaderCache": true,
+    "dynarec": true,
+    "strongMemory": "0",
+    "safeFlags": "2",
+    "bigBlock": "2",
+    "callRet": "0",
+    "fastNaN": true,
+    "fastRound": "1",
+    "x87Double": "0",
+    "alignedAtomics": false,
+    "nativeFlags": true,
+    "selfTest": false,
+    "log": "1"
+  }
+}

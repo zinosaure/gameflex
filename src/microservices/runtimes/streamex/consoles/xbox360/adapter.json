@@ -1,0 +1,22 @@
+{
+  "window_name": "xenia",
+  "games": {
+    "dir": "/opt/game",
+    "rules": [
+      { "extension": ".iso" },
+      { "extension": ".xex" }
+    ],
+    "scan_dir_for": { "extension": ".iso" }
+  },
+  "launch": {
+    "bin": "/opt/xenia/run-xenia.sh",
+    "cwd": "/opt/xenia",
+    "base_args": ["--gpu=vulkan", "--fullscreen=true", "--apu=sdl", "--hid=sdl", "--discord=false"],
+    "process_group": true
+  },
+  "stop": { "mode": "pgroup" },
+  "gamepad": { "enabled": true, "swap_xy_from_slot": -1 },
+  "tools": [
+    { "name": "route_audio" }
+  ]
+}

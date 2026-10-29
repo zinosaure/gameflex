@@ -1,0 +1,30 @@
+{
+  "window_name": "shadPS4",
+  "games": {
+    "dir": "/opt/game",
+    "rules": [
+      {
+        "extension": ".pkg",
+        "unpack": {
+          "bin": "pkgextract",
+          "args": ["{game}", "-o", "{out}"],
+          "out_dir": "/opt/games",
+          "marker": "eboot.bin"
+        }
+      }
+    ],
+    "scan_dir_for": { "filename": "eboot.bin" }
+  },
+  "launch": {
+    "bin": "/opt/shadps4/squashfs-root/AppRun",
+    "cwd": "/opt/shadps4/squashfs-root",
+    "base_args": ["--fullscreen", "true", "-g"],
+    "process_group": true
+  },
+  "stop": { "mode": "pgroup" },
+  "gamepad": { "enabled": true, "swap_xy_from_slot": -1 },
+  "tools": [
+    { "name": "route_audio" },
+    { "name": "keys_on_window", "keys": ["Delete"] }
+  ]
+}

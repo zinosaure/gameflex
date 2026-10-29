@@ -1,0 +1,12 @@
+# Configuration PulseAudio minimale pour le conteneur (mode --system).
+# Chargée via PULSE_CONFIG_PATH par l'entrypoint.
+#
+# - auth-anonymous=1 : pas de cookie d'authentification (le cookie échoue
+#   quand HOME du daemon pointe vers un dossier non lisible par l'user pulse).
+# - sink null keytest_sink : la console keytest n'émet pas de son, mais
+#   streamex attend une source audio — on capture le monitor du sink null.
+
+load-module module-null-sink sink_name=keytest_sink sink_properties=device.description=KeyTest
+load-module module-native-protocol-unix auth-anonymous=1
+set-default-sink keytest_sink
+set-default-source keytest_sink.monitor

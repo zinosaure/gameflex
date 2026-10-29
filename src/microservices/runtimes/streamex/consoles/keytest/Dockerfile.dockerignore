@@ -1,0 +1,4 @@
+# Contexte : la racine du dépôt. Une console ne lit que son propre dossier —
+# le squelette vient de l'image streamex-bin.
+**
+!src/microservices/runtimes/streamex/consoles/keytest

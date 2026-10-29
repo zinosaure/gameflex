@@ -1,0 +1,160 @@
+{
+  "console": "ps5",
+  "name": "RPCS3 evdev (virtual gamepad)",
+  "buttons": [
+    {
+      "id": "cross",
+      "label": "CROSS",
+      "key": "gp:A"
+    },
+    {
+      "id": "circle",
+      "label": "CIRCLE",
+      "key": "gp:B"
+    },
+    {
+      "id": "square",
+      "label": "SQUARE",
+      "key": "gp:X"
+    },
+    {
+      "id": "triangle",
+      "label": "TRIANGLE",
+      "key": "gp:Y"
+    },
+    {
+      "id": "l1",
+      "label": "L1",
+      "key": "gp:L1"
+    },
+    {
+      "id": "l2",
+      "label": "L2",
+      "key": "gp:L2"
+    },
+    {
+      "id": "l3",
+      "label": "L3",
+      "key": "gp:L3"
+    },
+    {
+      "id": "r1",
+      "label": "R1",
+      "key": "gp:R1"
+    },
+    {
+      "id": "r2",
+      "label": "R2",
+      "key": "gp:R2"
+    },
+    {
+      "id": "r3",
+      "label": "R3",
+      "key": "gp:R3"
+    },
+    {
+      "id": "start",
+      "label": "START",
+      "key": "gp:Start"
+    },
+    {
+      "id": "select",
+      "label": "SELECT",
+      "key": "gp:Select"
+    },
+    {
+      "id": "ps",
+      "label": "PS",
+      "key": "gp:PS"
+    },
+    {
+      "id": "dup",
+      "label": "UP",
+      "key": "gp:Up"
+    },
+    {
+      "id": "ddown",
+      "label": "DOWN",
+      "key": "gp:Down"
+    },
+    {
+      "id": "dleft",
+      "label": "LEFT",
+      "key": "gp:Left"
+    },
+    {
+      "id": "dright",
+      "label": "RIGHT",
+      "key": "gp:Right"
+    },
+    {
+      "id": "upleft",
+      "label": "UP-LEFT",
+      "key": "gp:UpLeft"
+    },
+    {
+      "id": "upright",
+      "label": "UP-RIGHT",
+      "key": "gp:UpRight"
+    },
+    {
+      "id": "downleft",
+      "label": "DOWN-LEFT",
+      "key": "gp:DownLeft"
+    },
+    {
+      "id": "downright",
+      "label": "DOWN-RIGHT",
+      "key": "gp:DownRight"
+    }
+  ],
+  "layout": {
+    "left": [
+      [
+        "l1",
+        "l2",
+        "l3"
+      ],
+      {
+        "grid": "dpad",
+        "ids": [
+          "dup",
+          "dleft",
+          "dright",
+          "ddown",
+          "upleft",
+          "upright",
+          "downleft",
+          "downright"
+        ]
+      }
+    ],
+    "mid": [
+      [
+        "select"
+      ],
+      [
+        "ps"
+      ],
+      [
+        "start"
+      ]
+    ],
+    "right": [
+      [
+        "r1",
+        "r2",
+        "r3"
+      ],
+      {
+        "grid": "abxy",
+        "ids": [
+          "triangle",
+          "square",
+          "circle",
+          "cross"
+        ]
+      }
+    ]
+  }
+}

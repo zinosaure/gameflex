@@ -53,6 +53,7 @@ services:
             - GAMEFLEX_MAX_PLAYERS=${GAMEFLEX_MAX_PLAYERS:-4}
             - GAMEFLEX_CONSOLE_LIMITS=${GAMEFLEX_CONSOLE_LIMITS:-switch:1,ps3:1,xbox:1,ps4:1,ps5:1,wiiu:1,xbox360:1}
             - GAMEFLEX_MIRROR_URL=${GAMEFLEX_MIRROR_URL:-}
+            - GAMEFLEX_GPU=${GAMEFLEX_GPU:-}
             - GAMEFLEX_STAGING=${GAMEFLEX_STAGING:-}
             - GAMEFLEX_RETRO_IMAGE=zinosaure/gameflex-retrogaming:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_REMOTEPLAY_IMAGE=zinosaure/gameflex-remoteplay:${GAMEFLEX_VERSION:-latest}

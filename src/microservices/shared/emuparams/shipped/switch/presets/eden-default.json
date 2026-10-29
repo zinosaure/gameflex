@@ -1,0 +1,26 @@
+{
+  "name": "Default",
+  "description": "The values shipped with GameFlex: Eden's own, and the resolution of the stream.",
+  "override": false,
+  "system": "Eden",
+  "values": {
+    "resolution": "auto",
+    "consoleMode": "1",
+    "asyncShaders": false,
+    "gpuAccuracy": "1",
+    "cpuAccuracy": "0",
+    "vsync": "2",
+    "multiCore": true,
+    "antiAliasing": "0",
+    "scalingFilter": "1",
+    "videoDecoding": "1",
+    "reactiveFlushing": true,
+    "volume": "100",
+    "turnipDebug": "auto",
+    "ir3Debug": "auto",
+    "asyncPresentation": false,
+    "dynamicState": "2",
+    "vertexInputDynamicState": true,
+    "nativeExecution": "auto"
+  }
+}

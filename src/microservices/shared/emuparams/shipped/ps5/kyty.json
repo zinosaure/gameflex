@@ -1,0 +1,156 @@
+{
+  "enabled": true,
+  "name": "PlayStation 5",
+  "description": "Kyty's own options, then the settings given to Box64 before every PS5 game starts on the phone — KytyPS5 is x86-64 code that Box64 translates. The server runs it natively and ignores the Box64 ones.",
+  "system": "KytyPS5",
+  "requirements": [],
+  "params": {
+    "sound": {
+      "type": "select",
+      "label": "Sound",
+      "description": "The session's sound through the phone, or nothing: the emulator still decodes audio, but SDL plays none of it.",
+      "config": "Environment > SDL_AUDIO_DRIVER",
+      "value": "auto",
+      "options": {
+        "auto": "The session's sound",
+        "dummy": "Off — nothing is played"
+      }
+    },
+    "occlusionQueries": {
+      "type": "switch",
+      "label": "Occlusion queries",
+      "description": "Kyty counts on the GPU what the game asks about hidden objects, so the game skips drawing them. Off, everything counts as visible: more work for the GPU (FF7 Remake at the same spot: 10 frames/s instead of 13.5).",
+      "config": "Environment > KYTY_OCCLUSION_QUERIES",
+      "value": true
+    },
+    "shaderCache": {
+      "type": "switch",
+      "label": "Shader cache",
+      "description": "Kyty keeps the shaders and pipelines each game compiles, and compiles them again from that list when the game starts, before its first frame: a longer start, fewer stutters the first time a scene appears. Kyty's own launcher turns it on.",
+      "config": "Environment > KYTY_SHADER_CACHE",
+      "value": true
+    },
+    "dynarec": {
+      "type": "switch",
+      "label": "Translator (DynaRec)",
+      "description": "Box64 translates the game's x86-64 code into ARM code. Off, it interprets it instead: many times slower, but exact — the way to tell a translation fault from the game's own.",
+      "config": "Environment > BOX64_DYNAREC",
+      "value": true
+    },
+    "strongMemory": {
+      "type": "select",
+      "label": "Memory ordering",
+      "description": "How faithfully the translator keeps the x86 memory ordering, which ARM relaxes. Stricter is slower; “Strong” is the usual fix for a multithreaded program that misbehaves.",
+      "config": "Environment > BOX64_DYNAREC_STRONGMEM",
+      "value": "0",
+      "options": {
+        "0": "Native (fastest)",
+        "1": "Light",
+        "2": "Strong",
+        "3": "Strongest"
+      }
+    },
+    "safeFlags": {
+      "type": "select",
+      "label": "Flags safety",
+      "description": "How carefully the translator preserves the x86 flags across calls and returns. Box64 ships with 1; KytyPS5 needs 2 on the phone — with 1 the game dies a few seconds after the start (bisected on the S25, 2026-10-14), and 2 costs nothing measurable: every other shortcut can stay on.",
+      "config": "Environment > BOX64_DYNAREC_SAFEFLAGS",
+      "value": "2",
+      "options": {
+        "0": "Fastest",
+        "1": "Box64's own default",
+        "2": "Safest (what the PS5 needs)"
+      }
+    },
+    "bigBlock": {
+      "type": "select",
+      "label": "Block size",
+      "description": "How much code the translator handles in one block. Smaller blocks are slower but closer to the x86 instruction by instruction.",
+      "config": "Environment > BOX64_DYNAREC_BIGBLOCK",
+      "value": "2",
+      "options": {
+        "0": "Smallest",
+        "1": "Small",
+        "2": "Default",
+        "3": "Largest"
+      }
+    },
+    "callRet": {
+      "type": "select",
+      "label": "Call/return optimisation",
+      "description": "A shortcut for the x86 call and return instructions. Off is the safest, and on the phone the cheapest: Neptunia ReVerse plays its opening at the same frame rate with a third less processor (66-90 % against 120-145 % with Default, 2026-10-28).",
+      "config": "Environment > BOX64_DYNAREC_CALLRET",
+      "value": "0",
+      "options": {
+        "0": "Off",
+        "1": "Basic",
+        "2": "Default",
+        "3": "Full"
+      }
+    },
+    "fastNaN": {
+      "type": "switch",
+      "label": "Fast NaN",
+      "description": "Skips the exact propagation of NaN values in floating-point maths. Off is exact and slower.",
+      "config": "Environment > BOX64_DYNAREC_FASTNAN",
+      "value": true
+    },
+    "fastRound": {
+      "type": "select",
+      "label": "Fast rounding",
+      "description": "How the translator rounds floating-point results.",
+      "config": "Environment > BOX64_DYNAREC_FASTROUND",
+      "value": "1",
+      "options": {
+        "0": "Exact",
+        "1": "Default",
+        "2": "Fastest"
+      }
+    },
+    "x87Double": {
+      "type": "select",
+      "label": "x87 precision",
+      "description": "The precision of the legacy x87 floating-point unit.",
+      "config": "Environment > BOX64_DYNAREC_X87DOUBLE",
+      "value": "0",
+      "options": {
+        "0": "Native (fastest)",
+        "1": "Double",
+        "2": "Double, always"
+      }
+    },
+    "alignedAtomics": {
+      "type": "switch",
+      "label": "Aligned atomics",
+      "description": "Treats the x86 atomic operations as aligned. Off is the default.",
+      "config": "Environment > BOX64_DYNAREC_ALIGNED_ATOMICS",
+      "value": false
+    },
+    "nativeFlags": {
+      "type": "switch",
+      "label": "Native flags",
+      "description": "Uses the ARM flags to compute the x86 ones. Off is slower and exact.",
+      "config": "Environment > BOX64_DYNAREC_NATIVEFLAGS",
+      "value": true
+    },
+    "selfTest": {
+      "type": "switch",
+      "label": "Translator self-test",
+      "description": "Runs every instruction through the interpreter as well and reports the first difference. Extremely slow: diagnostics only.",
+      "config": "Environment > BOX64_DYNAREC_TEST",
+      "value": false
+    },
+    "log": {
+      "type": "select",
+      "label": "Box64 log",
+      "description": "How much Box64 writes to the game's log.",
+      "config": "Environment > BOX64_LOG",
+      "value": "1",
+      "options": {
+        "0": "Quiet",
+        "1": "Default",
+        "2": "Debug"
+      }
+    }
+  }
+}

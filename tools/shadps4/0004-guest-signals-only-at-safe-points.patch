@@ -1,0 +1,357 @@
+diff --git a/src/core/libraries/kernel/equeue.cpp b/src/core/libraries/kernel/equeue.cpp
+index 1fc7a54..2a9b9ed 100644
+--- a/src/core/libraries/kernel/equeue.cpp
++++ b/src/core/libraries/kernel/equeue.cpp
+@@ -206,6 +206,7 @@ int EqueueInternal::WaitForEvents(OrbisKernelEvent* ev, int num, const OrbisKern
+     int count = 0;
+ 
+     std::unique_lock lock{m_mutex};
++    ParkedWait parked{m_mutex.native_handle()};
+     if (micros == 0) {
+         // Wait indefinitely for events
+         if (HasPendingIoEvents()) {
+diff --git a/src/core/libraries/kernel/threads/event_flag.cpp b/src/core/libraries/kernel/threads/event_flag.cpp
+index 2ac4b20..672b538 100644
+--- a/src/core/libraries/kernel/threads/event_flag.cpp
++++ b/src/core/libraries/kernel/threads/event_flag.cpp
+@@ -143,8 +143,10 @@ public:
+         };
+ 
+         if (infinite) {
++            ParkedWait parked{m_mutex.native_handle()};
+             waiter.cv.wait(lock, wake);
+         } else {
++            ParkedWait parked{m_mutex.native_handle()};
+             if (!waiter.cv.wait_for(lock, std::chrono::microseconds(timeout), wake)) {
+ 
+                 RemoveWaiter(waiter);
+diff --git a/src/core/libraries/kernel/threads/exception.cpp b/src/core/libraries/kernel/threads/exception.cpp
+index 73d588f..0149e36 100644
+--- a/src/core/libraries/kernel/threads/exception.cpp
++++ b/src/core/libraries/kernel/threads/exception.cpp
+@@ -18,6 +18,18 @@
+ #include <sys/ucontext.h>
+ #endif
+ #include <unordered_set>
++#ifndef _WIN32
++#include <algorithm>
++#include <chrono>
++#include <mutex>
++#include <stop_token>
++#include <thread>
++#include <vector>
++#include <pthread.h>
++#include "common/thread.h"
++#include "core/libraries/kernel/threads/thread_state.h"
++#include "core/memory.h"
++#endif
+ #include "exception.h"
+ 
+ namespace Libraries::Kernel {
+@@ -545,15 +557,158 @@ SigHandler PS4_SYSV_ABI posix_signal(s32 sig, SigHandler func) {
+     return reinterpret_cast<SigHandler>(-1);
+ }
+ 
++#ifndef _WIN32
++// GameFlex: A GUEST SIGNAL RUNS ONLY AT A SAFE POINT.
++//
++// WakeForSignal sends SIGUSR1, and its host handler (signals.cpp) used to run the guest handler
++// on the spot, wherever the thread was — in host code too, holding a host lock. Unity's IL2CPP
++// collector stops the world that way (signal 30), and its handler then waits for the end of the
++// collection: Kingdom Hearts Melody of Memory hung for good with Game:Main suspended in the
++// middle of a log line (the spdlog mutex), then — logging off — in malloc, then holding the
++// mutex of an event flag, and the thread raising the next signal waiting on that lock.
++//
++// A guest signal now runs where a PS4 kernel would deliver it: in guest code, or in an emulated
++// wait that holds no host lock (ParkedWait — for a wait on a host mutex, only while that mutex
++// is free). Anywhere else it stays pending, and SignalKicker sends SIGUSR1 again until the
++// thread is at such a point. After MaxDeferredKicks refusals (~50 ms), it runs anyway: a thread
++// blocked in a wait nobody marked gets what it got before.
++namespace {
++
++constexpr u32 MaxDeferredKicks = 250;
++constexpr auto KickInterval = std::chrono::microseconds(200);
++
++std::atomic<VAddr> g_guest_lo{0};
++std::atomic<VAddr> g_guest_hi{0};
++
++// The guest's address range, read once outside any signal handler.
++void NoteGuestRange() {
++    if (g_guest_hi.load(std::memory_order_acquire) != 0) {
++        return;
++    }
++    auto& space = Core::Memory::Instance()->GetAddressSpace();
++    g_guest_lo.store(space.SystemManagedVirtualBase(), std::memory_order_release);
++    g_guest_hi.store(space.UserVirtualBase() + space.UserVirtualSize(), std::memory_order_release);
++}
++
++class SignalKicker {
++public:
++    static SignalKicker& Instance() {
++        static SignalKicker kicker;
++        return kicker;
++    }
++
++    void Add(Pthread* thread) {
++        auto* thread_state = ThrState::Instance();
++        if (thread_state->RefAdd(thread, /*include dead*/ false) != 0) {
++            return;
++        }
++        bool known = false;
++        {
++            std::scoped_lock lk{mutex};
++            known = std::ranges::find(threads, thread) != threads.end();
++            if (!known) {
++                threads.push_back(thread);
++            }
++            if (!worker.joinable()) {
++                worker = std::jthread([this](std::stop_token stop) { Run(stop); });
++            }
++        }
++        if (known) {
++            thread_state->RefDelete(thread);
++        }
++        cv.notify_one();
++    }
++
++private:
++    void Run(std::stop_token stop) {
++        Common::SetCurrentThreadName("shadPS4:SignalKick");
++        std::vector<Pthread*> delivered;
++        std::unique_lock lk{mutex};
++        while (cv.wait(lk, stop, [this] { return !threads.empty(); })) {
++            lk.unlock();
++            std::this_thread::sleep_for(KickInterval);
++            lk.lock();
++            for (auto it = threads.begin(); it != threads.end();) {
++                Pthread* thread = *it;
++                if (thread->state != PthreadState::Dead && thread->HasDeliverableSignal()) {
++                    pthread_kill(reinterpret_cast<pthread_t>(thread->native_thr->GetHandle()),
++                                 SIGUSR1);
++                    ++it;
++                } else {
++                    delivered.push_back(thread);
++                    it = threads.erase(it);
++                }
++            }
++            lk.unlock();
++            for (Pthread* thread : delivered) {
++                ThrState::Instance()->RefDelete(thread);
++            }
++            delivered.clear();
++            lk.lock();
++        }
++    }
++
++    std::mutex mutex;
++    std::condition_variable_any cv;
++    std::vector<Pthread*> threads;
++    std::jthread worker;
++};
++
++} // namespace
++
++bool GuestSignalSafePoint(Pthread* thread, const void* code_address) {
++    const VAddr hi = g_guest_hi.load(std::memory_order_acquire);
++    if (hi == 0) {
++        return true; // the guest range is not known yet: the previous behaviour
++    }
++    const auto pc = reinterpret_cast<VAddr>(code_address);
++    bool safe = (pc >= g_guest_lo.load(std::memory_order_acquire) && pc < hi) ||
++                thread->self_raise.exchange(false, std::memory_order_acq_rel);
++    if (!safe) {
++        void* lock = thread->parked_lock.load(std::memory_order_acquire);
++        if (lock == ParkedNoLock()) {
++            safe = true;
++        } else if (lock != nullptr) {
++            // Parked in a wait on a host mutex: safe only while nobody holds it — the wait
++            // releases it while it sleeps, and this thread may be taking it back.
++            auto* mutex = static_cast<pthread_mutex_t*>(lock);
++            if (pthread_mutex_trylock(mutex) == 0) {
++                pthread_mutex_unlock(mutex);
++                safe = true;
++            }
++        }
++    }
++    if (!safe &&
++        thread->deferred_kicks.fetch_add(1, std::memory_order_acq_rel) + 1 < MaxDeferredKicks) {
++        return false;
++    }
++    thread->deferred_kicks.store(0, std::memory_order_release);
++    return true;
++}
++#else
++bool GuestSignalSafePoint(Pthread*, const void*) {
++    return true;
++}
++#endif
++
+ s32 PS4_SYSV_ABI posix_pthread_kill(PthreadT thread, s32 sig) {
+     if (sig < 1 || sig > 128) {
+         return POSIX_EINVAL;
+     }
+     LOG_INFO(Lib_Kernel, "Raising signal {} on thread '{}'", sig, thread->name);
++#ifndef _WIN32
++    NoteGuestRange();
++#endif
+     thread->QueueSignal(sig);
+ 
+     if (!thread->IsSignalBlocked(sig)) {
+         thread->WakeForSignal();
++#ifndef _WIN32
++        // GameFlex: until it reaches a safe point (GuestSignalSafePoint).
++        if (thread != g_curthread) {
++            SignalKicker::Instance().Add(thread);
++        }
++#endif
+     }
+     return ORBIS_OK;
+ }
+diff --git a/src/core/libraries/kernel/threads/exception.h b/src/core/libraries/kernel/threads/exception.h
+index b7e9bef..e1fcf36 100644
+--- a/src/core/libraries/kernel/threads/exception.h
++++ b/src/core/libraries/kernel/threads/exception.h
+@@ -164,4 +164,10 @@ bool PS4_SYSV_ABI posix_sigisemptyset(Sigset* s);
+ 
+ void RegisterException(Core::Loader::SymbolsResolver* sym);
+ 
++struct Pthread;
++
++/// GameFlex: may a guest signal run on `thread`, interrupted at `code_address`? See
++/// exception.cpp. False leaves it pending, and the kicker sends SIGUSR1 again.
++bool GuestSignalSafePoint(Pthread* thread, const void* code_address);
++
+ } // namespace Libraries::Kernel
+diff --git a/src/core/libraries/kernel/threads/pthread.cpp b/src/core/libraries/kernel/threads/pthread.cpp
+index 8ed90d2..c9f504f 100644
+--- a/src/core/libraries/kernel/threads/pthread.cpp
++++ b/src/core/libraries/kernel/threads/pthread.cpp
+@@ -965,7 +965,16 @@ void Pthread::WakeForSignal() {
+                                  ExceptionHandler, nullptr, nullptr, nullptr);
+     ASSERT(res == 0);
+ #else
++    // GameFlex: a thread that signals itself (raise, unblocking its mask) gets the handler
++    // before returning, as before: the call is in host code, but holds no lock.
++    const bool self = this == g_curthread;
++    if (self) {
++        self_raise.store(true, std::memory_order_release);
++    }
+     pthread_kill(reinterpret_cast<pthread_t>(native_thr->GetHandle()), SIGUSR1);
++    if (self) {
++        self_raise.store(false, std::memory_order_release);
++    }
+ #endif
+ }
+ 
+diff --git a/src/core/libraries/kernel/threads/pthread.h b/src/core/libraries/kernel/threads/pthread.h
+index 6f400c3..3100fa7 100644
+--- a/src/core/libraries/kernel/threads/pthread.h
++++ b/src/core/libraries/kernel/threads/pthread.h
+@@ -28,6 +28,11 @@ class SymbolsResolver;
+ 
+ namespace Libraries::Kernel {
+ 
++// GameFlex: the parked_lock of a wait that holds no host lock.
++inline void* ParkedNoLock() {
++    return reinterpret_cast<void*>(uintptr_t{1});
++}
++
+ constexpr int PthreadInheritSched = 4;
+ constexpr s32 PthreadBarrierSerialThread = -1;
+ 
+@@ -358,6 +363,13 @@ struct Pthread {
+     OrbisKernelExceptionHandlerStack sigaltstack{};
+     Mcontext suspended_context{};
+     std::atomic_bool is_suspended_in_signal{false};
++    // GameFlex: where a guest signal may run (GuestSignalSafePoint). parked_lock is the
++    // host mutex of the emulated wait this thread sleeps in, ParkedNoLock() when that wait
++    // holds none, nullptr outside one. self_raise: the thread signals itself.
++    // deferred_kicks: deliveries refused since the last one ran.
++    std::atomic<void*> parked_lock{};
++    std::atomic_bool self_raise{};
++    std::atomic<u32> deferred_kicks{};
+ 
+     bool IsSignalBlocked(s32 sig) const;
+     void QueueSignal(s32 sig);
+@@ -403,6 +415,14 @@ struct Pthread {
+ 
+     bool Sleep(const OrbisKernelTimespec* abstime, u64 usec, ClockId clock_id = ClockId::Realtime) {
+         will_sleep = false;
++        // GameFlex: parked without a host lock, a guest signal may run here.
++        parked_lock.store(ParkedNoLock(), std::memory_order_release);
++        struct Unpark {
++            std::atomic<void*>& lock;
++            ~Unpark() {
++                lock.store(nullptr, std::memory_order_release);
++            }
++        } unpark{parked_lock};
+         if (nwaiter_defer > 0) {
+             WakeAll();
+         }
+@@ -456,6 +476,24 @@ using PthreadT = Pthread*;
+ 
+ extern thread_local Pthread* g_curthread;
+ 
++// GameFlex: marks the calling thread as parked in an emulated wait for its lifetime — `lock`
++// the host mutex the wait releases while it sleeps, or ParkedNoLock().
++struct ParkedWait {
++    Pthread* thread;
++    explicit ParkedWait(void* lock) : thread{g_curthread} {
++        if (thread) {
++            thread->parked_lock.store(lock, std::memory_order_release);
++        }
++    }
++    ~ParkedWait() {
++        if (thread) {
++            thread->parked_lock.store(nullptr, std::memory_order_release);
++        }
++    }
++    ParkedWait(const ParkedWait&) = delete;
++    ParkedWait& operator=(const ParkedWait&) = delete;
++};
++
+ void PthreadTestCancel();
+ void PthreadCancelInterrupt() noexcept;
+ #ifndef _WIN32
+diff --git a/src/core/libraries/kernel/threads/semaphore.cpp b/src/core/libraries/kernel/threads/semaphore.cpp
+index d5d18b8..aa21ef4 100644
+--- a/src/core/libraries/kernel/threads/semaphore.cpp
++++ b/src/core/libraries/kernel/threads/semaphore.cpp
+@@ -265,12 +265,19 @@ public:
+             lk.unlock();
+             if (!timeout) {
+                 // Wait indefinitely until we are woken up.
+-                sem.acquire();
++                {
++                    // GameFlex: parked without a host lock until it takes `lk` back.
++                    ParkedWait parked{ParkedNoLock()};
++                    sem.acquire();
++                }
+                 lk.lock();
+             } else {
+                 // Wait until timeout runs out, recording how much remaining time there was.
+                 const auto start = std::chrono::high_resolution_clock::now();
+-                sem.try_acquire_for(std::chrono::microseconds(*timeout));
++                {
++                    ParkedWait parked{ParkedNoLock()};
++                    sem.try_acquire_for(std::chrono::microseconds(*timeout));
++                }
+                 const auto end = std::chrono::high_resolution_clock::now();
+                 const auto time =
+                     std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+diff --git a/src/core/signals.cpp b/src/core/signals.cpp
+index d79829e..b265d8f 100644
+--- a/src/core/signals.cpp
++++ b/src/core/signals.cpp
+@@ -314,7 +314,10 @@ void SignalHandler(int sig, siginfo_t* info, void* raw_context) {
+         break;
+     }
+     case SIGUSR1:
+-        if (thread) {
++        // GameFlex: the guest handler runs on this thread, right here — so only at a safe
++        // point (GuestSignalSafePoint). Anywhere else in host code it could suspend the
++        // thread holding a host lock, and every thread needing that lock would wait forever.
++        if (thread && GuestSignalSafePoint(thread, code_address)) {
+             thread->DispatchPendingSignals(info_p, context_p);
+         }
+         break;

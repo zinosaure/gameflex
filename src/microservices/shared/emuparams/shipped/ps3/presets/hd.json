@@ -1,0 +1,26 @@
+{
+  "name": "HD",
+  "description": "The game's resolution (100 %), whatever the stream's. Sharper, slower.",
+  "override": false,
+  "system": "RPCS3",
+  "values": {
+    "resolutionScale": "100",
+    "frameLimit": "Auto",
+    "msaa": "Auto",
+    "shaderMode": "Async Recompiler with Shader Interpreter",
+    "multithreadedRsx": true,
+    "writeColorBuffers": false,
+    "relaxedZcull": false,
+    "accurateZcull": true,
+    "asyncTextureStreaming": false,
+    "performanceOverlay": false,
+    "spuBlockSize": "Mega",
+    "maxSpursThreads": "6",
+    "preferredSpuThreads": "0",
+    "spuLoopDetection": false,
+    "threadScheduler": "Operating System",
+    "llvmThreads": "8",
+    "timeStretching": true,
+    "audioBuffer": "34"
+  }
+}

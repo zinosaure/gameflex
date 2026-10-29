@@ -1,0 +1,75 @@
+diff --git a/src/graphics/host_gpu/pageManager.cpp b/src/graphics/host_gpu/pageManager.cpp
+index 7582973..6df3941 100644
+--- a/src/graphics/host_gpu/pageManager.cpp
++++ b/src/graphics/host_gpu/pageManager.cpp
+@@ -294,6 +294,16 @@ uint64_t PageManager::GetPageSize() const {
+ 	return PAGE_SIZE;
+ }
+ 
++bool PageManager::IsReadWatched(uint64_t vaddr) const {
++	auto* region = m_impl->FindRegion(vaddr);
++	if (region == nullptr) {
++		return false;
++	}
++	const auto page = static_cast<size_t>((vaddr - Common::AlignDown(vaddr, REGION_SIZE)) / PAGE_SIZE);
++	SpinGuard  lock(region->lock);
++	return region->pages[page].access_watchers != 0;
++}
++
+ template <bool track>
+ void PageManager::UpdatePageWatchers(uint64_t vaddr, uint64_t size) {
+ 	m_impl->UpdatePageWatchers<track, false>(vaddr, size);
+diff --git a/src/graphics/host_gpu/pageManager.h b/src/graphics/host_gpu/pageManager.h
+index a56795e..581b9a7 100644
+--- a/src/graphics/host_gpu/pageManager.h
++++ b/src/graphics/host_gpu/pageManager.h
+@@ -19,6 +19,9 @@ public:
+ 	KYTY_CLASS_NO_COPY(PageManager);
+ 
+ 	[[nodiscard]] uint64_t GetPageSize() const;
++	// Whether reads of this page fault (a read watcher made it inaccessible). Elsewhere a
++	// watched page stays readable: only a write can fault on it.
++	[[nodiscard]] bool IsReadWatched(uint64_t vaddr) const;
+ 
+ 	template <bool track>
+ 	void UpdatePageWatchers(uint64_t vaddr, uint64_t size);
+diff --git a/src/graphics/host_gpu/renderer/renderContext.cpp b/src/graphics/host_gpu/renderer/renderContext.cpp
+index 431a56f..bea9014 100644
+--- a/src/graphics/host_gpu/renderer/renderContext.cpp
++++ b/src/graphics/host_gpu/renderer/renderContext.cpp
+@@ -7,6 +7,8 @@
+ #include "libs/errno.h"
+ 
+ #include <algorithm>
++#include <atomic>
++#include <fmt/format.h>
+ 
+ namespace Libs::Graphics {
+ 
+@@ -61,6 +63,26 @@ bool RenderContext::HandleFault(PageFaultAccess access, uint64_t fault_vaddr) no
+ 	if (!IsMapped(fault_vaddr, fault_size)) {
+ 		return false;
+ 	}
++	const auto reported = access;
++	if (access == PageFaultAccess::Read && !m_page_manager.IsReadWatched(fault_vaddr)) {
++		// A read cannot fault on a page that only watches writes: it is readable. The host
++		// reported a write as a read — Box64 on a phone guesses it from the x86 instruction.
++		// As a read it went to the buffer cache, which created a buffer before any GPU command.
++		access = PageFaultAccess::Write;
++	}
++	static std::atomic_int logged_faults {0};
++	if (logged_faults.fetch_add(1, std::memory_order_relaxed) < 8) {
++		const auto name = [](PageFaultAccess kind) {
++			switch (kind) {
++				case PageFaultAccess::Read: return "read";
++				case PageFaultAccess::Write: return "write";
++				case PageFaultAccess::Execute: return "execute";
++				default: return "unknown";
++			}
++		};
++		Log::WriteToConsoleAndLog(fmt::format("GPU page fault at {:#x}: reported {}, handled as {}\n",
++		                                      fault_vaddr, name(reported), name(access)));
++	}
+ 	if (access == PageFaultAccess::Write) {
+ 		m_buffer_cache.InvalidateMemory(fault_vaddr, fault_size);
+ 		m_texture_cache.InvalidateMemory(fault_vaddr, fault_size);

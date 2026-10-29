@@ -1,0 +1,9 @@
+# Configuration PulseAudio minimale pour le conteneur PS4 (mode --system).
+#
+# - auth-anonymous=1 : pas de cookie d'authentification.
+# - sink null wiiu_sink : Cemu y envoie son audio, streamex capture son monitor.
+
+load-module module-null-sink sink_name=wiiu_sink sink_properties=device.description=WiiU
+load-module module-native-protocol-unix auth-anonymous=1
+set-default-sink wiiu_sink
+set-default-source wiiu_sink.monitor

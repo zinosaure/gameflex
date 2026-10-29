@@ -1,0 +1,85 @@
+{
+  "enabled": true,
+  "name": "Xbox",
+  "description": "The settings given to xemu before every Xbox game starts.",
+  "system": "xemu",
+  "requirements": [
+    "mcpx_1.0.bin",
+    "Complex_4627.bin",
+    "xbox_hdd.qcow2"
+  ],
+  "params": {
+    "surfaceScale": {
+      "type": "select",
+      "label": "Render resolution",
+      "description": "The size xemu draws at, as a multiple of the console's 640×480. “Follow the stream” draws at the resolution chosen for the game: ×1 up to 720p, ×2 for 1080p.",
+      "config": "display.quality > surface_scale",
+      "value": "auto",
+      "options": {
+        "auto": "Follow the stream",
+        "1": "×1 — 640×480",
+        "2": "×2 — 1280×960",
+        "3": "×3 — 1920×1440"
+      }
+    },
+    "filtering": {
+      "type": "select",
+      "label": "Picture filtering",
+      "description": "How the picture is resized to the screen: smooth, or sharp pixels.",
+      "config": "display > filtering",
+      "value": "linear",
+      "options": {
+        "linear": "Smooth",
+        "nearest": "Sharp pixels"
+      }
+    },
+    "aspectRatio": {
+      "type": "select",
+      "label": "Aspect ratio",
+      "description": "Auto follows what the game asks for; 16:9 fills a wide screen.",
+      "config": "display.ui > aspect_ratio",
+      "value": "auto",
+      "options": {
+        "auto": "As the game asks",
+        "native": "Native",
+        "4x3": "4:3",
+        "16x9": "16:9"
+      }
+    },
+    "vsync": {
+      "type": "switch",
+      "label": "Vertical sync",
+      "description": "Off shows each frame as soon as it is ready: less latency, possible tearing.",
+      "config": "display.window > vsync",
+      "value": true
+    },
+    "cacheShaders": {
+      "type": "switch",
+      "label": "Keep compiled shaders",
+      "description": "Shaders compiled once are kept for the next game, which then stutters less.",
+      "config": "perf > cache_shaders",
+      "value": true
+    },
+    "hardFpu": {
+      "type": "switch",
+      "label": "Fast floating point",
+      "description": "Floating-point maths runs on the processor directly. Off is slower and more exact, for the rare game that needs it.",
+      "config": "perf > hard_fpu",
+      "value": true
+    },
+    "dsp": {
+      "type": "switch",
+      "label": "Audio DSP",
+      "description": "Emulates the Xbox's audio processor, which a few games use for effects. Costs processor time.",
+      "config": "audio > use_dsp",
+      "value": false
+    },
+    "hrtf": {
+      "type": "switch",
+      "label": "3D audio (HRTF)",
+      "description": "Positions sounds in space for headphones. Off saves processor time.",
+      "config": "audio > hrtf",
+      "value": true
+    }
+  }
+}

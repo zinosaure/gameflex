@@ -1,0 +1,15 @@
+{
+  "name": "Default",
+  "description": "The values shipped with GameFlex: Xenia's own.",
+  "override": false,
+  "system": "Xenia",
+  "values": {
+    "vsync": true,
+    "readbackResolve": "none",
+    "occlusionQuery": "fast",
+    "renderTargetPath": "any",
+    "decalDepthFix": false,
+    "antialiasing": "none",
+    "vibration": true
+  }
+}

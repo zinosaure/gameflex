@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Profil du GamePad Wii U pour Cemu, recopié par streamex avant chaque
+  lancement (outil template_file de adapter.json).
+
+  Cemu lit la manette par DSU (cemuhook), sur le serveur de streamex : le même
+  chemin que Citron pour la Switch. Ce serveur écoute sur un port propre à la
+  session, écrit dans <port> au moment du lancement.
+
+  mapping : bouton du GamePad (VPADController::ButtonId de Cemu).
+  button  : entrée DSU (Buttons2 de Cemu), dans l'ordre où streamex remplit le
+            paquet (internal/cemuhook) : 0 Share, 1 L3, 2 R3, 3 Options,
+            4 haut, 5 droite, 6 bas, 7 gauche, 8 L2, 9 R2, 10 L1, 11 R1,
+            12 Triangle, 13 Circle, 14 Cross, 15 Square. Sticks : 38 X+,
+            44 X-, 39 Y+, 45 Y- (gauche) ; 40 X+, 46 X-, 41 Y+, 47 Y- (droit).
+            streamex envoie le haut à 255, que Cemu lit comme Y positif.
+
+  Home n'est pas câblé : Cemu ignore l'octet « home » du paquet DSU.
+-->
+<emulated_controller>
+	<type>Wii U GamePad</type>
+	<controller>
+		<api>DSUController</api>
+		<uuid>0</uuid>
+		<display_name>Controller 1</display_name>
+		<ip>127.0.0.1</ip>
+		<port>{cemuhook_port}</port>
+		<mappings>
+			<entry><mapping>1</mapping><button>13</button></entry><!-- A : Circle -->
+			<entry><mapping>2</mapping><button>14</button></entry><!-- B : Cross -->
+			<entry><mapping>3</mapping><button>12</button></entry><!-- X : Triangle -->
+			<entry><mapping>4</mapping><button>15</button></entry><!-- Y : Square -->
+			<entry><mapping>5</mapping><button>10</button></entry><!-- L : L1 -->
+			<entry><mapping>6</mapping><button>11</button></entry><!-- R : R1 -->
+			<entry><mapping>7</mapping><button>8</button></entry><!-- ZL : L2 -->
+			<entry><mapping>8</mapping><button>9</button></entry><!-- ZR : R2 -->
+			<entry><mapping>9</mapping><button>3</button></entry><!-- Plus : Options -->
+			<entry><mapping>10</mapping><button>0</button></entry><!-- Minus : Share -->
+			<entry><mapping>11</mapping><button>4</button></entry><!-- croix haut -->
+			<entry><mapping>12</mapping><button>6</button></entry><!-- croix bas -->
+			<entry><mapping>13</mapping><button>7</button></entry><!-- croix gauche -->
+			<entry><mapping>14</mapping><button>5</button></entry><!-- croix droite -->
+			<entry><mapping>15</mapping><button>1</button></entry><!-- clic stick gauche : L3 -->
+			<entry><mapping>16</mapping><button>2</button></entry><!-- clic stick droit : R3 -->
+			<entry><mapping>17</mapping><button>39</button></entry><!-- stick gauche haut -->
+			<entry><mapping>18</mapping><button>45</button></entry><!-- stick gauche bas -->
+			<entry><mapping>19</mapping><button>44</button></entry><!-- stick gauche gauche -->
+			<entry><mapping>20</mapping><button>38</button></entry><!-- stick gauche droite -->
+			<entry><mapping>21</mapping><button>41</button></entry><!-- stick droit haut -->
+			<entry><mapping>22</mapping><button>47</button></entry><!-- stick droit bas -->
+			<entry><mapping>23</mapping><button>46</button></entry><!-- stick droit gauche -->
+			<entry><mapping>24</mapping><button>40</button></entry><!-- stick droit droite -->
+		</mappings>
+	</controller>
+</emulated_controller>

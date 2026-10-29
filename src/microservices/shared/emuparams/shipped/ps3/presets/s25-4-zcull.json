@@ -1,0 +1,26 @@
+{
+  "name": "S25, trial 4: relaxed ZCULL",
+  "description": "Relaxed ZCULL sync and approximate statistics: less waiting on the graphics processor. A single difference from “Default”: compare Tekken 6's frames per second in a fight with those of “Default”.",
+  "override": false,
+  "system": "RPCS3",
+  "values": {
+    "resolutionScale": "auto",
+    "frameLimit": "Auto",
+    "msaa": "Auto",
+    "shaderMode": "Async Recompiler with Shader Interpreter",
+    "multithreadedRsx": true,
+    "writeColorBuffers": false,
+    "relaxedZcull": true,
+    "accurateZcull": false,
+    "asyncTextureStreaming": false,
+    "performanceOverlay": false,
+    "spuBlockSize": "Mega",
+    "maxSpursThreads": "6",
+    "preferredSpuThreads": "0",
+    "spuLoopDetection": false,
+    "threadScheduler": "Operating System",
+    "llvmThreads": "8",
+    "timeStretching": true,
+    "audioBuffer": "34"
+  }
+}

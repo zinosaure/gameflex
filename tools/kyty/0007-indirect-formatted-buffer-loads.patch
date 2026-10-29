@@ -1,0 +1,191 @@
+--- a/src/graphics/shader/recompiler/ir/ShaderIR.h
++++ b/src/graphics/shader/recompiler/ir/ShaderIR.h
+@@ -89,15 +89,15 @@
+ 
+ 	[[nodiscard]] bool SupportsIndirectBufferLoad(ValueOpcode opcode) const {
+ 		if (typed) return false;
+-		if (data_bits == 8u) return !formatted && opcode == ValueOpcode::LoadBufferU8;
+-		if (data_bits == 16u) return !formatted && opcode == ValueOpcode::LoadBufferU16;
+-		return data_bits == 32u &&
+-		       (formatted ? opcode == ValueOpcode::LoadBufferU32
+-		                  : opcode == ValueOpcode::ReadConstBuffer ||
+-		                        opcode == ValueOpcode::LoadBufferU32 ||
+-		                        opcode == ValueOpcode::LoadBufferU32x2 ||
+-		                        opcode == ValueOpcode::LoadBufferU32x3 ||
+-		                        opcode == ValueOpcode::LoadBufferU32x4);
++		const bool dwords = opcode == ValueOpcode::LoadBufferU32 ||
++		                    opcode == ValueOpcode::LoadBufferU32x2 ||
++		                    opcode == ValueOpcode::LoadBufferU32x3 ||
++		                    opcode == ValueOpcode::LoadBufferU32x4;
++		// Formatted loads of any width, D16 included, convert each selected component.
++		if (formatted) return (data_bits == 32u || data_bits == 16u) && dwords;
++		if (data_bits == 8u) return opcode == ValueOpcode::LoadBufferU8;
++		if (data_bits == 16u) return opcode == ValueOpcode::LoadBufferU16;
++		return data_bits == 32u && (opcode == ValueOpcode::ReadConstBuffer || dwords);
+ 	}
+ 
+ 	bool operator==(const MemoryInfo& other) const = default;
+--- a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterInternal.h
++++ b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterInternal.h
+@@ -117,6 +117,7 @@
+ 	uint32_t                                         bda_pointer_function    = 0;
+ 	uint32_t                                         indirect_format_function = 0;
+ 	uint32_t                                         indirect_format_geometry_function = 0;
++	uint32_t                                         indirect_format_integer_function = 0;
+ 	std::map<std::array<uint32_t, 3>, uint32_t>        indirect_buffer_load_functions;
+ 	uint32_t                                         bvh_intersect_function  = 0;
+ 	uint32_t                                         gds_variable            = 0;
+--- a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterMemory.cpp
++++ b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterMemory.cpp
+@@ -1026,10 +1026,19 @@
+ 	return ConstructU32Composite(state, components, values);
+ }
+ 
+-uint32_t LoadIndirectFormattedX(ValueEmitContext& ctx, const IR::Inst& inst) {
++// A formatted load through a GPU-selected descriptor: each component its DST_SEL picks
++// (word 3, three bits per component) is converted at run time, as the format is only known
++// then. D16 loads pack two converted components per DWORD, like LoadFormattedPrepared does
++// for a bound descriptor; whether the format is an integer one is also asked at run time.
++uint32_t LoadIndirectFormatted(ValueEmitContext& ctx, const IR::Inst& inst, uint32_t components) {
+ 	auto& state = ctx.state;
+-	return EmitValueOrZeroIfCondition(state, ctx.Arg(inst, inst.NumArgs() - 1), [&]() {
+-		const auto buffer = PrepareIndirectBuffer(state, IndirectBufferArgs(ctx, inst), true);
++	const auto& mem = ctx.Memory(inst);
++	const auto count = mem.data_bits == 16u ? std::max(1u, mem.component_count) : components;
++	return EmitValueOrDefaultIfCondition(
++	    state, ctx.Arg(inst, inst.NumArgs() - 1), TypeU32Composite(state, components),
++	    ConstantU32CompositeZero(state, components), [&]() {
++		const auto args = IndirectBufferArgs(ctx, inst);
++		const auto buffer = PrepareIndirectBuffer(state, args, true);
+ 		const auto geometry = state.builder.AllocateId();
+ 		state.builder.AddFunction(spv::OpFunctionCall, TypeU32Composite(state, 4), geometry,
+ 		                          state.indirect_format_geometry_function, buffer.format);
+@@ -1039,19 +1048,20 @@
+ 			return value;
+ 		};
+ 		const auto bytes = field(0);
+-		const auto component = Binary(
+-		    state, spv::OpUMod, TypeU32(state),
+-		    Binary(state, spv::OpISub, TypeU32(state), buffer.selector, ConstantU32(state, 4)), field(1));
+ 		const auto alignment = Unary(state, spv::OpUConvert, TypeU64(state), field(3));
+ 		const auto base = Binary(state, spv::OpBitwiseAnd, TypeU64(state), buffer.address,
+ 		                         Unary(state, spv::OpNot, TypeU64(state), alignment));
++		const auto convert = [&](uint32_t selector) {
++		const auto component = Binary(
++		    state, spv::OpUMod, TypeU32(state),
++		    Binary(state, spv::OpISub, TypeU32(state), selector, ConstantU32(state, 4)), field(1));
+ 		const auto address = Binary(
+ 		    state, spv::OpIAdd, TypeU64(state), base,
+ 		    Unary(state, spv::OpUConvert, TypeU64(state),
+ 		          Binary(state, spv::OpIMul, TypeU32(state), component, field(2))));
+ 		const auto memory = AndCondition(
+ 		    state, Binary(state, spv::OpINotEqual, TypeBool(state), bytes, ConstantU32(state, 0)),
+-		    Binary(state, spv::OpUGreaterThanEqual, TypeBool(state), buffer.selector,
++		    Binary(state, spv::OpUGreaterThanEqual, TypeBool(state), selector,
+ 		           ConstantU32(state, 4)));
+ 		const auto raw = EmitValueOrZeroIfCondition(
+ 		    state, AndCondition(state, memory, IndirectBufferInBounds(state, buffer, 0u, bytes, true)),
+@@ -1069,9 +1079,54 @@
+ 		    });
+ 		const auto result = state.builder.AllocateId();
+ 		state.builder.AddFunction(spv::OpFunctionCall, TypeU32(state), result,
+-		                          state.indirect_format_function, buffer.format, buffer.selector,
++		                          state.indirect_format_function, buffer.format, selector,
+ 		                          component, raw);
+ 		return result;
++		};
++		std::array<uint32_t, 4> values {};
++		for (uint32_t index = 0; index < count; index++) {
++			values[index] = convert(index == 0u ? buffer.selector
++			                                    : EmitBitFieldUExtract(state, args[3],
++			                                                           ConstantU32(state, index * 3u),
++			                                                           ConstantU32(state, 3u)));
++		}
++		if (mem.data_bits != 16u) return ConstructU32Composite(state, components, values);
++
++		const auto kind = state.builder.AllocateId();
++		state.builder.AddFunction(spv::OpFunctionCall, TypeU32(state), kind,
++		                          state.indirect_format_integer_function, buffer.format);
++		const auto is_kind = [&](uint32_t value) {
++			return Binary(state, spv::OpIEqual, TypeBool(state), kind, ConstantU32(state, value));
++		};
++		const auto scalar = [&](uint32_t index) {
++			return index < count ? values[index] : ConstantU32(state, 0u);
++		};
++		std::array<uint32_t, 4> packed {};
++		for (uint32_t word = 0; word < components; word++) {
++			const auto low = scalar(word * 2u), high = scalar(word * 2u + 1u);
++			const auto pair = state.builder.AllocateId();
++			state.builder.AddFunction(spv::OpCompositeConstruct, TypeF32Vector(state, 2), pair,
++			                          EmitBitCastF32U32(state, low), EmitBitCastF32U32(state, high));
++			const auto halves = EmitPackHalf2x16(state, pair);
++			const auto pack = [&](uint32_t first, uint32_t second) {
++				return Binary(
++				    state, spv::OpBitwiseOr, TypeU32(state),
++				    Binary(state, spv::OpBitwiseAnd, TypeU32(state), first, ConstantU32(state, 0xffffu)),
++				    Binary(state, spv::OpShiftLeftLogical, TypeU32(state), second, ConstantU32(state, 16u)));
++			};
++			const auto unsigned_clamp = [&](uint32_t value) {
++				return EmitUMin32(state, value, ConstantU32(state, 0xffffu));
++			};
++			const auto signed_clamp = [&](uint32_t value) {
++				return EmitSMin32(state, EmitSMax32(state, value, ConstantU32(state, 0xffff8000u)),
++				                  ConstantU32(state, 0x7fffu));
++			};
++			packed[word] = Select(
++			    state, TypeU32(state), is_kind(1u), pack(unsigned_clamp(low), unsigned_clamp(high)),
++			    Select(state, TypeU32(state), is_kind(2u), pack(signed_clamp(low), signed_clamp(high)),
++			           halves));
++		}
++		return ConstructU32Composite(state, components, packed);
+ 	});
+ }
+ 
+@@ -1136,7 +1191,7 @@
+ 	auto& state = ctx.state;
+ 	const auto mem = ctx.Memory(inst);
+ 	if (mem.kind == IR::ResourceKind::IndirectBuffer && mem.formatted) {
+-		return LoadIndirectFormattedX(ctx, inst);
++		return LoadIndirectFormatted(ctx, inst, components);
+ 	}
+ 	return EmitValueOrDefaultIfCondition(
+ 	    state, ctx.Arg(inst, inst.NumArgs() - 1), TypeU32Composite(state, components),
+@@ -1280,7 +1335,10 @@
+ 	auto& state = ctx.state;
+ 	const auto needed = std::ranges::any_of(state.program.blocks, [&](const IR::Block* block) {
+ 		return std::ranges::any_of(*block, [&](const IR::Inst& inst) {
+-			if (inst.GetOpcode() != IR::ValueOpcode::LoadBufferU32) return false;
++			const auto op = inst.GetOpcode();
++			if (op != IR::ValueOpcode::LoadBufferU32 && op != IR::ValueOpcode::LoadBufferU32x2 &&
++			    op != IR::ValueOpcode::LoadBufferU32x3 && op != IR::ValueOpcode::LoadBufferU32x4)
++				return false;
+ 			const auto& memory = ctx.Memory(inst);
+ 			return memory.kind == IR::ResourceKind::IndirectBuffer && memory.formatted;
+ 		});
+@@ -1314,6 +1372,26 @@
+ 		state.builder.AddFunction(spv::OpReturnValue, result);
+ 		state.builder.AddFunction(spv::OpFunctionEnd);
+ 	}
++	{
++		// 0: a float or normalized format, 1: unsigned integer, 2: signed integer — what a D16
++		// load needs to pack its components.
++		const auto function_type = state.builder.Type(spv::OpTypeFunction, type, type);
++		state.indirect_format_integer_function = state.builder.AllocateId();
++		const auto format = state.builder.AllocateId();
++		state.builder.AddName(state.indirect_format_integer_function, "indirect_buffer_format_integer");
++		state.builder.AddFunction(spv::OpFunction, type, state.indirect_format_integer_function,
++		                          spv::FunctionControlMaskNone, function_type);
++		state.builder.AddFunction(spv::OpFunctionParameter, type, format);
++		EmitLabel(state, state.builder.AllocateId());
++		const auto result = EmitIndexSwitch(state, format, format_count, type, [&](uint32_t format) {
++			const auto info = Format::GetFormatInfo(static_cast<Prospero::BufferFormat>(format));
++			return ConstantU32(state, info.type == Format::ComponentType::Uint   ? 1u
++			                          : info.type == Format::ComponentType::Sint ? 2u
++			                                                                     : 0u);
++		});
++		state.builder.AddFunction(spv::OpReturnValue, result);
++		state.builder.AddFunction(spv::OpFunctionEnd);
++	}
+ 	const auto function_type = state.builder.Type(spv::OpTypeFunction, type, type, type, type, type);
+ 	state.indirect_format_function = state.builder.AllocateId();
+ 	const auto format = state.builder.AllocateId();

@@ -1,0 +1,16 @@
+{
+  "name": "Performance",
+  "description": "The most frames per second for a phone: ×1 rendering, no vertical sync, no 3D audio.",
+  "override": false,
+  "system": "xemu",
+  "values": {
+    "surfaceScale": "1",
+    "filtering": "linear",
+    "aspectRatio": "auto",
+    "vsync": false,
+    "cacheShaders": true,
+    "hardFpu": true,
+    "dsp": false,
+    "hrtf": false
+  }
+}

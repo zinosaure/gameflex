@@ -1,0 +1,271 @@
+{
+  "enabled": true,
+  "name": "PlayStation 3",
+  "description": "The settings given to RPCS3 before every PS3 game starts.",
+  "system": "RPCS3",
+  "requirements": [
+    "PS3UPDAT.PUP"
+  ],
+  "params": {
+    "resolutionScale": {
+      "type": "select",
+      "label": "Render resolution",
+      "description": "The size RPCS3 draws at, as a percentage of the game's own (usually 720p). “Follow the stream” draws at the resolution chosen for the game: 540p gives 75 %, 360p gives 50 %.",
+      "config": "Video > Resolution Scale",
+      "value": "auto",
+      "options": {
+        "auto": "Follow the stream",
+        "50": "50 % — 640×360 for a 720p game",
+        "75": "75 % — 960×540",
+        "100": "100 % — the game's resolution",
+        "150": "150 % — 1920×1080"
+      }
+    },
+    "frameLimit": {
+      "type": "select",
+      "label": "Frame rate limit",
+      "description": "Auto follows the game's own pace. Without a limit, a game that doesn't pace itself may run too fast.",
+      "config": "Video > Frame limit",
+      "value": "Auto",
+      "options": {
+        "Auto": "Auto",
+        "30": "30",
+        "60": "60",
+        "PS3 Native": "PS3 native — 59.94",
+        "Off": "No limit"
+      }
+    },
+    "msaa": {
+      "type": "select",
+      "label": "Anti-aliasing (MSAA)",
+      "description": "Disabled, the graphics processor has less to do; edges look more jagged.",
+      "config": "Video > MSAA",
+      "value": "Auto",
+      "options": {
+        "Auto": "As the game asks",
+        "Disabled": "Disabled"
+      }
+    },
+    "shaderMode": {
+      "type": "select",
+      "label": "Shader compilation",
+      "description": "With the interpreter, a shader that isn't compiled yet is interpreted instead of freezing the picture.",
+      "config": "Video > Shader Mode",
+      "value": "Async Recompiler with Shader Interpreter",
+      "options": {
+        "Async Recompiler with Shader Interpreter": "Asynchronous, with interpreter",
+        "Async Recompiler (multi-threaded)": "Asynchronous",
+        "Legacy Recompiler (single-threaded)": "Legacy recompiler, single thread",
+        "Shader Interpreter only": "Interpreter only"
+      }
+    },
+    "shaderPrecision": {
+      "type": "select",
+      "label": "Shader precision",
+      "description": "How exactly the graphics processor computes the PS3's shaders. Ultra keeps everything in full 32-bit precision and is slower; Low is faster but less exact.",
+      "config": "Video > Shader Precision",
+      "value": "High",
+      "options": {
+        "Ultra": "Ultra — full precision",
+        "High": "High — RPCS3's default",
+        "Low": "Low — faster, less exact"
+      }
+    },
+    "multithreadedRsx": {
+      "type": "switch",
+      "label": "RSX on its own thread",
+      "description": "Part of the PS3's rendering runs on a thread of its own. Faster with many cores, sometimes slower because of the extra thread.",
+      "config": "Video > Multithreaded RSX",
+      "value": true
+    },
+    "writeColorBuffers": {
+      "type": "switch",
+      "label": "Write color buffers",
+      "description": "Some games need it to display correctly; slower.",
+      "config": "Video > Write Color Buffers",
+      "value": false
+    },
+    "relaxedZcull": {
+      "type": "switch",
+      "label": "Relaxed ZCULL sync",
+      "description": "Faster in some games, at the risk of instability or display errors.",
+      "config": "Video > Relaxed ZCULL Sync",
+      "value": false
+    },
+    "accurateZcull": {
+      "type": "switch",
+      "label": "Accurate ZCULL stats",
+      "description": "Disabled, faster; a few games then show objects that flicker or disappear.",
+      "config": "Video > Accurate ZCULL stats",
+      "value": true
+    },
+    "disableZcullQueries": {
+      "type": "switch",
+      "label": "No occlusion queries",
+      "description": "The graphics processor stops counting which objects are hidden. Some effects can go wrong (lens flares, shadows), but it removes a known source of graphics driver hangs.",
+      "config": "Video > Disable ZCull Occlusion Queries",
+      "value": false
+    },
+    "disableVertexCache": {
+      "type": "switch",
+      "label": "No vertex cache",
+      "description": "RPCS3 stops reusing the vertices it has already decoded. Slower, but a stale cache is a known cause of stretched polygons.",
+      "config": "Video > Disable Vertex Cache",
+      "value": false
+    },
+    "strictRendering": {
+      "type": "switch",
+      "label": "Strict rendering",
+      "description": "RPCS3 follows the PS3's rendering rules to the letter instead of taking shortcuts. Slower; fixes some glitches.",
+      "config": "Video > Strict Rendering Mode",
+      "value": false
+    },
+    "asyncTextureStreaming": {
+      "type": "switch",
+      "label": "Asynchronous texture streaming",
+      "description": "Vulkan sends textures on a separate compute queue. Useful on a graphics processor with headroom.",
+      "config": "Video > Vulkan > Asynchronous Texture Streaming",
+      "value": false
+    },
+    "performanceOverlay": {
+      "type": "switch",
+      "label": "RPCS3 performance overlay",
+      "description": "Shows the frame rate and processor load, measured by RPCS3 itself, over the game.",
+      "config": "Video > Performance Overlay > Enabled",
+      "value": false
+    },
+    "spuBlockSize": {
+      "type": "select",
+      "label": "SPU block size",
+      "description": "Mega and Giga compile SPU code in fewer, larger blocks: faster. Safe is the most compatible.",
+      "config": "Core > SPU Block Size",
+      "value": "Mega",
+      "options": {
+        "Safe": "Safe",
+        "Mega": "Mega",
+        "Giga": "Giga"
+      }
+    },
+    "xfloatAccuracy": {
+      "type": "select",
+      "label": "SPU float accuracy",
+      "description": "How exactly the PS3's SPU coprocessors compute floating-point numbers. Accurate fixes games whose models or physics go wrong, at the cost of processor time.",
+      "config": "Core > SPU XFloat Accuracy",
+      "value": "Approximate",
+      "options": {
+        "Accurate": "Accurate — exact, slower",
+        "Approximate": "Approximate — RPCS3's default",
+        "Relaxed": "Relaxed — fastest, least exact"
+      }
+    },
+    "maxSpursThreads": {
+      "type": "select",
+      "label": "SPURS threads",
+      "description": "The maximum number of SPURS threads per group. Below 6, may help a processor with few free cores, and may also crash the game.",
+      "config": "Core > Max SPURS Threads",
+      "value": "6",
+      "options": {
+        "6": "6, like the PS3",
+        "5": "5",
+        "4": "4",
+        "3": "3",
+        "2": "2",
+        "1": "1"
+      }
+    },
+    "preferredSpuThreads": {
+      "type": "select",
+      "label": "SPU threads at once",
+      "description": "How many SPU threads work at once on sensitive stages. Lower reduces stutter in some games; set it back to Auto if it's worse.",
+      "config": "Core > Preferred SPU Threads",
+      "value": "0",
+      "options": {
+        "0": "Auto",
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+        "5": "5",
+        "6": "6"
+      }
+    },
+    "spuLoopDetection": {
+      "type": "switch",
+      "label": "SPU loop detection",
+      "description": "Spots wait loops in SPU code to share the work better: faster, less processor. Rarely, the sound stutters.",
+      "config": "Core > SPU loop detection",
+      "value": false
+    },
+    "threadScheduler": {
+      "type": "select",
+      "label": "Thread scheduling",
+      "description": "System: Android places the threads on the cores. The other two are RPCS3's own, which picks each thread's cores itself.",
+      "config": "Core > Thread Scheduler Mode",
+      "value": "Operating System",
+      "options": {
+        "Operating System": "System",
+        "RPCS3 Scheduler": "RPCS3",
+        "RPCS3 Alternative Scheduler": "RPCS3, alternative"
+      }
+    },
+    "llvmThreads": {
+      "type": "select",
+      "label": "Compilation threads",
+      "description": "Compiling a game at its first launch. 8 threads: almost three times faster than 2 (measured on the server).",
+      "config": "Core > Max LLVM Compile Threads",
+      "value": "8",
+      "options": {
+        "0": "Auto",
+        "2": "2",
+        "4": "4",
+        "8": "8"
+      }
+    },
+    "timeStretching": {
+      "type": "switch",
+      "label": "Time stretching",
+      "description": "When the game runs below its speed, the sound slows down with it instead of skipping.",
+      "config": "Audio > Enable Time Stretching",
+      "value": true
+    },
+    "audioBuffer": {
+      "type": "select",
+      "label": "Audio buffer",
+      "description": "Longer, the sound stutters less when frames are missing, but arrives later.",
+      "config": "Audio > Desired Audio Buffer Duration",
+      "value": "34",
+      "options": {
+        "20": "20 ms",
+        "34": "34 ms, RPCS3's own",
+        "50": "50 ms",
+        "100": "100 ms"
+      }
+    },
+    "turnipDebug": {
+      "type": "select",
+      "label": "Adreno driver workaround (Turnip)",
+      "description": "A debug option of Turnip, the graphics driver of Adreno phones: it changes how the driver renders, to work around its bugs. It has no effect on another graphics processor.",
+      "config": "Environment > TU_DEBUG",
+      "value": "auto",
+      "options": {
+        "auto": "None",
+        "flushall": "flushall — empty the GPU caches after every draw (slower)",
+        "gmem": "gmem — always render in tiles",
+        "sysmem": "sysmem — never render in tiles",
+        "nolrz": "nolrz — no early depth test",
+        "syncdraw": "syncdraw — one draw at a time (slow)"
+      }
+    },
+    "ir3Debug": {
+      "type": "select",
+      "label": "Adreno shader compiler (Turnip)",
+      "description": "A debug option of ir3, the compiler of Turnip's shaders. “nopreamble” works around a known geometry bug of RPCS3 on Turnip (Mesa #14386). It has no effect on another graphics processor.",
+      "config": "Environment > IR3_SHADER_DEBUG",
+      "value": "auto",
+      "options": {
+        "auto": "None",
+        "nopreamble": "nopreamble — no shader preamble"
+      }
+    }
+  }
+}

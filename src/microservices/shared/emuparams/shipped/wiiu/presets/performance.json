@@ -1,0 +1,16 @@
+{
+  "name": "Performance",
+  "description": "The most frames per second for a phone: shaders in the background, no accurate barriers, no vertical sync. A few games may flicker.",
+  "override": false,
+  "system": "Cemu",
+  "values": {
+    "asyncCompile": true,
+    "accurateBarriers": false,
+    "vsync": "0",
+    "upscaleFilter": "1",
+    "downscaleFilter": "0",
+    "fullscreenScaling": "0",
+    "audioDelay": "2",
+    "volume": "100"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "enabled": true,
+  "name": "Xbox 360",
+  "description": "The settings given to Xenia before every Xbox 360 game starts.",
+  "system": "Xenia",
+  "params": {
+    "vsync": {
+      "type": "switch",
+      "label": "Vertical sync",
+      "description": "Holds the game to the console's 60 Hz. Off, some games run faster than they should — Halo 3 among them.",
+      "config": "GPU > vsync",
+      "value": true
+    },
+    "readbackResolve": {
+      "type": "select",
+      "label": "GPU readback",
+      "description": "Lets the processor read back what the graphics chip drew. A few games need it for automatic exposure or save thumbnails; Exact waits for the graphics chip and stutters.",
+      "config": "GPU > readback_resolve",
+      "value": "none",
+      "options": {
+        "none": "Off",
+        "fast": "Fast — one frame late",
+        "full": "Exact — slow"
+      }
+    },
+    "occlusionQuery": {
+      "type": "select",
+      "label": "Occlusion queries",
+      "description": "How the game learns what is hidden behind what: lens flares, culling, automatic exposure. Fake is the fastest and right for most games.",
+      "config": "GPU > occlusion_query",
+      "value": "fast",
+      "options": {
+        "fake": "Fake — fastest",
+        "fast": "Fast",
+        "strict": "Strict — exact"
+      }
+    },
+    "renderTargetPath": {
+      "type": "select",
+      "label": "Render target path",
+      "description": "How the console's render targets are emulated. Pixel shader interlock is more exact and slower.",
+      "config": "GPU > render_target_path_vulkan",
+      "value": "any",
+      "options": {
+        "any": "Automatic",
+        "fbo": "Framebuffers — fast",
+        "fsi": "Pixel shader interlock — exact"
+      }
+    },
+    "decalDepthFix": {
+      "type": "switch",
+      "label": "Decal depth fix",
+      "description": "Stops decals flickering in games that offset them by a tiny depth — Halo 3 among them. Costs a little graphics time.",
+      "config": "GPU > depth_bias_shader_offset",
+      "value": false
+    },
+    "antialiasing": {
+      "type": "select",
+      "label": "Anti-aliasing",
+      "description": "Smooths jagged edges after the game has drawn its picture.",
+      "config": "Display > postprocess_antialiasing",
+      "value": "none",
+      "options": {
+        "none": "Off",
+        "fxaa": "FXAA",
+        "fxaa_extreme": "FXAA, strong"
+      }
+    },
+    "vibration": {
+      "type": "switch",
+      "label": "Vibration",
+      "description": "Lets games make the controller vibrate.",
+      "config": "HID > vibration",
+      "value": true
+    }
+  }
+}

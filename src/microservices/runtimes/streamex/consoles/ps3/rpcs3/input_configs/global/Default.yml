@@ -1,0 +1,116 @@
+Player 1 Input:
+  Handler: Evdev
+  Device: streamex pad ps3
+  Config:
+    Left Stick Left: LX-
+    Left Stick Down: LY+
+    Left Stick Right: LX+
+    Left Stick Up: LY-
+    Right Stick Left: RX-
+    Right Stick Down: RY+
+    Right Stick Right: RX+
+    Right Stick Up: RY-
+    Start: Start
+    Select: Select
+    PS Button: Mode
+    Square: X
+    Cross: A
+    Circle: B
+    Triangle: Y
+    Left: Hat0 X-
+    Down: Hat0 Y+
+    Right: Hat0 X+
+    Up: Hat0 Y-
+    R1: TR
+    R2: RZ+
+    R3: Thumb R
+    L1: TL
+    L2: LZ+
+    L3: Thumb L
+Player 2 Input:
+  Handler: Evdev
+  Device: streamex pad ps3-p2
+  Config:
+    Left Stick Left: LX-
+    Left Stick Down: LY+
+    Left Stick Right: LX+
+    Left Stick Up: LY-
+    Right Stick Left: RX-
+    Right Stick Down: RY+
+    Right Stick Right: RX+
+    Right Stick Up: RY-
+    Start: Start
+    Select: Select
+    PS Button: Mode
+    Square: X
+    Cross: A
+    Circle: B
+    Triangle: Y
+    Left: Hat0 X-
+    Down: Hat0 Y+
+    Right: Hat0 X+
+    Up: Hat0 Y-
+    R1: TR
+    R2: RZ+
+    R3: Thumb R
+    L1: TL
+    L2: LZ+
+    L3: Thumb L
+Player 3 Input:
+  Handler: Evdev
+  Device: streamex pad ps3-p3
+  Config:
+    Left Stick Left: LX-
+    Left Stick Down: LY+
+    Left Stick Right: LX+
+    Left Stick Up: LY-
+    Right Stick Left: RX-
+    Right Stick Down: RY+
+    Right Stick Right: RX+
+    Right Stick Up: RY-
+    Start: Start
+    Select: Select
+    PS Button: Mode
+    Square: X
+    Cross: A
+    Circle: B
+    Triangle: Y
+    Left: Hat0 X-
+    Down: Hat0 Y+
+    Right: Hat0 X+
+    Up: Hat0 Y-
+    R1: TR
+    R2: RZ+
+    R3: Thumb R
+    L1: TL
+    L2: LZ+
+    L3: Thumb L
+Player 4 Input:
+  Handler: Evdev
+  Device: streamex pad ps3-p4
+  Config:
+    Left Stick Left: LX-
+    Left Stick Down: LY+
+    Left Stick Right: LX+
+    Left Stick Up: LY-
+    Right Stick Left: RX-
+    Right Stick Down: RY+
+    Right Stick Right: RX+
+    Right Stick Up: RY-
+    Start: Start
+    Select: Select
+    PS Button: Mode
+    Square: X
+    Cross: A
+    Circle: B
+    Triangle: Y
+    Left: Hat0 X-
+    Down: Hat0 Y+
+    Right: Hat0 X+
+    Up: Hat0 Y-
+    R1: TR
+    R2: RZ+
+    R3: Thumb R
+    L1: TL
+    L2: LZ+
+    L3: Thumb L

@@ -1,0 +1,16 @@
+{
+  "name": "Default",
+  "description": "The values shipped with GameFlex: the server's settings for Cemu.",
+  "override": false,
+  "system": "Cemu",
+  "values": {
+    "asyncCompile": true,
+    "accurateBarriers": true,
+    "vsync": "0",
+    "upscaleFilter": "1",
+    "downscaleFilter": "0",
+    "fullscreenScaling": "0",
+    "audioDelay": "2",
+    "volume": "100"
+  }
+}

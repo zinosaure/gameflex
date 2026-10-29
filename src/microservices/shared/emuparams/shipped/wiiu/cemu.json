@@ -1,0 +1,100 @@
+{
+  "enabled": true,
+  "name": "Nintendo Wii U",
+  "description": "The settings given to Cemu before every Wii U game starts.",
+  "system": "Cemu",
+  "requirements": [
+    "keys.txt"
+  ],
+  "params": {
+    "asyncCompile": {
+      "type": "switch",
+      "label": "Asynchronous shaders",
+      "description": "Shaders are built in the background instead of pausing the game. A few frames may miss an object while one is being built.",
+      "config": "Graphic > AsyncCompile",
+      "value": true
+    },
+    "accurateBarriers": {
+      "type": "switch",
+      "label": "Accurate barriers",
+      "description": "Keeps the order of the graphics work exact. Off is faster, and a few games flicker.",
+      "config": "Graphic > vkAccurateBarriers",
+      "value": true
+    },
+    "vsync": {
+      "type": "select",
+      "label": "Vertical sync",
+      "description": "Off shows each frame as soon as it is ready: less latency, possible tearing.",
+      "config": "Graphic > VSync",
+      "value": "0",
+      "options": {
+        "0": "Off",
+        "1": "Double buffering",
+        "2": "Triple buffering"
+      }
+    },
+    "upscaleFilter": {
+      "type": "select",
+      "label": "Upscaling filter",
+      "description": "How a picture smaller than the screen is enlarged.",
+      "config": "Graphic > UpscaleFilter",
+      "value": "1",
+      "options": {
+        "0": "Bilinear",
+        "1": "Bicubic",
+        "2": "Bicubic Hermite",
+        "3": "Nearest neighbour"
+      }
+    },
+    "downscaleFilter": {
+      "type": "select",
+      "label": "Downscaling filter",
+      "description": "How a picture larger than the screen is reduced.",
+      "config": "Graphic > DownscaleFilter",
+      "value": "0",
+      "options": {
+        "0": "Bilinear",
+        "1": "Bicubic",
+        "2": "Bicubic Hermite",
+        "3": "Nearest neighbour"
+      }
+    },
+    "fullscreenScaling": {
+      "type": "select",
+      "label": "Picture fit",
+      "description": "Keep the game's shape, or stretch it to the whole screen.",
+      "config": "Graphic > FullscreenScaling",
+      "value": "0",
+      "options": {
+        "0": "Keep the aspect ratio",
+        "1": "Stretch"
+      }
+    },
+    "audioDelay": {
+      "type": "select",
+      "label": "Audio buffer",
+      "description": "More buffers, fewer crackles when the game slows down — and a little more delay.",
+      "config": "Audio > delay",
+      "value": "2",
+      "options": {
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4"
+      }
+    },
+    "volume": {
+      "type": "select",
+      "label": "Volume",
+      "description": "Cemu's own volume for the TV picture, before the stream's.",
+      "config": "Audio > TVVolume",
+      "value": "100",
+      "options": {
+        "100": "100 %",
+        "75": "75 %",
+        "50": "50 %",
+        "25": "25 %"
+      }
+    }
+  }
+}

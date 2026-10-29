@@ -1,0 +1,25 @@
+{
+  "name": "Interpreter (exact)",
+  "description": "No translator: the x86-64 code is interpreted. Many times slower, but exact — it tells a translation fault from the game's own.",
+  "override": false,
+  "system": "shadPS4",
+  "values": {
+    "sound": "auto",
+    "pipelineCache": true,
+    "turnipDebug": "auto",
+    "dynarec": false,
+    "cpuType": "1",
+    "trustShared": false,
+    "strongMemory": "0",
+    "safeFlags": "1",
+    "bigBlock": "2",
+    "callRet": "2",
+    "fastNaN": true,
+    "fastRound": "1",
+    "x87Double": "0",
+    "alignedAtomics": false,
+    "nativeFlags": true,
+    "selfTest": false,
+    "log": "1"
+  }
+}

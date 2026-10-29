@@ -1,0 +1,23 @@
+{
+  "name": "Performance",
+  "description": "The most frames per second for a phone: handheld mode at 0.5×, shaders in the background, low GPU accuracy, no reactive flushing. Some games may display wrongly.",
+  "override": false,
+  "system": "Eden",
+  "values": {
+    "resolution": "1",
+    "consoleMode": "0",
+    "asyncShaders": true,
+    "gpuAccuracy": "0",
+    "cpuAccuracy": "0",
+    "vsync": "0",
+    "multiCore": true,
+    "antiAliasing": "0",
+    "scalingFilter": "1",
+    "videoDecoding": "2",
+    "reactiveFlushing": false,
+    "volume": "100",
+    "asyncPresentation": true,
+    "dynamicState": "0",
+    "vertexInputDynamicState": false
+  }
+}

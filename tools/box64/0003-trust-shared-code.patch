@@ -1,0 +1,29 @@
+diff --git a/src/include/env.h b/src/include/env.h
+index ea97290..65307bf 100644
+--- a/src/include/env.h
++++ b/src/include/env.h
+@@ -54,6 +54,7 @@ extern char* ftrace_name;
+     BOOLEAN(BOX64_DYNAREC_DF, dynarec_df, 1, 1, 1)                               \
+     INTEGER(BOX64_DYNAREC_DIRTY, dynarec_dirty, 0, 0, 2, 0, 2)                   \
+     BOOLEAN(BOX64_DYNAREC_NOHOTPAGE, dynarec_nohotpage, 0, 0, 1)                 \
++    BOOLEAN(BOX64_DYNAREC_TRUSTSHARED, dynarec_trustshared, 0, 0, 1)             \
+     BOOLEAN(BOX64_DYNAREC_DIV0, dynarec_div0, 0, 1, 1)                           \
+     INTEGER(BOX64_DYNAREC_DUMP, dynarec_dump, 0, 0, 3, 1, 0)                     \
+     BOOLEAN(BOX64_DYNAREC_DISASM, dynarec_disasm, 0, 0, 0)                       \
+diff --git a/src/wrapped/wrappedlibc.c b/src/wrapped/wrappedlibc.c
+index 6b725b7..6724c68 100644
+--- a/src/wrapped/wrappedlibc.c
++++ b/src/wrapped/wrappedlibc.c
+@@ -3883,7 +3883,11 @@ EXPORT void* my_mmap64(x64emu_t* emu, void *addr, size_t length, int prot, int f
+             else
+                 RecordEnvMappings((uintptr_t)ret, length, fd);
+         }
+-        if((flags&MAP_SHARED) && (fd>0)) {
++        // BOX64_DYNAREC_TRUSTSHARED: protect the code of a writable shared mapping like private
++        // memory instead of testing every block at every run. For a program that maps ALL its
++        // guest memory, code included, from one memfd (shadPS4) and never writes code through
++        // another alias: the per-block crc took 62% of its time on an arm64 phone.
++        if((flags&MAP_SHARED) && (fd>0) && !BOX64ENV(dynarec_trustshared)) {
+             uint32_t flags = fcntl(fd, F_GETFL);
+             if((flags&O_ACCMODE)==O_RDWR) {
+                 if((BOX64ENV(log)>=LOG_DEBUG || BOX64ENV(dynarec_log)>=LOG_DEBUG)) {printf_log(LOG_NONE, "Note: Marking the region (%p-%p prot=%x) as NEVERCLEAN because fd have O_RDWR attribute\n", ret, ret+length, prot);}

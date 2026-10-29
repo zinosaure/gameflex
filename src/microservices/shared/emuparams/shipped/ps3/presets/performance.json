@@ -1,0 +1,26 @@
+{
+  "name": "Performance",
+  "description": "The most frames per second: 50 % rendering, no anti-aliasing, RPCS3's fastest settings. Some games may display wrongly.",
+  "override": false,
+  "system": "RPCS3",
+  "values": {
+    "resolutionScale": "50",
+    "frameLimit": "Auto",
+    "msaa": "Disabled",
+    "shaderMode": "Async Recompiler with Shader Interpreter",
+    "multithreadedRsx": true,
+    "writeColorBuffers": false,
+    "relaxedZcull": true,
+    "accurateZcull": false,
+    "asyncTextureStreaming": false,
+    "performanceOverlay": false,
+    "spuBlockSize": "Giga",
+    "maxSpursThreads": "6",
+    "preferredSpuThreads": "0",
+    "spuLoopDetection": true,
+    "threadScheduler": "Operating System",
+    "llvmThreads": "8",
+    "timeStretching": true,
+    "audioBuffer": "34"
+  }
+}

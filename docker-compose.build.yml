@@ -1,0 +1,102 @@
+# REBUILD THE GAMEFLEX IMAGES FROM THIS REPOSITORY (chantier 34, P3).
+#
+#   GAMEFLEX_VERSION=x.y.z docker compose -f docker-compose.build.yml build
+#
+# Check out the tag of that version first: the open services build from the
+# source here, and the closed parts — the video gateway, Remote Play and the
+# consoles' skeleton (streamex) — come as binaries from the images
+# published for the SAME version on Docker Hub. The images get the names that
+# docker-compose.yml runs: with GAMEFLEX_VERSION=x.y.z in .env, `docker compose up -d`
+# then starts what you built. Not ./launch.sh, nor ./launch.sh update: they pull the
+# published images again, over yours.
+#
+# GAMEFLEX_NAMESPACE names the rebuilt images elsewhere (to compare them with the
+# published ones, for instance); the closed binaries always come from zinosaure.
+name: gameflex-build
+
+x-arguments: &arguments
+    GAMEFLEX_VERSION: ${GAMEFLEX_VERSION:?set GAMEFLEX_VERSION to the version to rebuild, e.g. 0.6.1}
+    GITHUB_COMMIT_SHA: ${GITHUB_COMMIT_SHA:-rebuilt}
+
+x-console-arguments: &console-arguments
+    <<: *arguments
+    STREAMEX_BIN: zinosaure/gameflex-streamex-bin:${GAMEFLEX_VERSION}
+
+services:
+    gameflex-kernel:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-kernel:${GAMEFLEX_VERSION}
+        build:
+            context: src
+            dockerfile: microservices/kernel/Dockerfile
+            target: release
+            args: *arguments
+
+    gameflex-credential:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-credential:${GAMEFLEX_VERSION}
+        build:
+            context: src
+            dockerfile: microservices/kernel/extras/credential/Dockerfile
+            target: release
+            args: *arguments
+
+    gameflex-gateway-webrtc:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-gateway-webrtc:${GAMEFLEX_VERSION}
+        build:
+            context: src
+            dockerfile: microservices/gatewaywebrtc/Dockerfile
+            target: release
+            args:
+                <<: *arguments
+                GATEWAY_BIN: zinosaure/gameflex-gateway-webrtc:${GAMEFLEX_VERSION}
+
+    gameflex-remoteplay:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-remoteplay:${GAMEFLEX_VERSION}
+        build:
+            context: src
+            dockerfile: microservices/runtimes/remoteplay/Dockerfile
+            target: release
+            args:
+                <<: *arguments
+                REMOTEPLAY_BIN: zinosaure/gameflex-remoteplay:${GAMEFLEX_VERSION}
+
+    gameflex-retrogaming:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-retrogaming:${GAMEFLEX_VERSION}
+        build:
+            context: src
+            dockerfile: microservices/runtimes/retrogaming/Dockerfile
+            target: release
+            args: *arguments
+
+    gameflex-edge:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-edge:${GAMEFLEX_VERSION}
+        build:
+            context: src
+            dockerfile: microservices/edge/Dockerfile
+            args: *arguments
+
+    # The consoles: their recipe is here, their skeleton is streamex-bin, and no
+    # image carries an emulator (it is unpacked from the library at launch).
+    gameflex-ps3:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-ps3:${GAMEFLEX_VERSION}
+        build: { context: ., dockerfile: src/microservices/runtimes/streamex/consoles/ps3/Dockerfile, args: *console-arguments }
+    gameflex-ps4:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-ps4:${GAMEFLEX_VERSION}
+        build: { context: ., dockerfile: src/microservices/runtimes/streamex/consoles/ps4/Dockerfile, args: *console-arguments }
+    gameflex-ps5:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-ps5:${GAMEFLEX_VERSION}
+        build: { context: ., dockerfile: src/microservices/runtimes/streamex/consoles/ps5/Dockerfile, args: *console-arguments }
+    gameflex-switch:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-switch:${GAMEFLEX_VERSION}
+        build: { context: ., dockerfile: src/microservices/runtimes/streamex/consoles/switch/Dockerfile, args: *console-arguments }
+    gameflex-switch-eden:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-switch-eden:${GAMEFLEX_VERSION}
+        build: { context: ., dockerfile: src/microservices/runtimes/streamex/consoles/switch-eden/Dockerfile, args: *console-arguments }
+    gameflex-wiiu:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-wiiu:${GAMEFLEX_VERSION}
+        build: { context: ., dockerfile: src/microservices/runtimes/streamex/consoles/wiiu/Dockerfile, args: *console-arguments }
+    gameflex-xbox:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-xbox:${GAMEFLEX_VERSION}
+        build: { context: ., dockerfile: src/microservices/runtimes/streamex/consoles/xbox/Dockerfile, args: *console-arguments }
+    gameflex-xbox360:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-xbox360:${GAMEFLEX_VERSION}
+        build: { context: ., dockerfile: src/microservices/runtimes/streamex/consoles/xbox360/Dockerfile, args: *console-arguments }

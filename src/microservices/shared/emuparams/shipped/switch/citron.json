@@ -1,0 +1,173 @@
+{
+  "enabled": true,
+  "name": "Nintendo Switch",
+  "description": "The settings given to Citron before every Switch game starts.",
+  "system": "Citron",
+  "requirements": [
+    "prod.keys"
+  ],
+  "params": {
+    "resolution": {
+      "type": "select",
+      "label": "Render resolution",
+      "description": "The size Citron draws at, as a multiple of the console's own picture (1080p docked, 720p handheld). “Follow the stream” draws at the resolution chosen for the game: 540p gives 0.5×, 720p gives 0.75×.",
+      "config": "Renderer > resolution_setup",
+      "value": "auto",
+      "options": {
+        "auto": "Follow the stream",
+        "1": "0.5× — 540p docked",
+        "2": "0.75× — 810p docked",
+        "3": "1× — the console's resolution",
+        "4": "1.5×",
+        "5": "2×"
+      }
+    },
+    "consoleMode": {
+      "type": "select",
+      "label": "Console mode",
+      "description": "Handheld draws at 720p instead of 1080p, and some games lower their detail too: lighter for a phone.",
+      "config": "System > use_docked_mode",
+      "value": "1",
+      "options": {
+        "1": "Docked — 1080p",
+        "0": "Handheld — 720p"
+      }
+    },
+    "asyncShaders": {
+      "type": "switch",
+      "label": "Asynchronous shaders",
+      "description": "Shaders are built in the background instead of pausing the game. A few frames may miss an effect while one is being built.",
+      "config": "Renderer > use_asynchronous_shaders",
+      "value": false
+    },
+    "gpuAccuracy": {
+      "type": "select",
+      "label": "GPU accuracy",
+      "description": "Low is the fastest and may show glitches; High fixes some games and costs more.",
+      "config": "Renderer > gpu_accuracy",
+      "value": "1",
+      "options": {
+        "0": "Low",
+        "1": "Normal",
+        "2": "High",
+        "3": "Extreme"
+      }
+    },
+    "cpuAccuracy": {
+      "type": "select",
+      "label": "CPU accuracy",
+      "description": "Unsafe skips some checks for speed; Accurate and Paranoid fix rare games and cost more.",
+      "config": "Cpu > cpu_accuracy",
+      "value": "0",
+      "options": {
+        "0": "Auto",
+        "1": "Accurate",
+        "2": "Unsafe",
+        "3": "Paranoid"
+      }
+    },
+    "vsync": {
+      "type": "select",
+      "label": "Vertical sync",
+      "description": "Off shows each frame as soon as it is ready: less latency, possible tearing.",
+      "config": "Renderer > use_vsync",
+      "value": "2",
+      "options": {
+        "0": "Off",
+        "1": "Mailbox",
+        "2": "On",
+        "3": "Relaxed"
+      }
+    },
+    "multiCore": {
+      "type": "switch",
+      "label": "Multi-core CPU emulation",
+      "description": "The Switch's cores run on separate threads. Off is only useful to work around a game that misbehaves with it.",
+      "config": "Core > use_multi_core",
+      "value": true
+    },
+    "antiAliasing": {
+      "type": "select",
+      "label": "Anti-aliasing",
+      "description": "Smooths jagged edges after the picture is drawn; None costs nothing.",
+      "config": "Renderer > anti_aliasing",
+      "value": "0",
+      "options": {
+        "0": "None",
+        "1": "FXAA",
+        "2": "SMAA"
+      }
+    },
+    "scalingFilter": {
+      "type": "select",
+      "label": "Scaling filter",
+      "description": "How the picture is resized to the screen. FSR sharpens an upscaled picture and costs a little.",
+      "config": "Renderer > scaling_filter",
+      "value": "1",
+      "options": {
+        "0": "Nearest neighbour",
+        "1": "Bilinear",
+        "2": "Bicubic",
+        "7": "AMD FSR"
+      }
+    },
+    "videoDecoding": {
+      "type": "select",
+      "label": "Video decoding",
+      "description": "How in-game videos are decoded. Off skips them, which helps a game that freezes on a video.",
+      "config": "Renderer > nvdec_emulation",
+      "value": "2",
+      "options": {
+        "0": "Off",
+        "1": "Processor",
+        "2": "Graphics processor"
+      }
+    },
+    "reactiveFlushing": {
+      "type": "switch",
+      "label": "Reactive flushing",
+      "description": "Keeps what some games read back from the picture correct. Off is faster, and a few games show wrong shadows or lighting.",
+      "config": "Renderer > use_reactive_flushing",
+      "value": true
+    },
+    "volume": {
+      "type": "select",
+      "label": "Volume",
+      "description": "Citron's own volume, before the stream's.",
+      "config": "Audio > volume",
+      "value": "100",
+      "options": {
+        "100": "100 %",
+        "75": "75 %",
+        "50": "50 %",
+        "25": "25 %"
+      }
+    },
+    "turnipDebug": {
+      "type": "select",
+      "label": "Adreno driver workaround (Turnip)",
+      "description": "A debug option of Turnip, the graphics driver of Adreno phones: it changes how the driver renders, to work around its bugs. It has no effect on another graphics processor.",
+      "config": "Environment > TU_DEBUG",
+      "value": "auto",
+      "options": {
+        "auto": "None",
+        "flushall": "flushall — empty the GPU caches after every draw (slower)",
+        "gmem": "gmem — always render in tiles",
+        "sysmem": "sysmem — never render in tiles",
+        "nolrz": "nolrz — no early depth test",
+        "syncdraw": "syncdraw — one draw at a time (slow)"
+      }
+    },
+    "ir3Debug": {
+      "type": "select",
+      "label": "Adreno shader compiler (Turnip)",
+      "description": "A debug option of ir3, the compiler of Turnip's shaders. “nopreamble” works around a known geometry bug of RPCS3 on Turnip (Mesa #14386). It has no effect on another graphics processor.",
+      "config": "Environment > IR3_SHADER_DEBUG",
+      "value": "auto",
+      "options": {
+        "auto": "None",
+        "nopreamble": "nopreamble — no shader preamble"
+      }
+    }
+  }
+}

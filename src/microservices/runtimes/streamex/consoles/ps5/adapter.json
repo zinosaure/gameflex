@@ -1,0 +1,22 @@
+{
+  "window_name": "Kyty",
+  "games": {
+    "dir": "/opt/game",
+    "rules": [
+      { "extension": ".elf" },
+      { "extension": ".zar" }
+    ],
+    "scan_dir_for": { "filename": "eboot.bin" }
+  },
+  "launch": {
+    "bin": "/opt/kyty/kyty_emulator",
+    "cwd": "/opt/kyty",
+    "base_args": ["--fullscreen", "--game"],
+    "process_group": true
+  },
+  "stop": { "mode": "pgroup" },
+  "gamepad": { "enabled": true, "swap_xy_from_slot": -1 },
+  "tools": [
+    { "name": "route_audio" }
+  ]
+}

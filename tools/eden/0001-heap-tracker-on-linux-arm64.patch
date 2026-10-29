@@ -1,0 +1,38 @@
+--- a/src/core/memory.cpp
++++ b/src/core/memory.cpp
+@@ -56,7 +56,7 @@
+             current_page_table->fastmem_arena = nullptr;
+         }
+ 
+-#ifdef __ANDROID__
++#if defined(__ANDROID__) || defined(HAS_NCE)
+         heap_tracker.emplace(system.DeviceMemory().buffer);
+         host_buffer = std::addressof(*heap_tracker);
+ #else
+@@ -769,7 +769,7 @@
+     std::array<Common::ScratchBuffer<u32>, Core::Hardware::NUM_CPU_CORES> scratch_buffers{};
+     std::span<Core::GPUDirtyMemoryManager> gpu_dirty_managers;
+     std::mutex sys_core_guard;
+-#ifdef __ANDROID__
++#if defined(__ANDROID__) || defined(HAS_NCE)
+     std::optional<Common::HeapTracker> heap_tracker;
+     Common::HeapTracker* host_buffer{};
+ #else
+@@ -977,7 +977,7 @@
+         impl->InvalidateGPUMemory(ptr, size);
+     }
+ 
+-#ifdef __ANDROID__
++#if defined(__ANDROID__) || defined(HAS_NCE)
+     if (!rasterizer && mapped) {
+         impl->host_buffer->DeferredMapSeparateHeap(GetInteger(vaddr));
+     }
+@@ -987,7 +987,7 @@
+ }
+ 
+ bool Memory::InvalidateSeparateHeap(void* fault_address) {
+-#ifdef __ANDROID__
++#if defined(__ANDROID__) || defined(HAS_NCE)
+     return impl->host_buffer->DeferredMapSeparateHeap(static_cast<u8*>(fault_address));
+ #else
+     return false;

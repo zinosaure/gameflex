@@ -1,0 +1,26 @@
+{
+  "name": "S25, trial 5: RPCS3's scheduling",
+  "description": "RPCS3 places its threads on the cores itself instead of letting Android do it. A single difference from “Default”: compare Tekken 6's frames per second in a fight with those of “Default”.",
+  "override": false,
+  "system": "RPCS3",
+  "values": {
+    "resolutionScale": "auto",
+    "frameLimit": "Auto",
+    "msaa": "Auto",
+    "shaderMode": "Async Recompiler with Shader Interpreter",
+    "multithreadedRsx": true,
+    "writeColorBuffers": false,
+    "relaxedZcull": false,
+    "accurateZcull": true,
+    "asyncTextureStreaming": false,
+    "performanceOverlay": false,
+    "spuBlockSize": "Mega",
+    "maxSpursThreads": "6",
+    "preferredSpuThreads": "0",
+    "spuLoopDetection": false,
+    "threadScheduler": "RPCS3 Scheduler",
+    "llvmThreads": "8",
+    "timeStretching": true,
+    "audioBuffer": "34"
+  }
+}

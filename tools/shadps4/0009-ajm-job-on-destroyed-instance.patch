@@ -1,0 +1,30 @@
+diff --git a/src/core/libraries/ajm/ajm_context.cpp b/src/core/libraries/ajm/ajm_context.cpp
+--- a/src/core/libraries/ajm/ajm_context.cpp
++++ b/src/core/libraries/ajm/ajm_context.cpp
+@@ -11,6 +11,7 @@
+ #include "core/libraries/ajm/ajm_instance.h"
+ #include "core/libraries/ajm/ajm_instance_statistics.h"
+ #include "core/libraries/ajm/ajm_mp3.h"
++#include "core/libraries/ajm/ajm_result.h"
+ #include "core/libraries/error_codes.h"
+ 
+ #include <span>
+@@ -86,7 +87,17 @@
+             {
+                 std::shared_lock lock(instances_mutex);
+                 auto* p_instance = instances.Get(job.instance_id & INSTANCE_ID_MASK);
+-                ASSERT_MSG(p_instance != nullptr, "Attempting to execute job on null instance");
++                if (p_instance == nullptr) {
++                    // GameFlex: a batch started before the game destroyed this instance reaches
++                    // the worker after the destroy (FIFA 22, as a menu stops its sounds). The
++                    // assertion ended the emulator; the job fails instead, as a bad parameter.
++                    LOG_WARNING(Lib_Ajm, "Job of batch {} for destroyed instance {}", id,
++                                job.instance_id);
++                    if (job.output.p_result) {
++                        job.output.p_result->result = ORBIS_AJM_RESULT_INVALID_PARAMETER;
++                    }
++                    continue;
++                }
+                 instance = *p_instance;
+             }
+ 

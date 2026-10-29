@@ -1,0 +1,27 @@
+[
+    {
+        "service": "kernel",
+        "target": "KERNEL_BACKEND_PROXY_TARGET",
+        "websocket": true,
+        "forwardClientAddress": true,
+        "domains": ["health", "capabilities", "sessions", "facade", "games", "consoles", "retrogaming", "streamex", "remoteplay", "mounts", "federation", "servers", "qr", "saves"]
+    },
+    {
+        "service": "credential",
+        "target": "CREDENTIAL_BACKEND_PROXY_TARGET",
+        "websocket": true,
+        "forwardClientAddress": true,
+        "domains": ["auth", "users", "history", "controller-mapping", "key-mapping", "key-positioning", "notification-preferences", "push", "invites", "presence", "catalog-tokens", "token-invitations", "server-registry", "mount-registry"]
+    },
+    {
+        "service": "gatewaywebrtc",
+        "target": "GATEWAY_WEBRTC_PROXY_TARGET",
+        "websocket": true,
+        "domains": ["gateway-webrtc"]
+    },
+    {
+        "service": "remoteplay",
+        "target": "REMOTEPLAY_BACKEND_PROXY_TARGET",
+        "domains": ["playstation", "turn-config"]
+    }
+]

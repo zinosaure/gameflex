@@ -1,0 +1,33 @@
+diff --git a/src/libs/libC.cpp b/src/libs/libC.cpp
+index fafa91d..21de2c6 100644
+--- a/src/libs/libC.cpp
++++ b/src/libs/libC.cpp
+@@ -71,7 +71,12 @@ const char** GetArgv() {
+ static KYTY_SYSV_ABI void exit(int code) {
+ 	PRINT_NAME();
+ 
+-	::exit(code);
++	// Guest threads and the window loop are still running: ::exit() would destroy the
++	// statics they read (Config::GetVblankFrequency() on a reset g_config) and turn the
++	// game exit into a crash. Leave the way a closed window does (Emulator::Execute).
++	// quick_exit flushes nothing: the console lines that say why the game left go first.
++	std::fflush(nullptr);
++	std::quick_exit(code);
+ }
+ 
+ static void PrintAbortStringCandidate(const char* name, uint64_t addr) {
+diff --git a/src/libs/libKernel.cpp b/src/libs/libKernel.cpp
+index 81b9ca7..20908c5 100644
+--- a/src/libs/libKernel.cpp
++++ b/src/libs/libKernel.cpp
+@@ -1670,7 +1670,9 @@ static void KYTY_SYSV_ABI KernelDebugRaiseException(int /*c1*/, int /*c2*/) {
+ static void KYTY_SYSV_ABI exit(int code) {
+ 	PRINT_NAME();
+ 
+-	::exit(code);
++	// Same as libc exit(): guest threads still run, so no static destructors.
++	std::fflush(nullptr);
++	std::quick_exit(code);
+ }
+ 
+ static KYTY_SYSV_ABI MallocReplace* KernelGetSanitizerMallocReplaceExternal() {

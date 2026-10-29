@@ -1,0 +1,245 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9797d88..179a725 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1266,6 +1266,8 @@ set(IMGUI src/imgui/imgui_config.h
+ 
+ set(INPUT src/input/controller.cpp
+           src/input/controller.h
++          src/input/gameflex_dsu.cpp
++          src/input/gameflex_dsu.h
+           src/input/controller_state.cpp
+           src/input/input_handler.cpp
+           src/input/input_handler.h
+diff --git a/src/input/gameflex_dsu.cpp b/src/input/gameflex_dsu.cpp
+new file mode 100644
+index 0000000..25a4b78
+--- /dev/null
++++ b/src/input/gameflex_dsu.cpp
+@@ -0,0 +1,186 @@
++// SPDX-FileCopyrightText: Copyright 2026 GameFlex
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#include <algorithm>
++#include <array>
++#include <cerrno>
++#include <chrono>
++#include <cstdlib>
++#include <cstring>
++#include <string>
++#include <thread>
++
++#include <SDL3/SDL.h>
++#include <arpa/inet.h>
++#include <netinet/in.h>
++#include <sys/socket.h>
++#include <sys/time.h>
++#include <unistd.h>
++
++#include "common/logging/log.h"
++#include "common/types.h"
++#include "input/gameflex_dsu.h"
++
++namespace Input::GameflexDsu {
++
++namespace {
++
++constexpr int Pads = 4;
++constexpr u16 Protocol = 1001;
++constexpr u32 TypePadData = 0x00100002;
++
++// The DSU button bits (bytes 16-17 of a pad's data), in the order SDL numbers the buttons of a
++// virtual gamepad (SDL_GamepadButton, south to d-pad right). The PS button has its own byte.
++constexpr std::array<u16, 15> ButtonBits = {
++    1 << 14, // cross    → south
++    1 << 13, // circle   → east
++    1 << 15, // square   → west
++    1 << 12, // triangle → north
++    1 << 0,  // share    → back (the touchpad, in shadPS4's default bindings)
++    0,       // PS       → guide
++    1 << 3,  // options  → start
++    1 << 1,  // L3
++    1 << 2,  // R3
++    1 << 10, // L1
++    1 << 11, // R1
++    1 << 4,  // up
++    1 << 6,  // down
++    1 << 7,  // left
++    1 << 5,  // right
++};
++
++std::array<SDL_Joystick*, Pads> joysticks{};
++
++u32 Crc32(const u8* data, size_t size) {
++    u32 crc = 0xFFFFFFFF;
++    for (size_t i = 0; i < size; i++) {
++        crc ^= data[i];
++        for (int bit = 0; bit < 8; bit++) {
++            crc = (crc >> 1) ^ (0xEDB88320 & (0u - (crc & 1)));
++        }
++    }
++    return ~crc;
++}
++
++// "Send me every pad": header, then flags 0 (all slots), slot, MAC. The server pushes them all
++// from then on, and forgets a client that stops asking.
++std::array<u8, 28> PadDataRequest(u32 client_id) {
++    std::array<u8, 28> msg{};
++    const u16 payload = msg.size() - 16; // the type and the data
++    std::memcpy(msg.data(), "DSUC", 4);
++    std::memcpy(msg.data() + 4, &Protocol, 2);
++    std::memcpy(msg.data() + 6, &payload, 2);
++    std::memcpy(msg.data() + 12, &client_id, 4);
++    std::memcpy(msg.data() + 16, &TypePadData, 4);
++    const u32 crc = Crc32(msg.data(), msg.size());
++    std::memcpy(msg.data() + 8, &crc, 4);
++    return msg;
++}
++
++// A stick byte (127 at rest, up = 255) to an SDL axis (down = positive).
++Sint16 Stick(u8 value, bool up_is_positive) {
++    const int axis = (static_cast<int>(value) - 127) * 32767 / 127;
++    return static_cast<Sint16>(std::clamp(up_is_positive ? -axis : axis, -32768, 32767));
++}
++
++Sint16 Trigger(u8 value) {
++    return static_cast<Sint16>(value * 32767 / 255);
++}
++
++void Apply(SDL_Joystick* joystick, const u8* data) {
++    u16 buttons;
++    std::memcpy(&buttons, data + 16, 2);
++    for (int i = 0; i < static_cast<int>(ButtonBits.size()); i++) {
++        const bool down =
++            i == SDL_GAMEPAD_BUTTON_GUIDE ? data[18] != 0 : (buttons & ButtonBits[i]) != 0;
++        SDL_SetJoystickVirtualButton(joystick, i, down);
++    }
++    SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX, Stick(data[20], false));
++    SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFTY, Stick(data[21], true));
++    SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_RIGHTX, Stick(data[22], false));
++    SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_RIGHTY, Stick(data[23], true));
++    SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, Trigger(data[35]));
++    SDL_SetJoystickVirtualAxis(joystick, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, Trigger(data[34]));
++}
++
++// Asks every second, applies every pad message. SDL turns the values into gamepad events on
++// the window's thread (the virtual joystick API locks the joysticks).
++void Run(sockaddr_in server) {
++    const int sock = socket(AF_INET, SOCK_DGRAM, 0);
++    if (sock < 0) {
++        LOG_ERROR(Input, "GameFlex DSU: no socket ({})", std::strerror(errno));
++        return;
++    }
++    timeval timeout{.tv_sec = 1, .tv_usec = 0};
++    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
++    const auto request = PadDataRequest(static_cast<u32>(getpid()));
++    auto asked = std::chrono::steady_clock::time_point{};
++    bool heard = false;
++    std::array<u8, 128> message;
++    for (;;) {
++        const auto now = std::chrono::steady_clock::now();
++        if (now - asked >= std::chrono::seconds(1)) {
++            sendto(sock, request.data(), request.size(), 0,
++                   reinterpret_cast<const sockaddr*>(&server), sizeof(server));
++            asked = now;
++        }
++        const ssize_t size = recv(sock, message.data(), message.size(), 0);
++        u32 type;
++        if (size < 20 + 36 || std::memcmp(message.data(), "DSUS", 4) != 0 ||
++            (std::memcpy(&type, message.data() + 16, 4), type != TypePadData)) {
++            continue;
++        }
++        const u8* data = message.data() + 20;
++        if (data[0] >= Pads || !joysticks[data[0]]) {
++            continue;
++        }
++        if (!heard) {
++            heard = true;
++            LOG_INFO(Input, "GameFlex DSU: first pad data received");
++        }
++        Apply(joysticks[data[0]], data);
++    }
++}
++
++} // namespace
++
++void Start() {
++    const char* address = std::getenv("GAMEFLEX_DSU_SERVER");
++    if (!address || !*address) {
++        return;
++    }
++    const std::string text(address);
++    const auto colon = text.rfind(':');
++    sockaddr_in server{};
++    server.sin_family = AF_INET;
++    if (colon == std::string::npos ||
++        inet_pton(AF_INET, text.substr(0, colon).c_str(), &server.sin_addr) != 1) {
++        LOG_ERROR(Input, "GameFlex DSU: GAMEFLEX_DSU_SERVER={} is not <ipv4>:<port>", text);
++        return;
++    }
++    server.sin_port = htons(static_cast<u16>(std::atoi(text.c_str() + colon + 1)));
++
++    for (int i = 0; i < Pads; i++) {
++        const std::string name = "GameFlex pad " + std::to_string(i + 1);
++        SDL_VirtualJoystickDesc desc;
++        SDL_INIT_INTERFACE(&desc);
++        desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
++        desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
++        desc.nbuttons = ButtonBits.size();
++        desc.axis_mask = (1u << SDL_GAMEPAD_AXIS_COUNT) - 1;
++        desc.button_mask = (1u << ButtonBits.size()) - 1;
++        desc.name = name.c_str(); // copied by SDL
++        const SDL_JoystickID id = SDL_AttachVirtualJoystick(&desc);
++        joysticks[i] = id ? SDL_OpenJoystick(id) : nullptr;
++        if (!joysticks[i]) {
++            LOG_ERROR(Input, "GameFlex DSU: pad {} not attached ({})", i + 1, SDL_GetError());
++            return;
++        }
++    }
++    // The pads are fed from outside: their events count whichever window has the focus.
++    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
++    LOG_INFO(Input, "GameFlex DSU: {} pads from {}", Pads, text);
++    std::thread(Run, server).detach();
++}
++
++} // namespace Input::GameflexDsu
+diff --git a/src/input/gameflex_dsu.h b/src/input/gameflex_dsu.h
+new file mode 100644
+index 0000000..cf70276
+--- /dev/null
++++ b/src/input/gameflex_dsu.h
+@@ -0,0 +1,14 @@
++// SPDX-FileCopyrightText: Copyright 2026 GameFlex
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#pragma once
++
++namespace Input::GameflexDsu {
++
++// GameFlex: the pads of a DSU (cemuhook) server, GAMEFLEX_DSU_SERVER=<ipv4>:<port>, as four SDL
++// virtual gamepads — TryOpenSDLControllers gives them to players 1 to 4, as it does the uinput
++// pads of our server. Our Android app serves its players this way: its X keyboard only had keys
++// for one. Does nothing without the variable. Call once the gamepad subsystem is up.
++void Start();
++
++} // namespace Input::GameflexDsu
+diff --git a/src/sdl_window.cpp b/src/sdl_window.cpp
+index a7d3650..3c7b06d 100644
+--- a/src/sdl_window.cpp
++++ b/src/sdl_window.cpp
+@@ -25,6 +25,7 @@
+ #include "imgui/friends_layer.h"
+ #include "imgui/renderer/imgui_core.h"
+ #include "input/controller.h"
++#include "input/gameflex_dsu.h"
+ #include "input/input_handler.h"
+ #include "input/input_mouse.h"
+ #include "sdl_window.h"
+@@ -157,6 +158,7 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, Input::GameControllers* controller
+     SDL_GetWindowSizeInPixels(window, &width, &height);
+ 
+     SDL_InitSubSystem(SDL_INIT_GAMEPAD);
++    Input::GameflexDsu::Start();
+ 
+ #if defined(SDL_PLATFORM_WIN32)
+     window_info.type = WindowSystemType::Windows;
