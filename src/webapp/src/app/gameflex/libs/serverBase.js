@@ -1,3 +1,4 @@
+import { appOrigin } from "./appBase.js";
 import { capabilities } from "./capabilities.js";
 // D'où vient le serveur GameFlex — et pourquoi ce n'est pas toujours « ici ».
 //
@@ -40,7 +41,7 @@ export function serverOrigin() {
     // Une origine vide, absente ou égale à l'origine courante revient au même :
     // le chemin relatif. Autant ne pas allonger toutes les URL pour rien.
     if (!declared || declared === window.location.origin) {
-        return "";
+        return appOrigin();
     }
 
     return String(declared).replace(/\/+$/, "");
@@ -135,7 +136,7 @@ export function homeOrigin() {
 
     const declared = window.GAMEFLEX_SERVER;
     if (!declared || declared === window.location.origin) {
-        return "";
+        return appOrigin();
     }
 
     return String(declared).replace(/\/+$/, "");

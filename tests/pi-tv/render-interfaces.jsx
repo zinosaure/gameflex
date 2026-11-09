@@ -11,7 +11,7 @@ for(const {id,name} of interfaces.filter(x=>!retroModes.includes(x.id))){
  const html=renderToStaticMarkup(<ExperienceView mode={id} games={games} consoles={consoles} favorites={['nes:free']} history={['nes:free']} collections={[{id:'local',name:'Homebrew',games:['nes:free']}]} onOpen={()=>{}} onMode={()=>{}} onFavorite={()=>{}}/>);
  assert.ok(html.includes(`gx-${id}`));
  assert.ok(html.includes('Accueil'));
- assert.ok(!html.includes('onMode')); 
+ assert.ok(!html.includes('onMode'));
  assert.ok(!html.includes('undefined'));
  assert.ok(html.includes('Palette libre') || id==='consoles');
  const content=html.slice(html.indexOf('</header>')+9,html.lastIndexOf('</main>'));
