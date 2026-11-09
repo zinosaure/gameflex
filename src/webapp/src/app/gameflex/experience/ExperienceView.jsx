@@ -1,0 +1,143 @@
+import RetroLibrary,{retroModes} from './RetroLibrary.jsx';
+import { apiUrl } from "../libs/serverBase.js";
+import {DownloadOverlay,DownloadList} from './DownloadProgress.jsx';
+import {libraryWithDownloads,jobForGame} from './download-state.js';
+import { foldSearch, matchesGameSearch } from './catalogue-search.js';
+import { mergeGames } from './merge-games.js';
+import React, { useEffect, useRef, useState } from 'react';
+import { interfaces } from './interfaces.js';
+import './experience.css';
+import './emulator-layouts.css';
+import { Icon, LayoutMiniature, EmulatorNavigation, GameBrowser, SystemBrowser, ConsoleIdentity, destinations } from './EmulatorUI.jsx';
+
+export function InterfacePicker({ onChoose, selected, onCancel }) {
+    const ref = useRef(null); useDirectionalFocus(ref);
+    useEffect(() => { (ref.current?.querySelector('[aria-pressed="true"]') || ref.current?.querySelector('button'))?.focus(); }, [selected]);
+    return <section ref={ref} className="gx-picker" aria-label="Choix de l’interface">
+        <small>GAMEFLEX</small><h1>Choisir une interface</h1>
+        <p>Modifiable dans les paramètres.</p>
+        <div className="gx-choices">{interfaces.map((x, i) => <button key={x.id} className={`gx-choice ${retroModes.includes(x.id) ? `gf-choice-${x.id}` : `gx-${x.id}`}`} aria-pressed={selected === x.id} onClick={() => onChoose(x.id)}>
+            <LayoutMiniature mode={x.id}/>
+            <small>{String(i + 1).padStart(2, '0')}</small><strong>{x.name}</strong><span>{x.note}</span>
+        </button>)}</div>{onCancel && <button onClick={onCancel}>Retour</button>}
+    </section>;
+}
+
+// TV arrows operate on the actual rendered geometry, also on touch layouts.
+export function useDirectionalFocus(ref) {
+    useEffect(() => {
+        const root = ref.current;
+        if (!root) return undefined;
+        const onKey = e => {
+            if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) || ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+            const surface = root.querySelector('[aria-modal="true"]') || root;
+            const all = [...surface.querySelectorAll('button:not(:disabled),a[href],input,select,summary')].filter(el => el.getClientRects().length);
+            if (!all.length) return;
+            const current = document.activeElement;
+            if (!all.includes(current)) { all[0].focus(); e.preventDefault(); return; }
+            const a = current.getBoundingClientRect(), ax = a.x + a.width / 2, ay = a.y + a.height / 2;
+            const dx = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0;
+            const dy = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+            const candidates = all.filter(x => x !== current).map(el => {
+                const b = el.getBoundingClientRect(), x = b.x + b.width / 2 - ax, y = b.y + b.height / 2 - ay;
+                return { el, ahead: x * dx + y * dy, score: Math.hypot(x, y) + Math.abs(x * dy - y * dx) * 2 };
+            }).filter(x => x.ahead > 5).sort((a, b) => a.score - b.score);
+            if (candidates[0]) { candidates[0].el.focus(); candidates[0].el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); e.preventDefault(); }
+        };
+        root.addEventListener('keydown', onKey);
+        return () => root.removeEventListener('keydown', onKey);
+    }, [ref]);
+}
+
+export function Art({ item, wide = false, kind = 'game' }) {
+    const identity=`${item.image||''}:${item.fallbackImage||''}`;
+    const [fallbackFor,setFallbackFor]=useState(null),[failedFor,setFailedFor]=useState(null),[loadedSrc,setLoadedSrc]=useState('');
+    const [visible,setVisible]=useState(()=>typeof IntersectionObserver==='undefined');
+    const outer=useRef(null),photo=useRef(null);
+    const fallback=fallbackFor===identity&&Boolean(item.fallbackImage)&&item.fallbackImage!==item.image;
+    const url=fallback?item.fallbackImage:item.image;
+    const allowed=typeof url==='string'&&(/^\/experience-api\/v1\/media\/[a-f0-9]{64}$/.test(url)||/^\/experience-api\/v1\/covers\/[a-z0-9_-]+\/[A-Za-z0-9_-]{1,800}$/.test(url)||/^\/experience-api\/v1\/emugen-art\/[A-Za-z0-9_-]{1,2500}$/.test(url)||/^\/experience-api\/v1\/(?:freeroms-art\/[a-z0-9_-]+\/[a-z0-9_-]{1,200}|romspure-art\/[a-z0-9_-]+\/[a-z0-9~-]{1,301})$/.test(url));
+    const requestKey=`${identity}:${url}`;
+    const failed=failedFor===requestKey;
+    const loaded=loadedSrc===requestKey;
+    const fail=()=>{if(!fallback&&item.fallbackImage&&item.fallbackImage!==item.image)setFallbackFor(identity);else setFailedFor(requestKey);};
+    useEffect(()=>{
+        if(visible||typeof IntersectionObserver==='undefined')return undefined;
+        const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){setVisible(true);observer.disconnect();}},{rootMargin:'160px'});
+        if(outer.current)observer.observe(outer.current);return()=>observer.disconnect();
+    },[visible]);
+    useEffect(()=>{
+        if(!visible||!allowed||failed||loaded)return undefined;
+        if(photo.current?.complete&&photo.current.naturalWidth>0){setLoadedSrc(requestKey);return undefined;}
+        const timer=setTimeout(()=>{if(photo.current?.complete&&photo.current.naturalWidth>0)setLoadedSrc(requestKey);else fail();},8000);
+        return()=>clearTimeout(timer);
+    },[requestKey,visible,allowed,failed,loaded]);
+    const safe=allowed&&!failed;
+    const credit=fallback?(item.fallbackAttribution||'Image du cache local'):(item.attribution||'Image du cache local');
+    return <div ref={outer} className={`gx-art ${wide?'gx-wide':''} ${kind==='console'?'gx-console-art':''} ${!safe?'em-art-missing':''}`} style={{'--seed':(item.title||item.name||'').length%7}}>
+        {safe?<>{visible&&<img key={requestKey} ref={photo} src={apiUrl(url)} onLoad={()=>setLoadedSrc(requestKey)} onError={fail} decoding="async" loading="eager" fetchpriority="high" alt={kind==='console'?`Photo de ${item.name}`:''}/>} {!loaded&&visible&&<span className="em-cover-loading" role="status">{kind==='console'?'Chargement de la photo…':'Chargement de la jaquette…'}</span>}{loaded&&<span className="gx-credit">{credit}</span>}</>:<><Icon name={kind==='console'?'consoles':'library'} size={32}/><span className="gx-no-cover">{failed?'Image momentanément indisponible':kind==='console'?'Photo indisponible':'Jaquette indisponible'}</span></>}
+        <DownloadOverlay job={item.download} pending={item.pendingDownload}/>
+    </div>;
+}
+
+export default function ExperienceView({ mode, games: suppliedGames = [], downloadJobs = [], consoles = [], favorites = [], history = [], collections = [], onFavorite, onCreateCollection, onAddToCollection, onOpen, onConsole, onSettings, section = 'home', onNavigate = () => {}, settingsContent, planet = {}, downloadable = [], planetLetter = '', onPlanetLetter, onSearchQuery, initialQuery = '', onAppearance, loading, error, onRetry, onRefreshMetadata, metadataProgress, onImportRom, onRefreshLibrary, refreshing = false, refreshMessage = '', user = 'Joueur', live = [], onWatch, selectedConsole, onHome }) {
+    const games=libraryWithDownloads(suppliedGames,downloadJobs);
+    const [query, setQuery] = useState(initialQuery), [system,setSystem] = useState(''), [status,setStatus] = useState(''), [catalogueView,setCatalogueView] = useState('all');
+    const [page,setPage] = useState({scope:'',count:24});
+    const catalogueScope = `${selectedConsole?.id}:${planetLetter}:${query}:${catalogueView}`;
+    const visibleCount = page.scope === catalogueScope ? page.count : 24;
+    const root = useRef(null); useDirectionalFocus(root);
+    useEffect(() => { setSystem(''); setStatus(''); setQuery(initialQuery); setCatalogueView('all'); }, [selectedConsole?.id]);
+    useEffect(()=>{onSearchQuery?.(selectedConsole&&catalogueView!=='installed'?query:'');},[query,catalogueView,selectedConsole?.id]);
+    const searching=Boolean(foldSearch(query));
+    const config = interfaces.find(x => x.id === mode) || interfaces[0];
+    const key = g => `${g.consoleId}:${g.reference}`;
+    const filtered = games.filter(g => matchesGameSearch(g,query) && (!system || g.consoleId === system) && (!status || g.status === status));
+    const favs = filtered.filter(g => favorites.includes(key(g)));
+    const recent = history.map(id => games.find(g => key(g) === id)).filter(Boolean);
+    const browser = (items, label = 'Jeux') => <GameBrowser mode={config.id} items={items.map(g=>({...g,download:jobForGame(g,downloadJobs)||g.download}))} label={label} consoleName={selectedConsole?.name} onOpen={onOpen} Art={Art} onFavorite={onFavorite} favorites={favorites} collections={collections} onAddToCollection={onAddToCollection}/>;
+    const systems = <SystemBrowser mode={config.id} consoles={consoles.filter(c => c.name.toLowerCase().includes(query.toLowerCase()))} games={games} Art={Art} onConsole={onConsole}/>;
+    const activeSection = selectedConsole ? 'consoles' : section;
+    const view = section === 'home' ? mode : section;
+    let content;
+    if (view === 'consoles') content = systems;
+    else if (view === 'favorites') content = <><div className="em-section-heading"><h2>{favs.length ? 'Épinglés' : 'À épingler'}</h2><small>{favs.length} favori{favs.length !== 1 ? 's' : ''}</small></div>{browser(favs.length ? favs : filtered,'Favoris')}</>;
+    else if (view === 'resume') content = <><div className="em-section-heading"><h2>{recent.length ? 'Reprendre' : 'Choisir un jeu'}</h2><small>{recent.length} récent{recent.length !== 1 ? 's' : ''}</small></div>{browser(recent.length ? recent : filtered,'Récents')}</>;
+    else if (view === 'collections') content = <><div className="em-section-heading"><h2>Collections</h2><button onClick={onCreateCollection}>＋ Créer</button></div>{collections.map(c => <section className="em-user-collection" key={c.id}><h3>{c.name}</h3>{browser(filtered.filter(g => c.games.includes(key(g))),c.name)}</section>)}{!collections.length && browser(filtered,'Bibliothèque')}</>;
+    else if (view === 'multiplayer') content = <><section className="em-arcade-marquee"><Icon name="consoles" size={46}/><div><small>MULTIJOUEUR</small><h2>À vous de jouer.</h2></div><span>{filtered.length}<small>JEUX</small></span></section>{browser(filtered.filter(g => Number(consoles.find(c => c.id === g.consoleId)?.maxPlayers) >= 2),'Multijoueur')}<div className="em-session-line"><Icon name="multiplayer" size={17}/>{live.length ? `${live.length} session(s) en cours` : 'Aucune session en cours'}</div></>;
+    else if (view === 'dashboard') content = <><div className="em-metro-actions">{[['resume','Reprendre'],['favorites','Favoris'],['consoles','Systèmes']].map(([id,label]) => <button key={id} onClick={() => onNavigate(id)}><Icon name={id} size={30}/><strong>{label}</strong><Icon name="arrow" size={17}/></button>)}</div><div className="em-library-stats"><span><b>{games.length}</b> jeux</span><span><b>{consoles.length}</b> systèmes</span><span><b>{favorites.length}</b> favoris</span></div>{browser(recent.length ? recent : filtered,'Bibliothèque')}</>;
+    else if (view === 'archives') content = <div className="em-explorer-workspace"><aside className="em-explorer-tree"><small>SYSTÈMES</small>{consoles.map(c => <button key={c.id} onClick={() => onConsole(c)}><Icon name="archives" size={16}/>{c.name}</button>)}</aside><section><div className="em-archive-filters"><select aria-label="Filtrer par console" value={system} onChange={e => setSystem(e.target.value)}><option value="">Toutes les consoles</option>{consoles.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select><select aria-label="Filtrer par état" value={status} onChange={e => setStatus(e.target.value)}><option value="">Tous les états</option>{[...new Set(games.map(g => g.status).filter(Boolean))].map(x => <option key={x}>{x}</option>)}</select></div><div className="em-explorer-path">Bibliothèque / {filtered.length} fichiers</div>{browser(filtered,'Archives')}</section></div>;
+    else content = browser(filtered,'Bibliothèque');
+    if (section === 'home' && !selectedConsole && (mode === 'multiplayer' || mode === 'dashboard')) content = <>{content}<section className="em-home-systems"><h2>Vos systèmes</h2><SystemBrowser mode={config.id} consoles={consoles.slice(0,6)} games={games} Art={Art} onConsole={onConsole}/></section></>;
+    if (section === 'settings') content = settingsContent;
+    if (selectedConsole) {
+        const allGames=mergeGames([{items:games.filter(g=>g.consoleId===selectedConsole.id),provider:'Bibliothèque'},{items:downloadable,provider:'GameFlex · Jeux libres'},{items:[...(planet.items||[])].sort((a,b)=>Number(a.provider==='FreeROMs')-Number(b.provider==='FreeROMs')),provider:'Planetemu'}],selectedConsole.id);
+        const installed=allGames.filter(g=>g.reference);
+        const catalogue=allGames.filter(g=>{
+            if(!matchesGameSearch(g,query))return false;
+            if(catalogueView==='installed')return Boolean(g.reference||g.pendingDownload);
+            if(catalogueView==='discover'&&g.reference)return false;
+            if(searching||!planetLetter)return true;
+            const first=g.title.normalize('NFKD').toUpperCase().match(/[A-Z0-9]/)?.[0];return planetLetter==='0'?/[0-9]/.test(first||''):first===planetLetter;
+        }).sort((a,b)=>a.title.localeCompare(b.title,'fr',{sensitivity:'base',numeric:true}));
+        content = <div className={`em-console-library em-console-library-${config.id}`}><ConsoleIdentity console={selectedConsole} count={installed.length} Art={Art} mode={config.id}/>
+        <section className="gx-library-panel gf-unified-catalogue"><div className="gx-section-title"><h2>Jeux <small>{catalogue.length}</small></h2></div>
+        <div className="gf-catalogue-tabs" aria-label="Filtrer les jeux">{[['all','Tous'],['installed',`Installés · ${installed.length}`],['discover','À découvrir']].map(([id,label])=><button key={id} aria-pressed={catalogueView===id} onClick={()=>setCatalogueView(id)}>{label}</button>)}</div>
+        {searching&&catalogueView!=='installed'&&<p className="gf-global-search" role="status">Recherche…{planet.loading||planet.query!==foldSearch(query)?` · ${planet.searchCompleted||0}/${planet.searchTotal||27}`:''}</p>}
+        {!searching&&catalogueView!=='installed'&&<div className="gx-alphabet" aria-label="Lettre du catalogue">{'0ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter=><button key={letter} aria-pressed={planetLetter===letter} onClick={()=>onPlanetLetter?.(planetLetter===letter?'':letter)}>{letter==='0'?'0–9':letter}</button>)}</div>}
+        {catalogue.length?<>{browser(catalogue.slice(0,visibleCount),'Jeux')}{visibleCount<catalogue.length&&<button className="em-load-more" onClick={()=>setPage({scope:catalogueScope,count:visibleCount+24})}>Afficher la suite · {Math.min(visibleCount,catalogue.length)} / {catalogue.length}</button>}</>:!(planet.loading||(searching&&planet.query!==foldSearch(query)))&&<p>{catalogueView==='installed'?'Aucun jeu installé pour cette console.':searching?'Aucun jeu ne correspond à la recherche.':planetLetter?'Aucun titre pour cette lettre.':'Aucun jeu disponible.'}</p>}
+        {!searching&&planet.loading&&catalogueView!=='installed'&&<p role="status">Chargement du catalogue…</p>}{planet.error&&catalogueView!=='installed'&&<p role="status">{planet.error}</p>}
+        <small className="gx-muted">Jaquettes : Libretro Thumbnails · droits des éditeurs.</small></section></div>;
+
+    }
+    const heading = selectedConsole ? selectedConsole.name : destinations.find(x => x[0] === section)?.[1] || (section === 'settings' ? 'Paramètres' : config.name);
+    if(retroModes.includes(mode))return <RetroLibrary mode={mode} games={games} consoles={consoles} selectedConsole={selectedConsole} Art={Art} onConsole={onConsole} onOpen={onOpen} onHome={onHome} onSettings={onSettings} onAppearance={onAppearance} section={section} settingsContent={settingsContent} loading={loading} error={error} onRetry={onRetry} onImportRom={onImportRom} onRefreshLibrary={onRefreshLibrary} refreshing={refreshing}/>;
+    return <div className={`gx-app gx-${config.id} em-app em-layout-${config.id}`} data-interface={config.id} ref={root}>
+        <EmulatorNavigation mode={config.id} active={activeSection} onNavigate={onNavigate} onSettings={onSettings} onAppearance={onAppearance} user={user}/>
+        <main className="em-main">{selectedConsole && <button className="gx-breadcrumb em-back" onClick={onHome}><Icon name="back" size={16}/> Consoles</button>}<header className={`em-page-heading ${selectedConsole ? 'em-console-heading' : ''}`}><div><h1>{heading}</h1></div>{section !== 'settings' && <label className="gx-search em-search"><Icon name="search" size={17}/><span className="gx-sr">Rechercher dans les jeux</span><input type="search" placeholder="Rechercher…" value={query} onChange={e => setQuery(e.target.value)}/></label>}</header>
+        {(section==='library'||selectedConsole)&&(onRefreshLibrary||onImportRom)&&<div className="gf-library-refresh">{onRefreshMetadata&&<button disabled={metadataProgress?.startsWith('Métadonnées ·')||metadataProgress==='Rafraîchissement des métadonnées…'} onClick={onRefreshMetadata}><Icon name="refresh" size={17}/>Métadonnées</button>}{onImportRom&&<button onClick={onImportRom}><Icon name="add" size={17}/>Ajouter une ROM</button>}{onRefreshLibrary&&<button onClick={onRefreshLibrary} disabled={refreshing} aria-busy={refreshing}><Icon name="refresh" size={17}/>{refreshing?'Rechargement…':'Recharger'}</button>}<span role="status">{metadataProgress||(refreshing?'Recherche des jeux…':refreshMessage)}</span></div>}
+        {section==='library'&&<DownloadList jobs={downloadJobs}/>}
+        {live.length > 0 && section !== 'multiplayer' && <section className="gx-live-bar"><h3>En cours</h3>{live.map(s => <button key={s.id} onClick={() => onWatch?.(s)}>{s.title} · Ouvrir</button>)}</section>}{loading && <p role="status">Chargement…</p>}{error && <div role="alert" className="gx-empty">{error} <button onClick={onRetry}>Réessayer</button></div>}{content}
+        <footer className="em-controller-hint"><span><kbd>←</kbd><kbd>→</kbd> Naviguer</span><span><kbd>↵</kbd> Sélectionner</span><span>{config.name}</span></footer></main>
+    </div>;
+}
