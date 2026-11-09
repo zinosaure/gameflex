@@ -22,6 +22,11 @@ def validate_preferences(p):
     if not isinstance(p, dict) or p.get('interface') not in MODES:
         raise ValueError('interface invalide')
     result = {'interface': p['interface']}
+    moved = {'favorites', 'resume', 'collections', 'detail', 'archives', 'multiplayer'}
+    for field in ('previousInterface', 'interfaceDestination'):
+        value = p.get(field)
+        if value is not None and (not isinstance(value, str) or value not in moved): raise ValueError('migration invalide')
+        if field in p: result[field] = value
     for field, maximum in [('favorites', 2000), ('history', 40)]:
         values = p.get(field, [])
         if not isinstance(values, list) or len(values) > maximum or any(not isinstance(x, str) or len(x) > 512 for x in values):

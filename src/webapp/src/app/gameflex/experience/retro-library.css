@@ -21,3 +21,5 @@
 @media(min-width:900px){.ret-app .ret-game-title strong{font-size:16px}.ret-system-rail strong{font-size:18px}.ret-game-preview .ret-primary{min-height:48px}}
 
 .ret-console-photo .gx-art img{background:transparent!important}
+
+.ret-common-nav{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.ret-common-nav button{padding:10px 14px;border:1px solid currentColor;border-radius:8px;color:inherit;background:transparent;font:inherit}

@@ -21,10 +21,10 @@ for(const {id,name} of interfaces.filter(x=>!retroModes.includes(x.id))){
  assert.ok(empty.includes('gx-app'));
 }
 const picker=renderToStaticMarkup(<InterfacePicker onChoose={()=>{}}/>);
-assert.equal((picker.match(/class="gx-choice /g)||[]).length,15);
+assert.equal((picker.match(/class="gx-choice /g)||[]).length,9);
 assert.ok(picker.includes('gx-choice gf-choice-orbit'));
 assert.ok(!picker.includes('gx-choice gx-orbit'),'La carte Orbitale ne doit pas réutiliser la classe du décor absolu.');
-console.log('10 compositions distinctes rendues, 10 états vides rendus, sélecteur de 15 choix valide.');
+console.log('10 compositions distinctes rendues, 10 états vides rendus, sélecteur de 9 choix valide.');
 
 const photoHtml=renderToStaticMarkup(<ExperienceView mode="consoles" consoles={[{id:'nes',name:'NES',image:'/experience-api/v1/media/'+'a'.repeat(64),attribution:'Evan-Amos · Public domain'}]} />);
 assert.ok(photoHtml.includes('gx-console-art'));
@@ -91,3 +91,34 @@ for(const mode of retroModes){
  assert(library.includes('data-game="free"'));assert(!library.includes('Not installed'));
 }
 console.log('5 nouveaux parcours console → bibliothèque installée valides.');
+
+const {selectableInterfaces,movedInterfaces,migratePreference,legacyDestination,preferenceKey,interfacePackCapacity}=require('../../src/webapp/src/app/gameflex/experience/interfaces.js');
+assert.deepEqual(selectableInterfaces.map(x=>x.id),['station','crt','shelf','orbit','arcade','minimal','covers','consoles','dashboard']);
+assert.equal(interfacePackCapacity,22);
+const saved={favorites:['nes:free'],history:['nes:free'],collections:[{id:'local',name:'Homebrew',games:['nes:free']}]};
+for(const id of Object.keys(movedInterfaces)){
+ const old={interface:id,...saved},next=migratePreference(old);
+ assert.equal(next.interface,'station');assert.equal(next.previousInterface,id);
+ assert.deepEqual(migratePreference(next),next);assert.deepEqual(old,{interface:id,...saved});
+ for(const field of ['favorites','history','collections'])assert.deepEqual(next[field],saved[field]);
+ assert(legacyDestination(id,saved.history,games));
+}
+assert.equal(legacyDestination('archives').section,'management');
+assert.equal(legacyDestination('detail',saved.history,games).game.reference,'free');
+assert.equal(legacyDestination('detail',[],games).game,undefined);
+assert.notEqual(preferenceKey('alice','/gameflex'),preferenceKey('bob','/gameflex'));
+for(const {id} of selectableInterfaces){
+ for(const section of ['favorites','resume','collections','management','archives','multiplayer','library']){
+  const html=renderToStaticMarkup(<ExperienceView mode={id} section={section} games={games} consoles={consoles} {...saved}/>);
+  assert(html.includes('Palette libre'),`${id}/${section}`);
+ }
+ const pending=renderToStaticMarkup(<ExperienceView mode={id} section="management" loading games={[]} consoles={consoles}/>);
+ assert(pending.includes('Chargement'));assert(!pending.includes('0 fichiers'));assert(!pending.includes('Aucun jeu ici'));
+ const emptyFavorites=renderToStaticMarkup(<ExperienceView mode={id} section="favorites" games={games} consoles={consoles}/>);
+ assert(!emptyFavorites.includes('Palette libre'),'Empty favorites must not show the library');
+}
+const singular=renderToStaticMarkup(<ExperienceView mode="consoles" games={games} consoles={consoles}/>);
+assert(singular.includes('1 jeu installé'));assert(!singular.includes('1 jeux'));
+const pack=renderToStaticMarkup(<InterfacePicker options={[...selectableInterfaces,...Array.from({length:13},(_,i)=>({id:'pack-'+i,name:'Pack '+i}))]} onChoose={()=>{}}/>);
+assert.equal((pack.match(/class="gx-choice /g)||[]).length,22);
+console.log('Migration idempotente des six anciens choix ; neuf modes × sept destinations ; chargement, singulier et pack de 22 vérifiés.');

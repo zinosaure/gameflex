@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import {useDialogFocus} from './dialog-focus.js';
+import React, { useRef, useState } from 'react';
 import {EmulatorRequirement} from './EmulatorAssistant.jsx';
 import {useAuth} from '../profile/auth/AuthContext.jsx';
 import { Icon } from './EmulatorUI.jsx';
@@ -7,11 +8,7 @@ export default function LaunchDialog({ game, mode, error, launching, onPlay, onC
     const [coreReady,setCoreReady]=useState(null);
     const root = useRef(null), busy = useRef(launching), close = useRef(onClose);
     busy.current = launching; close.current = onClose;
-    useEffect(() => {
-        const previous = document.activeElement;
-        root.current?.querySelector('button')?.focus();
-        return () => previous?.focus();
-    }, [game]);
+    useDialogFocus(root);
     const onKey = e => {
         if (e.key === 'Escape') { e.stopPropagation(); if (!busy.current) close.current(); return; }
         if (!['Tab','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) return;

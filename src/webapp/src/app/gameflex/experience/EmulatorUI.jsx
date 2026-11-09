@@ -25,7 +25,7 @@ const paths = {
 export function Icon({ name, size = 21 }) {
     return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">{paths[name] || paths.consoles}</svg>;
 }
-export const destinations = [['home','Accueil'],['consoles','Consoles'],['library','Mes jeux'],['favorites','Favoris'],['resume','Récents'],['collections','Collections'],['archives','Archives'],['multiplayer','Multijoueur']];
+export const destinations = [['home','Accueil'],['consoles','Consoles'],['library','Mes jeux'],['favorites','Favoris'],['resume','Récents'],['collections','Collections'],['management','Gestion / Archives'],['multiplayer','Multijoueur']];
 const shellNames = { minimal:'toolbar', covers:'gallery-rail', consoles:'station', favorites:'pinned-rail', resume:'xmb', collections:'ribbon', detail:'cinema', archives:'explorer', multiplayer:'cabinet', dashboard:'metro' };
 
 export function EmulatorNavigation({ mode, active, onNavigate, onSettings, onAppearance, user }) {
@@ -62,7 +62,7 @@ export function LayoutMiniature({ mode }) {
 }
 
 function Activate({ item, onOpen, children, className, onFocus }) {
-    return <button disabled={item.pendingDownload&&!item.reference} className={className} onClick={() => onOpen(item)} onFocus={onFocus}>{children}</button>;
+    return <button data-focus-key={identity(item)} disabled={item.pendingDownload&&!item.reference} className={className} onClick={() => onOpen(item)} onFocus={onFocus}>{children}</button>;
 }
 const identity = g => `${g.consoleId || ''}:${g.reference || g.source || g.title}`;
 export function GameBrowser({ mode, items = [], onOpen, Art, onFavorite, favorites = [], collections = [], onAddToCollection, consoleName = '', label = 'Jeux' }) {
@@ -72,7 +72,7 @@ export function GameBrowser({ mode, items = [], onOpen, Art, onFavorite, favorit
     const select = g => setSelected(identity(g));
     const isFav = g => favorites.includes(`${g.consoleId}:${g.reference}`);
     const favorite = g => onFavorite && g.reference ? <button className="em-favorite" aria-label={`Favori : ${g.title}`} aria-pressed={isFav(g)} onClick={() => onFavorite(g)}><Icon name="favorites" size={17}/></button> : null;
-    const action = g => <div className="em-action-row"><Activate item={g} onOpen={onOpen} className="em-launch"><Icon name={g.source && !g.reference ? 'external' : 'play'} size={16}/>{g.reference ? 'Jouer' : 'Voir la fiche'}</Activate>{favorite(g)}</div>;
+    const action = g => <div className="em-action-row"><Activate item={g} onOpen={onOpen} className="em-launch"><Icon name={g.source && !g.reference ? 'external' : 'play'} size={16}/>Voir la fiche</Activate>{favorite(g)}</div>;
     const collectionActions = g => g.reference && onAddToCollection && collections.length > 0 ? <div className="em-collection-actions">{collections.map(c => <button key={c.id} onClick={() => onAddToCollection(c.id,g)}>{c.games.includes(`${g.consoleId}:${g.reference}`) ? '✓' : '+'} {c.name}</button>)}</div> : null;
     const poster = (g, cls = '') => <div className="em-poster-cell" key={identity(g)}><Activate className={`em-poster ${cls}`} item={g} onOpen={onOpen}><Art item={g}/><span><strong>{g.title}</strong>{g.consoleName && <small>{g.consoleName}</small>}{g.reference&&<small>Installé</small>}{g.variants?.length>1&&<small>{g.variants.length} éditions</small>}{g.downloadId && <small>{g.pendingDownload?'Import en cours':'Catalogue'}{g.license?` · ${g.license}`:''}</small>}</span></Activate>{favorite(g)}</div>;
     const row = (g,i) => <li key={identity(g)}><span className="em-row-number">{String(i+1).padStart(2,'0')}</span><Activate className="em-list-game" item={g} onOpen={onOpen}><Art item={g}/><span><strong>{g.title}</strong><small>{g.consoleName || consoleName}</small>{g.reference&&<small>Installé</small>}</span><Icon name={g.source && !g.reference ? "external" : "arrow"} size={16}/></Activate>{favorite(g)}</li>;
@@ -105,5 +105,5 @@ export function SystemBrowser({ mode, consoles = [], games = [], Art, onConsole 
 }
 
 export function ConsoleIdentity({ console: c, count, Art, mode }) {
-    return <section className={`em-console-identity em-console-${mode}`}><div className="em-console-object"><Art item={c} kind="console" wide/></div><div><small>{c.publisher || 'SYSTÈME'} / {c.year}</small><h2>{c.name}</h2><span>{count} jeu{count !== 1 ? 'x' : ''} installé{count !== 1 ? 's' : ''}</span></div><span className="em-console-code" aria-hidden="true">{c.id.toUpperCase()}</span></section>;
+    return <section className={`em-console-identity em-console-${mode}`}><div className="em-console-object"><Art item={c} kind="console" wide/></div><div><small>{c.publisher || 'SYSTÈME'} / {c.year}</small><h2>{c.name}</h2><span>{count == null ? 'Chargement…' : `${count} jeu${count === 1 ? '' : 'x'} installé${count === 1 ? '' : 's'}`}</span></div><span className="em-console-code" aria-hidden="true">{c.id.toUpperCase()}</span></section>;
 }

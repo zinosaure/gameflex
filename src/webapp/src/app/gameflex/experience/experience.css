@@ -27,3 +27,4 @@
 @media(max-width:650px){.gx-library-panel{padding:16px}.gx-cartridges{grid-template-columns:repeat(2,minmax(0,1fr))}.gx-nav nav button{color:var(--ink)}.gx-nav nav button[aria-current=page]{color:var(--bg)}}
 
 .gx-app .gx-cartridges .gx-art>b{display:none}.gx-cartridges .gx-art img{object-fit:contain;background:#1c1d23}.gx-cartridges .gx-credit{font-size:8px}
+.gx-picker .gx-search{display:grid;gap:8px;max-width:26rem}.gx-picker .gx-search input{width:100%;min-height:44px;padding:12px 14px;color:var(--ink);background:var(--panel);border:1px solid #8885;border-radius:10px;font:inherit}

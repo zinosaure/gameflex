@@ -16,6 +16,28 @@ export const interfaces = [
     { id: 'multiplayer', name: 'Salon multijoueur', note: 'Sélection arcade', icon: '♧' },
     { id: 'dashboard', name: 'Tableau de bord', note: 'Raccourcis et récents', icon: '⌂' },
 ];
+// Keep the historical registry for saved preferences and old links. Only verified
+// appearances belong in the picker; a pack can supply additional registry entries.
+export const movedInterfaces = Object.freeze({
+    favorites: 'favorites', resume: 'resume', collections: 'collections',
+    detail: 'detail', archives: 'management', multiplayer: 'multiplayer',
+});
+export const selectableInterfaces = interfaces.filter(x => !Object.hasOwn(movedInterfaces, x.id));
+export const interfacePackCapacity = 22;
+export function migratePreference(preference) {
+    if (!preference || !Object.hasOwn(movedInterfaces, preference.interface)) return preference;
+    return { ...preference, interface: 'station', previousInterface: preference.interface,
+        interfaceDestination: preference.interface };
+}
+export function legacyDestination(id, history = [], games = []) {
+    if (!Object.hasOwn(movedInterfaces, id)) return null;
+    if (id === 'archives') return { section: 'management', view: 'archives' };
+    if (id === 'detail') {
+        const game = history.map(key => games.find(g => `${g.consoleId}:${g.reference}` === key)).find(Boolean);
+        return { section: 'library', game };
+    }
+    return { section: movedInterfaces[id] };
+}
 export function preferenceKey(username, origin = '') {
     return `gameflex:interface:v1:${encodeURIComponent(origin)}:${encodeURIComponent(username || 'device-owner')}`;
 }

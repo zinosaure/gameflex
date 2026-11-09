@@ -1,0 +1,24 @@
+{
+  "passed": [
+    "migration/reload favorites",
+    "migration/reload resume",
+    "migration/reload collections",
+    "migration/reload detail",
+    "migration/reload archives",
+    "migration/reload multiplayer",
+    "search/favorites/collections/archive filters/shared sheet/focus/launch contract",
+    "deep links/subpath/mobile/22-entry selector search"
+  ],
+  "publicWrites": 0,
+  "launch": "simulated transport; actual emulator tested separately",
+  "ssr": "nine retained interfaces x seven common destinations; legacy render coverage retained",
+  "preferenceValidation": "3 tests passed",
+  "subpath": "root and /gameflex API, WebSocket, URLs and isolated caches passed",
+  "productionBuild": "passed; 3 bundle size warnings",
+  "targetedLint": "0 errors; existing and hook dependency warnings",
+  "baselineApiFailures": [
+    "FreeROMs downloads capability false",
+    "retired manual verification returns 410 instead of 401"
+  ],
+  "publicDeployment": false
+}
