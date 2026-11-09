@@ -37,7 +37,7 @@ def cached_art(data,family,token):
             mapping=data/'emugen'/('art-'+hashlib.sha256(url.encode()).hexdigest()+'.json')
         else:
             console,slug=token.split('/',1)
-            if not re.fullmatch('[a-z0-9_-]{1,40}',console) or not re.fullmatch('[a-z0-9_~\-]{1,301}',slug):return None
+            if not re.fullmatch('[a-z0-9_-]{1,40}',console) or not re.fullmatch(r'[a-z0-9_~-]{1,301}',slug):return None
             mapping=data/'freeroms'/(console+'-'+slug+'.art.json') if family=='freeroms' else data/'romspure'/('art-'+hashlib.sha256(('romspure:'+console+':'+slug).encode()).hexdigest()+'.json')
         record=json.loads(mapping.read_text());identifier=record.get('id','')
         return record if re.fullmatch('[a-f0-9]{64}',identifier) and (data/'media'/(identifier+'.img')).is_file() else None
