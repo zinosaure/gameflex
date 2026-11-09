@@ -1,0 +1,8 @@
+Palette libre NES demo cartridge and its generated graphics and music-free content
+are dedicated to the public domain under CC0 1.0 Universal:
+https://creativecommons.org/publicdomain/zero/1.0/
+The generator and frontend code follow the repository's MIT license.
+QuickNES is NOT included. It is a separate GPL-2.0 libretro core (with LGPL-2.1+ QuickNES components):
+https://github.com/libretro/QuickNES_Core
+Redistributing a core requires preserving its notices and providing its matching source.
+The fetch helper stores a personal local copy, outside versioned files.

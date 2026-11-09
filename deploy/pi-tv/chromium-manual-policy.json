@@ -1,0 +1,14 @@
+{
+  "BrowserSignin": 0,
+  "PasswordManagerEnabled": false,
+  "SyncDisabled": true,
+  "DownloadRestrictions": 3,
+  "AllowFileSelectionDialogs": false,
+  "PrintingEnabled": false,
+  "URLBlocklist": [
+    "file://*",
+    "chrome://*",
+    "devtools://*",
+    "javascript:*"
+  ]
+}
