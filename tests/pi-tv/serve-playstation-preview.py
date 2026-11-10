@@ -11,6 +11,8 @@ class Handler(SimpleHTTPRequestHandler):
    file=ROOT/'media'/(image[1]+'.webp')
    if not file.is_file():self.send_error(404);return
    body=file.read_bytes();mime='image/webp'
+  elif url in ('/gameflex/images/icon-192.png','/images/icon-192.png'):
+   body=(Path(__file__).resolve().parents[2]/'src/webapp/src/public/images/icon-192.png').read_bytes();mime='image/png'
   elif url.endswith('/app.js'):
    body=(ROOT/'after/app.js').read_bytes();mime='text/javascript'
   elif url.endswith('/app.css'):
