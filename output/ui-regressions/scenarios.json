@@ -1,0 +1,15 @@
+{
+  "passed": [
+    "Horizon → La collection → Signal CRT → Minimal in Mes jeux; Favorites → Archives; deep-link reload",
+    "La collection → GBA → Advance Wars → sheet → return: 432 installed / 2 results, short title, edition metadata, filter/focus, cancel and explicit theme switches",
+    "no premature empty: hub-canape",
+    "no premature empty: ligne-cinema",
+    "no premature empty: mosaique-joy",
+    "library error/retry and genuinely empty library",
+    "section error retains main menu and retries in place",
+    "slow/out-of-order preferences; explicit local choice; unavailable sync and offline reload",
+    "Joy Plus is an actual touch/keyboard/directional menu; close restores focus"
+  ],
+  "physicalPhilipsTest": false,
+  "previewOnly": true
+}

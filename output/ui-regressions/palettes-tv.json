@@ -1,0 +1,508 @@
+[
+  {
+    "id": "station",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(237, 240, 237)",
+      "background": "rgb(9, 15, 39)",
+      "image": "radial-gradient(at 82% 37%, rgb(38, 55, 90) 0px, rgba(0, 0, 0, 0) 51%), none",
+      "actualImage": "radial-gradient(at 82% 37%, rgb(38, 55, 90) 0px, rgba(0, 0, 0, 0) 51%), none",
+      "base": ""
+    },
+    "palette": "#090f27",
+    "foreground": "rgb(237, 240, 237)",
+    "shared": {
+      "color": "rgb(237, 240, 237)",
+      "background": "rgb(9, 15, 39)"
+    },
+    "sheet": {
+      "color": "rgb(237, 240, 237)",
+      "background": "rgb(9, 15, 39)"
+    },
+    "settingsForeground": "rgb(237, 240, 237)",
+    "passed": true
+  },
+  {
+    "id": "crt",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(119, 255, 134)",
+      "background": "rgb(3, 16, 7)",
+      "image": "radial-gradient(at 50% 15%, rgb(18, 59, 24) 0px, rgba(0, 0, 0, 0) 48%), none",
+      "actualImage": "radial-gradient(at 50% 15%, rgb(18, 59, 24) 0px, rgba(0, 0, 0, 0) 48%), none",
+      "base": ""
+    },
+    "palette": "#031007",
+    "foreground": "rgb(119, 255, 134)",
+    "shared": {
+      "color": "rgb(119, 255, 134)",
+      "background": "rgb(3, 16, 7)"
+    },
+    "sheet": {
+      "color": "rgb(119, 255, 134)",
+      "background": "rgb(3, 16, 7)"
+    },
+    "settingsForeground": "rgb(119, 255, 134)",
+    "passed": true
+  },
+  {
+    "id": "shelf",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(43, 26, 16)",
+      "background": "rgb(238, 224, 199)",
+      "image": "radial-gradient(at 20% 30%, rgb(255, 248, 223) 0px, rgba(0, 0, 0, 0) 28%), radial-gradient(at 50% 30%, rgb(255, 248, 223) 0px, rgba(0, 0, 0, 0) 28%), radial-gradient(at 80% 30%, rgb(255, 248, 223) 0px, rgba(0, 0, 0, 0) 28%), none",
+      "actualImage": "radial-gradient(at 20% 30%, rgb(255, 248, 223) 0px, rgba(0, 0, 0, 0) 28%), radial-gradient(at 50% 30%, rgb(255, 248, 223) 0px, rgba(0, 0, 0, 0) 28%), radial-gradient(at 80% 30%, rgb(255, 248, 223) 0px, rgba(0, 0, 0, 0) 28%), none",
+      "base": ""
+    },
+    "palette": "#eee0c7",
+    "foreground": "rgb(43, 26, 16)",
+    "shared": {
+      "color": "rgb(43, 26, 16)",
+      "background": "rgb(238, 224, 199)"
+    },
+    "sheet": {
+      "color": "rgb(43, 26, 16)",
+      "background": "rgb(238, 224, 199)"
+    },
+    "settingsForeground": "rgb(43, 26, 16)",
+    "passed": true
+  },
+  {
+    "id": "orbit",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(217, 251, 255)",
+      "background": "rgb(3, 20, 33)",
+      "image": "radial-gradient(circle at 77% 58%, rgb(13, 82, 106) 0px, rgb(13, 82, 106) 1px, rgba(0, 0, 0, 0) 2px), radial-gradient(at 80% 48%, rgba(6, 71, 91, 0.6), rgba(0, 0, 0, 0) 48%), none",
+      "actualImage": "radial-gradient(circle at 77% 58%, rgb(13, 82, 106) 0px, rgb(13, 82, 106) 1px, rgba(0, 0, 0, 0) 2px), radial-gradient(at 80% 48%, rgba(6, 71, 91, 0.6), rgba(0, 0, 0, 0) 48%), none",
+      "base": ""
+    },
+    "palette": "#031421",
+    "foreground": "rgb(217, 251, 255)",
+    "shared": {
+      "color": "rgb(217, 251, 255)",
+      "background": "rgb(3, 20, 33)"
+    },
+    "sheet": {
+      "color": "rgb(217, 251, 255)",
+      "background": "rgb(3, 20, 33)"
+    },
+    "settingsForeground": "rgb(217, 251, 255)",
+    "passed": true
+  },
+  {
+    "id": "arcade",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(255, 244, 228)",
+      "background": "rgba(0, 0, 0, 0)",
+      "image": "radial-gradient(circle at 50% 15%, rgb(101, 20, 24), rgb(26, 12, 18) 62%, rgb(9, 7, 11))",
+      "actualImage": "radial-gradient(circle at 50% 15%, rgb(101, 20, 24), rgb(26, 12, 18) 62%, rgb(9, 7, 11))",
+      "base": ""
+    },
+    "palette": "#1a0c12",
+    "foreground": "rgb(255, 244, 228)",
+    "shared": {
+      "color": "rgb(255, 244, 228)",
+      "background": "rgb(26, 12, 18)"
+    },
+    "sheet": {
+      "color": "rgb(255, 244, 228)",
+      "background": "rgb(26, 12, 18)"
+    },
+    "settingsForeground": "rgb(255, 244, 228)",
+    "passed": true
+  },
+  {
+    "id": "minimal",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(233, 243, 239)",
+      "background": "rgb(12, 16, 16)",
+      "image": "none",
+      "actualImage": "none",
+      "base": "#0c1010"
+    },
+    "palette": "#0c1010",
+    "foreground": "rgb(233, 243, 239)",
+    "shared": {
+      "color": "rgb(233, 243, 239)",
+      "background": "rgb(12, 16, 16)"
+    },
+    "sheet": {
+      "color": "rgb(233, 243, 239)",
+      "background": "rgb(12, 16, 16)"
+    },
+    "settingsForeground": "rgb(233, 243, 239)",
+    "passed": true
+  },
+  {
+    "id": "covers",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(21, 37, 106)",
+      "background": "rgb(250, 247, 239)",
+      "image": "none",
+      "actualImage": "none",
+      "base": "#faf7ef"
+    },
+    "palette": "#faf7ef",
+    "foreground": "rgb(21, 37, 106)",
+    "shared": {
+      "color": "rgb(21, 37, 106)",
+      "background": "rgb(250, 247, 239)"
+    },
+    "sheet": {
+      "color": "rgb(21, 37, 106)",
+      "background": "rgb(250, 247, 239)"
+    },
+    "settingsForeground": "rgb(21, 37, 106)",
+    "passed": true
+  },
+  {
+    "id": "consoles",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(50, 35, 68)",
+      "background": "rgba(0, 0, 0, 0)",
+      "image": "linear-gradient(150deg, rgb(255, 255, 255) 0%, rgb(240, 237, 246) 60%, rgb(223, 217, 237))",
+      "actualImage": "linear-gradient(150deg, rgb(255, 255, 255) 0%, rgb(240, 237, 246) 60%, rgb(223, 217, 237))",
+      "base": "#f0edf6"
+    },
+    "palette": "#f0edf6",
+    "foreground": "rgb(50, 35, 68)",
+    "shared": {
+      "color": "rgb(50, 35, 68)",
+      "background": "rgb(240, 237, 246)"
+    },
+    "sheet": {
+      "color": "rgb(50, 35, 68)",
+      "background": "rgb(240, 237, 246)"
+    },
+    "settingsForeground": "rgb(50, 35, 68)",
+    "passed": true
+  },
+  {
+    "id": "dashboard",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(244, 252, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "image": "linear-gradient(140deg, rgb(7, 20, 43), rgb(14, 46, 81))",
+      "actualImage": "linear-gradient(140deg, rgb(7, 20, 43), rgb(14, 46, 81))",
+      "base": "#07142b"
+    },
+    "palette": "#07142b",
+    "foreground": "rgb(244, 252, 255)",
+    "shared": {
+      "color": "rgb(244, 252, 255)",
+      "background": "rgb(7, 20, 43)"
+    },
+    "sheet": {
+      "color": "rgb(244, 252, 255)",
+      "background": "rgb(7, 20, 43)"
+    },
+    "settingsForeground": "rgb(244, 252, 255)",
+    "passed": true
+  },
+  {
+    "id": "hub-canape",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "image": "radial-gradient(circle at 70% -10%, rgb(8, 120, 59), rgb(0, 54, 31) 55%, rgb(0, 29, 19))",
+      "actualImage": "radial-gradient(circle at 70% -10%, rgb(8, 120, 59), rgb(0, 54, 31) 55%, rgb(0, 29, 19))",
+      "base": ""
+    },
+    "palette": "#00361f",
+    "foreground": "rgb(255, 255, 255)",
+    "shared": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(0, 54, 31)"
+    },
+    "sheet": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(0, 54, 31)"
+    },
+    "settingsForeground": "rgb(255, 255, 255)",
+    "passed": true
+  },
+  {
+    "id": "ligne-cinema",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(6, 20, 38)",
+      "image": "none",
+      "actualImage": "none",
+      "base": ""
+    },
+    "palette": "#061426",
+    "foreground": "rgb(255, 255, 255)",
+    "shared": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(6, 20, 38)"
+    },
+    "sheet": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(6, 20, 38)"
+    },
+    "settingsForeground": "rgb(255, 255, 255)",
+    "passed": true
+  },
+  {
+    "id": "mosaique-joy",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(18, 48, 71)",
+      "background": "rgba(0, 0, 0, 0)",
+      "image": "radial-gradient(circle at 50% 40%, rgb(255, 255, 255), rgb(237, 248, 247))",
+      "actualImage": "radial-gradient(circle at 50% 40%, rgb(255, 255, 255), rgb(237, 248, 247))",
+      "base": ""
+    },
+    "palette": "#edf8f7",
+    "foreground": "rgb(18, 48, 71)",
+    "shared": {
+      "color": "rgb(18, 48, 71)",
+      "background": "rgb(237, 248, 247)"
+    },
+    "sheet": {
+      "color": "rgb(18, 48, 71)",
+      "background": "rgb(237, 248, 247)"
+    },
+    "settingsForeground": "rgb(18, 48, 71)",
+    "passed": true
+  },
+  {
+    "id": "roue-retro",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(17, 16, 29)",
+      "image": "none",
+      "actualImage": "none",
+      "base": ""
+    },
+    "palette": "#11101d",
+    "foreground": "rgb(255, 255, 255)",
+    "shared": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(17, 16, 29)"
+    },
+    "sheet": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(17, 16, 29)"
+    },
+    "settingsForeground": "rgb(255, 255, 255)",
+    "passed": true
+  },
+  {
+    "id": "terminal-poche",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(247, 242, 238)",
+      "background": "rgb(13, 11, 18)",
+      "image": "none",
+      "actualImage": "none",
+      "base": ""
+    },
+    "palette": "#0d0b12",
+    "foreground": "rgb(247, 242, 238)",
+    "shared": {
+      "color": "rgb(247, 242, 238)",
+      "background": "rgb(13, 11, 18)"
+    },
+    "sheet": {
+      "color": "rgb(247, 242, 238)",
+      "background": "rgb(13, 11, 18)"
+    },
+    "settingsForeground": "rgb(247, 242, 238)",
+    "passed": true
+  },
+  {
+    "id": "cartouches",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(23, 15, 18)",
+      "image": "none",
+      "actualImage": "none",
+      "base": ""
+    },
+    "palette": "#170f12",
+    "foreground": "rgb(255, 255, 255)",
+    "shared": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(23, 15, 18)"
+    },
+    "sheet": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(23, 15, 18)"
+    },
+    "settingsForeground": "rgb(255, 255, 255)",
+    "passed": true
+  },
+  {
+    "id": "carte-epoques",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(245, 243, 251)",
+      "background": "rgba(0, 0, 0, 0)",
+      "image": "radial-gradient(circle at 50% 25%, rgb(41, 35, 72), rgb(17, 16, 33) 68%)",
+      "actualImage": "radial-gradient(circle at 50% 25%, rgb(41, 35, 72), rgb(17, 16, 33) 68%)",
+      "base": ""
+    },
+    "palette": "#111021",
+    "foreground": "rgb(245, 243, 251)",
+    "shared": {
+      "color": "rgb(245, 243, 251)",
+      "background": "rgb(17, 16, 33)"
+    },
+    "sheet": {
+      "color": "rgb(245, 243, 251)",
+      "background": "rgb(17, 16, 33)"
+    },
+    "settingsForeground": "rgb(245, 243, 251)",
+    "passed": true
+  },
+  {
+    "id": "double-ecran",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(245, 245, 255)",
+      "background": "rgb(9, 7, 43)",
+      "image": "none",
+      "actualImage": "none",
+      "base": ""
+    },
+    "palette": "#09072b",
+    "foreground": "rgb(245, 245, 255)",
+    "shared": {
+      "color": "rgb(245, 245, 255)",
+      "background": "rgb(9, 7, 43)"
+    },
+    "sheet": {
+      "color": "rgb(245, 245, 255)",
+      "background": "rgb(9, 7, 43)"
+    },
+    "settingsForeground": "rgb(245, 245, 255)",
+    "passed": true
+  },
+  {
+    "id": "club-local",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "image": "linear-gradient(135deg, rgb(168, 0, 112), rgb(236, 8, 124) 58%, rgb(255, 223, 38) 58%, rgb(255, 239, 69))",
+      "actualImage": "linear-gradient(135deg, rgb(168, 0, 112), rgb(236, 8, 124) 58%, rgb(255, 223, 38) 58%, rgb(255, 239, 69))",
+      "base": ""
+    },
+    "palette": "#a80070",
+    "foreground": "rgb(255, 255, 255)",
+    "shared": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(168, 0, 112)"
+    },
+    "sheet": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(168, 0, 112)"
+    },
+    "settingsForeground": "rgb(255, 255, 255)",
+    "passed": true
+  },
+  {
+    "id": "quai-systemes",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgba(0, 0, 0, 0)",
+      "image": "linear-gradient(135deg, rgb(0, 29, 74), rgb(0, 59, 113))",
+      "actualImage": "linear-gradient(135deg, rgb(0, 29, 74), rgb(0, 59, 113))",
+      "base": ""
+    },
+    "palette": "#001d4a",
+    "foreground": "rgb(255, 255, 255)",
+    "shared": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(0, 29, 74)"
+    },
+    "sheet": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(0, 29, 74)"
+    },
+    "settingsForeground": "rgb(255, 255, 255)",
+    "passed": true
+  },
+  {
+    "id": "magazine-retro",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(24, 18, 12)",
+      "background": "rgb(239, 228, 200)",
+      "image": "none",
+      "actualImage": "none",
+      "base": ""
+    },
+    "palette": "#efe4c8",
+    "foreground": "rgb(24, 18, 12)",
+    "shared": {
+      "color": "rgb(24, 18, 12)",
+      "background": "rgb(239, 228, 200)"
+    },
+    "sheet": {
+      "color": "rgb(24, 18, 12)",
+      "background": "rgb(239, 228, 200)"
+    },
+    "settingsForeground": "rgb(24, 18, 12)",
+    "passed": true
+  },
+  {
+    "id": "bureau-collectionneur",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(234, 248, 247)",
+      "background": "rgb(13, 37, 44)",
+      "image": "none",
+      "actualImage": "none",
+      "base": ""
+    },
+    "palette": "#0d252c",
+    "foreground": "rgb(234, 248, 247)",
+    "shared": {
+      "color": "rgb(234, 248, 247)",
+      "background": "rgb(13, 37, 44)"
+    },
+    "sheet": {
+      "color": "rgb(234, 248, 247)",
+      "background": "rgb(13, 37, 44)"
+    },
+    "settingsForeground": "rgb(234, 248, 247)",
+    "passed": true
+  },
+  {
+    "id": "grand-ecran-accessible",
+    "format": "tv",
+    "originalHome": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(0, 0, 0)",
+      "image": "none",
+      "actualImage": "none",
+      "base": ""
+    },
+    "palette": "#000",
+    "foreground": "rgb(255, 255, 255)",
+    "shared": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(0, 0, 0)"
+    },
+    "sheet": {
+      "color": "rgb(255, 255, 255)",
+      "background": "rgb(0, 0, 0)"
+    },
+    "settingsForeground": "rgb(255, 255, 255)",
+    "passed": true
+  }
+]
