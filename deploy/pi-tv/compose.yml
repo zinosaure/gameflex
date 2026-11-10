@@ -1,0 +1,45 @@
+# Optional companion, NOT a replacement for the unvalidated ARM64 GameFlex stack.
+# No docker socket, GPU, host networking, TV commands, or privileged mode.
+name: gameflex-experience
+services:
+  experience:
+    build:
+      context: ../..
+      dockerfile: deploy/pi-tv/Experience.Dockerfile
+    command: ["python3", "tools/pi-tv/server.py", "--bind", "0.0.0.0", "--data", "/data", "--auth-base", "http://gameflex-edge:8080"]
+    volumes:
+      - ../../.local/pi-tv:/data
+    networks: [gameflex]
+    user: "1000:1000"
+    read_only: true
+    init: true
+    shm_size: 128m
+    tmpfs: [/tmp:rw,size=192m,mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1024m
+    cpus: 1.5
+    pids_limit: 256
+    restart: "no"
+  entry:
+    user: "101:101"
+    image: nginx:stable-alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${GAMEFLEX_WEB_BIND:-127.0.0.1}:${GAMEFLEX_WEB_PORT:-2000}:8080"
+    networks: [gameflex]
+    depends_on: [experience]
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:mode=1777
+      - /var/run:mode=1777
+      - /tmp:mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    restart: "no"
+networks:
+  gameflex:
+    external: true
+    name: ${GAMEFLEX_NETWORK:-gameflex_default}

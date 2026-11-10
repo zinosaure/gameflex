@@ -1,3 +1,4 @@
+import {gameSocket} from './GameSocket.js';
 import { useEffect, useRef, useState } from "react";
 import { serverOrigin } from "./serverBase.js";
 import { can } from "./capabilities.js";
@@ -121,7 +122,7 @@ class KernelChannel {
             return;
         }
 
-        const socket = new WebSocket(socketUrl(this.origin, this.token));
+        const socket = gameSocket(socketUrl(this.origin, this.token),this.token);
         this.socket = socket;
 
         socket.onopen = () => {

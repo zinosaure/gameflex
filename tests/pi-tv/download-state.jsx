@@ -1,0 +1,14 @@
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import assert from 'node:assert/strict';
+import {freshTerminalJobs,downloadPercent,libraryWithDownloads,jobForGame} from '../../src/webapp/src/app/gameflex/experience/download-state.js';
+import {DownloadOverlay} from '../../src/webapp/src/app/gameflex/experience/DownloadProgress.jsx';
+const active={id:'job',gameId:'freeroms:gba:demo',title:'Démo libre',consoleId:'gba',image:'/example',status:'running',phase:'downloading',progress:42,bytesReceived:420,totalBytes:1000,createdAt:Date.now()/1000,updatedAt:Date.now()/1000};
+const seen=new Set();assert.equal(freshTerminalJobs([active],seen).length,0);const failed={...active,status:'failed',phase:'failed'};assert.equal(freshTerminalJobs([failed],seen).length,1);assert.equal(freshTerminalJobs([failed],seen).length,0);
+assert.equal(downloadPercent({...active,progress:null}),null);assert.equal(downloadPercent({...active,progress:100}),99);assert.equal(downloadPercent({...active,status:'succeeded'}),100);
+const library=libraryWithDownloads([], [active]);assert.equal(library.length,1);assert.ok(library[0].pendingDownload);assert.ok(!library[0].reference);assert.equal(library[0].download.progress,42);
+assert.equal(libraryWithDownloads([], [failed]).length,0);
+assert.equal(jobForGame({title:'Démo libre',consoleId:'gba'},[failed,active]).status,'running');
+const html=renderToStaticMarkup(<DownloadOverlay job={active}/>);assert.ok(html.includes('42 %'));assert.ok(html.includes('aria-valuenow="42"'));assert.ok(html.includes('gf-download-mask'));
+const unknown=renderToStaticMarkup(<DownloadOverlay job={{...active,progress:null,totalBytes:null}}/>);assert.ok(!unknown.includes('aria-valuenow'));assert.ok(!unknown.includes('100 %'));
+console.log('Suivi : progression réelle, un seul résultat terminal, aucune réussite à l’acceptation, carte présente pendant le transfert et pourcentage inconnu non inventé.');

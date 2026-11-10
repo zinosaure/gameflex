@@ -1,6 +1,10 @@
 <!doctype html>
 <html lang="en" data-bs-theme="dark">
 	<head>
+        <script>
+            // Set the base before webpack chunks, icons and the manifest load.
+            document.write('<base href="' + (/^\/gameflex(?:\/|$)/.test(location.pathname) ? '/gameflex/' : '/') + '">');
+        </script>
 		<title id="document-title">GameFlex</title>
 		<meta charset="UTF-8" />
 		<!-- viewport-fit=cover: without it, iOS Safari reserves space for its
@@ -14,13 +18,13 @@
 		<meta name="description" content="Self-hosted cloud gaming — your consoles, in any browser." />
 		<meta name="theme-color" content="#0d1117" />
 
-		<link rel="manifest" href="/manifest.json" />
+		<link rel="manifest" href="manifest.json" />
 		<!-- A real 32px favicon: the file that used to sit here was ZERO
 		     bytes, so every tab fell back to whatever the browser invents.
 		     The 192 stays for platforms that want a bigger one. -->
-		<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png" />
-		<link rel="icon" type="image/png" sizes="192x192" href="/images/icon-192.png" />
-		<link rel="apple-touch-icon" href="/images/icon-192.png" />
+		<link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png" />
+		<link rel="icon" type="image/png" sizes="192x192" href="images/icon-192.png" />
+		<link rel="apple-touch-icon" href="images/icon-192.png" />
 
 	</head>
 

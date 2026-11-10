@@ -77,6 +77,16 @@ export function gatewayViewerSignalUrl(sessionId, viewerId, origin = null) {
     return origin ? `${origin.replace(/^http/, "ws")}${path}` : wsUrl(path);
 }
 
+// Public-media fallback — same viewer, same host, but the gateway carries
+// framed H264 over a WebSocket when UDP ICE cannot cross the public edge.
+// GameSocket turns this URL into the authenticated HTTPS socket bridge on
+// deployments where native WebSockets are unavailable.
+export function gatewayViewerFallbackUrl(sessionId, viewerId, origin = null) {
+    const path = `/api/v1/gateway-webrtc/streams/${encodeURIComponent(sessionId)}/viewer-fallback?viewerId=${encodeURIComponent(viewerId)}`;
+
+    return origin ? `${origin.replace(/^http/, "ws")}${path}` : wsUrl(path);
+}
+
 // `origin` — L'ADRESSE VOYAGE AVEC LE VIEWER, parce que celui-ci lui survit.
 //
 // Toutes les autres requêtes de ce fichier partent pendant que la page est

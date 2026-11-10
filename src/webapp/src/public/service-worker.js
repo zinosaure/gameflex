@@ -5,21 +5,21 @@
  * Network-First pour les requêtes API.
  */
 
-// Named for THIS app, not the template it came from: caches are keyed by name
-// and the activate handler below deletes every key that is not the current one.
-// A rename is therefore also the migration — the old skeleton-* caches are
-// swept on the first activation after this ships.
+// Caches stay isolated from other applications on the shared HTTPS origin.
 // À INCRÉMENTER à chaque release qui change le bundle : le navigateur ne
 // réinstalle le service worker que sur un octet de différence. Vécu le
 // 2026-08-29 : la version navigateur du PWA restait sur l'écran de connexion
 // pendant que l'application installée servait déjà le bon bundle.
-const SW_VERSION = "5";
+const SW_VERSION = "48";
 
-const CACHE_NAME = `gameflex-v${SW_VERSION}`;
+const APP_BASE = new URL(self.registration.scope).pathname;
+const CACHE_PREFIX = `gameflex-${APP_BASE === '/' ? 'root' : 'subpath'}-v`;
+const CACHE_NAME = `${CACHE_PREFIX}${SW_VERSION}`;
+const appUrl = path => APP_BASE + path.replace(/^\//, '');
 const STATIC_ASSETS = [
-    '/',
-    '/bundle.js',
-    '/manifest.json',
+    appUrl('/'),
+    appUrl('/bundle.js'),
+    appUrl('/manifest.json'),
 ];
 
 // ─── Installation : pré-cache des assets statiques ──────
@@ -45,7 +45,7 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys().then((keys) => {
             return Promise.all(
-                keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+                keys.filter((key) => (key.startsWith(CACHE_PREFIX) || (APP_BASE === "/" && /^gameflex-v[0-9]+$/.test(key))) && key !== CACHE_NAME).map((key) => caches.delete(key))
             );
         }).then(() => {
             console.log('[SW] Activated, claiming clients');
@@ -77,12 +77,12 @@ self.addEventListener('push', (event) => {
     // la page décide qui regarde ou joue. Les adresses d'avant
     // (/retrogaming/streaming?…, /remoteplay/watch?…) ne menaient plus nulle
     // part (2026-10-15).
-    const url = `/streaming?sessionId=${encodeURIComponent(payload.sessionId)}`;
+    const url = appUrl(`/streaming?sessionId=${encodeURIComponent(payload.sessionId)}`);
 
     event.waitUntil(
         self.registration.showNotification(`${from} vous invite`, {
             body: payload.reference,
-            icon: '/images/icon-192.png',
+            icon: appUrl('/images/icon-192.png'),
             data: { url },
         })
     );
@@ -109,9 +109,11 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('fetch', (event) => {
     const { request } = event;
     const url = new URL(request.url);
+    if (url.origin !== self.location.origin || !url.pathname.startsWith(APP_BASE)) return;
+    const localPath = '/' + url.pathname.slice(APP_BASE.length);
 
     // API requests → Network-First (pas de cache)
-    if (url.pathname.startsWith('/api/')) {
+    if (localPath.startsWith('/api/') || localPath.startsWith('/experience-api/')) {
         return; // Laisser le navigateur gérer normalement
     }
 
@@ -132,7 +134,7 @@ self.addEventListener('fetch', (event) => {
     // source (webpack.config.js, output.chunkFilename porte l'empreinte) :
     // la supposition ci-dessus est enfin exacte.
     const isNavigation = request.mode === 'navigate';
-    const isUnversionedBundle = url.pathname === '/bundle.js';
+    const isUnversionedBundle = localPath === '/bundle.js';
 
     if (isNavigation || isUnversionedBundle) {
         event.respondWith(
@@ -147,7 +149,7 @@ self.addEventListener('fetch', (event) => {
 
                 return response;
             }).catch(() =>
-                caches.match(request).then((cached) => cached || caches.match('/'))
+                caches.match(request).then((cached) => cached || caches.match(appUrl('/')))
             )
         );
 
@@ -174,7 +176,7 @@ self.addEventListener('fetch', (event) => {
             }).catch(() => {
                 // Fallback hors-ligne pour les pages HTML
                 if (request.destination === 'document') {
-                    return caches.match('/');
+                    return caches.match(appUrl('/'));
                 }
 
                 // Pour les autres ressources, renvoyer une erreur muette

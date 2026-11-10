@@ -78,7 +78,7 @@ export default (env = {}) => ({
     output: {
         path: path.resolve(DIRNAME, 'dist'),
         filename: 'bundle.js',
-        publicPath: '/',
+        publicPath: 'auto',
         // LES CHUNKS PORTENT LEUR EMPREINTE.
         //
         // Par défaut webpack les nomme `[id].bundle.js` — « 265.bundle.js » —

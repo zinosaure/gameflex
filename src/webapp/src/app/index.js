@@ -1,3 +1,6 @@
+import { appBasePath, appPath } from "./gameflex/libs/appBase.js";
+import RouteErrorBoundary from './gameflex/experience/RouteErrorBoundary.jsx';
+import { ExperienceProvider, ExperienceGate } from './gameflex/experience/ExperienceProvider.jsx';
 import React, {
 	Suspense,
 	useEffect,
@@ -431,7 +434,7 @@ function AppShell() {
 	// (2026-09-11). Tant qu'elle manque, une adresse inconnue attend au lieu de
 	// rediriger. Le menu ne dépend plus des listes de jeux ni des listes
 	// fédérées (2026-10-11) : il n'y a plus qu'elle à attendre.
-	const routesPending = isAuthenticated && !consolesLoaded;
+	const routesPending = !consolesLoaded;
 	const init = useMemo(
 		() => ({
 			...baseInit,
@@ -544,22 +547,24 @@ function AppShell() {
 	} : null;
 
 	return (
+		<ExperienceProvider key={user?.username || "device-owner"}>
 		<PresenceProvider>
 			<SessionPoolProvider>
 				<Suspense fallback={<LoadingScreen />}>
-					<Skeleton init={init} topRightNavigation={TopRightNavigation ? <TopRightNavigation /> : null} />
+					<RouteErrorBoundary resetKey={location.pathname+location.search}><ExperienceGate enabled={isAuthenticated}><Skeleton init={init} topRightNavigation={TopRightNavigation ? <TopRightNavigation /> : null} /></ExperienceGate></RouteErrorBoundary>
 					{/* La barre flottante des téléchargements : fixée au bas de
 						l'écran, visible depuis n'importe quelle page pendant qu'un
 						jeu s'importe (2026-08-30). */}
 				</Suspense>
 			</SessionPoolProvider>
 		</PresenceProvider>
+		</ExperienceProvider>
 	);
 }
 
 function App() {
 	return (
-		<BrowserRouter>
+		<BrowserRouter basename={appBasePath() || "/"}>
 			<ConsolesProvider>
 				<AuthProvider>
 					<AppShell />
@@ -623,7 +628,7 @@ loadHostCapabilities().finally(() => {
 if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
 	window.addEventListener("load", () => {
 		navigator.serviceWorker
-			.register("/service-worker.js")
+			.register(appPath("/service-worker.js"), { scope: appPath("/") })
 			.then((reg) => console.log("[PWA] Service Worker registered:", reg.scope))
 			.catch((err) =>
 				console.log("[PWA] Service Worker registration failed:", err),

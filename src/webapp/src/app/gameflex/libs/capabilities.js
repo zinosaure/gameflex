@@ -1,3 +1,4 @@
+import { appPath } from "./appBase.js";
 // Ce que CETTE installation sait faire — et ce que l'interface doit taire.
 //
 // GameFlex tourne à deux endroits qui n'ont pas les mêmes moyens : un serveur,
@@ -204,7 +205,7 @@ export async function loadHostCapabilities() {
         }
 
         try {
-            const response = await fetch("/api/v1/capabilities", { cache: "no-store" });
+            const response = await fetch(appPath("/api/v1/capabilities"), { cache: "no-store" });
             if (response.ok) {
                 const payload = await response.json();
                 const declared = payload?.capabilities;

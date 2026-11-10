@@ -1,3 +1,4 @@
+import { InterfaceSettings } from '../experience/ExperienceProvider.jsx';
 import React, { useContext } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -90,6 +91,7 @@ export default function Settings() {
             label={t("profile.settingsMenu")}
             helpText={t("profile.settingsDescription")}
         >
+            <InterfaceSettings advanced />
             <SectionPanel
                 label={t("settings.generalTitle")}
                 helpText={t("settings.generalHelp")}>

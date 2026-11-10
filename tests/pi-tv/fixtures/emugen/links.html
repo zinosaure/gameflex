@@ -1,0 +1,3 @@
+<!doctype html><meta charset="utf-8"><button id="emugen-cookie-btn" onclick="openSources(event)">Magic Cookie</button><section id="emugen-download-section" style="display:none"><span>Preparing…</span></section><script>
+function openSources(event){if(!event.isTrusted)return;document.cookie='fixture_magic=created_by_the_site; path=/';const section=document.querySelector('#emugen-download-section');section.style.display='block';setTimeout(()=>{section.innerHTML='<a href="https://host.example.test/intermediate?id=42&amp;region=eu">EU mirror</a><a style="display:none" href="https://hidden.example.test/">hidden</a><a href="javascript:alert(1)">invalid</a>';},100);}
+</script>

@@ -116,3 +116,46 @@ export function nextCounters(now, harvested, previousFrames) {
         framesDecoded: harvested.framesDecoded ?? previousFrames ?? 0,
     };
 }
+
+// The HTTPS fallback has no RTCPeerConnection report: these are application
+// counters collected where GameSocket receives/sends its framed payloads and
+// where WebCodecs outputs a decoded frame. They deliberately exclude HTTP,
+// TLS and base64 bridge overhead, which the browser does not expose.
+export function fallbackRateDeltas(previous, now, current) {
+    const elapsedSeconds = (now - previous.timestamp) / 1000;
+    if (elapsedSeconds <= 0) return null;
+
+    return {
+        downloadKbps: Math.max(0, ((current.downloadBytes - previous.downloadBytes) * 8) / elapsedSeconds / 1000),
+        uploadKbps: Math.max(0, ((current.uploadBytes - previous.uploadBytes) * 8) / elapsedSeconds / 1000),
+        videoBitrateKbps: Math.max(0, ((current.videoBytes - previous.videoBytes) * 8) / elapsedSeconds / 1000),
+        fps: Math.max(0, (current.decodedFrames - previous.decodedFrames) / elapsedSeconds),
+    };
+}
+
+export function nextFallbackCounters(now, current) {
+    return {
+        timestamp: now,
+        downloadBytes: current.downloadBytes,
+        uploadBytes: current.uploadBytes,
+        videoBytes: current.videoBytes,
+        decodedFrames: current.decodedFrames,
+    };
+}
+
+export function parseFallbackControl(data) {
+    if (typeof data !== "string") return null;
+
+    try {
+        return JSON.parse(data);
+    } catch {
+        return { type: data };
+    }
+}
+
+export function smoothFallbackLatency(previous, sample) {
+    if (typeof sample !== "number" || !Number.isFinite(sample)) return previous;
+
+    const safeSample = Math.max(0, sample);
+    return previous == null ? safeSample : previous * 0.8 + safeSample * 0.2;
+}

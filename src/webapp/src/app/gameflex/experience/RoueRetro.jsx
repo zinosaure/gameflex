@@ -1,0 +1,15 @@
+import React,{useEffect,useRef,useState}from'react';
+import{Icon}from'./EmulatorUI.jsx';
+import'./roue-retro.css';
+
+const countLabel=count=>`${count} jeu${count===1?'':'x'}`;
+
+export default function RoueRetro({consoles=[],games=[],Art,onConsole,onNavigate=()=>{},onSettings}){
+ const rail=useRef(null),[active,setActive]=useState(()=>consoles[0]);
+ useEffect(()=>{let saved='';try{saved=sessionStorage.getItem('gameflex:wheel-focus')||'';}catch{}const console=consoles.find(item=>item.id===saved)||consoles[0];if(console)setActive(console);setTimeout(()=>rail.current?.querySelector(`[data-wheel-key="${console?.id||''}"]`)?.focus({preventScroll:true}),100);},[]);
+ const choose=console=>{setActive(console);try{sessionStorage.setItem('gameflex:wheel-focus',console.id);}catch{}};
+ const move=(event,console)=>{if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();const backwards=event.key==='ArrowUp'||event.key==='ArrowLeft',index=consoles.indexOf(console),next=consoles[(index+(backwards?-1:1)+consoles.length)%consoles.length],node=rail.current?.querySelector(`[data-wheel-key="${next.id}"]`);node?.focus();node?.scrollIntoView({block:'center',inline:'nearest'});};
+ if(!consoles.length)return <section className="gf-wheel gf-wheel-empty" data-interface="roue-retro"><Icon name="library" size={42}/><h1>Votre bibliothèque est vide</h1><button onClick={()=>onNavigate('library')}>Ajouter un jeu</button></section>;
+ const selectedGames=games.filter(game=>game.consoleId===active?.id),visual=selectedGames.find(game=>game.image)||active;
+ return <section className="gf-wheel" data-interface="roue-retro"><div className={`gf-wheel-backdrop ${visual?.image?'':'is-missing'}`}><Art item={visual} kind={visual===active?'console':'game'}/></div><header><strong>GAME<span>FLEX</span></strong><b>13 ROUE RETRO</b><nav><button onClick={()=>onNavigate('library')}><Icon name="library"/> Bibliothèque</button><button onClick={onSettings}><Icon name="settings"/> Paramètres</button></nav></header><div className="gf-wheel-copy"><h1>{active?.name}</h1><p>{active?.year||'Année inconnue'} <i/> {countLabel(selectedGames.length)}</p><small>Explorez les jeux de ce système dans votre bibliothèque.</small><button onClick={()=>onConsole?.(active)}><Icon name="play"/> Explorer les jeux</button></div><div ref={rail} className="gf-wheel-rail" aria-label="Choisir un système">{consoles.map((console,index)=><button key={console.id} data-wheel-key={console.id} aria-pressed={console===active} style={{'--distance':Math.min(Math.abs(index-consoles.indexOf(active)),3)}} onFocus={()=>choose(console)} onMouseEnter={()=>choose(console)} onKeyDown={event=>move(event,console)} onClick={()=>onConsole?.(console)}><Art item={console} kind="console"/><strong>{console.name}</strong><small>{countLabel(games.filter(game=>game.consoleId===console.id).length)}</small></button>)}</div><div className="gf-wheel-dots" aria-hidden="true">{consoles.slice(0,7).map(console=><i key={console.id} className={console===active?'is-active':''}/>)}</div></section>;
+}
