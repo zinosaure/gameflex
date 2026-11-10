@@ -11,3 +11,7 @@
 @media(min-width:2560px){.gf-tv-mode .ps-topbar{height:155px}.gf-tv-mode .ps-tabs button{font-size:36px}.gf-tv-mode .ps-console-tile{width:200px;height:200px;flex-basis:200px}.gf-tv-mode .ps-console-tile>span{font-size:22px}.gf-tv-mode .ps-consoles-strip .ps-game-rail{min-height:290px}.gf-tv-mode .ps-console-heading h1{font-size:66px}.gf-tv-mode .ps-row-title h3{font-size:32px}.gf-tv-mode .ps-row-info>p{font-size:21px}.gf-tv-mode .ps-game-row{grid-template-columns:180px minmax(0,1fr) auto;padding:30px 15px;gap:45px}.gf-tv-mode .ps-row-art{width:180px}.gf-tv-mode .ps-row-art .gx-art img{max-height:190px}.gf-tv-mode .ps-row-launch{min-width:190px;min-height:72px;font-size:23px}}
 .gf-tv-mode .ps-console button:focus,.gf-tv-mode .ps-control button:focus{outline:4px solid #fff;outline-offset:6px;box-shadow:0 0 0 10px #9ecaff60,0 0 35px #85baff45}
 .gf-tv-mode .ps-control p,.gf-tv-mode .ps-control label,.gf-tv-mode .ps-control select{font-size:19px}.gf-tv-mode .ps-control button{min-height:56px;font-size:19px}.gf-tv-mode .gf-tv-phone-address{font-size:21px!important}.gf-tv-mode .gf-tv-stream-phone{min-height:56px;font-size:18px}
+
+.gf-tv-mode .ps-console-tile.ps-console-logo-tile{height:auto;aspect-ratio:var(--console-icon-ratio,438/563)}
+.gf-tv-mode .ps-consoles-strip .ps-game-rail{min-height:315px;padding-bottom:60px}
+@media(min-width:2560px){.gf-tv-mode .ps-consoles-strip .ps-game-rail{min-height:410px}}

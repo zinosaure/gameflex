@@ -11,6 +11,10 @@ class Handler(SimpleHTTPRequestHandler):
    file=ROOT/'media'/(image[1]+'.webp')
    if not file.is_file():self.send_error(404);return
    body=file.read_bytes();mime='image/webp'
+  elif re.fullmatch(r'(?:/gameflex)?/images/console-icons/[a-z0-9-]+\.[a-f0-9]{12}\.webp',url):
+   file=Path(__file__).resolve().parents[2]/'src/webapp/src/public/images/console-icons'/url.rsplit('/',1)[1]
+   if not file.is_file():self.send_error(404);return
+   body=file.read_bytes();mime='image/webp'
   elif url in ('/gameflex/images/icon-192.png','/images/icon-192.png'):
    body=(Path(__file__).resolve().parents[2]/'src/webapp/src/public/images/icon-192.png').read_bytes();mime='image/png'
   elif url.endswith('/app.js'):

@@ -1,0 +1,372 @@
+[
+  {
+    "nom": "Nintendo NES",
+    "icone": "icones/nintendo-nes.png",
+    "planche": "planches/01-gameflex.png"
+  },
+  {
+    "nom": "Super Nintendo",
+    "icone": "icones/super-nintendo.png",
+    "planche": "planches/01-gameflex.png"
+  },
+  {
+    "nom": "Game Boy Color",
+    "icone": "icones/game-boy-color.png",
+    "planche": "planches/01-gameflex.png"
+  },
+  {
+    "nom": "Game Boy Advance",
+    "icone": "icones/game-boy-advance.png",
+    "planche": "planches/01-gameflex.png"
+  },
+  {
+    "nom": "Nintendo 64",
+    "icone": "icones/nintendo-64.png",
+    "planche": "planches/01-gameflex.png"
+  },
+  {
+    "nom": "Nintendo DS",
+    "icone": "icones/nintendo-ds.png",
+    "planche": "planches/02-gameflex.png"
+  },
+  {
+    "nom": "Nintendo GameCube",
+    "icone": "icones/nintendo-gamecube.png",
+    "planche": "planches/02-gameflex.png"
+  },
+  {
+    "nom": "Nintendo Wii",
+    "icone": "icones/nintendo-wii.png",
+    "planche": "planches/02-gameflex.png"
+  },
+  {
+    "nom": "PlayStation 1",
+    "icone": "icones/playstation-1.png",
+    "planche": "planches/02-gameflex.png"
+  },
+  {
+    "nom": "PlayStation 2",
+    "icone": "icones/playstation-2.png",
+    "planche": "planches/02-gameflex.png"
+  },
+  {
+    "nom": "Magnavox Odyssey",
+    "icone": "icones/magnavox-odyssey.png",
+    "planche": "planches/03-gameflex.png"
+  },
+  {
+    "nom": "Atari Pong",
+    "icone": "icones/atari-pong.png",
+    "planche": "planches/03-gameflex.png"
+  },
+  {
+    "nom": "Fairchild Channel F",
+    "icone": "icones/fairchild-channel-f.png",
+    "planche": "planches/03-gameflex.png"
+  },
+  {
+    "nom": "Atari 2600",
+    "icone": "icones/atari-2600.png",
+    "planche": "planches/03-gameflex.png"
+  },
+  {
+    "nom": "Magnavox Odyssey²",
+    "icone": "icones/magnavox-odyssey2.png",
+    "planche": "planches/03-gameflex.png"
+  },
+  {
+    "nom": "Intellivision",
+    "icone": "icones/intellivision.png",
+    "planche": "planches/03-gameflex.png"
+  },
+  {
+    "nom": "ColecoVision",
+    "icone": "icones/colecovision.png",
+    "planche": "planches/03-gameflex.png"
+  },
+  {
+    "nom": "Vectrex",
+    "icone": "icones/vectrex.png",
+    "planche": "planches/03-gameflex.png"
+  },
+  {
+    "nom": "Atari 5200",
+    "icone": "icones/atari-5200.png",
+    "planche": "planches/04-gameflex.png"
+  },
+  {
+    "nom": "Atari 7800",
+    "icone": "icones/atari-7800.png",
+    "planche": "planches/04-gameflex.png"
+  },
+  {
+    "nom": "Sega SG-1000",
+    "icone": "icones/sega-sg-1000.png",
+    "planche": "planches/04-gameflex.png"
+  },
+  {
+    "nom": "Nintendo Famicom",
+    "icone": "icones/nintendo-famicom.png",
+    "planche": "planches/04-gameflex.png"
+  },
+  {
+    "nom": "Sega Master System",
+    "icone": "icones/sega-master-system.png",
+    "planche": "planches/04-gameflex.png"
+  },
+  {
+    "nom": "PC Engine",
+    "icone": "icones/pc-engine.png",
+    "planche": "planches/04-gameflex.png"
+  },
+  {
+    "nom": "Sega Mega Drive",
+    "icone": "icones/sega-mega-drive.png",
+    "planche": "planches/04-gameflex.png"
+  },
+  {
+    "nom": "Neo Geo AES",
+    "icone": "icones/neo-geo-aes.png",
+    "planche": "planches/04-gameflex.png"
+  },
+  {
+    "nom": "Super Famicom",
+    "icone": "icones/super-famicom.png",
+    "planche": "planches/05-gameflex.png"
+  },
+  {
+    "nom": "Sega Mega-CD",
+    "icone": "icones/sega-mega-cd.png",
+    "planche": "planches/05-gameflex.png"
+  },
+  {
+    "nom": "Sega 32X",
+    "icone": "icones/sega-32x.png",
+    "planche": "planches/05-gameflex.png"
+  },
+  {
+    "nom": "Philips CD-i",
+    "icone": "icones/philips-cd-i.png",
+    "planche": "planches/05-gameflex.png"
+  },
+  {
+    "nom": "3DO FZ-1",
+    "icone": "icones/3do-fz-1.png",
+    "planche": "planches/05-gameflex.png"
+  },
+  {
+    "nom": "Atari Jaguar",
+    "icone": "icones/atari-jaguar.png",
+    "planche": "planches/05-gameflex.png"
+  },
+  {
+    "nom": "Sega Saturn",
+    "icone": "icones/sega-saturn.png",
+    "planche": "planches/05-gameflex.png"
+  },
+  {
+    "nom": "Sega Dreamcast",
+    "icone": "icones/sega-dreamcast.png",
+    "planche": "planches/05-gameflex.png"
+  },
+  {
+    "nom": "Xbox",
+    "icone": "icones/xbox.png",
+    "planche": "planches/06-gameflex.png"
+  },
+  {
+    "nom": "Xbox 360",
+    "icone": "icones/xbox-360.png",
+    "planche": "planches/06-gameflex.png"
+  },
+  {
+    "nom": "PlayStation 3",
+    "icone": "icones/playstation-3.png",
+    "planche": "planches/06-gameflex.png"
+  },
+  {
+    "nom": "Wii U",
+    "icone": "icones/wii-u.png",
+    "planche": "planches/06-gameflex.png"
+  },
+  {
+    "nom": "PlayStation 4",
+    "icone": "icones/playstation-4.png",
+    "planche": "planches/06-gameflex.png"
+  },
+  {
+    "nom": "Xbox One",
+    "icone": "icones/xbox-one.png",
+    "planche": "planches/06-gameflex.png"
+  },
+  {
+    "nom": "PlayStation 5",
+    "icone": "icones/playstation-5.png",
+    "planche": "planches/06-gameflex.png"
+  },
+  {
+    "nom": "Xbox Series X",
+    "icone": "icones/xbox-series-x.png",
+    "planche": "planches/06-gameflex.png"
+  },
+  {
+    "nom": "Game & Watch",
+    "icone": "icones/game-and-watch.png",
+    "planche": "planches/07-gameflex.png"
+  },
+  {
+    "nom": "Game Boy",
+    "icone": "icones/game-boy.png",
+    "planche": "planches/07-gameflex.png"
+  },
+  {
+    "nom": "Atari Lynx",
+    "icone": "icones/atari-lynx.png",
+    "planche": "planches/07-gameflex.png"
+  },
+  {
+    "nom": "Sega Game Gear",
+    "icone": "icones/sega-game-gear.png",
+    "planche": "planches/07-gameflex.png"
+  },
+  {
+    "nom": "TurboExpress",
+    "icone": "icones/turboexpress.png",
+    "planche": "planches/07-gameflex.png"
+  },
+  {
+    "nom": "Watara Supervision",
+    "icone": "icones/watara-supervision.png",
+    "planche": "planches/07-gameflex.png"
+  },
+  {
+    "nom": "Neo Geo Pocket Color",
+    "icone": "icones/neo-geo-pocket-color.png",
+    "planche": "planches/07-gameflex.png"
+  },
+  {
+    "nom": "WonderSwan Color",
+    "icone": "icones/wonderswan-color.png",
+    "planche": "planches/07-gameflex.png"
+  },
+  {
+    "nom": "Virtual Boy",
+    "icone": "icones/virtual-boy.png",
+    "planche": "planches/08-gameflex.png"
+  },
+  {
+    "nom": "Game Boy Advance SP",
+    "icone": "icones/game-boy-advance-sp.png",
+    "planche": "planches/08-gameflex.png"
+  },
+  {
+    "nom": "Nintendo DS Lite",
+    "icone": "icones/nintendo-ds-lite.png",
+    "planche": "planches/08-gameflex.png"
+  },
+  {
+    "nom": "Nintendo 3DS",
+    "icone": "icones/nintendo-3ds.png",
+    "planche": "planches/08-gameflex.png"
+  },
+  {
+    "nom": "PlayStation Portable",
+    "icone": "icones/playstation-portable.png",
+    "planche": "planches/08-gameflex.png"
+  },
+  {
+    "nom": "PlayStation Vita",
+    "icone": "icones/playstation-vita.png",
+    "planche": "planches/08-gameflex.png"
+  },
+  {
+    "nom": "Nintendo Switch",
+    "icone": "icones/nintendo-switch.png",
+    "planche": "planches/08-gameflex.png"
+  },
+  {
+    "nom": "Nintendo Switch 2",
+    "icone": "icones/nintendo-switch-2.png",
+    "planche": "planches/08-gameflex.png"
+  },
+  {
+    "nom": "Epoch Cassette Vision",
+    "icone": "icones/epoch-cassette-vision.png",
+    "planche": "planches/09-gameflex.png"
+  },
+  {
+    "nom": "Super Cassette Vision",
+    "icone": "icones/super-cassette-vision.png",
+    "planche": "planches/09-gameflex.png"
+  },
+  {
+    "nom": "Casio PV-1000",
+    "icone": "icones/casio-pv-1000.png",
+    "planche": "planches/09-gameflex.png"
+  },
+  {
+    "nom": "Casio Loopy",
+    "icone": "icones/casio-loopy.png",
+    "planche": "planches/09-gameflex.png"
+  },
+  {
+    "nom": "Bandai Playdia",
+    "icone": "icones/bandai-playdia.png",
+    "planche": "planches/09-gameflex.png"
+  },
+  {
+    "nom": "Apple Pippin",
+    "icone": "icones/apple-pippin.png",
+    "planche": "planches/09-gameflex.png"
+  },
+  {
+    "nom": "NEC PC-FX",
+    "icone": "icones/nec-pc-fx.png",
+    "planche": "planches/09-gameflex.png"
+  },
+  {
+    "nom": "Amstrad GX4000",
+    "icone": "icones/amstrad-gx4000.png",
+    "planche": "planches/09-gameflex.png"
+  },
+  {
+    "nom": "Game.com",
+    "icone": "icones/game-com.png",
+    "planche": "planches/10-gameflex.png"
+  },
+  {
+    "nom": "N-Gage",
+    "icone": "icones/n-gage.png",
+    "planche": "planches/10-gameflex.png"
+  },
+  {
+    "nom": "GP32",
+    "icone": "icones/gp32.png",
+    "planche": "planches/10-gameflex.png"
+  },
+  {
+    "nom": "Gizmondo",
+    "icone": "icones/gizmondo.png",
+    "planche": "planches/10-gameflex.png"
+  },
+  {
+    "nom": "Tapwave Zodiac",
+    "icone": "icones/tapwave-zodiac.png",
+    "planche": "planches/10-gameflex.png"
+  },
+  {
+    "nom": "Zeebo",
+    "icone": "icones/zeebo.png",
+    "planche": "planches/10-gameflex.png"
+  },
+  {
+    "nom": "Ouya",
+    "icone": "icones/ouya.png",
+    "planche": "planches/10-gameflex.png"
+  },
+  {
+    "nom": "Steam Deck",
+    "icone": "icones/steam-deck.png",
+    "planche": "planches/10-gameflex.png"
+  }
+]

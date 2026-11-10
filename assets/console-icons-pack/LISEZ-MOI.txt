@@ -1,0 +1,6 @@
+GameFlex — 74 pictogrammes
+
+icones/ contient une carte PNG par machine, avec son fond bleu nuit et son nom intégré.
+planches/ contient les dix planches de référence.
+index.json associe chaque nom à son PNG et sa planche.
+Pour intégrer les icônes, fais correspondre ces noms aux identifiants de consoles du projet. Ce pack couvre les modèles déjà illustrés.

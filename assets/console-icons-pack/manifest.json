@@ -1,0 +1,1043 @@
+{
+  "sourceArchive": "gameflex-74-icones-consoles.zip",
+  "sourceArchiveSha256": "6b912d8969c26184e2546f8a057bce3e12457db35303f8e788a3fd472ee97ee3",
+  "credit": "Pack d’illustrations fourni par le propriétaire de GameFlex. Marques et noms appartenant à leurs propriétaires respectifs. Aucune licence tierce n’est présumée.",
+  "icons": {
+    "nintendo-nes": {
+      "name": "Nintendo NES",
+      "file": "nintendo-nes.342ddea33a95.webp",
+      "width": 354,
+      "height": 568,
+      "sha256": "342ddea33a95dd519721ad3d278f95353544ad48c91feda1f8b431f2edf648c5",
+      "source": "icones/nintendo-nes.png",
+      "sourceSha256": "f4a0bf4f8485392a0bef22b5d72b8ced3f867984177a622e14a9d77579f30df8",
+      "sheet": "planches/01-gameflex.png",
+      "originalSize": [
+        354,
+        568
+      ]
+    },
+    "super-nintendo": {
+      "name": "Super Nintendo",
+      "file": "super-nintendo.30428ca1be0e.webp",
+      "width": 352,
+      "height": 568,
+      "sha256": "30428ca1be0e16116ffb90749032529ba8aa4060dd8dc791cb57af49f27ec2f5",
+      "source": "icones/super-nintendo.png",
+      "sourceSha256": "8b28b2e75c3839f59f1acfa76b7bf98c9f89e3a146b2273235a723630a0d1d8c",
+      "sheet": "planches/01-gameflex.png",
+      "originalSize": [
+        352,
+        568
+      ]
+    },
+    "game-boy-color": {
+      "name": "Game Boy Color",
+      "file": "game-boy-color.416a6e9ef8c5.webp",
+      "width": 351,
+      "height": 568,
+      "sha256": "416a6e9ef8c5b2069c4b5031b5363d65f4cbe64f544db926662c6857ac2900cc",
+      "source": "icones/game-boy-color.png",
+      "sourceSha256": "13cfa95afcc5a93be875925b40a10d51d2cbcc850817024aec28419bef6a0141",
+      "sheet": "planches/01-gameflex.png",
+      "originalSize": [
+        351,
+        568
+      ]
+    },
+    "game-boy-advance": {
+      "name": "Game Boy Advance",
+      "file": "game-boy-advance.d3e1a082f61a.webp",
+      "width": 352,
+      "height": 568,
+      "sha256": "d3e1a082f61a525cbfb95c907c6deda9203ee76082292ea0bd09c4c5ea8fdc1a",
+      "source": "icones/game-boy-advance.png",
+      "sourceSha256": "351dfef663827c1019dc0884286d6dd7028a5912d5e3192b49f56983d027e06f",
+      "sheet": "planches/01-gameflex.png",
+      "originalSize": [
+        352,
+        568
+      ]
+    },
+    "nintendo-64": {
+      "name": "Nintendo 64",
+      "file": "nintendo-64.c094cd3d0c15.webp",
+      "width": 353,
+      "height": 568,
+      "sha256": "c094cd3d0c15f5d0a57871709f7dbb11fdb8aaca8e23f9a9a7a743f676262109",
+      "source": "icones/nintendo-64.png",
+      "sourceSha256": "496125378b4b78f24c40f2122a4d2f4bfbc1c5ff7d8a588708b52142bbeae9d4",
+      "sheet": "planches/01-gameflex.png",
+      "originalSize": [
+        353,
+        568
+      ]
+    },
+    "nintendo-ds": {
+      "name": "Nintendo DS",
+      "file": "nintendo-ds.74d2257290bd.webp",
+      "width": 438,
+      "height": 563,
+      "sha256": "74d2257290bd88835190e76a2cb19b286f9a0a0572e4a799951b5cea6ffe61fb",
+      "source": "icones/nintendo-ds.png",
+      "sourceSha256": "51ae48390b1b36e5ef8541d08575c97786e5d70c8fda4e076148d3b986c81c1d",
+      "sheet": "planches/02-gameflex.png",
+      "originalSize": [
+        438,
+        563
+      ]
+    },
+    "nintendo-gamecube": {
+      "name": "Nintendo GameCube",
+      "file": "nintendo-gamecube.3f5baa7910ed.webp",
+      "width": 431,
+      "height": 563,
+      "sha256": "3f5baa7910ed13d6527848b8c0f2e187002f086c5410dc346c9b33b928c52324",
+      "source": "icones/nintendo-gamecube.png",
+      "sourceSha256": "14988cf1e6b0aa7424cc2f50b514776e01ada7a5a6215ab5a0c487b02a2041cf",
+      "sheet": "planches/02-gameflex.png",
+      "originalSize": [
+        431,
+        563
+      ]
+    },
+    "nintendo-wii": {
+      "name": "Nintendo Wii",
+      "file": "nintendo-wii.b6fdc4a92d74.webp",
+      "width": 428,
+      "height": 563,
+      "sha256": "b6fdc4a92d74f2770ea20c8737e0f4a7ee1f5b661f246ae337f5d3ba04e4da35",
+      "source": "icones/nintendo-wii.png",
+      "sourceSha256": "f92f533f9a46f048b4ee65bb7f9b24952dec903dee34e05c3471f397779949bc",
+      "sheet": "planches/02-gameflex.png",
+      "originalSize": [
+        428,
+        563
+      ]
+    },
+    "playstation-1": {
+      "name": "PlayStation 1",
+      "file": "playstation-1.4512ff81ccdd.webp",
+      "width": 428,
+      "height": 563,
+      "sha256": "4512ff81ccdd56030f381bdb43ef9235a6c8972c93b4f1b4fe213c873358cbba",
+      "source": "icones/playstation-1.png",
+      "sourceSha256": "ab0614c2fc64dad83e4b1ae2bf67bad78ba3faeec30513339338e152bec09a7d",
+      "sheet": "planches/02-gameflex.png",
+      "originalSize": [
+        428,
+        563
+      ]
+    },
+    "playstation-2": {
+      "name": "PlayStation 2",
+      "file": "playstation-2.70d9f54effbf.webp",
+      "width": 438,
+      "height": 563,
+      "sha256": "70d9f54effbf626b9ce8ba603b52e2437a170645b31aef66f86500908327ce8e",
+      "source": "icones/playstation-2.png",
+      "sourceSha256": "83060d7c8dc61e422bf614d51fe8dccbfdd66cd6e0ed87358e9650696dc96f72",
+      "sheet": "planches/02-gameflex.png",
+      "originalSize": [
+        438,
+        563
+      ]
+    },
+    "magnavox-odyssey": {
+      "name": "Magnavox Odyssey",
+      "file": "magnavox-odyssey.bd04926868dc.webp",
+      "width": 378,
+      "height": 403,
+      "sha256": "bd04926868dc47944dbf92fc9839aea3e70b44759301fd28c0c68cf55445b881",
+      "source": "icones/magnavox-odyssey.png",
+      "sourceSha256": "3ad6d3b00bb534c5bf9dce5e5fbda1296ee52c8ea7469d8bf9da4b63603147d6",
+      "sheet": "planches/03-gameflex.png",
+      "originalSize": [
+        378,
+        403
+      ]
+    },
+    "atari-pong": {
+      "name": "Atari Pong",
+      "file": "atari-pong.bc013ce40bff.webp",
+      "width": 379,
+      "height": 403,
+      "sha256": "bc013ce40bff5724b5534c5922a51083ff035ad1d87732ea60a691401d9aa556",
+      "source": "icones/atari-pong.png",
+      "sourceSha256": "47cda22d7128117c625f1e3686d34e40d5c2d79cb7a3624acbaaa9d8d8831839",
+      "sheet": "planches/03-gameflex.png",
+      "originalSize": [
+        379,
+        403
+      ]
+    },
+    "fairchild-channel-f": {
+      "name": "Fairchild Channel F",
+      "file": "fairchild-channel-f.a883b6076a79.webp",
+      "width": 378,
+      "height": 403,
+      "sha256": "a883b6076a79399edb38ab03125b491b2b2fcc45e106c10276b6786acd1e4d3b",
+      "source": "icones/fairchild-channel-f.png",
+      "sourceSha256": "66482b3206bed4d6a558fae85076b00faace0afa6691c8b1ac40af5ac3b62ee8",
+      "sheet": "planches/03-gameflex.png",
+      "originalSize": [
+        378,
+        403
+      ]
+    },
+    "atari-2600": {
+      "name": "Atari 2600",
+      "file": "atari-2600.64bd82937caf.webp",
+      "width": 376,
+      "height": 403,
+      "sha256": "64bd82937caf2af0507bd0278e128b3d2bf612fb3a6be1b743f770cc4360789f",
+      "source": "icones/atari-2600.png",
+      "sourceSha256": "ea8a3900b54704900904bc7d3e21cf2149fa3d2c8ef83fe83a730ff15253fcd2",
+      "sheet": "planches/03-gameflex.png",
+      "originalSize": [
+        376,
+        403
+      ]
+    },
+    "magnavox-odyssey2": {
+      "name": "Magnavox Odyssey²",
+      "file": "magnavox-odyssey2.c63c98b318a0.webp",
+      "width": 378,
+      "height": 423,
+      "sha256": "c63c98b318a0f861cb69a7f9a73dd933764bf2d581ce70b2d20cdd5716390f2f",
+      "source": "icones/magnavox-odyssey2.png",
+      "sourceSha256": "509165a69044545d710bd8dd39aafd451d804890ee9947743825ec306f8be1da",
+      "sheet": "planches/03-gameflex.png",
+      "originalSize": [
+        378,
+        423
+      ]
+    },
+    "intellivision": {
+      "name": "Intellivision",
+      "file": "intellivision.1b23e6e36167.webp",
+      "width": 379,
+      "height": 423,
+      "sha256": "1b23e6e3616757a711419296e5d4e7235931b96dfefbe855297191d50c6563eb",
+      "source": "icones/intellivision.png",
+      "sourceSha256": "c6ea5b3ec4cc5f8d7eefdc5d894c63d9933edc0eafcd65fb9b34b79c98b2f9c9",
+      "sheet": "planches/03-gameflex.png",
+      "originalSize": [
+        379,
+        423
+      ]
+    },
+    "colecovision": {
+      "name": "ColecoVision",
+      "file": "colecovision.50c5c86099d0.webp",
+      "width": 378,
+      "height": 423,
+      "sha256": "50c5c86099d00fd2a594eb7568276cf23ee75edac2dcc7fdb64a868696f7654d",
+      "source": "icones/colecovision.png",
+      "sourceSha256": "a77c790e664ee92ca47adde125d658e689a5724b6511b1ab9cc8790318a350da",
+      "sheet": "planches/03-gameflex.png",
+      "originalSize": [
+        378,
+        423
+      ]
+    },
+    "vectrex": {
+      "name": "Vectrex",
+      "file": "vectrex.8b90313c8dfd.webp",
+      "width": 376,
+      "height": 423,
+      "sha256": "8b90313c8dfde1c424aa0e1502db2875b093a174ff5d8affc449e5cf6f0d23a5",
+      "source": "icones/vectrex.png",
+      "sourceSha256": "c00073bbf10ef6fe12328fd9768c5dcb22a4a697bf416745b44dbd96e1857117",
+      "sheet": "planches/03-gameflex.png",
+      "originalSize": [
+        376,
+        423
+      ]
+    },
+    "atari-5200": {
+      "name": "Atari 5200",
+      "file": "atari-5200.f9bfe3ac2162.webp",
+      "width": 379,
+      "height": 415,
+      "sha256": "f9bfe3ac21620bdb3cc3a64d380887eae89e396e2742914c6dae74c17efe3f2d",
+      "source": "icones/atari-5200.png",
+      "sourceSha256": "9d1809a184f71ebd1be6acdfadb82e194919f87c2d29d436aae743f3c01301ec",
+      "sheet": "planches/04-gameflex.png",
+      "originalSize": [
+        379,
+        415
+      ]
+    },
+    "atari-7800": {
+      "name": "Atari 7800",
+      "file": "atari-7800.3f0f84dc978b.webp",
+      "width": 377,
+      "height": 415,
+      "sha256": "3f0f84dc978b22635483c3fe64fd178f543139371b06a631fa616fa395edc5c6",
+      "source": "icones/atari-7800.png",
+      "sourceSha256": "83058f5ff537c81baf1db679691302712cdbd1de23e52e7052319de2f7c6d6a8",
+      "sheet": "planches/04-gameflex.png",
+      "originalSize": [
+        377,
+        415
+      ]
+    },
+    "sega-sg-1000": {
+      "name": "Sega SG-1000",
+      "file": "sega-sg-1000.4cfe5140ada6.webp",
+      "width": 377,
+      "height": 415,
+      "sha256": "4cfe5140ada6e37e911014b81c46124574e77011210c9714d70f3a1737b4cd56",
+      "source": "icones/sega-sg-1000.png",
+      "sourceSha256": "9095f894c3ea83200c103df2039935c4f706dff7660a105a1fb0fc04e374187c",
+      "sheet": "planches/04-gameflex.png",
+      "originalSize": [
+        377,
+        415
+      ]
+    },
+    "nintendo-famicom": {
+      "name": "Nintendo Famicom",
+      "file": "nintendo-famicom.3f086c9a653d.webp",
+      "width": 378,
+      "height": 415,
+      "sha256": "3f086c9a653d339b952940dbebcba0ca654778013ffb07a54843bf099141b12b",
+      "source": "icones/nintendo-famicom.png",
+      "sourceSha256": "deca4115cad3c85394c2aa3bb5b0ec1e9e68eb2b51fddd3663c11e3c200c6a76",
+      "sheet": "planches/04-gameflex.png",
+      "originalSize": [
+        378,
+        415
+      ]
+    },
+    "sega-master-system": {
+      "name": "Sega Master System",
+      "file": "sega-master-system.760fa6d4efdc.webp",
+      "width": 379,
+      "height": 450,
+      "sha256": "760fa6d4efdc316970e1e96009c7f45b6717acae89df155a709a316d2a5be71c",
+      "source": "icones/sega-master-system.png",
+      "sourceSha256": "aa1acfa308d77c0c27dd5d3fb4a225b1b33ef7aac0ff8a9fef2ce7f668fa836e",
+      "sheet": "planches/04-gameflex.png",
+      "originalSize": [
+        379,
+        450
+      ]
+    },
+    "pc-engine": {
+      "name": "PC Engine",
+      "file": "pc-engine.b62288767bda.webp",
+      "width": 377,
+      "height": 450,
+      "sha256": "b62288767bda871c157f50d540a40c44c0ecbd9c13a26aeb13c506af467e671c",
+      "source": "icones/pc-engine.png",
+      "sourceSha256": "94244014792e670192e9798253755a4a4430415808b5712f371c29536a43bca6",
+      "sheet": "planches/04-gameflex.png",
+      "originalSize": [
+        377,
+        450
+      ]
+    },
+    "sega-mega-drive": {
+      "name": "Sega Mega Drive",
+      "file": "sega-mega-drive.dead2d5e13ff.webp",
+      "width": 377,
+      "height": 450,
+      "sha256": "dead2d5e13fff7485c851be3d6c985f31898b83f6833f50afea70a5a4a5f71b9",
+      "source": "icones/sega-mega-drive.png",
+      "sourceSha256": "ab3176b7faad9097b9c54f9edddb5b90f49c727987903751aa621a07e2a7b31f",
+      "sheet": "planches/04-gameflex.png",
+      "originalSize": [
+        377,
+        450
+      ]
+    },
+    "neo-geo-aes": {
+      "name": "Neo Geo AES",
+      "file": "neo-geo-aes.693e4bfce5eb.webp",
+      "width": 378,
+      "height": 450,
+      "sha256": "693e4bfce5eb1a45d4e30d115695f819bac7900dd89ecdd47d869a2c11c5a420",
+      "source": "icones/neo-geo-aes.png",
+      "sourceSha256": "3ece6d86745fcdb552dd24b74343e130235ecf7f0e87876a334e38d867dcf2db",
+      "sheet": "planches/04-gameflex.png",
+      "originalSize": [
+        378,
+        450
+      ]
+    },
+    "super-famicom": {
+      "name": "Super Famicom",
+      "file": "super-famicom.6b6f54fdcb97.webp",
+      "width": 411,
+      "height": 382,
+      "sha256": "6b6f54fdcb97f8ce03f79cb154284d0880ae63dc466eb50e206289d71eea5e56",
+      "source": "icones/super-famicom.png",
+      "sourceSha256": "8904ba40729e2a3347dd272be6192d6cb8fe8adff9c12502e1dd34e62f07d6e4",
+      "sheet": "planches/05-gameflex.png",
+      "originalSize": [
+        411,
+        382
+      ]
+    },
+    "sega-mega-cd": {
+      "name": "Sega Mega-CD",
+      "file": "sega-mega-cd.374911daac45.webp",
+      "width": 415,
+      "height": 382,
+      "sha256": "374911daac4549538d38b3f2f262726d2522732c1b41e151f1039a5fb96fe089",
+      "source": "icones/sega-mega-cd.png",
+      "sourceSha256": "f5ea4568aae2e7c93f436bb17ee7de93afc4e49329c57724fba86c96aa59d100",
+      "sheet": "planches/05-gameflex.png",
+      "originalSize": [
+        415,
+        382
+      ]
+    },
+    "sega-32x": {
+      "name": "Sega 32X",
+      "file": "sega-32x.f2397f0c8b6d.webp",
+      "width": 415,
+      "height": 382,
+      "sha256": "f2397f0c8b6d4a9f9d9ad128c34baf71f548d4484a893fa87947306a23a216ee",
+      "source": "icones/sega-32x.png",
+      "sourceSha256": "426cacbb21fe4ff2230f0a9164bf3847666b2423d95142d8a66c5ba3c153dd0b",
+      "sheet": "planches/05-gameflex.png",
+      "originalSize": [
+        415,
+        382
+      ]
+    },
+    "philips-cd-i": {
+      "name": "Philips CD-i",
+      "file": "philips-cd-i.0dc798867bb8.webp",
+      "width": 411,
+      "height": 382,
+      "sha256": "0dc798867bb8a4211e1fc8e80c3c8bda9cc5e56adca9a01685d686f34c576c96",
+      "source": "icones/philips-cd-i.png",
+      "sourceSha256": "466176ffef8071a3c7d7a6a2022c115629bbcba5b32c8f528eebd4e56dc70cb2",
+      "sheet": "planches/05-gameflex.png",
+      "originalSize": [
+        411,
+        382
+      ]
+    },
+    "3do-fz-1": {
+      "name": "3DO FZ-1",
+      "file": "3do-fz-1.f569e5d64844.webp",
+      "width": 411,
+      "height": 401,
+      "sha256": "f569e5d64844a3033c64f61f50ac3c63ccc2335abe57ea8ad847fa2031502fc9",
+      "source": "icones/3do-fz-1.png",
+      "sourceSha256": "573d01532ade3087705666509cdcdd0c928bcff3b5e2efec18b4d196246e8a02",
+      "sheet": "planches/05-gameflex.png",
+      "originalSize": [
+        411,
+        401
+      ]
+    },
+    "atari-jaguar": {
+      "name": "Atari Jaguar",
+      "file": "atari-jaguar.ae4dc65e1c44.webp",
+      "width": 415,
+      "height": 401,
+      "sha256": "ae4dc65e1c44af013ca8f22d1444ff47e00c64917ae0a08816658dbb281a94c7",
+      "source": "icones/atari-jaguar.png",
+      "sourceSha256": "bbe4c07ae5eef5af4cce203960adb55498d98daeeeaafb93adaec1bffa041e89",
+      "sheet": "planches/05-gameflex.png",
+      "originalSize": [
+        415,
+        401
+      ]
+    },
+    "sega-saturn": {
+      "name": "Sega Saturn",
+      "file": "sega-saturn.8ecca0193cab.webp",
+      "width": 415,
+      "height": 401,
+      "sha256": "8ecca0193cab4a0e2a565f3e218a6adde8c5e161195e82e2a3a42aed2df577d0",
+      "source": "icones/sega-saturn.png",
+      "sourceSha256": "6f0df9cb230328cf0ee5607d6dbe4f06cebd6684d396a1759a267d62d5873f4a",
+      "sheet": "planches/05-gameflex.png",
+      "originalSize": [
+        415,
+        401
+      ]
+    },
+    "sega-dreamcast": {
+      "name": "Sega Dreamcast",
+      "file": "sega-dreamcast.ff34d5c2b1f8.webp",
+      "width": 411,
+      "height": 401,
+      "sha256": "ff34d5c2b1f8fca03eb5bc1bd675145086e97e54a882aed4627faf37d44017bd",
+      "source": "icones/sega-dreamcast.png",
+      "sourceSha256": "261c2bd4ee4f2ba0dcd41495686d7eafea89bb7417f1bb647106fd56f22addce",
+      "sheet": "planches/05-gameflex.png",
+      "originalSize": [
+        411,
+        401
+      ]
+    },
+    "xbox": {
+      "name": "Xbox",
+      "file": "xbox.d45229823cc6.webp",
+      "width": 437,
+      "height": 357,
+      "sha256": "d45229823cc657abf2004a081f1dd46fd81a708368e4904e5c3474cb7af40995",
+      "source": "icones/xbox.png",
+      "sourceSha256": "ca4574ca35dae90603ebff0bca59bda8a580087dd0989777d298414554bf1dc4",
+      "sheet": "planches/06-gameflex.png",
+      "originalSize": [
+        437,
+        357
+      ]
+    },
+    "xbox-360": {
+      "name": "Xbox 360",
+      "file": "xbox-360.5a95914a3d1c.webp",
+      "width": 436,
+      "height": 357,
+      "sha256": "5a95914a3d1c8840e5b0ff80f500c11eaae60af4e1148adf551506b437e02785",
+      "source": "icones/xbox-360.png",
+      "sourceSha256": "21d6f67ac66d40c59d45498831c6cf1b7797336406473ac9fb4b1f4b16046c76",
+      "sheet": "planches/06-gameflex.png",
+      "originalSize": [
+        436,
+        357
+      ]
+    },
+    "playstation-3": {
+      "name": "PlayStation 3",
+      "file": "playstation-3.8de1d842b438.webp",
+      "width": 436,
+      "height": 357,
+      "sha256": "8de1d842b438f82b2eecedd4807e18db9dbe7d143a4a5351c2159f9aa5be7ae5",
+      "source": "icones/playstation-3.png",
+      "sourceSha256": "df6b547c42c6b124463bcd7ac749c94f6e4447cc8c3a8b220e564e23ffc67b61",
+      "sheet": "planches/06-gameflex.png",
+      "originalSize": [
+        436,
+        357
+      ]
+    },
+    "wii-u": {
+      "name": "Wii U",
+      "file": "wii-u.b4715ed76d79.webp",
+      "width": 436,
+      "height": 357,
+      "sha256": "b4715ed76d79e091ca706c89af4b0e3511024501c7133b4a36417d41a6b5c1c7",
+      "source": "icones/wii-u.png",
+      "sourceSha256": "5b5dbe7741588bc4f8a102906177010ad7937185b6a68a0cd105bda2029b1a95",
+      "sheet": "planches/06-gameflex.png",
+      "originalSize": [
+        436,
+        357
+      ]
+    },
+    "playstation-4": {
+      "name": "PlayStation 4",
+      "file": "playstation-4.177abe17832a.webp",
+      "width": 437,
+      "height": 383,
+      "sha256": "177abe17832ad544fb7590fd17afa217b61f6d1a54227c52ec872a3cc1458ca9",
+      "source": "icones/playstation-4.png",
+      "sourceSha256": "065a08dfafe6fd9f777f9e2151f62d7e782723b67dff45e6dc397f695acac85e",
+      "sheet": "planches/06-gameflex.png",
+      "originalSize": [
+        437,
+        383
+      ]
+    },
+    "xbox-one": {
+      "name": "Xbox One",
+      "file": "xbox-one.0d6014438aa4.webp",
+      "width": 436,
+      "height": 383,
+      "sha256": "0d6014438aa47d9ab38bba4e17d9f71cc824fdb1ad3f224f511e6699ac27d1e9",
+      "source": "icones/xbox-one.png",
+      "sourceSha256": "dfd4b35e604cc7e9e49e6b722faab914505b0268c62694bc5550b491f8f6b844",
+      "sheet": "planches/06-gameflex.png",
+      "originalSize": [
+        436,
+        383
+      ]
+    },
+    "playstation-5": {
+      "name": "PlayStation 5",
+      "file": "playstation-5.c3ceef815b16.webp",
+      "width": 436,
+      "height": 383,
+      "sha256": "c3ceef815b1640674fe62cb94f308a9ebe47ee348f1e201863de91ef0c16f24b",
+      "source": "icones/playstation-5.png",
+      "sourceSha256": "6ebdb933391c3e3a3dfa42c6001122caf22206312caffe897a9792dd5d5145d5",
+      "sheet": "planches/06-gameflex.png",
+      "originalSize": [
+        436,
+        383
+      ]
+    },
+    "xbox-series-x": {
+      "name": "Xbox Series X",
+      "file": "xbox-series-x.2ca9688698ef.webp",
+      "width": 436,
+      "height": 383,
+      "sha256": "2ca9688698ef4100bbf202245969d9316afa3417527db075062876abbc375a5c",
+      "source": "icones/xbox-series-x.png",
+      "sourceSha256": "66c5e75c33882dd99dcbb20043a3a83f62edfafdc000633e47946b0ad48dfa43",
+      "sheet": "planches/06-gameflex.png",
+      "originalSize": [
+        436,
+        383
+      ]
+    },
+    "game-and-watch": {
+      "name": "Game & Watch",
+      "file": "game-and-watch.4d8e4b2bf901.webp",
+      "width": 378,
+      "height": 412,
+      "sha256": "4d8e4b2bf9015c3f868abf7758deb6895645287c68e30c59f5b57d61a3ccbdd3",
+      "source": "icones/game-and-watch.png",
+      "sourceSha256": "218a5a138c62a32b3c0312f58ce95d51901adef9515d86d597133ed4f71d0c92",
+      "sheet": "planches/07-gameflex.png",
+      "originalSize": [
+        378,
+        412
+      ]
+    },
+    "game-boy": {
+      "name": "Game Boy",
+      "file": "game-boy.75846de0b43f.webp",
+      "width": 379,
+      "height": 412,
+      "sha256": "75846de0b43f5c0165429e8580004a83038277c71b87109dac9d7e54009bd4e5",
+      "source": "icones/game-boy.png",
+      "sourceSha256": "1c454fde658f480706b3cf48ba3558f1cee3d35afc1a703fcdfbe570be104322",
+      "sheet": "planches/07-gameflex.png",
+      "originalSize": [
+        379,
+        412
+      ]
+    },
+    "atari-lynx": {
+      "name": "Atari Lynx",
+      "file": "atari-lynx.4625ed91b2ed.webp",
+      "width": 379,
+      "height": 412,
+      "sha256": "4625ed91b2ed328054e2b442b52728077042404f7c66a2149adad6b9341c742a",
+      "source": "icones/atari-lynx.png",
+      "sourceSha256": "a5f9204daa3ce167d56d204f1103a1e6219eb3387a4e4da4b91f43bb169e182d",
+      "sheet": "planches/07-gameflex.png",
+      "originalSize": [
+        379,
+        412
+      ]
+    },
+    "sega-game-gear": {
+      "name": "Sega Game Gear",
+      "file": "sega-game-gear.e4c38aed69d7.webp",
+      "width": 377,
+      "height": 412,
+      "sha256": "e4c38aed69d711d15d94a1e7bd0f2c2842dbf48ebf6b9caccf7ace635e850b81",
+      "source": "icones/sega-game-gear.png",
+      "sourceSha256": "b6129a28473eaaa7f78ebcc7d3193c4591edbef377cd71e975cf642b1c5c7312",
+      "sheet": "planches/07-gameflex.png",
+      "originalSize": [
+        377,
+        412
+      ]
+    },
+    "turboexpress": {
+      "name": "TurboExpress",
+      "file": "turboexpress.118022460224.webp",
+      "width": 378,
+      "height": 439,
+      "sha256": "118022460224356ac711135dda1bf344cea1cab0226b16e31de9e856d971f9e4",
+      "source": "icones/turboexpress.png",
+      "sourceSha256": "5d323d40036c746dddb23ec21e723ff6f0683195f5e178961f73d15849baf59b",
+      "sheet": "planches/07-gameflex.png",
+      "originalSize": [
+        378,
+        439
+      ]
+    },
+    "watara-supervision": {
+      "name": "Watara Supervision",
+      "file": "watara-supervision.de4e17e946dc.webp",
+      "width": 379,
+      "height": 439,
+      "sha256": "de4e17e946dc7d63b45f305634501fa434593bb72a462f6d626d93707bbbf7c5",
+      "source": "icones/watara-supervision.png",
+      "sourceSha256": "98e8e106a284fabdec81048449824f6f3d2ea07295d9092784b8145fd5a57199",
+      "sheet": "planches/07-gameflex.png",
+      "originalSize": [
+        379,
+        439
+      ]
+    },
+    "neo-geo-pocket-color": {
+      "name": "Neo Geo Pocket Color",
+      "file": "neo-geo-pocket-color.a3aa5b233aa0.webp",
+      "width": 379,
+      "height": 439,
+      "sha256": "a3aa5b233aa0240bd491d85ac6ff0ac667d62b1034b12883b69d3df01f1519a4",
+      "source": "icones/neo-geo-pocket-color.png",
+      "sourceSha256": "49623c76bd4e0f234168f6a9b6bcc36d59b5fb8e28277f295d6fafc2a6954a87",
+      "sheet": "planches/07-gameflex.png",
+      "originalSize": [
+        379,
+        439
+      ]
+    },
+    "wonderswan-color": {
+      "name": "WonderSwan Color",
+      "file": "wonderswan-color.a6c76ac6de2a.webp",
+      "width": 377,
+      "height": 439,
+      "sha256": "a6c76ac6de2a84289188bf40e030bee41dd5161f38512a2a9c9e7b53209f0333",
+      "source": "icones/wonderswan-color.png",
+      "sourceSha256": "7ace0a2f012d056ec1be1f88777a6e3a8b5a6636bd74b67e4b1c597040e62198",
+      "sheet": "planches/07-gameflex.png",
+      "originalSize": [
+        377,
+        439
+      ]
+    },
+    "virtual-boy": {
+      "name": "Virtual Boy",
+      "file": "virtual-boy.69e46f6eea39.webp",
+      "width": 377,
+      "height": 411,
+      "sha256": "69e46f6eea39ef1cf84c4001c589f32359eace592c0d12b4580e544a2c2083f5",
+      "source": "icones/virtual-boy.png",
+      "sourceSha256": "b823106511b18c66be7f74364960f35d580d50d6ae9671b00b3deaede0e4eba8",
+      "sheet": "planches/08-gameflex.png",
+      "originalSize": [
+        377,
+        411
+      ]
+    },
+    "game-boy-advance-sp": {
+      "name": "Game Boy Advance SP",
+      "file": "game-boy-advance-sp.82f7fb236940.webp",
+      "width": 373,
+      "height": 411,
+      "sha256": "82f7fb236940ca1bc27f7eb802a83a1c6bf93b88e297e9e789d299b3e4bd7951",
+      "source": "icones/game-boy-advance-sp.png",
+      "sourceSha256": "d478b83f2cc393fbe7ad46b2003e4e1c2d42aa1dea51f3c24601779d4aabc8c0",
+      "sheet": "planches/08-gameflex.png",
+      "originalSize": [
+        373,
+        411
+      ]
+    },
+    "nintendo-ds-lite": {
+      "name": "Nintendo DS Lite",
+      "file": "nintendo-ds-lite.d613d4c70122.webp",
+      "width": 374,
+      "height": 411,
+      "sha256": "d613d4c7012298539f7ebcaefcf171d30d84b529b22ef3d12b66523e989e3233",
+      "source": "icones/nintendo-ds-lite.png",
+      "sourceSha256": "02e0d26f1f6debfed0c551730a3ae03ecfccf59a5134e80a6409b5170ca35499",
+      "sheet": "planches/08-gameflex.png",
+      "originalSize": [
+        374,
+        411
+      ]
+    },
+    "nintendo-3ds": {
+      "name": "Nintendo 3DS",
+      "file": "nintendo-3ds.dd40d4c32642.webp",
+      "width": 377,
+      "height": 411,
+      "sha256": "dd40d4c32642343ecb743f496c56467339b4a57fa6e2ae34f0e9197375360fc9",
+      "source": "icones/nintendo-3ds.png",
+      "sourceSha256": "cb0f153a36a632226a2a503384cec3d5ae4eea8a0dc24f3fb9e43434df321d69",
+      "sheet": "planches/08-gameflex.png",
+      "originalSize": [
+        377,
+        411
+      ]
+    },
+    "playstation-portable": {
+      "name": "PlayStation Portable",
+      "file": "playstation-portable.5fe4778a9da2.webp",
+      "width": 377,
+      "height": 405,
+      "sha256": "5fe4778a9da217202b6f2814d9ac9923537db1613a8af1cb4e5704088c36502f",
+      "source": "icones/playstation-portable.png",
+      "sourceSha256": "0e96cb426657aab163d27d58fb11c3ad09b5fa023d39be3d10ae40389fef7c12",
+      "sheet": "planches/08-gameflex.png",
+      "originalSize": [
+        377,
+        405
+      ]
+    },
+    "playstation-vita": {
+      "name": "PlayStation Vita",
+      "file": "playstation-vita.e2212ef5c298.webp",
+      "width": 373,
+      "height": 405,
+      "sha256": "e2212ef5c298848fd0c9525992d5f35b7fd9608308f6cbdd7d521d51ef238196",
+      "source": "icones/playstation-vita.png",
+      "sourceSha256": "74751d16677e2e0f629ad8d0d22e2b082535d99b1f955dc0c6b958b9bcaddd3d",
+      "sheet": "planches/08-gameflex.png",
+      "originalSize": [
+        373,
+        405
+      ]
+    },
+    "nintendo-switch": {
+      "name": "Nintendo Switch",
+      "file": "nintendo-switch.0a90a49b7296.webp",
+      "width": 374,
+      "height": 405,
+      "sha256": "0a90a49b7296294dca89a63ce65886dad5e3f48c1339ae042ec5af4ea01a6365",
+      "source": "icones/nintendo-switch.png",
+      "sourceSha256": "7a942494da1dfd659acc02a09fd53714bc47b23d2e6c4447375ad5a5133b5416",
+      "sheet": "planches/08-gameflex.png",
+      "originalSize": [
+        374,
+        405
+      ]
+    },
+    "nintendo-switch-2": {
+      "name": "Nintendo Switch 2",
+      "file": "nintendo-switch-2.1d8d3c0374fc.webp",
+      "width": 377,
+      "height": 405,
+      "sha256": "1d8d3c0374fce71f0967b7cdb2ed879b477bda0630756326548a3004b10dd924",
+      "source": "icones/nintendo-switch-2.png",
+      "sourceSha256": "520354b9700bb1d44a878d2b2c9ce5951682c20fc46ccb9874114f2b10deb3c1",
+      "sheet": "planches/08-gameflex.png",
+      "originalSize": [
+        377,
+        405
+      ]
+    },
+    "epoch-cassette-vision": {
+      "name": "Epoch Cassette Vision",
+      "file": "epoch-cassette-vision.2cb3b60748ab.webp",
+      "width": 379,
+      "height": 409,
+      "sha256": "2cb3b60748abb6999fd7d9e63d10cb1a6af148d056e6f5dd6ed0048489c3cc7f",
+      "source": "icones/epoch-cassette-vision.png",
+      "sourceSha256": "da2381d0e308e41a6d3fc57971e54b5a0c0e015d23eb765a85ee71e05fe2f5e8",
+      "sheet": "planches/09-gameflex.png",
+      "originalSize": [
+        379,
+        409
+      ]
+    },
+    "super-cassette-vision": {
+      "name": "Super Cassette Vision",
+      "file": "super-cassette-vision.b68950942fb5.webp",
+      "width": 377,
+      "height": 409,
+      "sha256": "b68950942fb5e8037247111ad0702bbdedcff9b00bdfacba24a3c55b83b25396",
+      "source": "icones/super-cassette-vision.png",
+      "sourceSha256": "7470cfcc3f581a327d682c2cc05892030331b31d4fb8d69368f3c1d9dcb76744",
+      "sheet": "planches/09-gameflex.png",
+      "originalSize": [
+        377,
+        409
+      ]
+    },
+    "casio-pv-1000": {
+      "name": "Casio PV-1000",
+      "file": "casio-pv-1000.6b802b061b16.webp",
+      "width": 378,
+      "height": 409,
+      "sha256": "6b802b061b162c48c7f1387423ab9ab469878be0c00b38ad06327bf7b3f75a71",
+      "source": "icones/casio-pv-1000.png",
+      "sourceSha256": "726ae16b2befba747b8fdeb65b548fcf98237596b08b1367a79989485d71734e",
+      "sheet": "planches/09-gameflex.png",
+      "originalSize": [
+        378,
+        409
+      ]
+    },
+    "casio-loopy": {
+      "name": "Casio Loopy",
+      "file": "casio-loopy.445a1fd58108.webp",
+      "width": 379,
+      "height": 409,
+      "sha256": "445a1fd58108bb9aa6457bfbeb4eca1d57bc6b036b5ad844a6f828816e735465",
+      "source": "icones/casio-loopy.png",
+      "sourceSha256": "38630df8a9fa7e8814816f30e0d0a2abb657ea0ad2750751dcaac3da9330e791",
+      "sheet": "planches/09-gameflex.png",
+      "originalSize": [
+        379,
+        409
+      ]
+    },
+    "bandai-playdia": {
+      "name": "Bandai Playdia",
+      "file": "bandai-playdia.6e9800ad14e6.webp",
+      "width": 379,
+      "height": 447,
+      "sha256": "6e9800ad14e6a6a6adb87c0484f596ef422f0020e4f8335347c132c5926d9868",
+      "source": "icones/bandai-playdia.png",
+      "sourceSha256": "06759b25b13f3e63fc5203762c88e707d503c13ba613d360e4019671ad57027b",
+      "sheet": "planches/09-gameflex.png",
+      "originalSize": [
+        379,
+        447
+      ]
+    },
+    "apple-pippin": {
+      "name": "Apple Pippin",
+      "file": "apple-pippin.e5832e737b02.webp",
+      "width": 377,
+      "height": 447,
+      "sha256": "e5832e737b0277ab920e769b68c761e62693a81bdde9af058668e315a7bbb992",
+      "source": "icones/apple-pippin.png",
+      "sourceSha256": "5f67a8a546d3d51ebd923c6e51de574b6a1db6913621fdc3d6d09ef2b1678775",
+      "sheet": "planches/09-gameflex.png",
+      "originalSize": [
+        377,
+        447
+      ]
+    },
+    "nec-pc-fx": {
+      "name": "NEC PC-FX",
+      "file": "nec-pc-fx.82dbd8d1c651.webp",
+      "width": 378,
+      "height": 447,
+      "sha256": "82dbd8d1c651f7a85a6e9bc481b96ca13ff234f710187d6ef4418d1b23312c6b",
+      "source": "icones/nec-pc-fx.png",
+      "sourceSha256": "5de8b74452f084ef2ef4cc42a9242873a88cdd62be3fcf65eac5f2527a96b45c",
+      "sheet": "planches/09-gameflex.png",
+      "originalSize": [
+        378,
+        447
+      ]
+    },
+    "amstrad-gx4000": {
+      "name": "Amstrad GX4000",
+      "file": "amstrad-gx4000.af5ab373e82b.webp",
+      "width": 379,
+      "height": 447,
+      "sha256": "af5ab373e82b81f63ce108912d3fed34a6a413b4c22fdb6d3bff6d44f3b85ab5",
+      "source": "icones/amstrad-gx4000.png",
+      "sourceSha256": "ef0401340906f4184e6165333f972a63d49abef472a77d886fa55c007501d12e",
+      "sheet": "planches/09-gameflex.png",
+      "originalSize": [
+        379,
+        447
+      ]
+    },
+    "game-com": {
+      "name": "Game.com",
+      "file": "game-com.22d9875fd427.webp",
+      "width": 379,
+      "height": 402,
+      "sha256": "22d9875fd427519b804b61cf28a47de18f2de51669142197c40e06900a2cf099",
+      "source": "icones/game-com.png",
+      "sourceSha256": "e5402bf7116e336023b6e21e4ad55c271fe379c15c404d666fc4991e6548692f",
+      "sheet": "planches/10-gameflex.png",
+      "originalSize": [
+        379,
+        402
+      ]
+    },
+    "n-gage": {
+      "name": "N-Gage",
+      "file": "n-gage.c20519a63fcd.webp",
+      "width": 378,
+      "height": 402,
+      "sha256": "c20519a63fcd2927a22b939d15a94ca7d69e1c599cf42220e604faedd9975a9a",
+      "source": "icones/n-gage.png",
+      "sourceSha256": "0e6d11e8645d5c05ab1fa4186f62ce347c86ac48ff7d3a8774013a7325f79e75",
+      "sheet": "planches/10-gameflex.png",
+      "originalSize": [
+        378,
+        402
+      ]
+    },
+    "gp32": {
+      "name": "GP32",
+      "file": "gp32.9da7b9013e54.webp",
+      "width": 377,
+      "height": 402,
+      "sha256": "9da7b9013e5425f9217a7b7fd05f4403057ed03afcd539d07e65396a0da5c8cf",
+      "source": "icones/gp32.png",
+      "sourceSha256": "0e1f706f91c2dc37567f181dab778b7107b1a348b1a5cc2f9ed65bdca43f3636",
+      "sheet": "planches/10-gameflex.png",
+      "originalSize": [
+        377,
+        402
+      ]
+    },
+    "gizmondo": {
+      "name": "Gizmondo",
+      "file": "gizmondo.6189b57c5da0.webp",
+      "width": 378,
+      "height": 402,
+      "sha256": "6189b57c5da0b1590447da2c71bc32297d8983315502bfea4d9e22116f56991f",
+      "source": "icones/gizmondo.png",
+      "sourceSha256": "8a9ad64b0fc254e39d7226b1911be0b6c6e392eb383ccb7413d132d58c59f456",
+      "sheet": "planches/10-gameflex.png",
+      "originalSize": [
+        378,
+        402
+      ]
+    },
+    "tapwave-zodiac": {
+      "name": "Tapwave Zodiac",
+      "file": "tapwave-zodiac.90667a32571b.webp",
+      "width": 379,
+      "height": 409,
+      "sha256": "90667a32571b32f11329e1fdb4be245637547800afaf1ad965b601fa6670a7cf",
+      "source": "icones/tapwave-zodiac.png",
+      "sourceSha256": "32a4d16988309e748ca326d8a121a894bf767690f1dc11a382a54959dffa7b47",
+      "sheet": "planches/10-gameflex.png",
+      "originalSize": [
+        379,
+        409
+      ]
+    },
+    "zeebo": {
+      "name": "Zeebo",
+      "file": "zeebo.637073255579.webp",
+      "width": 378,
+      "height": 409,
+      "sha256": "6370732555795ca50775d1d58167f0a248c4af612e1841c202945c1297bd57a9",
+      "source": "icones/zeebo.png",
+      "sourceSha256": "2fee5ca557d01f211f970c21152f52e90612e702fc39566e077d168465975c67",
+      "sheet": "planches/10-gameflex.png",
+      "originalSize": [
+        378,
+        409
+      ]
+    },
+    "ouya": {
+      "name": "Ouya",
+      "file": "ouya.1f1be173cb09.webp",
+      "width": 377,
+      "height": 409,
+      "sha256": "1f1be173cb093e07e8c55a620817b6002a194db51279c149b3811726f36b0678",
+      "source": "icones/ouya.png",
+      "sourceSha256": "06e3b723c56b99236d8ad17e5c71de91854dbc47fb3649488f03c4e21361ba87",
+      "sheet": "planches/10-gameflex.png",
+      "originalSize": [
+        377,
+        409
+      ]
+    },
+    "steam-deck": {
+      "name": "Steam Deck",
+      "file": "steam-deck.cc1c1821c838.webp",
+      "width": 378,
+      "height": 409,
+      "sha256": "cc1c1821c8385e3b08d80a7f8db2c079f6f96b285f71585d234a4452d2deffd1",
+      "source": "icones/steam-deck.png",
+      "sourceSha256": "8966adbb13ff07819628ce7596c052fb53fc61ce028527bfc9bee5e03840a853",
+      "sheet": "planches/10-gameflex.png",
+      "originalSize": [
+        378,
+        409
+      ]
+    }
+  }
+}

@@ -1,5 +1,6 @@
 import {TVPhoneButton,useTVPhone} from '../tv/TVPhoneHost.jsx';
 import ConsoleEmulatorBanner from './ConsoleEmulatorBanner.jsx';
+import {consoleIcon} from './console-icons.js';
 import {appPath} from '../libs/appBase.js';
 import React,{useEffect,useRef,useState} from 'react';
 import {Art,useDirectionalFocus} from './ExperienceView.jsx';
@@ -77,7 +78,7 @@ export default function PlayStationHome({games:suppliedGames=[],downloadJobs=[],
  {!loading&&!error&&!installed.length&&currentSection==='home'?<Empty section="home" onNavigate={onNavigate}/>:null}
  {currentSection==='home'&&selectedSystem&&<>
  <div className="ps-home-backdrop ps-console-backdrop" key={selectedSystem.id} aria-hidden="true"><Art item={selectedSystem} kind="console" wide/></div>
- <section className="ps-recent-strip ps-consoles-strip" aria-label="Vos consoles"><div className="ps-game-rail">{ownedConsoles.map((console,index)=><button key={console.id} className="ps-console-tile" data-system={console.id} aria-pressed={console.id===selectedSystem.id} aria-label={`Sélectionner ${console.name}`} onFocus={()=>selectConsole(console)} onClick={()=>selectConsole(console)} onKeyDown={event=>move(event,index)}><Art item={console} kind="console"/><span>{console.name}</span></button>)}</div></section>
+ <section className="ps-recent-strip ps-consoles-strip" aria-label="Vos consoles"><div className="ps-game-rail">{ownedConsoles.map((console,index)=>{const icon=consoleIcon(console.id);return <button key={console.id} className={`ps-console-tile ${icon?'ps-console-logo-tile':''}`} style={icon?{'--console-icon-ratio':`${icon.width}/${icon.height}`} : undefined} data-system={console.id} aria-pressed={console.id===selectedSystem.id} aria-label={`Sélectionner ${console.name}`} onFocus={()=>selectConsole(console)} onClick={()=>selectConsole(console)} onKeyDown={event=>move(event,index)}><Art item={console} kind="console"/><span>{console.name}</span></button>;})}</div></section>
  <section className="ps-console-library" aria-labelledby="ps-console-title"><header className="ps-console-heading"><div><span className="ps-eyebrow">VOS CONSOLES · VOS JEUX</span><h1 id="ps-console-title">{selectedSystem.name}</h1><p>{consoleGames.length} jeu{consoleGames.length===1?'':'x'} installé{consoleGames.length===1?'':'s'}<span> · </span>{count} référence{count===1?'':'s'} dans votre bibliothèque</p></div><label className="ps-search"><Icon name="search" size={20}/><input type="search" aria-label="Rechercher dans cette console" placeholder="Rechercher un jeu" value={query} onChange={event=>setQuery(event.target.value)}/></label></header>
  <ConsoleEmulatorBanner key={selectedSystem.id} consoleId={selectedSystem.id} consoleName={selectedSystem.name} onReady={onRefreshLibrary}/>
  {consoleGames.length>0&&grid(consoleList)}

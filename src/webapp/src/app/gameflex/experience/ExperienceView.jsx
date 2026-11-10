@@ -1,6 +1,7 @@
 import React, {useEffect,useRef,useState} from 'react';
 import {useDialogFocus} from './dialog-focus.js';
 import {apiUrl} from '../libs/serverBase.js';
+import {consoleIcon} from './console-icons.js';
 import {selectableInterfaces} from './interfaces.js';
 import {Icon,LayoutMiniature} from './EmulatorUI.jsx';
 const retroModes=[];
@@ -53,6 +54,19 @@ export function useDirectionalFocus(ref) {
 }
 
 export function Art({ item, wide = false, kind = 'game' }) {
+    const icon=kind==='console'?consoleIcon(item.id):null;
+    return icon?<ConsoleIconArt key={icon.file} item={item} icon={icon} wide={wide}/>:<CachedArt item={item} wide={wide} kind={kind}/>;
+}
+
+function ConsoleIconArt({item,icon,wide}) {
+    const [failed,setFailed]=useState(false);
+    if(failed)return <CachedArt item={item} wide={wide} kind="console"/>;
+    return <div className={`gx-art gx-console-art gx-console-icon ${wide?'gx-wide':''}`}>
+        <img src={icon.src} width={icon.width} height={icon.height} alt={`Illustration de ${item.name||icon.name}`} onError={()=>setFailed(true)} decoding="async"/>
+    </div>;
+}
+
+function CachedArt({ item, wide = false, kind = 'game' }) {
     const identity=`${item.image||''}:${item.fallbackImage||''}`;
     const [fallbackFor,setFallbackFor]=useState(null),[failedFor,setFailedFor]=useState(null),[loadedSrc,setLoadedSrc]=useState('');
     const [visible,setVisible]=useState(()=>typeof IntersectionObserver==='undefined');
