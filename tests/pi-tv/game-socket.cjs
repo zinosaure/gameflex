@@ -1,0 +1,13 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+global.window={location:{href:'https://test/gameflex/'}};global.getStoredToken=()=> 'fixture';global.streamAuthToken=()=>'';global.CloseEvent=class extends Event{constructor(t,o){super(t);Object.assign(this,o)}};
+let natives=[],calls=[];
+global.WebSocket=class {constructor(){natives.push(this)}close(){}send(v){calls.push(['native',v])}};
+let release;
+global.fetch=async(url,options)=>{calls.push([url,options]);if(url.endsWith('/poll'))return new Promise(r=>{release=r;options.signal.addEventListener('abort',()=>r({ok:true,json:async()=>({closed:true})}))});return {ok:true,json:async()=>url.endsWith('/socket-bridge')?{id:'fixture'}:{sent:true}}};
+let source=fs.readFileSync('src/webapp/src/app/gameflex/libs/GameSocket.js','utf8').replace(/^import .*;\n/gm,'').replace('export class GameSocket','class GameSocket').replace('export function gameSocket','function gameSocket');vm.runInThisContext(source+'\nglobal.GameSocket=GameSocket');
+const tick=()=>new Promise(r=>setTimeout(r,5));
+(async()=>{
+ const native=new GameSocket('wss://test/gameflex/api/v1/facade/ws?token=fixture');let opened=0;native.onopen=()=>opened++;natives[0].onopen();native.send('once');natives[0].onclose({code:1006,reason:'',wasClean:false});await tick();assert.equal(calls.filter(c=>c[0]!=='native').length,0);assert.equal(opened,1);
+ const fallback=new GameSocket('wss://test/gameflex/api/v1/facade/ws?token=fixture');fallback.onopen=()=>opened++;natives[1].onerror();await tick();assert.equal(fallback.readyState,1);assert.equal(JSON.parse(calls.find(c=>c[0].endsWith('/socket-bridge'))[1].body).path,'/api/v1/facade/ws');let message;fallback.onmessage=e=>message=e.data;release({ok:true,json:async()=>({frames:[{text:'reply'}]})});await tick();assert.equal(message,'reply');fallback.send('command');await tick();assert.equal(calls.filter(c=>c[0].endsWith('/send')).length,1);fallback.send('last-before-close');fallback.close();await tick();await tick();assert.equal(calls.filter(c=>c[0].endsWith('/send')).length,2);assert.equal(fallback.readyState,3);assert.equal(opened,2);console.log('PASS: native, HTTPS fallback, ordered send, polling, close, no replay after connection loss');
+ const before=natives.length;const published=new GameSocket('wss://loutrenas.myqnapcloud.com/gameflex/api/v1/facade/ws?token=fixture');await tick();assert.equal(natives.length,before);assert.equal(published.readyState,1);published.close();await tick();console.log('PASS: published prefix skips the known-broken native upgrade delay');
+})().catch(e=>{console.error(e);process.exitCode=1});

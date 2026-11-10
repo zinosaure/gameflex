@@ -1,3 +1,4 @@
+import {gameSocket} from '../../libs/GameSocket.js';
 import { streamingService } from "../remoteplay/service/streaming.service.js";
 import { can } from "../../libs/capabilities.js";
 import { streamHostOrigin } from "../../libs/serverBase.js";
@@ -136,7 +137,7 @@ export async function answerGatewayOffer(pc, gateway, origin, onSocket = null) {
     // Ouvert APRÈS l'offre posée : le gateway rejoue tout de suite les
     // candidats qu'il a déjà, et un candidat ajouté avant la description
     // distante est refusé — donc perdu.
-    socket = new WebSocket(gatewayViewerSignalUrl(gateway.sessionId, gateway.viewerId, origin));
+    socket = gameSocket(gatewayViewerSignalUrl(gateway.sessionId, gateway.viewerId, origin));
     onSocket?.(socket);
     socket.onopen = () => {
         for (const message of outbox.splice(0)) {
