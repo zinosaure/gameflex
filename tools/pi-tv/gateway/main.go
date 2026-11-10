@@ -89,16 +89,22 @@ func (v *viewer) fallbackReady() bool {
 }
 
 func (v *viewer) sendFallback(data []byte) {
+	v.sendFallbackMessage(websocket.BinaryMessage, data, nil)
+}
+
+func (v *viewer) sendFallbackMessage(kind int, data []byte, expected *websocket.Conn) bool {
 	v.fallbackMu.Lock()
 	defer v.fallbackMu.Unlock()
-	if v.fallback == nil {
-		return
+	if v.fallback == nil || (expected != nil && v.fallback != expected) {
+		return false
 	}
 	v.fallback.SetWriteDeadline(time.Now().Add(2 * time.Second))
-	if v.fallback.WriteMessage(websocket.BinaryMessage, data) != nil {
+	if v.fallback.WriteMessage(kind, data) != nil {
 		v.fallback.Close()
 		v.fallback = nil
+		return false
 	}
+	return true
 }
 
 type gateway struct {
@@ -416,6 +422,26 @@ func (g *gateway) fallback(w http.ResponseWriter, r *http.Request, v *viewer) {
 	// so SPS/PPS and a decodable keyframe arrive immediately instead of waiting
 	// for the encoder's next periodic keyframe.
 	v.source.send(map[string]any{"type": "keyframe", "reason": "https-fallback", "quality": "hd"})
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case sentAt := <-ticker.C:
+				payload, _ := json.Marshal(map[string]any{
+					"type":   "fallback-ping",
+					"sentAt": sentAt.UnixMilli(),
+				})
+				if !v.sendFallbackMessage(websocket.TextMessage, payload, conn) {
+					return
+				}
+			case <-done:
+				return
+			}
+		}
+	}()
 	defer func() {
 		v.fallbackMu.Lock()
 		if v.fallback == conn {
@@ -430,6 +456,24 @@ func (g *gateway) fallback(w http.ResponseWriter, r *http.Request, v *viewer) {
 		kind, data, err := conn.ReadMessage()
 		if err != nil {
 			return
+		}
+		if kind == websocket.TextMessage {
+			var control struct {
+				Type   string `json:"type"`
+				SentAt int64  `json:"sentAt"`
+			}
+			if json.Unmarshal(data, &control) == nil && control.Type == "fallback-pong" {
+				sentAt := time.UnixMilli(control.SentAt)
+				latency := time.Since(sentAt)
+				if latency >= 0 && latency <= 30*time.Second {
+					payload, _ := json.Marshal(map[string]any{
+						"type":      "fallback-latency",
+						"latencyMs": float64(latency.Microseconds()) / 1000,
+					})
+					v.sendFallbackMessage(websocket.TextMessage, payload, conn)
+				}
+				continue
+			}
 		}
 		if v.hasInput && (kind == websocket.TextMessage || kind == websocket.BinaryMessage) && len(data) <= 65536 {
 			if v.source.send(map[string]any{"type": "input", "viewerId": v.id, "data": base64.StdEncoding.EncodeToString(data)}) != nil {

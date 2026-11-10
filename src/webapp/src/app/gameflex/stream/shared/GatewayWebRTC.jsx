@@ -6,7 +6,15 @@ import {
 } from "../../api/gateway.js";
 import { gameSocket } from "../../libs/GameSocket.js";
 import { applyReceiverLatencyHints } from "../../libs/webrtcLatencyHints.js";
-import { scanWebRTCReport, rateDeltas, nextCounters } from "../libs/webrtc-stats.js";
+import {
+    fallbackRateDeltas,
+    nextFallbackCounters,
+    nextCounters,
+    parseFallbackControl,
+    rateDeltas,
+    scanWebRTCReport,
+    smoothFallbackLatency,
+} from "../libs/webrtc-stats.js";
 import { NO_POSTER, answerGatewayOffer, applyLowLatencyAnswerSdp, buildIceServers } from "./gateway-helpers.js";
 import { streamHostOrigin } from "../../libs/serverBase.js";
 
@@ -79,6 +87,35 @@ function annexBNalTypes(data) {
     }
 
     return types;
+}
+
+function emptyFallbackStats() {
+    return {
+        downloadBytes: 0,
+        uploadBytes: 0,
+        videoBytes: 0,
+        decodedFrames: 0,
+        width: null,
+        height: null,
+        latencyMs: null,
+    };
+}
+
+function messageByteLength(data) {
+    if (typeof data === "string") {
+        return new TextEncoder().encode(data).byteLength;
+    }
+    if (data instanceof Blob) {
+        return data.size;
+    }
+    if (ArrayBuffer.isView(data)) {
+        return data.byteLength;
+    }
+    if (data instanceof ArrayBuffer) {
+        return data.byteLength;
+    }
+
+    return 0;
 }
 
 const GatewayWebRTC = forwardRef(function GatewayWebRTC(
@@ -219,6 +256,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
     const fallbackConfigRef = useRef([]);
     const fallbackTimestampRef = useRef(0);
     const fallbackConnectedRef = useRef(false);
+    const fallbackStatsRef = useRef(emptyFallbackStats());
     const firstPictureReportedRef = useRef(false);
     const onVideoSilentRef = useRef(onVideoSilent);
     onVideoSilentRef.current = onVideoSilent;
@@ -250,6 +288,35 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
         }
 
         const tick = async () => {
+            const now = performance.now();
+            if (fallbackConnectedRef.current) {
+                const current = fallbackStatsRef.current;
+                const previous = previousStatsRef.current?.transport === "fallback"
+                    ? previousStatsRef.current
+                    : null;
+                const rates = previous ? fallbackRateDeltas(previous, now, current) : null;
+                previousStatsRef.current = {
+                    transport: "fallback",
+                    ...nextFallbackCounters(now, current),
+                };
+
+                onStatsUpdateRef.current?.({
+                    downloadBytes: current.downloadBytes,
+                    uploadBytes: current.uploadBytes,
+                    downloadKbps: rates?.downloadKbps ?? null,
+                    uploadKbps: rates?.uploadKbps ?? null,
+                    videoBitrateKbps: rates?.videoBitrateKbps ?? null,
+                    fps: rates?.fps ?? null,
+                    resolution: current.width && current.height
+                        ? { width: current.width, height: current.height }
+                        : null,
+                    latencyMs: current.latencyMs,
+                    latencyKind: "bridge-rtt",
+                });
+
+                return;
+            }
+
             const peer = pcRef.current;
             if (!peer) {
                 return;
@@ -258,8 +325,9 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
             try {
                 const report = await peer.getStats();
                 const harvested = scanWebRTCReport(report);
-                const now = performance.now();
-                const previous = previousStatsRef.current;
+                const previous = previousStatsRef.current?.transport === "webrtc"
+                    ? previousStatsRef.current
+                    : null;
 
                 let downloadKbps = null;
                 let uploadKbps = null;
@@ -273,7 +341,10 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
                         fps = rates.fps;
                     }
                 }
-                previousStatsRef.current = nextCounters(now, harvested, previous?.framesDecoded);
+                previousStatsRef.current = {
+                    transport: "webrtc",
+                    ...nextCounters(now, harvested, previous?.framesDecoded),
+                };
 
                 onStatsUpdateRef.current?.({
                     downloadKbps: downloadKbps != null && downloadKbps >= 0 ? downloadKbps : null,
@@ -356,6 +427,10 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
                             canvas.height = height;
                         }
                         canvas.getContext("2d", { alpha: false })?.drawImage(frame, 0, 0, width, height);
+                        const fallbackStats = fallbackStatsRef.current;
+                        fallbackStats.decodedFrames += 1;
+                        fallbackStats.width = width;
+                        fallbackStats.height = height;
                         setFallbackVisible(true);
                         reportFirstPicture();
                         if (!fallbackConnectedRef.current) {
@@ -385,6 +460,8 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
         fallbackDecoderRef.current = decoder;
         fallbackConfigRef.current = [];
         fallbackTimestampRef.current = 0;
+        fallbackStatsRef.current = emptyFallbackStats();
+        previousStatsRef.current = null;
 
         const socket = gameSocket(gatewayViewerFallbackUrl(
             gateway.sessionId,
@@ -398,6 +475,24 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
             if (fallbackSocketRef.current !== socket || fallbackDecoderRef.current !== decoder) {
                 return;
             }
+            fallbackStatsRef.current.downloadBytes += messageByteLength(event.data);
+
+            if (typeof event.data === "string") {
+                const control = parseFallbackControl(event.data);
+                if (control?.type === "fallback-ping") {
+                    const pong = JSON.stringify({ ...control, type: "fallback-pong" });
+                    socket.send(pong);
+                    fallbackStatsRef.current.uploadBytes += messageByteLength(pong);
+                } else if (control?.type === "fallback-latency") {
+                    fallbackStatsRef.current.latencyMs = smoothFallbackLatency(
+                        fallbackStatsRef.current.latencyMs,
+                        control.latencyMs,
+                    );
+                }
+
+                return;
+            }
+
             let buffer = event.data;
             if (buffer instanceof Blob) {
                 buffer = await buffer.arrayBuffer();
@@ -416,6 +511,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
 
             const durationNs = view.getBigUint64(1, false);
             const payload = new Uint8Array(buffer, 9);
+            fallbackStatsRef.current.videoBytes += payload.byteLength;
             const nalTypes = annexBNalTypes(payload);
             if (durationNs === 0n && nalTypes.some((type) => type === 7 || type === 8)) {
                 fallbackConfigRef.current.push(payload.slice());
@@ -432,9 +528,10 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
 
             const duration = Math.max(1, Number(durationNs / 1000n));
             try {
+                const timestamp = fallbackTimestampRef.current;
                 decoder.decode(new globalThis.EncodedVideoChunk({
                     type: key ? "key" : "delta",
-                    timestamp: fallbackTimestampRef.current,
+                    timestamp,
                     duration,
                     data,
                 }));
@@ -1126,6 +1223,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
         const fallback = fallbackSocketRef.current;
         if (fallback?.readyState === WebSocket.OPEN) {
             fallback.send(data);
+            fallbackStatsRef.current.uploadBytes += messageByteLength(data);
 
             return true;
         }
