@@ -38,10 +38,11 @@ var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool {
 }}
 
 type source struct {
-	mu      sync.Mutex
-	conn    *websocket.Conn
-	viewers map[string]*viewer
-	closed  bool
+	mu          sync.Mutex
+	conn        *websocket.Conn
+	viewers     map[string]*viewer
+	videoConfig [][]byte
+	closed      bool
 }
 
 func (s *source) send(v any) error {
@@ -224,6 +225,15 @@ func (g *gateway) child(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		s.mu.Lock()
+		if data[0] == 0 && duration == 0 && len(data) <= 65536 {
+			// Keep the latest Annex-B codec headers. A public HTTPS viewer can
+			// join long after the encoder emitted SPS/PPS; without replaying
+			// them its first IDR is valid H264 but cannot be decoded.
+			s.videoConfig = append(s.videoConfig, append([]byte(nil), data...))
+			if len(s.videoConfig) > 4 {
+				s.videoConfig = s.videoConfig[len(s.videoConfig)-4:]
+			}
+		}
 		vs := []*viewer{}
 		for _, v := range s.viewers {
 			vs = append(vs, v)
@@ -384,11 +394,23 @@ func (g *gateway) fallback(w http.ResponseWriter, r *http.Request, v *viewer) {
 	if e != nil {
 		return
 	}
+	v.source.mu.Lock()
+	config := append([][]byte(nil), v.source.videoConfig...)
+	v.source.mu.Unlock()
 	v.fallbackMu.Lock()
 	if v.fallback != nil {
 		v.fallback.Close()
 	}
 	v.fallback = conn
+	for _, frame := range config {
+		conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+		if conn.WriteMessage(websocket.BinaryMessage, frame) != nil {
+			v.fallback = nil
+			v.fallbackMu.Unlock()
+			conn.Close()
+			return
+		}
+	}
 	v.fallbackMu.Unlock()
 	// A public fallback usually joins mid-stream. Ask the runtime for an IDR
 	// so SPS/PPS and a decodable keyframe arrive immediately instead of waiting
