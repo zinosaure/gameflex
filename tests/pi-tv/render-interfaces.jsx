@@ -23,6 +23,8 @@ for(const {id,name} of interfaces.filter(x=>!retroModes.includes(x.id)&&!standal
 }
 const picker=renderToStaticMarkup(<InterfacePicker onChoose={()=>{}}/>);
 assert.equal((picker.match(/class="gx-choice /g)||[]).length,22);
+for(const label of ['Hub Canapé','Ligne Cinéma','Mosaïque Joy','Carte des époques'])assert.ok(picker.includes(label),`Libellé UTF-8 absent : ${label}`);
+assert.ok(!picker.includes('Ã')&&!picker.includes('�'),'Le sélecteur ne doit contenir aucun texte mojibake.');
 assert.ok(picker.includes('gx-choice gf-choice-orbit'));
 assert.ok(!picker.includes('gx-choice gx-orbit'),'La carte Orbitale ne doit pas réutiliser la classe du décor absolu.');
 for(const id of standaloneModes){const html=renderToStaticMarkup(<ExperienceView mode={id} games={games} consoles={consoles} favorites={['nes:free']} history={['nes:free']} onOpen={()=>{}} onConsole={()=>{}}/>);assert.ok(html.includes(`data-interface="${id}"`));assert.ok(html.includes('Palette libre')||id==='roue-retro');const empty=renderToStaticMarkup(<ExperienceView mode={id} games={[]} consoles={[]} onOpen={()=>{}} onConsole={()=>{}}/>);assert.ok(empty.includes('Votre bibliothèque est vide'));}
