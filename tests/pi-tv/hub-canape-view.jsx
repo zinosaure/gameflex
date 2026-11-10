@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import HubCanape from '../../src/webapp/src/app/gameflex/experience/HubCanape.jsx';
 
 const games=[
- {consoleId:'gba',consoleName:'Game Boy Advance',reference:'saved',title:'Aventure au titre volontairement très long',saveState:{slot:1},image:'/cover'},
+ {consoleId:'gba',consoleName:'Game Boy Advance',reference:'saved',title:'Aventure au titre volontairement très long',saveState:{slot:1},saveCompatible:true,image:'/cover'},
  {consoleId:'snes',consoleName:'Super Nintendo',reference:'plain',title:'Jeu sans image'},
 ];
 const Art=({item})=><span data-art={item.image?'available':'missing'}>{item.title}</span>;

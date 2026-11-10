@@ -551,7 +551,7 @@ function AppShell() {
 		<PresenceProvider>
 			<SessionPoolProvider>
 				<Suspense fallback={<LoadingScreen />}>
-					<RouteErrorBoundary key={location.pathname}><ExperienceGate enabled={isAuthenticated}><Skeleton init={init} topRightNavigation={TopRightNavigation ? <TopRightNavigation /> : null} /></ExperienceGate></RouteErrorBoundary>
+					<RouteErrorBoundary resetKey={location.pathname+location.search}><ExperienceGate enabled={isAuthenticated}><Skeleton init={init} topRightNavigation={TopRightNavigation ? <TopRightNavigation /> : null} /></ExperienceGate></RouteErrorBoundary>
 					{/* La barre flottante des téléchargements : fixée au bas de
 						l'écran, visible depuis n'importe quelle page pendant qu'un
 						jeu s'importe (2026-08-30). */}

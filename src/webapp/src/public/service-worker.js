@@ -10,7 +10,7 @@
 // réinstalle le service worker que sur un octet de différence. Vécu le
 // 2026-08-29 : la version navigateur du PWA restait sur l'écran de connexion
 // pendant que l'application installée servait déjà le bon bundle.
-const SW_VERSION = "47";
+const SW_VERSION = "48";
 
 const APP_BASE = new URL(self.registration.scope).pathname;
 const CACHE_PREFIX = `gameflex-${APP_BASE === '/' ? 'root' : 'subpath'}-v`;

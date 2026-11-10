@@ -5,7 +5,7 @@ import ExperienceView from '../../src/webapp/src/app/gameflex/experience/Experie
 
 const consoles=[{id:'gba',name:'Game Boy Advance',year:2001}];
 const games=[
- {consoleId:'gba',consoleName:'Game Boy Advance',reference:'saved',title:'Aventure avec sauvegarde compatible au titre très long',saveState:{slot:1},image:'/missing'},
+ {consoleId:'gba',consoleName:'Game Boy Advance',reference:'saved',title:'Aventure avec sauvegarde compatible au titre très long',saveState:{slot:1},saveCompatible:true,image:'/missing'},
  {consoleId:'gba',consoleName:'Game Boy Advance',reference:'recent',title:'Jeu joué sans sauvegarde'},
 ];
 const base={mode:'dashboard',games,consoles,section:'home',favorites:['gba:saved'],collections:[],onOpen:()=>{},onConsole:()=>{},onNavigate:()=>{},onSettings:()=>{}};

@@ -9,7 +9,7 @@ webpack({
     entry: path.join(root, 'tests/pi-tv/interface-cleanup-preview.jsx'),
     output: { path: path.join(root, '.local/interface-cleanup/after'), filename: 'app.js' },
     plugins: [
-        new webpack.NormalModuleReplacementPlugin(/profile\/auth\/AuthContext\.jsx$/, resource => {
+        new webpack.NormalModuleReplacementPlugin(/AuthContext\.jsx$/, resource => {
             resource.request = path.join(root, 'tests/pi-tv/fixtures/interfaces/auth.jsx');
         }),
         new webpack.NormalModuleReplacementPlugin(/api\/retrogaming\.js$/, resource => {

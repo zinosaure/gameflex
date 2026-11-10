@@ -1,3 +1,8 @@
+import {AppearanceSurface} from './Appearance.jsx';
+import SectionErrorBoundary from './SectionErrorBoundary.jsx';
+import {EmulatorNavigation} from './EmulatorUI.jsx';
+import {I18nextProvider} from 'react-i18next';
+import i18n from '../../i18n/index.js';
 import {retroModes} from './RetroLibrary.jsx';
 import EmulatorAssistant from './EmulatorAssistant.jsx';
 import LibrarySources from './LibrarySources.jsx';
@@ -12,16 +17,16 @@ import {SourceSettingsProvider,useSourceSettings} from './SourceSettings.jsx';
 import GameSources from './GameSources.jsx';
 import LaunchDialog from './LaunchDialog.jsx';
 import { useLibraryDownloads, libraryRequest } from './LibraryManager.jsx';
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, authHeaders } from '../profile/auth/AuthContext.jsx';
-import { useConsoles } from '../contexts/ConsolesContext.jsx';
+import { useConsoles, useConsolesLoaded } from '../contexts/ConsolesContext.jsx';
 import { apiUrl } from '../libs/serverBase.js';
 import { useSessionPool } from '../libs/SessionPool.js';
 import { buildStreamingUrl } from '../libs/sessionLinks.js';
 import { listRoms, listCores, createSession } from '../api/retrogaming.js';
-import ExperienceView, { InterfacePicker } from './ExperienceView.jsx';
-import { interfaces, preferenceKey, readChoice, selectableInterfaces, migratePreference, legacyDestination } from './interfaces.js';
+import ExperienceView, { InterfacePicker, useDirectionalFocus } from './ExperienceView.jsx';
+import { interfaces, preferenceKey, readChoice, selectableInterfaces, migratePreference, legacyDestination, readLocalChoice, acceptRemoteChoice } from './interfaces.js';
 
 const Context = createContext(null);
 const gameKey = g => `${g.consoleId}:${g.reference}`;
@@ -31,16 +36,20 @@ export function ExperienceProvider({ children }) {
     const initial = () => { try { return migratePreference({ ...JSON.parse(localStorage.getItem(`${key}:library`) || '{}'), interface: readChoice(key) }); } catch { return { interface: readChoice(key) }; } };
     const [mode, setMode] = useState(() => initial().interface);
     const [choosing, setChoosing] = useState(false);
-    const [data, setData] = useState(() => {
+    const [data, setDataState] = useState(() => {
         try { const { interface: _interface, ...saved } = initial(); return { favorites: [], history: [], collections: [], ...saved }; }
         catch { return { favorites: [], history: [], collections: [] }; }
     });
+    const choiceRevision = useRef(0), dataRevision = useRef(0);
+    const [loadedKey,setLoadedKey] = useState(key);
+    const setData = useCallback(value => { dataRevision.current++; setDataState(value); }, []);
     const [notice, setNotice] = useState('');
     const [syncReady, setSyncReady] = useState(false);
     useEffect(() => {
-        setSyncReady(false);
+        setSyncReady(false);setLoadedKey(key);
+        const requestedChoiceRevision=choiceRevision.current, requestedDataRevision=dataRevision.current;
         const { interface: cachedMode, ...cached } = initial();
-        setMode(cachedMode); setData({favorites: [], history: [], collections: [], ...cached});
+        setMode(cachedMode); setDataState({favorites: [], history: [], collections: [], ...cached});
         let active = true;
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 2500);
@@ -49,27 +58,32 @@ export function ExperienceProvider({ children }) {
                 if (active && p && interfaces.some(x => x.id === p.interface)) {
                     const migrated = migratePreference(p);
                     const { interface: choice, ...saved } = migrated;
-                    setMode(choice);
-                    setData({ ...saved, favorites: p.favorites || [], history: p.history || [], collections: p.collections || [] });
+                    if(acceptRemoteChoice(p,readLocalChoice(key),requestedChoiceRevision,choiceRevision.current)) setMode(choice);
+                    if(requestedDataRevision===dataRevision.current) setDataState({ ...saved, favorites: p.favorites || [], history: p.history || [], collections: p.collections || [] });
                 }
             }).catch(() => {}).finally(() => { clearTimeout(timer); if (active) setSyncReady(true); });
         return () => { active = false; clearTimeout(timer); controller.abort(); };
     }, [token, key]);
     useEffect(() => {
-        if (!syncReady || !mode) return undefined;
+        if (!mode || loadedKey!==key) return undefined;
         try {
             if (mode) localStorage.setItem(key, mode);
             localStorage.setItem(`${key}:library`, JSON.stringify(data));
         } catch { setNotice('Le stockage du navigateur est indisponible.'); }
+        if(!syncReady) return undefined;
         const controller = new AbortController();
         const timer = setTimeout(() => {
-            fetch(apiUrl('/experience-api/v1/preferences'), { method: 'PUT', headers: { ...authHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify({ interface: mode, ...data }), signal: controller.signal })
+            fetch(apiUrl('/experience-api/v1/preferences'), { method: 'PUT', headers: { ...authHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify({ ...data, interface: mode, interfaceUpdatedAt: readLocalChoice(key)?.updatedAt || data.interfaceUpdatedAt || 0 }), signal: controller.signal })
                 .then(r => { if (!r.ok) throw new Error('sync'); setNotice(''); })
                 .catch(e => { if (e.name !== 'AbortError') setNotice('Synchronisation indisponible · sauvegarde locale.'); });
         }, 400);
         return () => { clearTimeout(timer); controller.abort(); };
-    }, [mode, data, key, token, syncReady]);
-    function choose(id) { if (selectableInterfaces.some(x => x.id === id)) { setMode(id); setChoosing(false); } }
+    }, [mode, data, key, token, syncReady, loadedKey]);
+    function choose(id) { if (selectableInterfaces.some(x => x.id === id)) {
+        choiceRevision.current++;
+        try { localStorage.setItem(key,id); localStorage.setItem(`${key}:choice`,JSON.stringify({id,updatedAt:Date.now()})); } catch { setNotice('Le stockage du navigateur est indisponible.'); }
+        setMode(id);setChoosing(false);
+    } }
     function favorite(g) { const id = gameKey(g); setData(d => ({ ...d, favorites: d.favorites.includes(id) ? d.favorites.filter(x => x !== id) : [...d.favorites, id] })); }
     const [libraryRevision,setLibraryRevision]=useState(0);
     const downloads=useLibraryDownloads({token,username:user?.username,enabled:syncReady&&Boolean(mode)&&!choosing,onInstalled:async()=>{
@@ -99,10 +113,10 @@ export function ExperienceProvider({ children }) {
     const value = { downloads, libraryRevision, refreshLibrary, refreshing, refreshMessage, mode, choose, choosing, setChoosing, data, setData, favorite, notice, syncReady };
     return <SourceSettingsProvider><Context.Provider value={value}>{children}{downloads.ui}</Context.Provider></SourceSettingsProvider>;
 }
-export function InterfaceSettings() {
+export function InterfaceSettings({advanced = false}) {
     const ctx = useContext(Context);
     if (!ctx) return null;
-    return <section className="gx-settings"><h2>Votre interface</h2><p>{interfaces.find(x => x.id === ctx.mode)?.name || 'Aucune interface choisie'}</p><button onClick={() => ctx.setChoosing(true)}>Changer d’interface</button>{ctx.notice && <p role="status">{ctx.notice}</p>}<p><a href={appPath("/settings?advanced=1")}>Compte et bibliothèque ↗</a></p><section className="gf-free-library"><h3>Dossier de jeux</h3><p>{ctx.downloads.library?.folder || "Aucun dossier choisi."}</p><button onClick={ctx.downloads.openSetup}>Choisir le dossier</button></section><LibrarySources onImported={async item=>{await ctx.refreshLibrary();ctx.downloads.notify('success',item.title,'Jeu importé.');}}/><EmulatorAssistant/><GameSources/><ArtworkCredits /></section>;
+    return <section className="gx-settings"><h2>Votre interface</h2><p>{interfaces.find(x => x.id === ctx.mode)?.name || 'Aucune interface choisie'}</p><button onClick={() => ctx.setChoosing(true)}>Changer d’interface</button>{ctx.notice && <p role="status">{ctx.notice}</p>}{!advanced&&<p><a href={appPath("/settings?advanced=1")}>Compte et bibliothèque ↗</a></p>}<section className="gf-free-library"><h3>Dossier de jeux</h3><p>{ctx.downloads.library?.folder || "Aucun dossier choisi."}</p><button onClick={ctx.downloads.openSetup}>Choisir le dossier</button></section><LibrarySources onImported={async item=>{await ctx.refreshLibrary();ctx.downloads.notify('success',item.title,'Jeu importé.');}}/><EmulatorAssistant/><GameSources/><ArtworkCredits /></section>;
 }
 
 function ArtworkCredits() {
@@ -116,20 +130,35 @@ function ArtworkCredits() {
     return <details><summary>Crédits des images</summary>{items.length ? items.map(x => <p key={x.id}>{link(x.source, x.title)} · {x.author} · {link(x.licenseUrl, x.license)} · {x.provider}<br />{x.modifications || "Miniature de la source."}</p>) : <p>Aucune image externe approuvée. Illustrations GameFlex.</p>}</details>;
 }
 
+function AdvancedAppearance({children,ctx}) {
+    const navigate=useNavigate(),root=useRef(null);useDirectionalFocus(root);
+    // The experience's labels are French; scope translations to this screen,
+    // without changing the application's stored language preference.
+    const language=useMemo(()=>i18n.cloneInstance({lng:'fr',fallbackLng:'fr'}),[]);
+    return <I18nextProvider i18n={language}><div ref={root} className="gx-app em-app gf-advanced-settings" data-interface={ctx.mode}>
+        <EmulatorNavigation mode={ctx.mode} active="settings" onNavigate={id=>navigate(`/?section=${id}`)} onSettings={()=>navigate('/settings')} onAppearance={()=>ctx.setChoosing(true)}/>
+        <main className="gf-advanced-content"><SectionErrorBoundary resetKey={ctx.mode}>{children}</SectionErrorBoundary></main>
+    </div></I18nextProvider>;
+}
 export function ExperienceGate({ children, enabled }) {
     const ctx = useContext(Context), location = useLocation();
     if (!enabled || location.pathname === '/streaming') return children;
-    if (!ctx.syncReady) return <div className="gx-picker" role="status">Chargement de vos préférences…</div>;
-    if (!ctx.mode || ctx.choosing) return <InterfacePicker selected={ctx.mode} onChoose={ctx.choose} onCancel={ctx.mode ? () => ctx.setChoosing(false) : null} />;
-    if (location.pathname === '/settings' && new URLSearchParams(location.search).get('advanced') === '1') return children;
+    if (!ctx.syncReady && !ctx.mode) return <div className="gx-picker" role="status">Chargement de vos préférences…</div>;
+    if (!ctx.mode) return <InterfacePicker onChoose={ctx.choose}/>;
     const libraryRoute = /^\/retrogaming\/([a-z0-9_-]+)$/.exec(location.pathname);
-    return location.pathname === '/' || location.pathname === '/settings' || libraryRoute ? <LibraryExperience consoleId={libraryRoute?.[1] || ''} /> : children;
+    let page=children;
+    if(location.pathname==='/settings'&&new URLSearchParams(location.search).get('advanced')==='1')page=<AdvancedAppearance ctx={ctx}>{children}</AdvancedAppearance>;
+    else if(location.pathname==='/'||location.pathname==='/settings'||libraryRoute)page=<LibraryExperience consoleId={libraryRoute?.[1]||''}/>;
+    return <AppearanceSurface mode={ctx.mode}><div inert={ctx.choosing?'':undefined} aria-hidden={ctx.choosing||undefined}>{page}</div>{ctx.choosing&&<InterfacePicker selected={ctx.mode} onChoose={ctx.choose} onCancel={()=>ctx.setChoosing(false)}/>}</AppearanceSurface>;
 }
 function LibraryExperience({ consoleId = '' }) {
     const ctx = useContext(Context), { user, token } = useAuth(), consoles = useConsoles(), navigate = useNavigate();
     const location = useLocation();
+    const consolesReady=useConsolesLoaded();
     const sources=useSourceSettings(),sourceKey=sources.enabledIds.join(',');
     const section = location.pathname === '/settings' ? 'settings' : new URLSearchParams(location.search).get('section') || 'home';
+    const [libraryQuery,setLibraryQuery]=useState('');
+    useEffect(()=>setLibraryQuery(''),[consoleId,section]);
     const [planet, setPlanet] = useState({}), [planetLetter, setPlanetLetter] = useState(''), [catalogueQuery,setCatalogueQuery]=useState('');
     const [catalogGame,setCatalogGame]=useState(null);
     const verificationQuery=new URLSearchParams(location.search),verificationId=verificationQuery.get('emugenVerification'),verificationGame=verificationQuery.get('emugenGame');
@@ -213,19 +242,20 @@ function LibraryExperience({ consoleId = '' }) {
     // Explicit filter prevents querying remote-play devices as ROM consoles.
     const ids = playable.map(c => c.id).join(',');
     useEffect(() => {
+        if(!consolesReady) {setLoading(true);return undefined;}
         let cancelled = false;
         setLoading(true); setError('');
         const selectedConsoles = consoles.filter(c => ids.split(',').includes(c.id) && (!consoleId || c.id === consoleId));
         // Three workers bound load on the Pi, rather than starting 33 scans at once.
         const queue = [...selectedConsoles], found = []; let failed = 0;
-        const imported=libraryRequest(token,'imports').then(x=>x.items||[]).catch(()=>[]);
-        const savedMetadata=libraryRequest(token,`metadata${consoleId?'?console='+encodeURIComponent(consoleId):''}`).then(x=>x.items||[]).catch(()=>[]);
+        const imported=libraryRequest(token,'imports').then(x=>Array.isArray(x.items)?x.items:[]).catch(()=>[]);
+        const savedMetadata=libraryRequest(token,`metadata${consoleId?'?console='+encodeURIComponent(consoleId):''}`).then(x=>Array.isArray(x.items)?x.items:[]).catch(()=>[]);
         const worker = async () => {
             while (queue.length && !cancelled) {
                 const c = queue.shift();
                 try {
                     const result = await listRoms(c.id);
-                    if (!result.ok) { failed++; continue; }
+                    if (!result.ok || !Array.isArray(result.data)) { failed++; continue; }
                     for (const g of result.data || []) found.push({ ...g, consoleId: c.id, consoleName: c.name });
                 } catch { failed++; }
             }
@@ -236,7 +266,7 @@ function LibraryExperience({ consoleId = '' }) {
             if (!cancelled) { setGames(enriched.map(game=>attachSavedMetadata(game,results[4]))); setLoading(false); if (failed) setError(`${failed} console(s) indisponible(s). La liste peut être incomplète.`); }
         });
         return () => { cancelled = true; };
-    }, [ids, epoch, consoleId, ctx.libraryRevision]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [ids, epoch, consoleId, ctx.libraryRevision, consolesReady]); // eslint-disable-line react-hooks/exhaustive-deps
     useEffect(()=>{
         const abort=new AbortController();
         const missing=games.filter(game=>game.reference&&!game.image).map(game=>({consoleId:game.consoleId,reference:game.reference,title:game.title,files:game.files||[]}));
@@ -284,5 +314,5 @@ function LibraryExperience({ consoleId = '' }) {
         if (name?.trim()) ctx.setData(d => ({ ...d, collections: [...d.collections, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: name.trim().slice(0, 80), games: [] }] }));
     }
     const presentedGames=games.map(game=>withImage(!game.image&&coverImages[gameKey(game)]?{...game,...coverImages[gameKey(game)]}:game,gameKey(game)));
-    return <><ExperienceView onRefreshMetadata={undefined} metadataProgress={metadataProgress} onImportRom={ctx.downloads.library?.canConfigure?()=>setImportOpen(true):undefined} onRefreshLibrary={ctx.refreshLibrary} refreshing={ctx.refreshing} refreshMessage={ctx.refreshMessage} onAppearance={() => ctx.setChoosing(true)} section={section} onNavigate={id => navigate(`/?section=${id}`)} settingsContent={<InterfaceSettings />} planet={planet} downloadJobs={ctx.downloads.jobs} onSearchQuery={setCatalogueQuery} downloadable={downloadable.filter(item=>!games.some(g=>g.consoleId===item.consoleId&&g.title.toLowerCase().replace(/[^a-z0-9]/g,'')===item.title.toLowerCase().replace(/[^a-z0-9]/g,'')))} planetLetter={planetLetter} onPlanetLetter={setPlanetLetter} selectedConsole={section === 'home' || section === 'consoles' ? playable.find(c => c.id === consoleId) : undefined} onHome={() => navigate('/?section=consoles')} live={live} onWatch={s => navigate(buildStreamingUrl({ sessionId: s.id }))} mode={ctx.mode} games={presentedGames} consoles={playable.map(c => withImage(c, c.id))} {...ctx.data} onFavorite={ctx.favorite} onOpen={open} onConsole={c => navigate(`/retrogaming/${encodeURIComponent(c.id)}`)} onSettings={() => navigate('/settings')} loading={loading} error={error} onRetry={() => retry(x => x + 1)} user={user?.display_name || user?.username} onCreateCollection={createCollection} onAddToCollection={(id, g) => ctx.setData(d => ({ ...d, collections: d.collections.map(c => c.id === id ? { ...c, games: c.games.includes(gameKey(g)) ? c.games.filter(x => x !== gameKey(g)) : [...c.games, gameKey(g)] } : c) }))} />{importOpen&&<RomImportDialog token={token} consoles={playable} initialConsole={consoleId||''} onClose={()=>setImportOpen(false)} onImported={async item=>{await ctx.refreshLibrary();ctx.downloads.notify('success',item.title,'Jeu importé.');}}/>}{catalogGame&&<CatalogGameDialog mode={ctx.mode} favorites={ctx.data.favorites} onFavorite={ctx.favorite} collections={ctx.data.collections} onAddToCollection={(id,g)=>ctx.setData(d=>({...d,collections:d.collections.map(c=>c.id===id?{...c,games:c.games.includes(gameKey(g))?c.games.filter(x=>x!==gameKey(g)):[...c.games,gameKey(g)]}:c)}))} canEditMetadata={user?.role_level===0} token={token} onMetadata={updated=>{setCatalogGame(updated);retry(x=>x+1);}} game={{...catalogGame,...(verificationResult?.slug===catalogGame.emugenSlug?{manualVerificationResult:verificationResult}:{})}} onClose={()=>setCatalogGame(null)} onInstall={game=>{setCatalogGame(null);ctx.downloads.start(game);}} onPlay={game=>{setCatalogGame(null);openOwned(game);}}/>}{sources.enabledIds.includes('emugen')&&verificationId&&<InteractiveVerification token={token} sessionId={verificationId} gameSlug={verificationGame} consoleId={consoleId} onClose={closeVerification} onResolved={setVerificationResult}/>}{launchGame && <LaunchDialog onEmulatorReady={()=>setLaunchError('')} game={launchGame} mode={ctx.mode} error={launchError} launching={launching} onPlay={launch} onClose={() => setLaunchGame(null)}/>}{ctx.notice && <p className="gx-sync-notice" role="status">{ctx.notice}</p>}</>;
+    return <><ExperienceView libraryQuery={libraryQuery} onLibraryQuery={setLibraryQuery} onRefreshMetadata={undefined} metadataProgress={metadataProgress} onImportRom={ctx.downloads.library?.canConfigure?()=>setImportOpen(true):undefined} onRefreshLibrary={ctx.refreshLibrary} refreshing={ctx.refreshing} refreshMessage={ctx.refreshMessage} onAppearance={() => ctx.setChoosing(true)} section={section} onNavigate={id => navigate(`/?section=${id}`)} settingsContent={<InterfaceSettings />} planet={planet} downloadJobs={ctx.downloads.jobs} onSearchQuery={setCatalogueQuery} downloadable={downloadable.filter(item=>!games.some(g=>g.consoleId===item.consoleId&&g.title.toLowerCase().replace(/[^a-z0-9]/g,'')===item.title.toLowerCase().replace(/[^a-z0-9]/g,'')))} planetLetter={planetLetter} onPlanetLetter={setPlanetLetter} selectedConsole={section === 'home' || section === 'consoles' ? playable.find(c => c.id === consoleId) : undefined} onHome={() => navigate('/?section=consoles')} live={live} onWatch={s => navigate(buildStreamingUrl({ sessionId: s.id }))} mode={ctx.mode} games={presentedGames} consoles={playable.map(c => withImage(c, c.id))} {...ctx.data} onFavorite={ctx.favorite} onOpen={open} onConsole={c => navigate(`/retrogaming/${encodeURIComponent(c.id)}`)} onSettings={() => navigate('/settings')} loading={loading} error={error} onRetry={() => {setLoading(true);retry(x => x + 1);}} user={user?.display_name || user?.username} onCreateCollection={createCollection} onAddToCollection={(id, g) => ctx.setData(d => ({ ...d, collections: d.collections.map(c => c.id === id ? { ...c, games: c.games.includes(gameKey(g)) ? c.games.filter(x => x !== gameKey(g)) : [...c.games, gameKey(g)] } : c) }))} />{importOpen&&<RomImportDialog token={token} consoles={playable} initialConsole={consoleId||''} onClose={()=>setImportOpen(false)} onImported={async item=>{await ctx.refreshLibrary();ctx.downloads.notify('success',item.title,'Jeu importé.');}}/>}{catalogGame&&<CatalogGameDialog history={ctx.data.history} mode={ctx.mode} favorites={ctx.data.favorites} onFavorite={ctx.favorite} collections={ctx.data.collections} onAddToCollection={(id,g)=>ctx.setData(d=>({...d,collections:d.collections.map(c=>c.id===id?{...c,games:c.games.includes(gameKey(g))?c.games.filter(x=>x!==gameKey(g)):[...c.games,gameKey(g)]}:c)}))} canEditMetadata={user?.role_level===0} token={token} onMetadata={updated=>{setCatalogGame(updated);retry(x=>x+1);}} game={{...catalogGame,...(verificationResult?.slug===catalogGame.emugenSlug?{manualVerificationResult:verificationResult}:{})}} onClose={()=>setCatalogGame(null)} onInstall={game=>{setCatalogGame(null);ctx.downloads.start(game);}} onPlay={game=>{setCatalogGame(null);openOwned(game);}}/>}{sources.enabledIds.includes('emugen')&&verificationId&&<InteractiveVerification token={token} sessionId={verificationId} gameSlug={verificationGame} consoleId={consoleId} onClose={closeVerification} onResolved={setVerificationResult}/>}{launchGame && <LaunchDialog onEmulatorReady={()=>setLaunchError('')} game={launchGame} mode={ctx.mode} error={launchError} launching={launching} onPlay={launch} onClose={() => setLaunchGame(null)}/>}{ctx.notice && <p className="gx-sync-notice" role="status">{ctx.notice}</p>}</>;
 }

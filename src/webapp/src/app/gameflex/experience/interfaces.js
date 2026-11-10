@@ -58,3 +58,16 @@ export function readChoice(key) {
     try { const id = localStorage.getItem(key); return interfaces.some(x => x.id === id) ? id : null; }
     catch { return null; }
 }
+
+export function readLocalChoice(key) {
+    try {
+        const choice = JSON.parse(localStorage.getItem(`${key}:choice`) || 'null');
+        return choice && selectableInterfaces.some(item => item.id === choice.id) && Number.isFinite(choice.updatedAt) ? choice : null;
+    } catch { return null; }
+}
+export function acceptRemoteChoice(remote, local, requestRevision, currentRevision) {
+    if (requestRevision !== currentRevision) return false;
+    // Old servers have no timestamp. An explicit local choice remains authoritative
+    // across reload/offline use until a demonstrably newer remote choice arrives.
+    return !local || Number(remote.interfaceUpdatedAt || 0) > local.updatedAt;
+}

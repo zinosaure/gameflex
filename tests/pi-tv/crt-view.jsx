@@ -18,5 +18,5 @@ assert.equal((html.match(/data-game=/g)||[]).length,3);
 assert.ok(html.includes('aria-pressed="true"'));
 assert.ok(html.includes('Lignes activées'));
 const empty=renderToStaticMarkup(<RetroLibrary mode="crt" games={[]} consoles={[consoleItem]} selectedConsole={consoleItem} Art={Art} section="home" onOpen={()=>{}} onHome={()=>{}}/>);
-assert.ok(empty.includes('Aucun jeu ne correspond.'));
+assert.ok(empty.includes('Aucun jeu installé pour cette console.'));
 console.log('Signal CRT : aperçu, liste réelle, lignes désactivables, titre long, image absente et vide valides.');

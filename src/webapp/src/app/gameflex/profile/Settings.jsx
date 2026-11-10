@@ -91,7 +91,7 @@ export default function Settings() {
             label={t("profile.settingsMenu")}
             helpText={t("profile.settingsDescription")}
         >
-            <InterfaceSettings />
+            <InterfaceSettings advanced />
             <SectionPanel
                 label={t("settings.generalTitle")}
                 helpText={t("settings.generalHelp")}>

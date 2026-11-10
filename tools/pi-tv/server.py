@@ -22,6 +22,10 @@ def validate_preferences(p):
     if not isinstance(p, dict) or p.get('interface') not in MODES:
         raise ValueError('interface invalide')
     result = {'interface': p['interface']}
+    if 'interfaceUpdatedAt' in p:
+        stamp=p['interfaceUpdatedAt']
+        if isinstance(stamp,bool) or not isinstance(stamp,int) or not 0 <= stamp <= 9007199254740991: raise ValueError('révision interface invalide')
+        result['interfaceUpdatedAt']=stamp
     moved = {'favorites', 'resume', 'collections', 'detail', 'archives', 'multiplayer'}
     for field in ('previousInterface', 'interfaceDestination'):
         value = p.get(field)
