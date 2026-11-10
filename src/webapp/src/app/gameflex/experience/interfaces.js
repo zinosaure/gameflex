@@ -15,6 +15,10 @@ export const interfaces = [
     { id: 'archives', name: 'Archives', note: 'Liste de fichiers', icon: '▤' },
     { id: 'multiplayer', name: 'Salon multijoueur', note: 'Sélection arcade', icon: '♧' },
     { id: 'dashboard', name: 'Tableau de bord', note: 'Raccourcis et récents', icon: '⌂' },
+    { id: 'hub-canape', name: 'Hub Canapé', note: 'Accueil TV et jeux épinglés', icon: '▶' },
+    { id: 'ligne-cinema', name: 'Ligne Cinéma', note: 'Scène immersive et rail horizontal', icon: '▰' },
+    { id: 'mosaique-joy', name: 'Mosaïque Joy', note: 'Jaquettes carrées et groupes', icon: '▦' },
+    { id: 'roue-retro', name: 'Roue Retro', note: 'Roue incurvée des systèmes', icon: '◖' },
 ];
 // Keep the historical registry for saved preferences and old links. Only verified
 // appearances belong in the picker; a pack can supply additional registry entries.

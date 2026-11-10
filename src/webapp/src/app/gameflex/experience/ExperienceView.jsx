@@ -1,4 +1,8 @@
 import RetroLibrary,{retroModes} from './RetroLibrary.jsx';
+import HubCanape from './HubCanape.jsx';
+import LigneCinema from './LigneCinema.jsx';
+import MosaiqueJoy from './MosaiqueJoy.jsx';
+import RoueRetro from './RoueRetro.jsx';
 import { apiUrl } from "../libs/serverBase.js";
 import {DownloadOverlay,DownloadList} from './DownloadProgress.jsx';
 import {libraryWithDownloads,jobForGame} from './download-state.js';
@@ -140,6 +144,12 @@ export default function ExperienceView({ mode, games: suppliedGames = [], downlo
 
     }
     const heading = selectedConsole ? selectedConsole.name : section === 'archives' ? 'Gestion / Archives' : destinations.find(x => x[0] === section)?.[1] || (section === 'settings' ? 'Paramètres' : config.name);
+    if(section==='home'&&!selectedConsole){
+        if(mode==='hub-canape')return <HubCanape games={games} history={history} favorites={favorites} Art={Art} onOpen={onOpen} onNavigate={onNavigate} onSettings={onSettings}/>;
+        if(mode==='ligne-cinema')return <LigneCinema games={games} Art={Art} onOpen={onOpen} onNavigate={onNavigate} onSettings={onSettings}/>;
+        if(mode==='mosaique-joy')return <MosaiqueJoy games={games} consoles={consoles} favorites={favorites} Art={Art} onOpen={onOpen} onNavigate={onNavigate} onConsole={onConsole}/>;
+        if(mode==='roue-retro')return <RoueRetro games={games} consoles={consoles} Art={Art} onConsole={onConsole} onNavigate={onNavigate} onSettings={onSettings}/>;
+    }
     if(retroModes.includes(mode) && ['home','consoles','settings'].includes(section))return <RetroLibrary mode={mode} onNavigate={onNavigate} games={games} consoles={consoles} selectedConsole={selectedConsole} Art={Art} onConsole={onConsole} onOpen={onOpen} onHome={onHome} onSettings={onSettings} onAppearance={onAppearance} section={section} settingsContent={settingsContent} loading={loading} error={error} onRetry={onRetry} onImportRom={onImportRom} onRefreshLibrary={onRefreshLibrary} refreshing={refreshing}/>;
     return <div className={`gx-app gx-${retroModes.includes(config.id) ? 'common-' + config.id : config.id} em-app em-layout-${config.id}`} data-interface={config.id} ref={root}>
         <EmulatorNavigation mode={config.id} active={activeSection} onNavigate={onNavigate} onSettings={onSettings} onAppearance={onAppearance} user={user}/>
