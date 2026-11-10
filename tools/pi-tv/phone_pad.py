@@ -96,7 +96,7 @@ class Pairings:
    if not isinstance(data,dict):raise PadError('Message invalide.')
    if data.get('type')=='ping':return
    if role=='host' and data.get('type')=='context':
-    if data.get('screen') not in ('library','game','unsupported'):raise PadError('Contexte invalide.')
+    if data.get('screen') not in ('library','game','unsupported','locked'):raise PadError('Contexte invalide.')
     r['epoch']+=1;r['sequence']=-1;r['screen']=data['screen'];self._neutral(r);self._status(r);return
    if role!='phone' or not r['approved'] or 'host' not in r['connections'] or data.get('type')!='pad':raise PadError('Commande refusée.')
    buttons,axes,seq,epoch=data.get('buttons'),data.get('axes'),data.get('seq'),data.get('epoch')

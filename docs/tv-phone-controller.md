@@ -26,7 +26,7 @@ Le composant ne modifie ni ne contourne le garde d’autorité du moteur : le TV
 - Téléphone : capacité aléatoire limitée à cette manette ; jamais de JWT du compte transmis au téléphone.
 - Capacités absentes des URL, des journaux et des captures ; le registre du serveur ne conserve que leurs empreintes. Le code illustré dans les captures de test est révoqué à la fin des essais.
 - Quatre associations actives maximum sur le serveur (deux par compte). Appairages et entrées bornés en mémoire, codes/associations expirables, contrôle d’origine WebSocket et limites de tentatives/débit.
-- Les messages autorisés sont uniquement des instantanés de boutons/sticks, des informations de contexte hôte et des battements de présence. Le téléphone ne peut ni exécuter une commande serveur ni administrer un compte.
+- Les messages autorisés sont uniquement des instantanés de boutons/sticks, des informations de contexte hôte et des battements de présence. Le téléphone ne dispose d’aucune commande serveur arbitraire. Sa navigation est bloquée sur les réglages du compte ; seul le retour à l’accueil reste accessible. Les actions du compte restent à la télécommande de la TV.
 - Une déconnexion TV limite la reprise à une minute ; un redémarrage de l’API impose une nouvelle association.
 
 API : `POST /v1/phone-pad/create`, `/join`, `/{id}/approve`, `/{id}/revoke` et `WS /v1/phone-pad/{id}/ws`. Le proxy web conserve Host/Origin et transmet la mise à niveau WebSocket. Les autres routes et services restent inchangés.
