@@ -1,3 +1,4 @@
+import TVPhoneHost,{TVPhoneSettings} from '../tv/TVPhoneHost.jsx';
 import GameOptionsDialog,{readGameOptions} from './GameOptionsDialog.jsx';
 import {PlayStationNavigation} from './PlayStationHome.jsx';
 import {AppearanceSurface} from './Appearance.jsx';
@@ -113,12 +114,12 @@ export function ExperienceProvider({ children }) {
         finally{clearTimeout(timer);refreshLock.current=false;setRefreshing(false);}
     }
     const value = { downloads, libraryRevision, refreshLibrary, refreshing, refreshMessage, mode, choose, choosing, setChoosing, data, setData, favorite, notice, syncReady };
-    return <SourceSettingsProvider><Context.Provider value={value}>{children}{downloads.ui}</Context.Provider></SourceSettingsProvider>;
+    return <SourceSettingsProvider><TVPhoneHost><Context.Provider value={value}>{children}{downloads.ui}</Context.Provider></TVPhoneHost></SourceSettingsProvider>;
 }
 export function InterfaceSettings({advanced = false}) {
     const ctx = useContext(Context);
     if (!ctx) return null;
-    return <section className="gx-settings"><h2>Votre espace de jeu</h2><p>{interfaces.find(x => x.id === ctx.mode)?.name || 'Aucune interface choisie'}</p><details className="ps-archive-info"><summary>Interfaces archivées · {archivedAppearances.length}</summary><p>Les anciennes interfaces sont conservées et retirées du sélecteur.</p><ul>{archivedAppearances.map(item=><li key={item.id}>{item.name}</li>)}</ul></details>{ctx.notice && <p role="status">{ctx.notice}</p>}{!advanced&&<p><a href={appPath("/settings?advanced=1")}>Compte et bibliothèque ↗</a></p>}<section className="gf-free-library"><h3>Dossier de jeux</h3><p>{ctx.downloads.library?.folder || "Aucun dossier choisi."}</p><button onClick={ctx.downloads.openSetup}>Choisir le dossier</button></section><LibrarySources onImported={async item=>{await ctx.refreshLibrary();ctx.downloads.notify('success',item.title,'Jeu importé.');}}/><EmulatorAssistant/><GameSources/><ArtworkCredits /></section>;
+    return <section className="gx-settings"><h2>Votre espace de jeu</h2><p>{interfaces.find(x => x.id === ctx.mode)?.name || 'Aucune interface choisie'}</p><details className="ps-archive-info"><summary>Interfaces archivées · {archivedAppearances.length}</summary><p>Les anciennes interfaces sont conservées et retirées du sélecteur.</p><ul>{archivedAppearances.map(item=><li key={item.id}>{item.name}</li>)}</ul></details>{ctx.notice && <p role="status">{ctx.notice}</p>}{!advanced&&<p><a href={appPath("/settings?advanced=1")}>Compte et bibliothèque ↗</a></p>}<section className="gf-free-library"><h3>Dossier de jeux</h3><p>{ctx.downloads.library?.folder || "Aucun dossier choisi."}</p><button onClick={ctx.downloads.openSetup}>Choisir le dossier</button></section><LibrarySources onImported={async item=>{await ctx.refreshLibrary();ctx.downloads.notify('success',item.title,'Jeu importé.');}}/><EmulatorAssistant/><GameSources/><TVPhoneSettings/><ArtworkCredits /></section>;
 }
 
 function ArtworkCredits() {

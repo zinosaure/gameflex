@@ -1,3 +1,4 @@
+import {TVPhoneButton,useTVPhone} from '../tv/TVPhoneHost.jsx';
 import ConsoleEmulatorBanner from './ConsoleEmulatorBanner.jsx';
 import {appPath} from '../libs/appBase.js';
 import React,{useEffect,useRef,useState} from 'react';
@@ -15,10 +16,10 @@ export const shortTitle=game=>(game?.displayTitle||game?.title||'').replace(/\.(
 const sections=[['home','Accueil','home'],['library','Bibliothèque','library'],['favorites','Favoris','favorites'],['resume','Récents','resume'],['collections','Collections','collections'],['consoles','Consoles','consoles'],['multiplayer','Multijoueur','multiplayer'],['management','Gestion / Archives','archives'],['settings','Paramètres','settings']];
 const time=()=>new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
 function ControlCenter({onClose,onNavigate}){
- const root=useRef(null);useDialogFocus(root);useDirectionalFocus(root);
+ const tv=useTVPhone();const root=useRef(null);useDialogFocus(root);useDirectionalFocus(root);
  return <div className="ps-control-backdrop" onClick={e=>{if(e.target===e.currentTarget)onClose();}}><section ref={root} className="ps-control" role="dialog" aria-modal="true" aria-label="Centre de contrôle" onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();onClose();}if(e.key==='Tab'){const buttons=[...root.current.querySelectorAll('button')];if(e.shiftKey&&document.activeElement===buttons[0]){e.preventDefault();buttons.at(-1)?.focus();}else if(!e.shiftKey&&document.activeElement===buttons.at(-1)){e.preventDefault();buttons[0]?.focus();}}}}>
  <header><div><small>GAMEFLEX</small><h2>Centre de contrôle</h2></div><button aria-label="Fermer le centre de contrôle" onClick={onClose}><Icon name="close"/></button></header>
- <nav>{sections.map(([id,label,icon])=><button key={id} onClick={()=>{onClose();onNavigate(id);}}><Icon name={icon}/><span>{label}</span><span aria-hidden="true">↗</span></button>)}</nav>
+ <nav>{sections.map(([id,label,icon])=><button key={id} onClick={()=>{onClose();onNavigate(id);}}><Icon name={icon}/><span>{label}</span><span aria-hidden="true">↗</span></button>)}{tv&&<><button onClick={()=>{onClose();tv.setTV(!tv.tv);}}><Icon name="consoles"/><span>Mode TV</span><span>{tv.tv?'Activé':'Désactivé'}</span></button><button onClick={()=>{onClose();tv.open();}}><Icon name="multiplayer"/><span>Manette téléphone</span><span>↗</span></button></>}</nav>
  </section></div>;
 }
 function NewCollection({onClose,onCreate}){
@@ -32,7 +33,7 @@ export function PlayStationNavigation({active='home',onNavigate=()=>{},onSetting
  const go=id=>id==='settings'&&onSettings?onSettings():onNavigate(id);
  return <><header className="ps-topbar"><button className="ps-brand" aria-label="Accueil GameFlex" onClick={()=>go('home')}><img className="ps-app-logo" src={appPath('/images/icon-192.png')} alt="" width="44" height="44"/></button>
  <nav className="ps-tabs" aria-label="Navigation principale">{[['home','Jeux'],['library','Bibliothèque'],['collections','Collections']].map(([id,label])=><button key={id} aria-current={active===id?'page':undefined} onClick={()=>go(id)}>{label}</button>)}</nav>
- <div className="ps-utilities"><button aria-label="Rechercher un jeu" onClick={()=>{go('library');onSearch?.();}}><Icon name="search"/></button><button aria-label="Paramètres" onClick={()=>go('settings')}><Icon name="settings"/></button><button className="ps-avatar" aria-label={`Centre de contrôle · ${user}`} onClick={()=>setControl(true)}>{String(user||'J').slice(0,1).toUpperCase()}</button><time>{clock}</time></div></header>
+ <div className="ps-utilities"><button aria-label="Rechercher un jeu" onClick={()=>{go('library');onSearch?.();}}><Icon name="search"/></button><button aria-label="Paramètres" onClick={()=>go('settings')}><Icon name="settings"/></button><TVPhoneButton/><button className="ps-avatar" aria-label={`Centre de contrôle · ${user}`} onClick={()=>setControl(true)}>{String(user||'J').slice(0,1).toUpperCase()}</button><time>{clock}</time></div></header>
  {control&&<ControlCenter onClose={()=>setControl(false)} onNavigate={go}/>}</>;
 }
 function Empty({query,section,onNavigate}){

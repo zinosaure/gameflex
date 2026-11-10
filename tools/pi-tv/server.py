@@ -107,6 +107,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200); self.send_header('Content-Type', info['mime']); self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'public, max-age=86400'); self.send_header('X-Content-Type-Options', 'nosniff'); self.end_headers(); self.wfile.write(body); return
     def do_GET(self):
+        phone=re.fullmatch(r'/v1/phone-pad/([a-f0-9]{32})/ws',self.path)
+        if phone:
+            from phone_pad import websocket
+            return websocket(self,verified_identity,phone[1])
         path = self.path.split('?')[0]
         if path.startswith('/v1/emugen/'):
             return self.reply(410,{'error':'EmuGen a été retiré.','status':'removed'})
@@ -347,6 +351,9 @@ class Handler(BaseHTTPRequestHandler):
         except PermissionError:return self.reply(403,{'error':'Import non autorisé.'})
         except (ValueError,OSError) as e:return self.reply(409,{'error':str(e) if isinstance(e,ValueError) else 'Écriture impossible.'})
     def do_POST(self):
+        if self.path.startswith('/v1/phone-pad/'):
+            from phone_pad import http
+            return http(self,verified_identity)
         bridge=re.fullmatch(r'/v1/socket-bridge/([a-f0-9]{32})/(poll|send|close)',self.path)
         if self.path=='/v1/socket-bridge' or bridge:
             from socket_bridge import serve

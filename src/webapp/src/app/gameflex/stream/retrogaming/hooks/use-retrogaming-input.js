@@ -1,3 +1,4 @@
+import {usePhoneGameInput} from '../../../tv/use-phone-game-input.js';
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { RETRO_BUTTON_INDEX, RETRO_DIAGONAL_BUTTONS, RETRO_CONTROLLER_PRESET_MAP } from "../../../controllers/Controllers.jsx";
 import { resolveControllerLayout } from "../../shared/controller-layout.js";
@@ -227,6 +228,9 @@ export function useRetrogamingInput({ screenRef, session, context, t, options = 
 
 	useRetroPhysicalGamepadInput(isConnected, sendButtonWithActivity, sendAnalogWithActivity, session.consoleId, token);
 	useRetroKeyboardInput(isConnected, sendButtonWithActivity, session.consoleId, token);
+    usePhoneGameInput(isConnected && !isWatching && connectRole !== 'spectate',
+        (index,down)=>{const bits=[8,0,9,1,10,11,12,13,2,3,14,15,4,5,6,7];if(bits[index]!==undefined)sendButtonWithActivity(bits[index],down?1:0);},
+        (stick,x,y)=>sendAnalogWithActivity(stick,x,y));
 
 	// N64's C-buttons have no digital RetroPad bit in mupen64plus_next's
 	// default mapping — the core expects them as RIGHT ANALOG STICK

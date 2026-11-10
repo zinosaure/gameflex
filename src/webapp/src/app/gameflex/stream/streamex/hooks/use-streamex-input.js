@@ -1,3 +1,4 @@
+import {usePhoneGameInput} from '../../../tv/use-phone-game-input.js';
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../../profile/auth/AuthContext.jsx";
 import { useStreamexStreamingConnection } from "./use-streamex-streaming-connection.js";
@@ -189,6 +190,9 @@ export function useStreamexInput({ screenRef, session, t, options = {} }) {
 	// plugging one in silenced it (2026-08-25). KeyTest is excluded: its own
 	// pad reads the Gamepad API with a richer table (chords, analog triggers)
 	// and is always on screen, so it would double every press.
+    usePhoneGameInput(drivesPad && !isKeyTest && profileButtons.length > 0 && Boolean(CONSOLE_GAMEPAD_ORDER[session.consoleId]),
+        (index,down)=>{const id=CONSOLE_GAMEPAD_ORDER[session.consoleId]?.[index],button=profileButtons.find(entry=>entry.id===id);if(button)sendInput(`${down?'kd':'ku'},${button.key}`);},
+        (stick,x,y)=>sendInput(`st,${stick?'r':'l'},${Math.round(x*1000)},${Math.round(y*1000)}`));
 	useStreamexPhysicalInput({
 		enabled: drivesPad && !isKeyTest,
 		order: CONSOLE_GAMEPAD_ORDER[session.consoleId],

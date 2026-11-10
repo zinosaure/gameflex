@@ -1,3 +1,5 @@
+import PhoneControllerPage from '../../src/webapp/src/app/gameflex/tv/PhoneControllerPage.jsx';
+import {usePhoneGameInput} from '../../src/webapp/src/app/gameflex/tv/use-phone-game-input.js';
 // Real provider, routing, shared views and dialogs with an entirely local fixture
 // transport. No request, preference write or launch reaches the public instance.
 import React from 'react';
@@ -19,9 +21,11 @@ window.__requests=[];
 window.__previewConfig={objectStatus:!params.has('legacyStatus'),large:params.get('scenario')==='large',romDelay:Number(params.get('romDelay')||450),consoleDelay:Number(params.get('consoleDelay')||0),preferenceDelay:Number(params.get('preferenceDelay')||0),preferenceOffline:params.has('preferenceOffline'),libraryError:params.has('libraryError'),empty:params.has('empty'),faultOnce:params.has('faultOnce')};
 const config=window.__previewConfig;config.showcase=params.has('showcase');config.missingEmulator=params.has('missingEmulator');config.launchFailure=params.has('launchFailure');config.readOnly=params.has('readOnly');config.emulatorOffline=params.has('emulatorOffline');
 
+const realFetch=window.fetch.bind(window);
 window.fetch=async(url,options={})=>{
  const path=new URL(url,location.origin).pathname.replace(/^\/gameflex/,'');
  window.__requests.push({path,method:options.method||'GET'});
+ if(path.startsWith('/experience-api/v1/phone-pad/'))return realFetch(url,options);
  let value={items:[]};
  if(path.endsWith('/preferences')){
   const snapshot=JSON.parse(JSON.stringify(preferences));
@@ -39,6 +43,7 @@ window.fetch=async(url,options={})=>{
  else if(path.endsWith('/emulators'))value={items:['nes','gba','nds','n64'].map(consoleId=>({consoleId,name:'Émulateur de test',installed:!(config.missingEmulator&&consoleId==='gba'&&!window.__emuInstalled),core:'fixture-core',canInstall:true,...(window.__emuInstalled&&consoleId==='gba'?{job:{status:'succeeded',message:'Installation terminée',id:'fixture-install'}}:{})})),hardware:{},canInstall:!config.readOnly};
  return new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});
 };
-function Fallback(){const loc=useLocation();if(loc.pathname==='/settings')return <Skeleton.context.Provider value={{offcanvas:{open:()=>{}},toast:{open:()=>{}}}}><Settings/></Skeleton.context.Provider>;return <p data-testid="stream-route">{loc.pathname} {loc.search}</p>;}
+function InputFixture(){usePhoneGameInput(true,(index,down)=>{(window.__phoneGameEvents||=[]).push({index,down});},(stick,x,y)=>{(window.__phoneGameEvents||=[]).push({stick,x,y});});return <p data-testid="stream-route">Partie de test sur la TV</p>;}
+function Fallback(){const loc=useLocation();if(loc.pathname==='/settings')return <Skeleton.context.Provider value={{offcanvas:{open:()=>{}},toast:{open:()=>{}}}}><Settings/></Skeleton.context.Provider>;return <InputFixture/>;}
 const pack=params.has('pack');
-createRoot(document.getElementById('root')).render(<><aside style={{background:'#293748',color:'white',textAlign:'center',padding:8}}>PRÉVISUALISATION ISOLÉE · données et lancement simulés</aside>{pack?<InterfacePicker options={selectableInterfaces} onChoose={()=>{}}/>:<BrowserRouter basename="/gameflex"><ConsolesProvider><ExperienceProvider><RouteErrorBoundary><ExperienceGate enabled><Fallback/></ExperienceGate></RouteErrorBoundary></ExperienceProvider></ConsolesProvider></BrowserRouter>}</>);
+createRoot(document.getElementById('root')).render(<><aside style={{background:'#293748',color:'white',textAlign:'center',padding:8}}>PRÉVISUALISATION ISOLÉE · données et lancement simulés</aside>{location.pathname.endsWith('/controller')?<PhoneControllerPage/>:pack?<InterfacePicker options={selectableInterfaces} onChoose={()=>{}}/>:<BrowserRouter basename="/gameflex"><ConsolesProvider><ExperienceProvider><RouteErrorBoundary><ExperienceGate enabled><Fallback/></ExperienceGate></RouteErrorBoundary></ExperienceProvider></ConsolesProvider></BrowserRouter>}</>);

@@ -1,6 +1,6 @@
 // Isolated preview identity: never consult the public account or its credentials.
 export const useAuth=()=>({user:{username:'preview',display_name:'Aperçu',role_level:0},token:'fixture-only',isAdmin:true,isAuthenticated:true,logout:()=>{}});
-export const authHeaders=()=>({});
+export const authHeaders=token=>token?{Authorization:'Bearer '+token}:{};
 export const getStoredToken=()=>null;
 
 export const getStoredUsername=()=>"preview";

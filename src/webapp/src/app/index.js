@@ -1,3 +1,4 @@
+import PhoneControllerPage from './gameflex/tv/PhoneControllerPage.jsx';
 import { appBasePath, appPath } from "./gameflex/libs/appBase.js";
 import RouteErrorBoundary from './gameflex/experience/RouteErrorBoundary.jsx';
 import { ExperienceProvider, ExperienceGate } from './gameflex/experience/ExperienceProvider.jsx';
@@ -459,6 +460,7 @@ function AppShell() {
 		return <InvitePage />;
 	}
 
+	if (location.pathname === "/controller") return <PhoneControllerPage/>;
 	if (isLoading) {
 		return <LoadingScreen />;
 	}
