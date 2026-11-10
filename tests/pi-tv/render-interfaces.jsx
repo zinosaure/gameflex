@@ -6,7 +6,7 @@ import { interfaces } from '../../src/webapp/src/app/gameflex/experience/interfa
 import assert from 'node:assert/strict';
 const games=[{consoleId:'nes',consoleName:'NES',reference:'free',title:'Palette libre',status:'Complete'}];
 const consoles=[{id:'nes',name:'NES',maxPlayers:2}];
-const standaloneModes=['hub-canape','ligne-cinema','mosaique-joy','roue-retro'];
+const standaloneModes=['hub-canape','ligne-cinema','mosaique-joy','roue-retro','terminal-poche','cartouches','carte-epoques','double-ecran'];
 const results=[];
 for(const {id,name} of interfaces.filter(x=>!retroModes.includes(x.id)&&!standaloneModes.includes(x.id))){
  const html=renderToStaticMarkup(<ExperienceView mode={id} games={games} consoles={consoles} favorites={['nes:free']} history={['nes:free']} collections={[{id:'local',name:'Homebrew',games:['nes:free']}]} onOpen={()=>{}} onMode={()=>{}} onFavorite={()=>{}}/>);
@@ -22,11 +22,11 @@ for(const {id,name} of interfaces.filter(x=>!retroModes.includes(x.id)&&!standal
  assert.ok(empty.includes('gx-app'));
 }
 const picker=renderToStaticMarkup(<InterfacePicker onChoose={()=>{}}/>);
-assert.equal((picker.match(/class="gx-choice /g)||[]).length,13);
+assert.equal((picker.match(/class="gx-choice /g)||[]).length,17);
 assert.ok(picker.includes('gx-choice gf-choice-orbit'));
 assert.ok(!picker.includes('gx-choice gx-orbit'),'La carte Orbitale ne doit pas réutiliser la classe du décor absolu.');
 for(const id of standaloneModes){const html=renderToStaticMarkup(<ExperienceView mode={id} games={games} consoles={consoles} favorites={['nes:free']} history={['nes:free']} onOpen={()=>{}} onConsole={()=>{}}/>);assert.ok(html.includes(`data-interface="${id}"`));assert.ok(html.includes('Palette libre')||id==='roue-retro');const empty=renderToStaticMarkup(<ExperienceView mode={id} games={[]} consoles={[]} onOpen={()=>{}} onConsole={()=>{}}/>);assert.ok(empty.includes('Votre bibliothèque est vide'));}
-console.log('14 compositions distinctes rendues, 14 états vides rendus, sélecteur de 13 choix valide.');
+console.log('18 compositions distinctes rendues, 18 états vides rendus, sélecteur de 17 choix valide.');
 
 const photoHtml=renderToStaticMarkup(<ExperienceView mode="consoles" consoles={[{id:'nes',name:'NES',image:'/experience-api/v1/media/'+'a'.repeat(64),attribution:'Evan-Amos · Public domain'}]} />);
 assert.ok(photoHtml.includes('gx-console-art'));
@@ -61,7 +61,7 @@ for (const [mode,[layout,feature]] of Object.entries(layouts)) {
  structures.push(body.replace(/class="[^"]*"/g,'').replace(/data-layout="[^"]*"/g,''));
 }
 assert.equal(new Set(structures).size,10,'Les pages console doivent avoir dix arbres DOM distincts');
-assert.deepEqual(interfaces.filter(x=>!retroModes.includes(x.id)).map(x=>x.id),['minimal','covers','consoles','favorites','resume','collections','detail','archives','multiplayer','dashboard','hub-canape','ligne-cinema','mosaique-joy','roue-retro']);
+assert.deepEqual(interfaces.filter(x=>!retroModes.includes(x.id)).map(x=>x.id),['minimal','covers','consoles','favorites','resume','collections','detail','archives','multiplayer','dashboard','hub-canape','ligne-cinema','mosaique-joy','roue-retro','terminal-poche','cartouches','carte-epoques','double-ecran']);
 console.log('10 pages console structurellement différentes ; dock de 5 boutons SVG ; identifiants préservés.');
 
 const paged=renderToStaticMarkup(<ExperienceView mode="covers" selectedConsole={{id:'gba',name:'GBA'}} planetLetter="P" planet={{items:Array.from({length:60},(_,i)=>({title:`Poster ${String(i).padStart(2,'0')}`,source:`https://www.planetemu.net/rom/gba/p${i}`}))}}/>);
@@ -95,7 +95,7 @@ for(const mode of retroModes){
 console.log('5 nouveaux parcours console → bibliothèque installée valides.');
 
 const {selectableInterfaces,movedInterfaces,migratePreference,legacyDestination,preferenceKey,interfacePackCapacity}=require('../../src/webapp/src/app/gameflex/experience/interfaces.js');
-assert.deepEqual(selectableInterfaces.map(x=>x.id),['station','crt','shelf','orbit','arcade','minimal','covers','consoles','dashboard','hub-canape','ligne-cinema','mosaique-joy','roue-retro']);
+assert.deepEqual(selectableInterfaces.map(x=>x.id),['station','crt','shelf','orbit','arcade','minimal','covers','consoles','dashboard','hub-canape','ligne-cinema','mosaique-joy','roue-retro','terminal-poche','cartouches','carte-epoques','double-ecran']);
 assert.equal(interfacePackCapacity,22);
 const saved={favorites:['nes:free'],history:['nes:free'],collections:[{id:'local',name:'Homebrew',games:['nes:free']}]};
 for(const id of Object.keys(movedInterfaces)){
@@ -121,6 +121,6 @@ for(const {id} of selectableInterfaces){
 }
 const singular=renderToStaticMarkup(<ExperienceView mode="consoles" games={games} consoles={consoles}/>);
 assert(singular.includes('1 jeu installé'));assert(!singular.includes('1 jeux'));
-const pack=renderToStaticMarkup(<InterfacePicker options={[...selectableInterfaces,...Array.from({length:9},(_,i)=>({id:'pack-'+i,name:'Pack '+i}))]} onChoose={()=>{}}/>);
+const pack=renderToStaticMarkup(<InterfacePicker options={[...selectableInterfaces,...Array.from({length:5},(_,i)=>({id:'pack-'+i,name:'Pack '+i}))]} onChoose={()=>{}}/>);
 assert.equal((pack.match(/class="gx-choice /g)||[]).length,22);
-console.log('Migration idempotente des six anciens choix ; treize modes × sept destinations ; chargement, singulier et pack de 22 vérifiés.');
+console.log('Migration idempotente des six anciens choix ; dix-sept modes × sept destinations ; chargement, singulier et pack de 22 vérifiés.');

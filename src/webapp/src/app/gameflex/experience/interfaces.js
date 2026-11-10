@@ -19,6 +19,10 @@ export const interfaces = [
     { id: 'ligne-cinema', name: 'Ligne Cinéma', note: 'Scène immersive et rail horizontal', icon: '▰' },
     { id: 'mosaique-joy', name: 'Mosaïque Joy', note: 'Jaquettes carrées et groupes', icon: '▦' },
     { id: 'roue-retro', name: 'Roue Retro', note: 'Roue incurvée des systèmes', icon: '◖' },
+    { id: 'terminal-poche', name: 'Terminal de poche', note: 'LCD ambre et liste compacte', icon: '▤' },
+    { id: 'cartouches', name: 'Cartouches', note: 'Tiroir et tranches de jeux', icon: '▥' },
+    { id: 'carte-epoques', name: 'Carte des époques', note: 'Frise des consoles et des jeux', icon: '━' },
+    { id: 'double-ecran', name: 'Double écran', note: 'Aperçu supérieur et rail inférieur', icon: '▣' },
 ];
 // Keep the historical registry for saved preferences and old links. Only verified
 // appearances belong in the picker; a pack can supply additional registry entries.
