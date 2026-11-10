@@ -5,7 +5,9 @@ import ExperienceView from '../../src/webapp/src/app/gameflex/experience/Experie
 import {shortTitle} from '../../src/webapp/src/app/gameflex/experience/PlayStationHome.jsx';
 import {archivedAppearances,interfaces,selectableInterfaces,migratePreference} from '../../src/webapp/src/app/gameflex/experience/interfaces.js';
 const game={consoleId:'gba',consoleName:'Game Boy Advance',reference:'a',title:'Advance Wars (Europe) (En,Fr).gba',status:{status:'playable',emulators:{mgba:'playable'}},files:['a.gba']};
-assert.equal(shortTitle(game),'Advance Wars');assert.equal(archivedAppearances.length,22);assert.deepEqual(selectableInterfaces.map(i=>i.id),['ps-home']);
+assert.equal(shortTitle(game),'Advance Wars');
+const emptyConsole=render(<ExperienceView games={[game]} consoles={[{id:'gba',name:'GBA'},{id:'nds',name:'Nintendo DS'}]}/>);assert(emptyConsole.includes('Sélectionner GBA'));assert(!emptyConsole.includes('Sélectionner Nintendo DS'));
+assert.equal(archivedAppearances.length,22);assert.deepEqual(selectableInterfaces.map(i=>i.id),['ps-home']);
 for(const appearance of archivedAppearances){
  const before={interface:appearance.id,favorites:['gba:a'],history:['gba:a'],collections:[{id:'a',name:'Classiques',games:['gba:a']}]};
  const migrated=migratePreference(before);assert.equal(migrated.interface,'ps-home');assert.equal(migrated.archivedInterface,appearance.id);
@@ -16,6 +18,6 @@ for(const section of ['home','library','favorites','resume','collections','conso
  assert(html.includes('data-interface="ps-home"'));assert(!html.includes('[object Object]'));assert(!html.includes('Changer d’interface'));
 }
 const pending=render(<ExperienceView loading games={[]}/>);assert(pending.includes('Chargement'));assert(!pending.includes('Votre bibliothèque prend vie ici'));
-const home=render(<ExperienceView games={[game]}/>);assert(home.includes('Jouer'));assert(!home.includes('(Europe)'));
-const recent=render(<ExperienceView games={[game]} history={['gba:a']}/>);assert(recent.includes('Relancer'));
+const home=render(<ExperienceView games={[game]} consoles={[{id:'gba',name:'GBA'}]}/>);assert(home.includes('Lancer'));assert(home.includes('Sélectionner GBA'));assert(!home.includes('ps-game-tile'));assert(!home.includes('(Europe)'));
+const recent=render(<ExperienceView games={[game]} consoles={[{id:'gba',name:'GBA'}]} history={['gba:a']}/>);assert(recent.includes('Lancer'));
 console.log('Unified console: 22 idempotent archive migrations, nine sections, raw kernel status, loading, short titles and launch labels passed.');

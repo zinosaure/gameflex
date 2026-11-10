@@ -42,5 +42,16 @@
     "files": [
       "fixture-3.gba"
     ]
+  },
+  {
+    "consoleId": "nds",
+    "consoleName": "Nintendo DS",
+    "reference": "nds-0",
+    "title": "Advance Wars - Days of Ruin (USA) (En,Fr,Es)",
+    "image": "/experience-api/v1/media/cac6e0488a510f4e7c8f9e4f65c0ca8615e759a60cba234530cb32e95555d411",
+    "attribution": "Libretro Thumbnails · Ayants droit du jeu",
+    "files": [
+      "fixture.nds"
+    ]
   }
 ]

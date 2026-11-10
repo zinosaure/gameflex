@@ -1,3 +1,4 @@
+import GameOptionsDialog,{readGameOptions} from './GameOptionsDialog.jsx';
 import {PlayStationNavigation} from './PlayStationHome.jsx';
 import {AppearanceSurface} from './Appearance.jsx';
 import SectionErrorBoundary from './SectionErrorBoundary.jsx';
@@ -172,6 +173,9 @@ function LibraryExperience({ consoleId = '' }) {
     },[verificationGame,consoleId,token]);
     const closeVerification=()=>{const query=new URLSearchParams(location.search);query.delete('emugenVerification');navigate(location.pathname+'?'+query.toString(),{replace:true});};
 
+    const [optionsGame,setOptionsGame]=useState(null),[launchingKey,setLaunchingKey]=useState(''),[directError,setDirectError]=useState(null);
+    const launchBusy=useRef(false);
+    const gameSettingsScope=preferenceKey(user?.username,apiUrl('/'));
     const [launchGame, setLaunchGame] = useState(null), [launchError, setLaunchError] = useState(''), [launching, setLaunching] = useState(false);
     const live = useSessionPool();
     useEffect(() => {
@@ -298,22 +302,29 @@ function LibraryExperience({ consoleId = '' }) {
         navigate('/?' + query.toString(), { replace: true });
     }, [location.pathname, location.search, loading, ctx.data.interfaceDestination, games, consoleId]);
 
-    async function launch() {
-        setLaunching(true); setLaunchError('');
+    async function startGame(game,direct=false) {
+        if(launchBusy.current)return;
+        launchBusy.current=true;setLaunching(true);setLaunchError('');setDirectError(null);setLaunchingKey(gameKey(game));
         try {
-            const result = await listCores(launchGame.consoleId);
-            const core = (result.data || []).find(c => c.installed);
-            if (!result.ok || !core) throw new Error('Aucun émulateur installé pour cette console.');
-            const reply = await createSession(launchGame.consoleId, launchGame.reference, launchGame.title, core.name, '', user?.username, null, { resolution: 'sd' });
-            if (!reply.ok || !reply.data?.sessionId) throw new Error(reply.errorMessage || 'Le lancement a échoué.');
-            navigate(buildStreamingUrl({ sessionId: reply.data.sessionId, play: true }));
-        } catch (e) { setLaunchError(e.message); }
-        finally { setLaunching(false); }
+            const result=await listCores(game.consoleId);
+            const available=(result.data||[]).filter(core=>core.installed);
+            if(!result.ok||!available.length)throw new Error('Aucun émulateur installé pour cette console. Utilisez la bannière au-dessus de la liste.');
+            const preferred=readGameOptions(gameSettingsScope,game).core;
+            const core=preferred?available.find(item=>item.name===preferred):available[0];
+            if(!core)throw new Error('L’émulateur choisi est indisponible. Modifiez les paramètres du jeu avec le bouton « … ».');
+            const reply=await createSession(game.consoleId,game.reference,game.title,core.name,'',user?.username,null,{resolution:'sd'});
+            if(!reply.ok||!reply.data?.sessionId)throw new Error(reply.errorMessage||'Le lancement a échoué.');
+            ctx.setData(data=>({...data,history:[gameKey(game),...data.history.filter(id=>id!==gameKey(game))].slice(0,40)}));
+            navigate(buildStreamingUrl({sessionId:reply.data.sessionId,play:true}));
+        } catch(error) {
+            if(direct)setDirectError({key:gameKey(game),message:error.message});else setLaunchError(error.message);
+        } finally {launchBusy.current=false;setLaunching(false);setLaunchingKey('');}
     }
+    const launch=()=>startGame(launchGame);
     function createCollection(name) {
         if(typeof name!=='string')return;
         if (name?.trim()) ctx.setData(d => ({ ...d, collections: [...d.collections, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: name.trim().slice(0, 80), games: [] }] }));
     }
     const presentedGames=games.map(game=>withImage(!game.image&&coverImages[gameKey(game)]?{...game,...coverImages[gameKey(game)]}:game,gameKey(game)));
-    return <><ExperienceView libraryQuery={libraryQuery} onLibraryQuery={setLibraryQuery} onRefreshMetadata={undefined} metadataProgress={metadataProgress} onImportRom={ctx.downloads.library?.canConfigure?()=>setImportOpen(true):undefined} onRefreshLibrary={ctx.refreshLibrary} refreshing={ctx.refreshing} refreshMessage={ctx.refreshMessage} onAppearance={() => ctx.setChoosing(true)} section={section} onNavigate={id => navigate(`/?section=${id}`)} settingsContent={<InterfaceSettings />} planet={planet} downloadJobs={ctx.downloads.jobs} onSearchQuery={setCatalogueQuery} downloadable={downloadable.filter(item=>!games.some(g=>g.consoleId===item.consoleId&&g.title.toLowerCase().replace(/[^a-z0-9]/g,'')===item.title.toLowerCase().replace(/[^a-z0-9]/g,'')))} planetLetter={planetLetter} onPlanetLetter={setPlanetLetter} selectedConsole={section === 'home' || section === 'consoles' ? playable.find(c => c.id === consoleId) : undefined} onHome={() => navigate('/?section=consoles')} live={live} onWatch={s => navigate(buildStreamingUrl({ sessionId: s.id }))} mode={ctx.mode} games={presentedGames} consoles={playable.map(c => withImage(c, c.id))} {...ctx.data} onFavorite={ctx.favorite} onOpen={open} onConsole={c => navigate(`/retrogaming/${encodeURIComponent(c.id)}`)} onSettings={() => navigate('/settings')} loading={loading} error={error} onRetry={() => {setLoading(true);retry(x => x + 1);}} user={user?.display_name || user?.username} onCreateCollection={createCollection} onAddToCollection={(id, g) => ctx.setData(d => ({ ...d, collections: d.collections.map(c => c.id === id ? { ...c, games: c.games.includes(gameKey(g)) ? c.games.filter(x => x !== gameKey(g)) : [...c.games, gameKey(g)] } : c) }))} />{importOpen&&<RomImportDialog token={token} consoles={playable} initialConsole={consoleId||''} onClose={()=>setImportOpen(false)} onImported={async item=>{await ctx.refreshLibrary();ctx.downloads.notify('success',item.title,'Jeu importé.');}}/>}{catalogGame&&<CatalogGameDialog history={ctx.data.history} mode={ctx.mode} favorites={ctx.data.favorites} onFavorite={ctx.favorite} collections={ctx.data.collections} onAddToCollection={(id,g)=>ctx.setData(d=>({...d,collections:d.collections.map(c=>c.id===id?{...c,games:c.games.includes(gameKey(g))?c.games.filter(x=>x!==gameKey(g)):[...c.games,gameKey(g)]}:c)}))} canEditMetadata={user?.role_level===0} token={token} onMetadata={updated=>{setCatalogGame(updated);retry(x=>x+1);}} game={{...catalogGame,...(verificationResult?.slug===catalogGame.emugenSlug?{manualVerificationResult:verificationResult}:{})}} onClose={()=>setCatalogGame(null)} onInstall={game=>{setCatalogGame(null);ctx.downloads.start(game);}} onPlay={game=>{setCatalogGame(null);openOwned(game);}}/>}{sources.enabledIds.includes('emugen')&&verificationId&&<InteractiveVerification token={token} sessionId={verificationId} gameSlug={verificationGame} consoleId={consoleId} onClose={closeVerification} onResolved={setVerificationResult}/>}{launchGame && <LaunchDialog onEmulatorReady={()=>setLaunchError('')} game={launchGame} mode={ctx.mode} error={launchError} launching={launching} onPlay={launch} onClose={() => setLaunchGame(null)}/>}{ctx.notice && <p className="gx-sync-notice" role="status">{ctx.notice}</p>}</>;
+    return <><ExperienceView onDirectLaunch={game=>startGame(game,true)} onGameOptions={setOptionsGame} launchingKey={launchingKey} directError={directError} libraryQuery={libraryQuery} onLibraryQuery={setLibraryQuery} onRefreshMetadata={undefined} metadataProgress={metadataProgress} onImportRom={ctx.downloads.library?.canConfigure?()=>setImportOpen(true):undefined} onRefreshLibrary={ctx.refreshLibrary} refreshing={ctx.refreshing} refreshMessage={ctx.refreshMessage} onAppearance={() => ctx.setChoosing(true)} section={section} onNavigate={id => navigate(`/?section=${id}`)} settingsContent={<InterfaceSettings />} planet={planet} downloadJobs={ctx.downloads.jobs} onSearchQuery={setCatalogueQuery} downloadable={downloadable.filter(item=>!games.some(g=>g.consoleId===item.consoleId&&g.title.toLowerCase().replace(/[^a-z0-9]/g,'')===item.title.toLowerCase().replace(/[^a-z0-9]/g,'')))} planetLetter={planetLetter} onPlanetLetter={setPlanetLetter} selectedConsole={section === 'home' || section === 'consoles' ? playable.find(c => c.id === consoleId) : undefined} onHome={() => navigate('/?section=consoles')} live={live} onWatch={s => navigate(buildStreamingUrl({ sessionId: s.id }))} mode={ctx.mode} games={presentedGames} consoles={playable.map(c => withImage(c, c.id))} {...ctx.data} onFavorite={ctx.favorite} onOpen={open} onConsole={c => navigate(`/retrogaming/${encodeURIComponent(c.id)}`)} onSettings={() => navigate('/settings')} loading={loading} error={error} onRetry={() => {setLoading(true);retry(x => x + 1);}} user={user?.display_name || user?.username} onCreateCollection={createCollection} onAddToCollection={(id, g) => ctx.setData(d => ({ ...d, collections: d.collections.map(c => c.id === id ? { ...c, games: c.games.includes(gameKey(g)) ? c.games.filter(x => x !== gameKey(g)) : [...c.games, gameKey(g)] } : c) }))} />{importOpen&&<RomImportDialog token={token} consoles={playable} initialConsole={consoleId||''} onClose={()=>setImportOpen(false)} onImported={async item=>{await ctx.refreshLibrary();ctx.downloads.notify('success',item.title,'Jeu importé.');}}/>}{optionsGame&&<GameOptionsDialog key={gameKey(optionsGame)} game={optionsGame} scope={gameSettingsScope} onClose={()=>setOptionsGame(null)} onDetails={setCatalogGame}/>}{catalogGame&&<CatalogGameDialog history={ctx.data.history} mode={ctx.mode} favorites={ctx.data.favorites} onFavorite={ctx.favorite} collections={ctx.data.collections} onAddToCollection={(id,g)=>ctx.setData(d=>({...d,collections:d.collections.map(c=>c.id===id?{...c,games:c.games.includes(gameKey(g))?c.games.filter(x=>x!==gameKey(g)):[...c.games,gameKey(g)]}:c)}))} canEditMetadata={user?.role_level===0} token={token} onMetadata={updated=>{setCatalogGame(updated);retry(x=>x+1);}} game={{...catalogGame,...(verificationResult?.slug===catalogGame.emugenSlug?{manualVerificationResult:verificationResult}:{})}} onClose={()=>setCatalogGame(null)} onInstall={game=>{setCatalogGame(null);ctx.downloads.start(game);}} onPlay={game=>{setCatalogGame(null);openOwned(game);}}/>}{sources.enabledIds.includes('emugen')&&verificationId&&<InteractiveVerification token={token} sessionId={verificationId} gameSlug={verificationGame} consoleId={consoleId} onClose={closeVerification} onResolved={setVerificationResult}/>}{launchGame && <LaunchDialog onEmulatorReady={()=>setLaunchError('')} game={launchGame} mode={ctx.mode} error={launchError} launching={launching} onPlay={launch} onClose={() => setLaunchGame(null)}/>}{ctx.notice && <p className="gx-sync-notice" role="status">{ctx.notice}</p>}</>;
 }
