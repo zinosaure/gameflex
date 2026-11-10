@@ -7,8 +7,8 @@ OUT=Path(os.environ.get('RESULT_DIR','/results'));OUT.mkdir(parents=True,exist_o
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox','--disable-dev-shm-usage']);page=b.new_page(viewport={'width':960,'height':540})
  page.goto(BASE+'?showcase=1&tv=1');page.locator('.ps-console-tile').first.wait_for();page.wait_for_function('document.body.classList.contains("gf-tv-mode")')
- page.add_script_tag(path='/app/deploy/pi-tv/android/app/src/main/assets/tv-navigation.js');page.locator('[data-system="nds"]').focus();page.evaluate("GameFlexTv.move('right')")
- page.get_by_role('heading',name='Game Boy Advance',exact=True).wait_for()
+ page.add_script_tag(path='/app/deploy/pi-tv/android/app/src/main/assets/tv-navigation.js');page.evaluate("window.__outerNav=0;window.addEventListener('keydown',()=>window.__outerNav++)");page.evaluate("document.getElementById('root').tabIndex=-1;document.getElementById('root').focus()");page.evaluate("GameFlexTv.move('right')")
+ page.get_by_role('heading',name='Game Boy Advance',exact=True).wait_for();assert page.evaluate('window.__outerNav')==0,'Remote must not trigger a second global navigator'
  assert page.locator('.ps-game-row').first.bounding_box()['y']<540,'Game list must be visible on the Philips viewport'
  page.get_by_role('button',name='Lancer Advance Wars',exact=True).focus();page.evaluate('GameFlexTv.ok()');page.locator('[data-testid="stream-route"]').wait_for();page.evaluate('GameFlexTv.returnToLibrary()');page.locator('.ps-console-tile').first.wait_for()
  assert page.locator('[data-system="gba"]').get_attribute('aria-pressed')=='true'

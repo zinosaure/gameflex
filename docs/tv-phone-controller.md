@@ -37,13 +37,13 @@ Tests unitaires/HTTP : `PYTHONPATH=tools/pi-tv python3 -m unittest discover -s t
 
 La prévisualisation dédiée (`tests/pi-tv/serve-tv-phone-preview.py`) utilise le vrai relais HTTP/WebSocket, mais exclusivement une identité et un jeu simulés. Ne jamais utiliser ce serveur de test pour la production. `tests/pi-tv/tv-phone-browser.py` ouvre deux processus Chromium séparés : TV 1920 × 1080, téléphone 844 × 390 et 390 × 844. Il vérifie l’approbation, la navigation, le multitouch, les sticks, la suspension brutale du JavaScript, le relâchement et la révocation. La même suite est aussi exécutée avec `--block-upgrade` sur le serveur de prévisualisation, pour reproduire le proxy public du NAS. Les parcours de bibliothèque restent couverts par `consoles-first-browser.py`.
 
-Les essais navigateur ne valent pas un essai sur un téléviseur physique ou une validation de l’APK Android TV. Le mode livré ici est celui de l’application web. Aucun APK ni firmware TV n’est installé par cette modification.
+Les essais navigateur ne valent pas un essai sur un téléviseur physique ou une validation de l’APK Android TV. La livraison initiale concernait l’application web. La livraison native décrite ci-dessous met aussi à jour l’APK existante, sans modifier le firmware.
 
 Références techniques : [Pointer Events et capture des doigts](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events), [annulation d’un toucher](https://developer.mozilla.org/en-US/docs/Web/API/Element/pointercancel_event), [protocole WebSocket wsproto](https://python-hyper.org/projects/wsproto/en/stable/api.html).
 
 ## Application Philips et petits téléphones
 
-L'APK TV 0.3.1 réutilise maintenant l'interface commune du serveur après son
+L'APK TV 0.3.2 réutilise maintenant l'interface commune du serveur après son
 association initiale. L'installation conserve la signature et les données de
 l'application précédente. La télécommande reste traduite en commandes de navigation,
 sans pont de commandes système ; le lecteur conserve ses entrées de jeu habituelles.
