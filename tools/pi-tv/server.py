@@ -16,6 +16,7 @@ MODES = ['minimal', 'covers', 'consoles', 'favorites', 'resume', 'collections', 
 MODES += ['hub-canape', 'ligne-cinema', 'mosaique-joy', 'roue-retro', 'terminal-poche',
           'cartouches', 'carte-epoques', 'double-ecran', 'club-local', 'quai-systemes',
           'magazine-retro', 'bureau-collectionneur', 'grand-ecran-accessible']
+MODES += ['ps-home']
 LOCK = threading.Lock()
 UPLOAD_SLOT = threading.BoundedSemaphore(1)
 from upload_sessions import UploadSessions
@@ -25,6 +26,9 @@ def validate_preferences(p):
     if not isinstance(p, dict) or p.get('interface') not in MODES:
         raise ValueError('interface invalide')
     result = {'interface': p['interface']}
+    if 'archivedInterface' in p:
+        if p['archivedInterface'] not in MODES or p['archivedInterface']=='ps-home': raise ValueError('archive interface invalide')
+        result['archivedInterface']=p['archivedInterface']
     if 'interfaceUpdatedAt' in p:
         stamp=p['interfaceUpdatedAt']
         if isinstance(stamp,bool) or not isinstance(stamp,int) or not 0 <= stamp <= 9007199254740991: raise ValueError('révision interface invalide')

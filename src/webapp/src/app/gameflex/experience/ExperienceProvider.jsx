@@ -1,9 +1,10 @@
+import {PlayStationNavigation} from './PlayStationHome.jsx';
 import {AppearanceSurface} from './Appearance.jsx';
 import SectionErrorBoundary from './SectionErrorBoundary.jsx';
 import {EmulatorNavigation} from './EmulatorUI.jsx';
 import {I18nextProvider} from 'react-i18next';
 import i18n from '../../i18n/index.js';
-import {retroModes} from './RetroLibrary.jsx';
+const retroModes=[];
 import EmulatorAssistant from './EmulatorAssistant.jsx';
 import LibrarySources from './LibrarySources.jsx';
 import { appPath } from "../libs/appBase.js";
@@ -26,7 +27,7 @@ import { useSessionPool } from '../libs/SessionPool.js';
 import { buildStreamingUrl } from '../libs/sessionLinks.js';
 import { listRoms, listCores, createSession } from '../api/retrogaming.js';
 import ExperienceView, { InterfacePicker, useDirectionalFocus } from './ExperienceView.jsx';
-import { interfaces, preferenceKey, readChoice, selectableInterfaces, migratePreference, legacyDestination, readLocalChoice, acceptRemoteChoice } from './interfaces.js';
+import { interfaces, archivedAppearances, preferenceKey, readChoice, selectableInterfaces, migratePreference, legacyDestination, readLocalChoice, acceptRemoteChoice } from './interfaces.js';
 
 const Context = createContext(null);
 const gameKey = g => `${g.consoleId}:${g.reference}`;
@@ -67,7 +68,7 @@ export function ExperienceProvider({ children }) {
     useEffect(() => {
         if (!mode || loadedKey!==key) return undefined;
         try {
-            if (mode) localStorage.setItem(key, mode);
+            if (mode) { const old=localStorage.getItem(key); if(old&&old!=='ps-home'&&!localStorage.getItem(`${key}:archived-interface`))localStorage.setItem(`${key}:archived-interface`,old); localStorage.setItem(key, mode); }
             localStorage.setItem(`${key}:library`, JSON.stringify(data));
         } catch { setNotice('Le stockage du navigateur est indisponible.'); }
         if(!syncReady) return undefined;
@@ -116,7 +117,7 @@ export function ExperienceProvider({ children }) {
 export function InterfaceSettings({advanced = false}) {
     const ctx = useContext(Context);
     if (!ctx) return null;
-    return <section className="gx-settings"><h2>Votre interface</h2><p>{interfaces.find(x => x.id === ctx.mode)?.name || 'Aucune interface choisie'}</p><button onClick={() => ctx.setChoosing(true)}>Changer d’interface</button>{ctx.notice && <p role="status">{ctx.notice}</p>}{!advanced&&<p><a href={appPath("/settings?advanced=1")}>Compte et bibliothèque ↗</a></p>}<section className="gf-free-library"><h3>Dossier de jeux</h3><p>{ctx.downloads.library?.folder || "Aucun dossier choisi."}</p><button onClick={ctx.downloads.openSetup}>Choisir le dossier</button></section><LibrarySources onImported={async item=>{await ctx.refreshLibrary();ctx.downloads.notify('success',item.title,'Jeu importé.');}}/><EmulatorAssistant/><GameSources/><ArtworkCredits /></section>;
+    return <section className="gx-settings"><h2>Votre espace de jeu</h2><p>{interfaces.find(x => x.id === ctx.mode)?.name || 'Aucune interface choisie'}</p><details className="ps-archive-info"><summary>Interfaces archivées · {archivedAppearances.length}</summary><p>Les anciennes interfaces sont conservées et retirées du sélecteur.</p><ul>{archivedAppearances.map(item=><li key={item.id}>{item.name}</li>)}</ul></details>{ctx.notice && <p role="status">{ctx.notice}</p>}{!advanced&&<p><a href={appPath("/settings?advanced=1")}>Compte et bibliothèque ↗</a></p>}<section className="gf-free-library"><h3>Dossier de jeux</h3><p>{ctx.downloads.library?.folder || "Aucun dossier choisi."}</p><button onClick={ctx.downloads.openSetup}>Choisir le dossier</button></section><LibrarySources onImported={async item=>{await ctx.refreshLibrary();ctx.downloads.notify('success',item.title,'Jeu importé.');}}/><EmulatorAssistant/><GameSources/><ArtworkCredits /></section>;
 }
 
 function ArtworkCredits() {
@@ -135,8 +136,8 @@ function AdvancedAppearance({children,ctx}) {
     // The experience's labels are French; scope translations to this screen,
     // without changing the application's stored language preference.
     const language=useMemo(()=>i18n.cloneInstance({lng:'fr',fallbackLng:'fr'}),[]);
-    return <I18nextProvider i18n={language}><div ref={root} className="gx-app em-app gf-advanced-settings" data-interface={ctx.mode}>
-        <EmulatorNavigation mode={ctx.mode} active="settings" onNavigate={id=>navigate(`/?section=${id}`)} onSettings={()=>navigate('/settings')} onAppearance={()=>ctx.setChoosing(true)}/>
+    return <I18nextProvider i18n={language}><div ref={root} className="gx-app em-app gf-advanced-settings ps-console" data-interface={ctx.mode}>
+        <PlayStationNavigation active="settings" onNavigate={id=>navigate(`/?section=${id}`)} onSettings={()=>navigate('/settings')}/>
         <main className="gf-advanced-content"><SectionErrorBoundary resetKey={ctx.mode}>{children}</SectionErrorBoundary></main>
     </div></I18nextProvider>;
 }
@@ -309,8 +310,8 @@ function LibraryExperience({ consoleId = '' }) {
         } catch (e) { setLaunchError(e.message); }
         finally { setLaunching(false); }
     }
-    function createCollection() {
-        const name = window.prompt('Nom de votre collection');
+    function createCollection(name) {
+        if(typeof name!=='string')return;
         if (name?.trim()) ctx.setData(d => ({ ...d, collections: [...d.collections, { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: name.trim().slice(0, 80), games: [] }] }));
     }
     const presentedGames=games.map(game=>withImage(!game.image&&coverImages[gameKey(game)]?{...game,...coverImages[gameKey(game)]}:game,gameKey(game)));

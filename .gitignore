@@ -1,2 +1,6 @@
 # Your settings and secrets (launch.sh writes them): never commit them.
 .env
+
+# Isolated previews, dependency installs and local runtime data.
+.local/
+src/webapp/src/node_modules/

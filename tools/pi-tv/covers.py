@@ -196,3 +196,24 @@ def prefetch(folder,items):
             finally:
                 with PENDING_LOCK:PENDING.discard(key)
         PREFETCH_POOL.submit(job)
+
+
+def search(folder, items, prefetch_images=True):
+    """Resolve safe lazy artwork URLs for installed references; no game downloads."""
+    if not isinstance(items, list) or len(items) > 2000:
+        raise ValueError('invalid cover search')
+    result, seen = [], set()
+    for item in items:
+        if not isinstance(item, dict): raise ValueError('invalid cover item')
+        console, reference, title = item.get('consoleId'), item.get('reference'), item.get('title')
+        if not isinstance(console, str) or console not in SYSTEMS: continue
+        if not isinstance(reference, str) or not 0 < len(reference) <= 512 or re.search(r'[\x00-\x1f]', reference): continue
+        if not isinstance(title, str) or not 0 < len(title) <= 400: continue
+        if (console, reference) in seen: continue
+        seen.add((console, reference))
+        cover_item = {**item, 'title': re.sub(r'\.(?:gba|gbc|gb|nes|sfc|smc|z64|n64|nds|iso|bin|chd|zip|7z)$', '', title, flags=re.I)}
+        image = image_url(console, cover_item)
+        if image: result.append({'consoleId': console, 'reference': reference, 'image': image,
+                                 'attribution': 'Libretro Thumbnails · Ayants droit du jeu'})
+    if prefetch_images: prefetch(folder, result)
+    return {'items': result, 'supportedSystems': sorted(SYSTEMS)}

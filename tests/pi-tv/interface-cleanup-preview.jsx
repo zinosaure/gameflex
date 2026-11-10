@@ -16,7 +16,7 @@ const params=new URLSearchParams(location.search);
 let preferences=JSON.parse(localStorage.getItem('preview:preferences')||'null')||{interface:params.get('saved')||'station',favorites:['nes:palette'],history:['nes:palette'],collections:[{id:'test',name:'Jeux de test',games:['nes:palette']}]};
 window.__requests=[];
 window.__previewConfig={objectStatus:!params.has('legacyStatus'),large:params.get('scenario')==='large',romDelay:Number(params.get('romDelay')||450),consoleDelay:Number(params.get('consoleDelay')||0),preferenceDelay:Number(params.get('preferenceDelay')||0),preferenceOffline:params.has('preferenceOffline'),libraryError:params.has('libraryError'),empty:params.has('empty'),faultOnce:params.has('faultOnce')};
-const config=window.__previewConfig;
+const config=window.__previewConfig;config.showcase=params.has('showcase');
 
 window.fetch=async(url,options={})=>{
  const path=new URL(url,location.origin).pathname.replace(/^\/gameflex/,'');

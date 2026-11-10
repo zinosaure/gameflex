@@ -1,5 +1,5 @@
 // Stable identifiers are persisted; labels can evolve without resetting choices.
-export const interfaces = [
+export const archivedInterfaces = [
     {id:'station',name:'Horizon',note:'Panorama et rail de consoles',icon:'◒'},
     {id:'crt',name:'Signal CRT',note:'Écran cathodique et liste',icon:'▣'},
     {id:'shelf',name:'La collection',note:'Étagère et cartouches',icon:'▥'},
@@ -29,18 +29,23 @@ export const interfaces = [
     { id: 'bureau-collectionneur', name: 'Bureau du collectionneur', note: 'Tableau des jeux et éditions', icon: '☷' },
     { id: 'grand-ecran-accessible', name: 'Grand écran accessible', note: 'Contraste fort et grandes jaquettes', icon: '▣' },
 ];
+export const interfaces = [{id:'ps-home',name:'GameFlex',note:'Votre espace de jeu',icon:'◈'},...archivedInterfaces];
 // Keep the historical registry for saved preferences and old links. Only verified
 // appearances belong in the picker; a pack can supply additional registry entries.
 export const movedInterfaces = Object.freeze({
     favorites: 'favorites', resume: 'resume', collections: 'collections',
     detail: 'detail', archives: 'management', multiplayer: 'multiplayer',
 });
-export const selectableInterfaces = interfaces.filter(x => !Object.hasOwn(movedInterfaces, x.id));
+export const selectableInterfaces = interfaces.filter(x => x.id === 'ps-home');
+export const archivedAppearances = archivedInterfaces.filter(x => !Object.hasOwn(movedInterfaces, x.id));
 export const interfacePackCapacity = 22;
 export function migratePreference(preference) {
-    if (!preference || !Object.hasOwn(movedInterfaces, preference.interface)) return preference;
-    return { ...preference, interface: 'station', previousInterface: preference.interface,
-        interfaceDestination: preference.interface };
+    if (!preference) return {interface:'ps-home'};
+    const id=preference.interface;
+    if(id==='ps-home')return preference;
+    const archived=archivedInterfaces.some(item=>item.id===id);
+    return {...preference,interface:'ps-home',...(archived?{archivedInterface:preference.archivedInterface||id}:{}),
+        ...(Object.hasOwn(movedInterfaces,id)?{previousInterface:id,interfaceDestination:id}:{})};
 }
 export function legacyDestination(id, history = [], games = []) {
     if (!Object.hasOwn(movedInterfaces, id)) return null;

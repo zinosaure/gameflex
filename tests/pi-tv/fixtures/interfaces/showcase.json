@@ -1,0 +1,46 @@
+[
+  {
+    "consoleId": "gba",
+    "consoleName": "Game Boy Advance",
+    "reference": "gba-0",
+    "title": "Advance Wars (USA)",
+    "image": "/experience-api/v1/media/e8bc3d7e27d8902b639c2b4834e072a93cb81389b51bdf1278681738cad0a45c",
+    "attribution": "Libretro Thumbnails · Ayants droit du jeu",
+    "files": [
+      "fixture-0.gba"
+    ]
+  },
+  {
+    "consoleId": "gba",
+    "consoleName": "Game Boy Advance",
+    "reference": "gba-1",
+    "title": "Legend of Zelda, The - The Minish Cap (Europe) (En,Fr,De,Es,It)",
+    "image": "/experience-api/v1/media/179616e02f1466646922891e0b1208ba7b4d515b8bc919d4c346a53161687b88",
+    "attribution": "Libretro Thumbnails · Ayants droit du jeu",
+    "files": [
+      "fixture-1.gba"
+    ]
+  },
+  {
+    "consoleId": "gba",
+    "consoleName": "Game Boy Advance",
+    "reference": "gba-2",
+    "title": "Mario _ Luigi - Superstar Saga (Europe) (En,Fr,De,Es,It)",
+    "image": "/experience-api/v1/media/5e5231c13a0febd7eedeb8629c32f65d02b7d6976e10574284786a946c3de557",
+    "attribution": "Libretro Thumbnails · Ayants droit du jeu",
+    "files": [
+      "fixture-2.gba"
+    ]
+  },
+  {
+    "consoleId": "gba",
+    "consoleName": "Game Boy Advance",
+    "reference": "gba-3",
+    "title": "Metroid - Zero Mission (Europe) (En,Fr,De,Es,It)",
+    "image": "/experience-api/v1/media/c899cb9be1b68ed58d9ad4209354817915b3010ce8ad6978617adc692ff57da7",
+    "attribution": "Libretro Thumbnails · Ayants droit du jeu",
+    "files": [
+      "fixture-3.gba"
+    ]
+  }
+]
