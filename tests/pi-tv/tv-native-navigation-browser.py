@@ -12,6 +12,11 @@ with sync_playwright() as p:
  assert page.locator('.ps-game-row').first.bounding_box()['y']<540,'Game list must be visible on the Philips viewport'
  page.get_by_role('button',name='Lancer Advance Wars',exact=True).focus();page.evaluate('GameFlexTv.ok()');page.locator('[data-testid="stream-route"]').wait_for();page.evaluate('GameFlexTv.returnToLibrary()');page.locator('.ps-console-tile').first.wait_for()
  assert page.locator('[data-system="gba"]').get_attribute('aria-pressed')=='true'
- page.get_by_role('button',name='Paramètres',exact=True).focus();page.evaluate('GameFlexTv.ok()');page.get_by_role('button',name='Désactiver le mode TV',exact=True).wait_for()
- assert 'Affichage interrompu' not in page.locator('body').inner_text();b.close()
+ page.evaluate('GameFlexTv.menu()');menu=page.get_by_role('dialog',name='Centre de contrôle');menu.wait_for()
+ page.evaluate("GameFlexTv.move('down')");assert page.evaluate("document.querySelector('[aria-modal=true]').contains(document.activeElement)")
+ menu.get_by_role('button',name='Paramètres',exact=False).focus();page.evaluate('GameFlexTv.ok()');page.get_by_role('button',name='Désactiver le mode TV',exact=True).wait_for()
+ assert 'Affichage interrompu' not in page.locator('body').inner_text()
+ page.evaluate('''()=>{const d=document.createElement('div');d.setAttribute('aria-modal','true');d.style='position:fixed;inset:20px;z-index:20000;background:#111;display:grid;grid-template-columns:1fr 1fr;gap:20px';d.innerHTML='<button id="fallback-a">Premier</button><button id="fallback-b">Second</button><input id="fallback-text" value="Exemple">';document.body.append(d);document.getElementById('fallback-a').focus();}''')
+ page.evaluate("GameFlexTv.move('right')");assert page.evaluate('document.activeElement.id')=='fallback-b';assert page.locator('#fallback-text').evaluate('el=>getComputedStyle(el).userSelect')=='text'
+ b.close()
 (OUT/'tv-native-navigation.json').write_text(json.dumps({'passed':True,'cssViewport':[960,540],'remoteNavigation':True,'gameListVisible':True,'launch':'simulated','backRestoresConsole':True,'settings':True},indent=2)+'\n');print('Native remote bridge: console, launch, return and settings passed at 960×540')

@@ -47,3 +47,38 @@
  .gf-tv-mode .ps-console .ps-row-launch{min-width:115px;min-height:44px;font-size:13px;padding:10px 16px}
  .gf-tv-mode .ps-row-actions{gap:8px}.gf-tv-mode .ps-row-actions .ps-favorite,.gf-tv-mode .ps-row-actions .ps-row-more{width:44px;height:44px}
 }
+/* Touch controls behave like controls; editing and copying remain available. */
+.ps-console,.ps-control,.gf-phone-controller,.gf-tv-settings,.gf-theme-ps-home [role=dialog]{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.ps-console input,.ps-console textarea,.ps-control input,.ps-control textarea,.gf-phone-controller input,.gf-phone-controller textarea,[data-copyable=true]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+.ps-console img,.ps-control img,.gf-phone-controller img{-webkit-user-drag:none;user-drag:none}
+.ps-console button,.ps-control button,.gf-device-roles button{touch-action:manipulation}
+.gf-device-roles{display:flex;justify-content:center;gap:4px;padding:4px;background:#080e1899;border:1px solid #c0d9ff26;border-radius:26px;width:fit-content;max-width:100%;margin:12px auto 20px}
+.gf-device-roles button{min-height:42px;min-width:110px;border:0;border-radius:22px;background:transparent;color:#adc0dc;padding:8px 20px;font:inherit;font-size:14px;cursor:pointer}
+.gf-device-roles button[aria-pressed=true]{background:#e7f1ff;color:#182b43;box-shadow:0 2px 9px #0003}
+.gf-phone-controller{position:relative}.gf-phone-controller>.gf-device-roles{margin-bottom:12px}.gf-phone-controller>.gf-device-roles+.gf-phone-join{margin-top:20px}
+.gf-pair-code-layout{display:grid;grid-template-columns:208px minmax(0,1fr);align-items:center;gap:24px;margin:18px 0}.gf-pair-qr{display:block;width:208px;height:auto;max-width:100%;border-radius:8px;background:#fff;flex-shrink:0}
+.gf-pair-code-layout .gf-tv-code{font-size:32px;padding:16px 8px;letter-spacing:.04em;margin:12px 0}.gf-pair-code-layout .gf-tv-phone-address{overflow-wrap:anywhere;font-size:14px!important}
+@media(max-width:540px){.gf-pair-code-layout{grid-template-columns:1fr;gap:12px;text-align:center}.gf-pair-qr{width:170px;margin:auto}.gf-device-roles button{min-width:95px}.gf-tv-pair .gf-device-roles{margin-bottom:12px}}
+@media(orientation:landscape) and (max-height:550px){.gf-phone-controller>.gf-device-roles{position:absolute;top:4px;left:50%;transform:translateX(-50%);margin:0;padding:2px;z-index:2}.gf-phone-controller>.gf-device-roles button{min-height:36px;min-width:76px;font-size:12px;padding:6px 12px}.gf-tv-pair .gf-pair-qr{width:160px}.gf-tv-pair .gf-pair-code-layout{grid-template-columns:160px minmax(0,1fr)}}
+@media(min-width:900px) and (max-height:650px){
+ .gf-tv-pair-backdrop{padding:12px}.gf-tv-pair{padding:18px;max-height:calc(100dvh - 24px)}
+ .gf-tv-pair>header{margin-bottom:8px}.gf-tv-pair h2{font-size:23px;margin:5px 0}.gf-tv-pair p,.gf-tv-pair li{font-size:12px;line-height:1.4;margin:7px 0}
+ .gf-tv-pair .gf-device-roles{margin:6px auto 9px}.gf-tv-pair button{min-height:38px;font-size:14px}
+ .gf-tv-pair .gf-pair-code-layout{grid-template-columns:142px minmax(0,1fr);gap:18px;margin:8px 0}.gf-tv-pair .gf-pair-qr{width:142px}
+ .gf-tv-pair .gf-tv-code{font-size:28px;padding:10px 8px}.gf-tv-pair .gf-tv-display-tools{margin-top:10px;padding-top:9px}
+}
+@media(min-width:900px) and (max-height:650px){
+ .gf-tv-mode .gf-tv-pair p,.gf-tv-mode .gf-tv-pair li{font-size:12px;line-height:1.4}
+ .gf-tv-mode .gf-tv-pair button{min-height:38px;font-size:14px}
+}
+/* Pairing controls are distinct from the control centre's vertical menu. */
+.ps-control .gf-device-roles{display:flex;grid-template-columns:none;gap:4px;width:fit-content;padding:4px;margin:12px auto 20px}
+.ps-control .gf-device-roles button{display:block;grid-template-columns:none;min-width:110px;min-height:42px;padding:8px 20px;text-align:center;border:0;border-radius:22px;font-size:14px}
+.ps-control.gf-tv-pair{width:min(720px,100%)}
+@media(min-width:900px) and (max-height:650px){
+ .ps-control-backdrop.gf-tv-pair-backdrop{padding:12px}
+ .ps-control.gf-tv-pair{padding:18px;max-height:calc(100dvh - 24px)}
+ .ps-control.gf-tv-pair>header{margin-bottom:8px}.ps-control.gf-tv-pair h2{font-size:23px;margin:5px 0}
+ .ps-control.gf-tv-pair .gf-device-roles{margin:6px auto 9px}.ps-control.gf-tv-pair .gf-device-roles button{min-height:38px;font-size:14px}
+}
+.gf-theme-ps-home input,.gf-theme-ps-home textarea,.gf-theme-ps-home [contenteditable=true],.ps-control [contenteditable=true],.gf-phone-controller [contenteditable=true]{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}

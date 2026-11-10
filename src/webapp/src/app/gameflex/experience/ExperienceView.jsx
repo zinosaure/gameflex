@@ -62,7 +62,7 @@ function ConsoleIconArt({item,icon,wide}) {
     const [failed,setFailed]=useState(false);
     if(failed)return <CachedArt item={item} wide={wide} kind="console"/>;
     return <div className={`gx-art gx-console-art gx-console-icon ${wide?'gx-wide':''}`}>
-        <img src={icon.src} width={icon.width} height={icon.height} alt={`Illustration de ${item.name||icon.name}`} onError={()=>setFailed(true)} decoding="async"/>
+        <img draggable={false} src={icon.src} width={icon.width} height={icon.height} alt={`Illustration de ${item.name||icon.name}`} onError={()=>setFailed(true)} decoding="async"/>
     </div>;
 }
 
@@ -92,7 +92,7 @@ function CachedArt({ item, wide = false, kind = 'game' }) {
     const safe=allowed&&!failed;
     const credit=fallback?(item.fallbackAttribution||'Image du cache local'):(item.attribution||'Image du cache local');
     return <div ref={outer} className={`gx-art ${wide?'gx-wide':''} ${kind==='console'?'gx-console-art':''} ${!safe?'em-art-missing':''}`} style={{'--seed':(item.title||item.name||'').length%7}}>
-        {safe?<>{visible&&<img key={requestKey} ref={photo} src={apiUrl(url)} onLoad={()=>setLoadedSrc(requestKey)} onError={fail} decoding="async" loading="eager" fetchpriority="high" alt={kind==='console'?`Photo de ${item.name}`:''}/>} {!loaded&&visible&&<span className="em-cover-loading" role="status">{kind==='console'?'Chargement de la photo…':'Chargement de la jaquette…'}</span>}{loaded&&<span className="gx-credit">{credit}</span>}</>:<><Icon name={kind==='console'?'consoles':'library'} size={32}/><span className="gx-no-cover">{failed?'Image momentanément indisponible':kind==='console'?'Photo indisponible':'Jaquette indisponible'}</span></>}
+        {safe?<>{visible&&<img key={requestKey} ref={photo} draggable={false} src={apiUrl(url)} onLoad={()=>setLoadedSrc(requestKey)} onError={fail} decoding="async" loading="eager" fetchpriority="high" alt={kind==='console'?`Photo de ${item.name}`:''}/>} {!loaded&&visible&&<span className="em-cover-loading" role="status">{kind==='console'?'Chargement de la photo…':'Chargement de la jaquette…'}</span>}{loaded&&<span className="gx-credit">{credit}</span>}</>:<><Icon name={kind==='console'?'consoles':'library'} size={32}/><span className="gx-no-cover">{failed?'Image momentanément indisponible':kind==='console'?'Photo indisponible':'Jaquette indisponible'}</span></>}
         <DownloadOverlay job={item.download} pending={item.pendingDownload}/>
     </div>;
 }

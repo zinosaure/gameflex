@@ -27,7 +27,7 @@ with sync_playwright() as p:
   assert not errors,errors;ctx.close()
   ctx=browser.new_context(viewport={'width':width,'height':height},has_touch=True,is_mobile=True);ctx.add_init_script(mock);page=ctx.new_page()
   page.goto(BASE+'controller');page.get_by_role('main',name='Manette tactile').wait_for();page.add_style_tag(content='#root>aside{display:none}')
-  values=page.evaluate(geometry,'.gf-pad-key,.gf-pad-stick,.gf-phone-header>button,.gf-pad-fullscreen')
+  values=page.evaluate(geometry,'.gf-pad-key,.gf-pad-stick,.gf-phone-header>button,.gf-pad-fullscreen,.gf-device-roles button')
   assert all(v['x']>=0 and v['right']<=width+1 and v['y']>=0 and v['bottom']<=height+1 and v['hit'] for v in values),(width,height,values)
   for i,a in enumerate(values):
    for b in values[i+1:]:

@@ -4,3 +4,4 @@ for(const ext of ['.css','.scss','.png','.svg','.jpg','.webp'])require.extension
 const previous=require.extensions['.js'];const compile=(m,name)=>{if(name.includes('/node_modules/'))return previous(m,name);const result=babel.transformFileSync(name,{presets:[[path.join(modules,'@babel/preset-env'),{targets:{node:'current'},modules:'commonjs'}],path.join(modules,'@babel/preset-react')],babelrc:false,configFile:false});m._compile(result.code,name)};require.extensions['.jsx']=compile;require.extensions['.js']=compile;require(path.join(root,'tests/pi-tv/playstation-view.jsx'));
 require(path.join(root,'tests/pi-tv/console-icons-check.cjs'));
 require(path.join(root,'tests/pi-tv/phone-channel-check.cjs'));
+require(path.join(root,'tests/pi-tv/device-roles-check.cjs'));

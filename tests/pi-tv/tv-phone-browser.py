@@ -21,7 +21,7 @@ with sync_playwright() as p:
  phone.get_by_role('button',name='Associer à ma TV',exact=True).click();phone.get_by_text('Regardez la télévision',exact=True).wait_for()
  assert phone.get_by_role('main',name='Manette tactile').count()==0
  tv.get_by_role('button',name='Autoriser ce téléphone',exact=True).wait_for();tv.get_by_role('button',name='Autoriser ce téléphone',exact=True).click()
- phone.get_by_role('main',name='Manette tactile').wait_for();tv.get_by_role('button',name='Continuer sur la TV',exact=True).click()
+ phone.get_by_role('main',name='Manette tactile').wait_for();tv.get_by_role('button',name='Continuer sur l’écran',exact=True).click()
  tv.locator('[data-system="nds"]').focus()
  right=phone.get_by_role('button',name='→',exact=True);right.hover();phone.mouse.down();tv.wait_for_function('document.querySelector("[data-system=gba]").getAttribute("aria-pressed")==="true"');phone.mouse.up()
  tv.get_by_role('button',name='Paramètres',exact=True).click();phone.get_by_text('Réglages du compte : utilisez la télécommande TV. B pour revenir.',exact=True).wait_for()

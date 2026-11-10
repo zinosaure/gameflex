@@ -1,6 +1,8 @@
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {appPath} from '../libs/appBase.js';
 import {phoneRequest,phoneSocket} from './phone-pad-api.js';
+import DeviceRoleSwitch from './DeviceRoleSwitch.jsx';
+import {initialPairCode,clearPairCodeURL,becomeScreen} from './device-role.js';
 import './tv-phone.css';
 function PadButton({label,buttons,held,onChange,className=''}){
  const pointers=useRef(new Set());const set=(id,down)=>{if(down)pointers.current.add(id);else pointers.current.delete(id);onChange(buttons,pointers.current.size>0);};
@@ -13,7 +15,7 @@ function Stick({side,axes,onChange}){
  return <div className="gf-pad-stick" role="application" aria-label={side?'Stick droit':'Stick gauche'} onPointerDown={event=>{if(active.current!==null)return;event.preventDefault();active.current=event.pointerId;event.currentTarget.setPointerCapture(event.pointerId);move(event);}} onPointerMove={event=>{if(active.current===event.pointerId)move(event);}} onPointerUp={release} onPointerCancel={release} onLostPointerCapture={release}><span style={{transform:`translate(${axes[index]*35}%,${axes[index+1]*35}%)`}}/><small>{side?'R':'L'}</small></div>;
 }
 export default function PhoneControllerPage(){
- const [pair,setPair]=useState(()=>{try{return JSON.parse(sessionStorage.getItem('gameflex:phone-pad')||'null');}catch{return null;}}),[code,setCode]=useState(''),[name,setName]=useState('Mon téléphone'),[status,setStatus]=useState({}),[error,setError]=useState(''),[busy,setBusy]=useState(false),[pad,setPad]=useState({buttons:[],axes:[0,0,0,0]});
+ const [pair,setPair]=useState(()=>{try{return JSON.parse(sessionStorage.getItem('gameflex:phone-pad')||'null');}catch{return null;}}),[code,setCode]=useState(initialPairCode),[name,setName]=useState('Mon téléphone'),[status,setStatus]=useState({}),[error,setError]=useState(''),[busy,setBusy]=useState(false),[pad,setPad]=useState({buttons:[],axes:[0,0,0,0]});
  const socket=useRef(null),state=useRef(pad),sequence=useRef(0),epoch=useRef(0),approved=useRef(false),active=useRef(false);
  const send=useCallback(()=>{if(socket.current?.readyState===1&&approved.current&&active.current)socket.current.send(JSON.stringify({type:'pad',buttons:state.current.buttons,axes:state.current.axes,seq:sequence.current++,epoch:epoch.current}));},[]);
  const release=useCallback(()=>{state.current={buttons:[],axes:[0,0,0,0]};setPad(state.current);send();},[send]);
@@ -34,8 +36,10 @@ export default function PhoneControllerPage(){
   return()=>{stopped=true;clearTimeout(retry);clearInterval(heartbeat);release();socket.current?.close();approved.current=false;active.current=false;};
  },[pair?.id,send,release]);
  useEffect(()=>{window.addEventListener('blur',release);window.addEventListener('pagehide',release);document.addEventListener('visibilitychange',release);return()=>{window.removeEventListener('blur',release);window.removeEventListener('pagehide',release);document.removeEventListener('visibilitychange',release);};},[release]);
+ useEffect(()=>{clearPairCodeURL();},[]);
  const key=(label,buttons,className='')=><PadButton label={label} buttons={buttons} held={pad.buttons} onChange={button} className={className}/>;
  return <div className="gf-phone-controller"><header className="gf-phone-header"><img src={appPath('/images/icon-192.png')} alt="" width="38" height="38"/><div><strong>GameFlex</strong><small>{status.approved?(status.hostConnected?'Manette connectée':'TV déconnectée'):'Votre téléphone, votre manette'}</small></div>{pair&&<button onClick={forget}>Déconnecter</button>}</header>
+ <DeviceRoleSwitch role="controller" onScreen={()=>{forget();becomeScreen();}} onController={()=>{}}/>
  {error&&<p className="gf-phone-error" role="alert">{error}</p>}
  {!pair?<main className="gf-phone-join"><span className="gf-phone-symbol" aria-hidden="true">↔</span><h1>Jouez sur la TV.<br/>Gardez les commandes.</h1><p>Sur la télévision, ouvrez « Manette téléphone », puis affichez un code.</p><form onSubmit={join}><label>Code affiché sur la TV<input aria-label="Code affiché sur la TV" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{8,10}" maxLength={9} value={code} onChange={event=>setCode(event.target.value.replace(/[^0-9 ]/g,''))} placeholder="0000 0000" required/></label><label>Nom du téléphone<input value={name} maxLength={40} onChange={event=>setName(event.target.value)} required/></label><button disabled={busy||code.replace(/\s/g,'').length!==8}>{busy?'Association…':'Associer à ma TV'}</button></form><small>Le code ne connecte pas votre téléphone au compte GameFlex. La TV doit confirmer l’association.</small></main>:!status.approved?<main className="gf-phone-wait" role="status"><div className="gf-phone-pulse"/><h1>Regardez la télévision</h1><p>Autorisez « {name} » sur l’écran pour activer cette manette.</p></main>:<main className="gf-phone-pad" aria-label="Manette tactile">
  <div className="gf-pad-context" role="status">{!status.hostConnected?'En attente de la TV · commandes relâchées':status.screen==='game'?'La partie est sur votre télévision':status.screen==='locked'?'Réglages du compte : utilisez la télécommande TV. B pour revenir.':status.screen==='unsupported'?'En attente des commandes du jeu sur la TV':'Naviguez sur la TV avec la croix et A'}</div>

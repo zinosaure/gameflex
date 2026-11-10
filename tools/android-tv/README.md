@@ -1,4 +1,4 @@
-# GameFlex TV 0.3.2
+# GameFlex TV 0.3.3
 
 Les sources de l'application TV existante ont été copiées depuis le travail local
 sans modifier les originaux. L'identité de signature doit être celle de l'installation
@@ -21,3 +21,7 @@ habituels de session/sauvegarde.
 `device.py install --tv-free` exige l'identité physique épinglée, sauvegarde l'APK
 installée et vérifie la signature avant une mise à jour `pm install -r` (données conservées).
 Ne lancer l'application qu'à la demande de l'utilisateur et si aucune lecture n'est en cours.
+
+MENU ouvre le centre de contrôle de l'interface commune. Les fenêtres standard
+reçoivent une navigation directionnelle de repli, limitée à la fenêtre visible.
+Sur la page locale d'association, MENU conserve l'accès à la configuration serveur.

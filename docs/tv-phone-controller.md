@@ -64,3 +64,34 @@ Le relais HTTPS surveille aussi l'âge de la dernière réponse : après une sus
 brutale du navigateur, un callback réseau perdu ne laisse pas la page bloquée en
 « connectée ». Le prochain battement redémarre la liaison ; une capacité révoquée
 est alors refusée et le formulaire d'association réapparaît.
+
+## Rôle de l'appareil et QR d'association
+
+Le panneau d'association et la page manette présentent les boutons **Écran** et
+**Manette**. Écran utilise la bibliothèque et le lecteur de ce compte ; Manette
+commande l'autre appareil associé. Passer un écran en manette révoque son ancienne
+association. Passer une manette en écran relâche ses entrées et ferme sa liaison.
+Un appareil sans compte peut être manette ; utiliser la bibliothèque comme écran
+passe par la connexion habituelle à GameFlex.
+
+Le QR est calculé localement (qrcode-generator 2.0.4, MIT). Il contient l'adresse de
+la page manette et le code à huit chiffres dans le fragment `#code=…`, sans jeton du
+compte ni capacité de contrôle. Le téléphone préremplit le champ puis retire ce code
+de son URL. Aucune association n'est automatique : le bouton Associer et la confirmation
+sur l'écran restent nécessaires. Le QR disparaît à l'expiration du code.
+
+Les commandes tactiles ne déclenchent plus la sélection de texte. Les champs de
+recherche/saisie, l'adresse et le code marqué copiable restent sélectionnables.
+
+Dans l'APK Android TV 0.3.3, MENU ouvre le centre de contrôle de l'application ;
+les flèches, OK et Retour fonctionnent aussi dans les fenêtres et menus communs.
+Les fenêtres sans gestionnaire directionnel propre disposent d'un parcours borné
+à leur contenu, sans double traitement par le navigateur extérieur. La configuration
+du serveur reste accessible avec Retour à l'accueil et depuis l'écran local d'association.
+
+Validation : `device-roles-browser.py` décode le SVG avec le lecteur indépendant
+jsQR 1.4.0 (Apache-2.0, uniquement dans les tests), puis vérifie préremplissage,
+validation, changement des deux rôles et édition des champs. Les huit formats de
+`mobile-interface-browser.py` incluent les nouvelles commandes de rôle. Les tests
+`tv-native-navigation-browser.py` couvrent MENU et un dialogue standard sans hook
+spécifique, avant l'essai sur la Philips.
