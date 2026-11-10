@@ -1072,6 +1072,12 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
         pc.onconnectionstatechange = () => {
             if (pc.connectionState === "connected") {
                 closeFallback();
+            } else if (fallbackConnectedRef.current) {
+                // The framed-H264 transport is presenting pictures. Keep the
+                // peer alive so WebRTC can still take priority if it connects,
+                // but do not let its failed/closed state overwrite the
+                // fallback's `connected` state in the platform hook.
+                return;
             }
             onConnectionStateChangeRef.current?.(pc.connectionState);
         };
