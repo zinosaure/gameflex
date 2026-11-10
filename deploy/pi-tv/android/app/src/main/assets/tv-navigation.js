@@ -2,7 +2,7 @@
  if(window.GameFlexTv)return;
  const control=()=>document.activeElement;
  const surface=()=>document.querySelector('[aria-modal="true"]')||document.querySelector('.ps-console')||document.body;
- const first=()=>surface().querySelector('button:not(:disabled),a[href],input,select');
+ const first=()=>surface().querySelector('.ps-console-tile[aria-pressed="true"]')||surface().querySelector('button:not(:disabled),a[href],input,select');
  window.GameFlexTv={
   returnToLibrary(){if(history.length>1)history.back();else location.replace('/?tv=1');},
   move(direction){let el=control();if(!el||el===document.body){first()?.focus();return;}const key={left:'ArrowLeft',right:'ArrowRight',up:'ArrowUp',down:'ArrowDown'}[direction];if(key)el.dispatchEvent(new KeyboardEvent('keydown',{key,code:key,bubbles:true,cancelable:true}));},

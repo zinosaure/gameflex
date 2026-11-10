@@ -26,11 +26,14 @@ export function TVPhoneButton(){const ctx=useTVPhone();return ctx?<button classN
 export default function TVPhoneHost({children}){
  const {token}=useAuth()||{},route=useLocation(),navigate=useNavigate();
  const [tv,setTVState]=useState(()=>{try{return new URLSearchParams(location.search).get('tv')==='1'||localStorage.getItem('gameflex:tv-mode')==='1';}catch{return false;}});
+ const [largeDisplay,setLargeDisplay]=useState(()=>window.matchMedia('(min-width:900px) and (min-height:450px)').matches);
+ const tvDisplay=tv&&largeDisplay;
  const [open,setOpen]=useState(false),[pair,setPair]=useState(null),[status,setStatus]=useState({}),[error,setError]=useState(''),[busy,setBusy]=useState(false),[remaining,setRemaining]=useState(120),[consumer,setConsumer]=useState(hasPhoneGameConsumer);
  const socket=useRef(null),pairRef=useRef(null),lastInput=useRef(0),latest=useRef({}),navState=useRef(new Set()),epoch=useRef(0),repeat=useRef({});
  const streaming=route.pathname==='/streaming',screen=open?'library':route.pathname==='/settings'?'locked':streaming?(consumer?'game':'unsupported'):'library';latest.current={open,streaming,screen};pairRef.current=pair;
  const setTV=value=>{setTVState(value);try{localStorage.setItem('gameflex:tv-mode',value?'1':'0');}catch{}};
- useEffect(()=>{document.body.classList.toggle('gf-tv-mode',tv);return()=>document.body.classList.remove('gf-tv-mode');},[tv]);
+ useEffect(()=>{const media=window.matchMedia('(min-width:900px) and (min-height:450px)'),changed=()=>setLargeDisplay(media.matches);media.addEventListener('change',changed);changed();return()=>media.removeEventListener('change',changed);},[]);
+ useEffect(()=>{document.body.classList.toggle('gf-tv-mode',tvDisplay);return()=>document.body.classList.remove('gf-tv-mode');},[tvDisplay]);
  useEffect(()=>subscribePhoneConsumer(()=>setConsumer(hasPhoneGameConsumer())),[]);
  const revoke=useCallback(async()=>{const current=pairRef.current;if(current)try{await phoneRequest(`/${current.id}/revoke`,{hostToken:current.hostToken},token);}catch{}socket.current?.close();clearPhonePad();setPair(null);setStatus({});},[token]);
  const create=async()=>{if(busy||!token)return;setBusy(true);setError('');await revoke();try{const value=await phoneRequest('/create',{},token);setRemaining(120);setPair({...value,createdAt:Date.now()});setStatus({});}catch(e){setError(e.message);}finally{setBusy(false);}};
@@ -53,7 +56,7 @@ export default function TVPhoneHost({children}){
  useEffect(()=>{clearPhonePad();navState.current.clear();if(socket.current?.readyState===1)socket.current.send(JSON.stringify({type:'context',screen}));},[route.pathname,route.search,screen]);
  useEffect(()=>{if(!pair)return;const timer=setInterval(()=>{setRemaining(Math.max(0,120-Math.floor((Date.now()-pair.createdAt)/1000)));},1000);return()=>clearInterval(timer);},[pair]);
  useEffect(()=>()=>{const current=pairRef.current;if(current&&token)phoneRequest(`/${current.id}/revoke`,{hostToken:current.hostToken},token).catch(()=>{});clearPhonePad();},[token]);
- useEffect(()=>{if(!tv||streaming)return;const timer=setTimeout(()=>{if(document.activeElement===document.body)document.querySelector('.ps-console-tile[aria-pressed="true"],.ps-console button')?.focus();},200);return()=>clearTimeout(timer);},[tv,streaming,route.pathname]);
+ useEffect(()=>{if(!tvDisplay||streaming)return;const focus=()=>{const tile=document.querySelector('.ps-console-tile[aria-pressed="true"]');if(tile){if(document.activeElement===document.body||document.activeElement?.matches('.ps-brand'))tile.focus({preventScroll:true});observer.disconnect();}};const observer=new MutationObserver(focus);observer.observe(document.body,{childList:true,subtree:true});const timer=setTimeout(focus,200);return()=>{clearTimeout(timer);observer.disconnect();};},[tvDisplay,streaming,route.pathname]);
  const ctx={tv,setTV,pair,status,error,busy,remaining,create,approve,revoke,open:()=>{setOpen(true);setError('');},close:()=>setOpen(false)};
  return <TVContext.Provider value={ctx}>{children}{token&&streaming&&(tv||pair)&&<button className="gf-tv-stream-phone" onClick={()=>setOpen(true)}>Manette téléphone{status.phoneConnected?' · connectée':''}</button>}{open&&<PairDialog ctx={ctx}/>}</TVContext.Provider>;
 }

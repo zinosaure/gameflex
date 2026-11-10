@@ -52,7 +52,7 @@ with sync_playwright() as p:
  tv.wait_for_function('(window.__phoneGameEvents||[]).filter(e=>e.index===0).at(-1)?.down===false',timeout=4000)
  tv.get_by_role('button',name=re.compile('^Manette téléphone')).click();tv.get_by_role('button',name='Déconnecter le téléphone',exact=True).click()
  cdp.send('Emulation.setScriptExecutionDisabled',{'value':False});phone.mouse.up();
- try:phone.get_by_role('button',name='Associer à ma TV',exact=True).wait_for(timeout=12000)
+ try:phone.get_by_role('button',name='Associer à ma TV',exact=True).wait_for(timeout=20000)
  except Exception:
   phone.screenshot(path=str(OUT/'phone-failure.png'));print('Phone state:',phone.locator('body').inner_text(),flush=True);print('TV requests:',tv.evaluate('window.__requests.slice(-8)'),flush=True);raise
  phone.set_viewport_size({'width':390,'height':844});phone.screenshot(path=str(OUT/'phone-join.png'),full_page=True)

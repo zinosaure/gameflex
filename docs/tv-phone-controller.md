@@ -40,3 +40,27 @@ La prévisualisation dédiée (`tests/pi-tv/serve-tv-phone-preview.py`) utilise 
 Les essais navigateur ne valent pas un essai sur un téléviseur physique ou une validation de l’APK Android TV. Le mode livré ici est celui de l’application web. Aucun APK ni firmware TV n’est installé par cette modification.
 
 Références techniques : [Pointer Events et capture des doigts](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events), [annulation d’un toucher](https://developer.mozilla.org/en-US/docs/Web/API/Element/pointercancel_event), [protocole WebSocket wsproto](https://python-hyper.org/projects/wsproto/en/stable/api.html).
+
+## Application Philips et petits téléphones
+
+L'APK TV 0.3.1 réutilise maintenant l'interface commune du serveur après son
+association initiale. L'installation conserve la signature et les données de
+l'application précédente. La télécommande reste traduite en commandes de navigation,
+sans pont de commandes système ; le lecteur conserve ses entrées de jeu habituelles.
+Un retour de partie utilise la navigation de l'application et ses réglages de session.
+
+Le mode TV mémorisé est appliqué seulement à un affichage d'au moins 900 × 450
+pixels CSS. Sur téléphone, il reste enregistré mais l'affichage reste compact,
+y compris après rotation. Une règle dédiée aux écrans TV de faible hauteur tient
+compte du viewport CSS 960 × 540 observé sur la Philips 1080p.
+
+La manette utilise une grille souple plutôt que des marges centrales fixes. Les
+petits formats portrait et paysage gardent les sticks et les boutons dans l'écran.
+`mobile-interface-browser.py` vérifie huit formats de 320 à 932 pixels de large,
+les zones réellement touchables et l'absence de chevauchement. Son socket est simulé
+pour isoler la mise en page ; `tv-phone-browser.py` vérifie séparément l'association
+réelle et le relais WebSocket/HTTPS sur la prévisualisation.
+Le relais HTTPS surveille aussi l'âge de la dernière réponse : après une suspension
+brutale du navigateur, un callback réseau perdu ne laisse pas la page bloquée en
+« connectée ». Le prochain battement redémarre la liaison ; une capacité révoquée
+est alors refusée et le formulaire d'association réapparaît.

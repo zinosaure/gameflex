@@ -4,3 +4,6 @@
 # Isolated previews, dependency installs and local runtime data.
 .local/
 src/webapp/src/node_modules/
+
+# Local signed TV build outputs (signing keys remain outside version control).
+/output/android-tv/

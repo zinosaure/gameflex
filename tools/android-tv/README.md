@@ -1,4 +1,4 @@
-# GameFlex TV 0.3
+# GameFlex TV 0.3.1
 
 Les sources de l'application TV existante ont été copiées depuis le travail local
 sans modifier les originaux. L'identité de signature doit être celle de l'installation
