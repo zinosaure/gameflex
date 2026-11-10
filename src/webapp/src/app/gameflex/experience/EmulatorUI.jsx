@@ -66,15 +66,15 @@ function Activate({ item, onOpen, children, className, onFocus }) {
 }
 const identity = g => `${g.consoleId || ''}:${g.reference || g.source || g.title}`;
 export function GameBrowser({ mode, items = [], onOpen, Art, onFavorite, favorites = [], collections = [], onAddToCollection, consoleName = '', label = 'Jeux' }) {
-    const [selected, setSelected] = useState(null);
+    const [selected, setSelected] = useState(()=>{try{return mode==='covers'?sessionStorage.getItem('gameflex:covers-focus'):null;}catch{return null;}});
     const item = items.find(g => identity(g) === selected) || items[0];
     if (!items.length) return <div className="em-no-games"><Icon name="library" size={30}/><span>Aucun jeu ici</span></div>;
-    const select = g => setSelected(identity(g));
+    const select = g => { const value=identity(g); setSelected(value); if(mode==='covers')try{sessionStorage.setItem('gameflex:covers-focus',value);}catch{} };
     const isFav = g => favorites.includes(`${g.consoleId}:${g.reference}`);
     const favorite = g => onFavorite && g.reference ? <button className="em-favorite" aria-label={`Favori : ${g.title}`} aria-pressed={isFav(g)} onClick={() => onFavorite(g)}><Icon name="favorites" size={17}/></button> : null;
     const action = g => <div className="em-action-row"><Activate item={g} onOpen={onOpen} className="em-launch"><Icon name={g.source && !g.reference ? 'external' : 'play'} size={16}/>Voir la fiche</Activate>{favorite(g)}</div>;
     const collectionActions = g => g.reference && onAddToCollection && collections.length > 0 ? <div className="em-collection-actions">{collections.map(c => <button key={c.id} onClick={() => onAddToCollection(c.id,g)}>{c.games.includes(`${g.consoleId}:${g.reference}`) ? '✓' : '+'} {c.name}</button>)}</div> : null;
-    const poster = (g, cls = '') => <div className="em-poster-cell" key={identity(g)}><Activate className={`em-poster ${cls}`} item={g} onOpen={onOpen}><Art item={g}/><span><strong>{g.title}</strong>{g.consoleName && <small>{g.consoleName}</small>}{g.reference&&<small>Installé</small>}{g.variants?.length>1&&<small>{g.variants.length} éditions</small>}{g.downloadId && <small>{g.pendingDownload?'Import en cours':'Catalogue'}{g.license?` · ${g.license}`:''}</small>}</span></Activate>{favorite(g)}</div>;
+    const poster = (g, cls = '') => <div className="em-poster-cell" key={identity(g)}><Activate className={`em-poster ${cls}`} item={g} onOpen={onOpen} onFocus={()=>select(g)}><Art item={g}/><span><strong>{g.title}</strong>{g.consoleName && <small>{g.consoleName}</small>}{g.reference&&<small>Installé</small>}{g.variants?.length>1&&<small>{g.variants.length} éditions</small>}{g.downloadId && <small>{g.pendingDownload?'Import en cours':'Catalogue'}{g.license?` · ${g.license}`:''}</small>}</span></Activate>{favorite(g)}</div>;
     const row = (g,i) => <li key={identity(g)} className={item===g?'is-selected':''}><span className="em-row-number">{String(i+1).padStart(2,'0')}</span><Activate className="em-list-game" item={g} onOpen={onOpen} onFocus={()=>select(g)}><Art item={g}/><span className="em-minimal-title"><strong>{g.title}</strong><small>{g.consoleName || consoleName}</small></span><span className="em-minimal-console">{g.consoleName || consoleName || '—'}</span><span className="em-minimal-year">{g.year || '—'}</span><span className="em-minimal-status">{g.reference ? g.status || 'Installé' : g.status || 'Catalogue'}</span><Icon name={g.source && !g.reference ? "external" : "arrow"} size={16}/></Activate>{favorite(g)}</li>;
     switch (mode) {
     case 'minimal': return <ol className="em-compact-list" data-layout="compact-list">{items.map(row)}</ol>;
