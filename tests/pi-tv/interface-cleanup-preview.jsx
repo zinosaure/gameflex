@@ -15,12 +15,13 @@ window.fetch=async(url,options={})=>{
  window.__requests.push({path,method:options.method||'GET'});
  let value={items:[]};
  if(path.endsWith('/preferences')){if(options.method==='PUT'){preferences=JSON.parse(options.body);localStorage.setItem('preview:preferences',options.body);}value=preferences;}
- else if(path.endsWith('/consoles'))value={data:[{id:'nes',name:'NES',method:'retrogaming',maxPlayers:2,enabled:true}]};
+ else if(path.endsWith('/consoles'))value={data:[{id:'nes',name:'NES',method:'retrogaming',maxPlayers:2,enabled:true},{id:'n64',name:'Nintendo 64',manufacturer:'Nintendo',year:1996,method:'retrogaming',maxPlayers:4,enabled:true}]};
  else if(path.endsWith('/game-sources'))value={enabledIds:[],items:[],ready:true,canConfigure:false};
  else if(path.endsWith('/library'))value={configured:true,canConfigure:false};
+ else if(path.endsWith('/covers/search'))value={items:(JSON.parse(options.body||'{}').items||[]).map(item=>({...item,image:`/experience-api/v1/covers/${item.consoleId}/fixture`,attribution:'Libretro Thumbnails · test'}))};
  else if(path.endsWith('/emulators'))value={items:[{consoleId:'nes',name:'Émulateur de test',installed:true,core:'fixture-core'}],hardware:{},canInstall:false};
  return new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}});
 };
 function Fallback(){const loc=useLocation();return <p data-testid="stream-route">{loc.pathname} {loc.search}</p>;}
 const pack=params.has('pack');
-createRoot(document.getElementById('root')).render(<><aside style={{background:'#293748',color:'white',textAlign:'center',padding:8}}>PRÉVISUALISATION ISOLÉE · données et lancement simulés</aside>{pack?<InterfacePicker options={[...selectableInterfaces,...Array.from({length:13},(_,i)=>({id:`fixture-${i}`,name:`Interface de test ${i+10}`,note:'Fixture du pack · pas un mode publié'}))]} onChoose={()=>{}}/>:<BrowserRouter basename="/gameflex"><ConsolesProvider><ExperienceProvider><ExperienceGate enabled><Fallback/></ExperienceGate></ExperienceProvider></ConsolesProvider></BrowserRouter>}</>);
+createRoot(document.getElementById('root')).render(<><aside style={{background:'#293748',color:'white',textAlign:'center',padding:8}}>PRÉVISUALISATION ISOLÉE · données et lancement simulés</aside>{pack?<InterfacePicker options={selectableInterfaces} onChoose={()=>{}}/>:<BrowserRouter basename="/gameflex"><ConsolesProvider><ExperienceProvider><ExperienceGate enabled><Fallback/></ExperienceGate></ExperienceProvider></ConsolesProvider></BrowserRouter>}</>);

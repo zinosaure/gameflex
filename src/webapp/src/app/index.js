@@ -434,7 +434,7 @@ function AppShell() {
 	// (2026-09-11). Tant qu'elle manque, une adresse inconnue attend au lieu de
 	// rediriger. Le menu ne dépend plus des listes de jeux ni des listes
 	// fédérées (2026-10-11) : il n'y a plus qu'elle à attendre.
-	const routesPending = isAuthenticated && !consolesLoaded;
+	const routesPending = !consolesLoaded;
 	const init = useMemo(
 		() => ({
 			...baseInit,

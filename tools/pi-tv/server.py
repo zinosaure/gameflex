@@ -340,6 +340,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.path=='/v1/socket-bridge' or bridge:
             from socket_bridge import serve
             return serve(self,bridge,verified_identity)
+        if self.path=='/v1/covers/search':
+            identity=verified_identity(self.headers.get('Authorization'),self.server.auth_base)
+            if not identity:return self.reply(401,{'error':'Connexion requise.'})
+            from covers import search
+            try:return self.reply(200,search(self.server.data,self.read_small_json(524288).get('items')))
+            except ValueError:return self.reply(400,{'error':'Recherche de jaquettes invalide.'})
+            except OSError:return self.reply(503,{'error':'Recherche de jaquettes indisponible.'})
         emulator=re.fullmatch(r'/v1/emulators/([a-z0-9]+)/install',self.path)
         if emulator:
             identity=verified_identity(self.headers.get('Authorization'),self.server.auth_base)
