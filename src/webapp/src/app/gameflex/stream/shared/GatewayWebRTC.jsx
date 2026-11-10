@@ -2,7 +2,9 @@ import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef,
 import {
     gatewayViewerOffer,
     gatewayViewerDelete,
+    gatewayViewerFallbackUrl,
 } from "../../api/gateway.js";
+import { gameSocket } from "../../libs/GameSocket.js";
 import { applyReceiverLatencyHints } from "../../libs/webrtcLatencyHints.js";
 import { scanWebRTCReport, rateDeltas, nextCounters } from "../libs/webrtc-stats.js";
 import { NO_POSTER, answerGatewayOffer, applyLowLatencyAnswerSdp, buildIceServers } from "./gateway-helpers.js";
@@ -40,6 +42,44 @@ import { streamHostOrigin } from "../../libs/serverBase.js";
 // above a stutter, well below the patience of someone staring at a frozen
 // screen wondering whether it is them.
 const VIDEO_SILENCE_MS = 6000;
+const PUBLIC_FALLBACK_DELAY_MS = 3000;
+
+function concatBytes(parts) {
+    const size = parts.reduce((total, part) => total + part.byteLength, 0);
+    const joined = new Uint8Array(size);
+    let offset = 0;
+
+    for (const part of parts) {
+        joined.set(part, offset);
+        offset += part.byteLength;
+    }
+
+    return joined;
+}
+
+// Annex-B can carry one or several NAL units, with either three- or
+// four-byte start codes. Only the type is needed here: 5 = IDR, 7 = SPS,
+// 8 = PPS.
+function annexBNalTypes(data) {
+    const types = [];
+
+    for (let i = 0; i + 3 < data.byteLength; i += 1) {
+        let header = -1;
+        if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 1) {
+            header = i + 3;
+        } else if (i + 4 < data.byteLength
+            && data[i] === 0 && data[i + 1] === 0
+            && data[i + 2] === 0 && data[i + 3] === 1) {
+            header = i + 4;
+        }
+        if (header >= 0 && header < data.byteLength) {
+            types.push(data[header] & 0x1f);
+            i = header;
+        }
+    }
+
+    return types;
+}
 
 const GatewayWebRTC = forwardRef(function GatewayWebRTC(
     {
@@ -122,6 +162,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
 ) {
     const videoRef = useRef(null);
     const audioRef = useRef(null);
+    const fallbackCanvasRef = useRef(null);
     const pcRef = useRef(null);
     // Keyed by DataChannel label — "input" is the one every platform uses
     // today; remote-play also opens its own "keepalive" ping/pong channel
@@ -172,6 +213,13 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
     hostRef.current = host;
     // Le socket de négociation du viewer courant, le temps qu'elle dure.
     const signalSocketRef = useRef(null);
+    const fallbackSocketRef = useRef(null);
+    const fallbackDecoderRef = useRef(null);
+    const fallbackTimerRef = useRef(null);
+    const fallbackConfigRef = useRef([]);
+    const fallbackTimestampRef = useRef(0);
+    const fallbackConnectedRef = useRef(false);
+    const firstPictureReportedRef = useRef(false);
     const onVideoSilentRef = useRef(onVideoSilent);
     onVideoSilentRef.current = onVideoSilent;
     const onIceConnectionStateChangeRef = useRef(onIceConnectionStateChange);
@@ -180,6 +228,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
     onAutoplayForcedMuteRef.current = onAutoplayForcedMute;
 
     const [isStatsEnabled, setIsStatsEnabled] = useState(false);
+    const [fallbackVisible, setFallbackVisible] = useState(false);
     const previousStatsRef = useRef(null);
     const statsIntervalRef = useRef(null);
 
@@ -253,7 +302,157 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
         };
     }, [isStatsEnabled]);
 
+    const closeFallback = useCallback(() => {
+        clearTimeout(fallbackTimerRef.current);
+        fallbackTimerRef.current = null;
+
+        const socket = fallbackSocketRef.current;
+        fallbackSocketRef.current = null;
+        if (socket && socket.readyState < 2) {
+            socket.close();
+        }
+
+        const decoder = fallbackDecoderRef.current;
+        fallbackDecoderRef.current = null;
+        if (decoder && decoder.state !== "closed") {
+            decoder.close();
+        }
+
+        fallbackConfigRef.current = [];
+        fallbackTimestampRef.current = 0;
+        fallbackConnectedRef.current = false;
+        setFallbackVisible(false);
+    }, []);
+
+    const reportFirstPicture = useCallback(() => {
+        if (firstPictureReportedRef.current) {
+            return;
+        }
+        firstPictureReportedRef.current = true;
+        onFirstPictureRef.current?.();
+    }, []);
+
+    const openFallback = useCallback(() => {
+        const gateway = gatewayRef.current;
+        if (!gateway || fallbackSocketRef.current
+            || typeof globalThis.VideoDecoder === "undefined"
+            || typeof globalThis.EncodedVideoChunk === "undefined") {
+            return;
+        }
+
+        let decoder;
+        try {
+            decoder = new globalThis.VideoDecoder({
+                output: (frame) => {
+                    try {
+                        const canvas = fallbackCanvasRef.current;
+                        const width = frame.displayWidth || frame.codedWidth;
+                        const height = frame.displayHeight || frame.codedHeight;
+                        if (!canvas || !width || !height) {
+                            return;
+                        }
+                        if (canvas.width !== width || canvas.height !== height) {
+                            canvas.width = width;
+                            canvas.height = height;
+                        }
+                        canvas.getContext("2d", { alpha: false })?.drawImage(frame, 0, 0, width, height);
+                        setFallbackVisible(true);
+                        reportFirstPicture();
+                        if (!fallbackConnectedRef.current) {
+                            fallbackConnectedRef.current = true;
+                            onVideoSilentRef.current?.(false);
+                            onConnectionStateChangeRef.current?.("connected");
+                        }
+                    } finally {
+                        frame.close();
+                    }
+                },
+                error: () => {
+                    // A corrupt frame must not tear down the page. The normal
+                    // SessionStream deadline can create a fresh viewer.
+                },
+            });
+            decoder.configure({
+                codec: "avc1.42E01F",
+                optimizeForLatency: true,
+                hardwareAcceleration: "prefer-hardware",
+            });
+        } catch {
+            decoder?.close();
+            return;
+        }
+
+        fallbackDecoderRef.current = decoder;
+        fallbackConfigRef.current = [];
+        fallbackTimestampRef.current = 0;
+
+        const socket = gameSocket(gatewayViewerFallbackUrl(
+            gateway.sessionId,
+            gateway.viewerId,
+            viewerHostRef.current,
+        ));
+        socket.binaryType = "arraybuffer";
+        fallbackSocketRef.current = socket;
+
+        socket.onmessage = async (event) => {
+            if (fallbackSocketRef.current !== socket || fallbackDecoderRef.current !== decoder) {
+                return;
+            }
+            let buffer = event.data;
+            if (buffer instanceof Blob) {
+                buffer = await buffer.arrayBuffer();
+            }
+            if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < 10 || decoder.state !== "configured") {
+                return;
+            }
+
+            const view = new DataView(buffer);
+            const kind = view.getUint8(0);
+            if (kind !== 0) {
+                // The fallback picture is deliberately video-only. Audio stays
+                // on WebRTC and resumes if the peer eventually connects.
+                return;
+            }
+
+            const durationNs = view.getBigUint64(1, false);
+            const payload = new Uint8Array(buffer, 9);
+            const nalTypes = annexBNalTypes(payload);
+            if (durationNs === 0n && nalTypes.some((type) => type === 7 || type === 8)) {
+                fallbackConfigRef.current.push(payload.slice());
+                return;
+            }
+
+            const key = nalTypes.includes(5);
+            const data = key && fallbackConfigRef.current.length > 0
+                ? concatBytes([...fallbackConfigRef.current, payload])
+                : payload;
+            if (key) {
+                fallbackConfigRef.current = [];
+            }
+
+            const duration = Math.max(1, Number(durationNs / 1000n));
+            try {
+                decoder.decode(new globalThis.EncodedVideoChunk({
+                    type: key ? "key" : "delta",
+                    timestamp: fallbackTimestampRef.current,
+                    duration,
+                    data,
+                }));
+                fallbackTimestampRef.current += duration;
+            } catch {
+                // Decoder backpressure or a frame arriving during cleanup: the
+                // next IDR/SPS/PPS sequence can recover without killing input.
+            }
+        };
+        socket.onclose = () => {
+            if (fallbackSocketRef.current === socket) {
+                closeFallback();
+            }
+        };
+    }, [closeFallback, reportFirstPicture]);
+
     const cleanup = useCallback(() => {
+        closeFallback();
         detachAudioPlayRetryRef.current?.();
 
         signalSocketRef.current?.close();
@@ -288,7 +487,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
             audioRef.current.srcObject.getTracks().forEach((tr) => tr.stop());
             audioRef.current.srcObject = null;
         }
-    }, []);
+    }, [closeFallback]);
 
     useEffect(() => () => cleanup(), [cleanup]);
 
@@ -303,6 +502,8 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
     const createViewer = useCallback(
         async ({ hasInput = false, username, sessionId: sessionIdOverride, quality = null, preview = false, launch = null } = {}) => {
             const effectiveSessionId = sessionIdOverride ?? sessionId;
+            closeFallback();
+            firstPictureReportedRef.current = false;
             // One component instance owns ONE viewer at a time: a platform
             // reconnect calls createViewer again on the SAME mounted
             // component (retro's spectate→start transition, a retry loop),
@@ -348,7 +549,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
 
             return { viewerId: gateway.viewerId, sdp: gateway.sdp };
         },
-        [sessionId],
+        [closeFallback, sessionId],
     );
 
     // Step 2 — see the component doc above. Uses the SAME offer SDP
@@ -361,6 +562,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
             return false;
         }
 
+        closeFallback();
         if (pcRef.current) {
             pcRef.current.close();
             pcRef.current = null;
@@ -375,6 +577,12 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
         // max-bundle / rtcp-mux are Chrome's own defaults anyway.
         const pc = new RTCPeerConnection({ iceServers });
         pcRef.current = pc;
+        clearTimeout(fallbackTimerRef.current);
+        fallbackTimerRef.current = setTimeout(() => {
+            if (pcRef.current === pc && pc.connectionState !== "connected") {
+                openFallback();
+            }
+        }, PUBLIC_FALLBACK_DELAY_MS);
 
         pc.ontrack = (event) => {
             // See webrtcLatencyHints.js's doc — without this the browser's
@@ -563,7 +771,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
                     lastAdvanceAt = Date.now();
                     if (!seenMotion) {
                         seenMotion = true;
-                        onFirstPictureRef.current?.();
+                        reportFirstPicture();
                         onVideoSilentRef.current?.(false);
                     }
                     if (reportedSilent) {
@@ -632,7 +840,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
                         // seul sur lequel un appelant puisse renoncer à
                         // réessayer.
                         if (!seenMotion) {
-                            onFirstPictureRef.current?.();
+                            reportFirstPicture();
                             // Lève le verdict d'un attachement précédent —
                             // voir markPresented.
                             onVideoSilentRef.current?.(false);
@@ -862,6 +1070,9 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
         };
 
         pc.onconnectionstatechange = () => {
+            if (pc.connectionState === "connected") {
+                closeFallback();
+            }
             onConnectionStateChangeRef.current?.(pc.connectionState);
         };
 
@@ -883,7 +1094,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
         });
 
         return true;
-    }, []);
+    }, [closeFallback, openFallback, reportFirstPicture]);
 
     // label — defaults to "input" (the one channel retro/streamex ever
     // open); a device-streaming platform opening a second channel (e.g.
@@ -900,13 +1111,20 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
     const sendMessage = useCallback((data, label = "input") => {
         const channel = dataChannelsRef.current.get(label);
 
-        if (channel?.readyState !== "open") {
-            return false;
+        if (channel?.readyState === "open") {
+            channel.send(data);
+
+            return true;
         }
 
-        channel.send(data);
+        const fallback = fallbackSocketRef.current;
+        if (fallback?.readyState === WebSocket.OPEN) {
+            fallback.send(data);
 
-        return true;
+            return true;
+        }
+
+        return false;
     }, []);
 
     // renegotiate — for a device pushing a FRESH offer outside the normal
@@ -1017,6 +1235,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
                     maxHeight: "var(--gameflex-visible-height)",
                     alignSelf: "flex-start",
                     objectFit: "contain",
+                    display: fallbackVisible ? "none" : "block",
                     // THE WHOLE PICTURE IN ITS BOX — the caller gave this element a box with a
                     // real height (a fullscreen surface, a thumbnail) and
                     // wants the WHOLE picture inside it. Without a height the
@@ -1026,6 +1245,19 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
                     // that looks zoomed (reported live 2026-08-25 in
                     // fullscreen). `contain` letterboxes instead of cropping —
                     // black bars are the honest answer to a shape mismatch.
+                }}
+            />
+            <canvas
+                ref={fallbackCanvasRef}
+                aria-label="Flux vidéo"
+                style={{
+                    display: fallbackVisible ? "block" : "none",
+                    width: "100%",
+                    minWidth: "100%",
+                    maxWidth: "100vw",
+                    height: "auto",
+                    maxHeight: "var(--gameflex-visible-height)",
+                    alignSelf: "flex-start",
                 }}
             />
             {audioRef && <audio ref={audioRef} autoPlay muted={muted} />}

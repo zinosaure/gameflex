@@ -60,6 +60,9 @@ type viewer struct {
 	signalMu     sync.Mutex
 	signalUsed   bool
 	input        *webrtc.DataChannel
+	hasInput     bool
+	fallbackMu   sync.Mutex
+	fallback     *websocket.Conn
 }
 
 func (v *viewer) close() {
@@ -67,9 +70,34 @@ func (v *viewer) close() {
 		v.source.mu.Lock()
 		delete(v.source.viewers, v.id)
 		v.source.mu.Unlock()
+		v.fallbackMu.Lock()
+		if v.fallback != nil {
+			v.fallback.Close()
+			v.fallback = nil
+		}
+		v.fallbackMu.Unlock()
 		v.pc.Close()
 		v.source.send(map[string]any{"type": "viewer-left", "viewerId": v.id})
 	})
+}
+
+func (v *viewer) fallbackReady() bool {
+	v.fallbackMu.Lock()
+	defer v.fallbackMu.Unlock()
+	return v.fallback != nil
+}
+
+func (v *viewer) sendFallback(data []byte) {
+	v.fallbackMu.Lock()
+	defer v.fallbackMu.Unlock()
+	if v.fallback == nil {
+		return
+	}
+	v.fallback.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	if v.fallback.WriteMessage(websocket.BinaryMessage, data) != nil {
+		v.fallback.Close()
+		v.fallback = nil
+	}
 }
 
 type gateway struct {
@@ -202,7 +230,11 @@ func (g *gateway) child(w http.ResponseWriter, r *http.Request) {
 		}
 		s.mu.Unlock()
 		for _, v := range vs {
+			v.sendFallback(data)
 			if data[0] == 0 {
+				if duration == 0 {
+					continue
+				}
 				v.video.WriteSample(media.Sample{Data: data[9:], Duration: duration})
 			} else if data[0] == 1 {
 				v.audio.WriteSample(media.Sample{Data: data[9:], Duration: duration})
@@ -256,7 +288,7 @@ func (g *gateway) offer(w http.ResponseWriter, r *http.Request, s *source) {
 		http.Error(w, "track unavailable", 503)
 		return
 	}
-	v := &viewer{id: hex.EncodeToString(b), pc: pc, video: video, audio: audio, source: s}
+	v := &viewer{id: hex.EncodeToString(b), pc: pc, video: video, audio: audio, source: s, hasInput: options.HasInput}
 	for _, track := range []*webrtc.TrackLocalStaticSample{video, audio} {
 		sender, err := pc.AddTrack(track)
 		if err != nil {
@@ -298,7 +330,7 @@ func (g *gateway) offer(w http.ResponseWriter, r *http.Request, s *source) {
 	})
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		log.Printf("WebRTC peer state: %s", state.String())
-		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
+		if state == webrtc.PeerConnectionStateClosed || (state == webrtc.PeerConnectionStateFailed && !v.fallbackReady()) {
 			go v.close()
 		}
 		if state == webrtc.PeerConnectionStateConnected {
@@ -339,13 +371,52 @@ func (g *gateway) offer(w http.ResponseWriter, r *http.Request, s *source) {
 		return
 	}
 	time.AfterFunc(30*time.Second, func() {
-		if pc.ConnectionState() != webrtc.PeerConnectionStateConnected {
+		if pc.ConnectionState() != webrtc.PeerConnectionStateConnected && !v.fallbackReady() {
 			v.close()
 		}
 	})
 	log.Print("WebRTC offer ready")
 	jsonReply(w, 200, map[string]any{"viewerId": v.id, "sdp": pc.LocalDescription().SDP})
 }
+
+func (g *gateway) fallback(w http.ResponseWriter, r *http.Request, v *viewer) {
+	conn, e := upgrader.Upgrade(w, r, nil)
+	if e != nil {
+		return
+	}
+	v.fallbackMu.Lock()
+	if v.fallback != nil {
+		v.fallback.Close()
+	}
+	v.fallback = conn
+	v.fallbackMu.Unlock()
+	// A public fallback usually joins mid-stream. Ask the runtime for an IDR
+	// so SPS/PPS and a decodable keyframe arrive immediately instead of waiting
+	// for the encoder's next periodic keyframe.
+	v.source.send(map[string]any{"type": "keyframe", "reason": "https-fallback", "quality": "hd"})
+	defer func() {
+		v.fallbackMu.Lock()
+		if v.fallback == conn {
+			v.fallback = nil
+		}
+		v.fallbackMu.Unlock()
+		conn.Close()
+	}()
+	log.Print("HTTPS media fallback connected")
+	conn.SetReadLimit(64 << 10)
+	for {
+		kind, data, err := conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		if v.hasInput && (kind == websocket.TextMessage || kind == websocket.BinaryMessage) && len(data) <= 65536 {
+			if v.source.send(map[string]any{"type": "input", "viewerId": v.id, "data": base64.StdEncoding.EncodeToString(data)}) != nil {
+				return
+			}
+		}
+	}
+}
+
 func (g *gateway) signal(w http.ResponseWriter, r *http.Request, v *viewer) {
 	v.signalMu.Lock()
 	if v.signalUsed {
@@ -450,6 +521,10 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) == 6 && parts[5] == "viewer-ws" && r.Method == "GET" {
 		g.signal(w, r, v)
+		return
+	}
+	if len(parts) == 6 && parts[5] == "viewer-fallback" && r.Method == "GET" {
+		g.fallback(w, r, v)
 		return
 	}
 	if len(parts) == 7 && parts[5] == "viewer" && r.Method == "DELETE" {

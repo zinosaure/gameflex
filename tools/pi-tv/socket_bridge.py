@@ -13,7 +13,7 @@ def safe_path(value):
  if not isinstance(value,str) or len(value)>2048:raise BridgeError('Canal refusé.',400)
  u=urlsplit(value)
  if u.scheme or u.netloc or u.fragment or '%' in u.path:raise BridgeError('Canal refusé.',400)
- allowed=u.path in ['/api/v1/facade/ws','/api/v1/retrogaming/stream/ws','/api/v1/presence/ws'] or re.fullmatch(r'/api/v1/sessions/[A-Za-z0-9_-]{1,128}/child/v4/ws',u.path) or re.fullmatch(r'/api/v1/gateway-webrtc/streams/[a-f0-9]{16,128}/viewer-ws',u.path)
+ allowed=u.path in ['/api/v1/facade/ws','/api/v1/retrogaming/stream/ws','/api/v1/presence/ws'] or re.fullmatch(r'/api/v1/sessions/[A-Za-z0-9_-]{1,128}/child/v4/ws',u.path) or re.fullmatch(r'/api/v1/gateway-webrtc/streams/[a-f0-9]{16,128}/viewer-(?:ws|fallback)',u.path)
  if not allowed:raise BridgeError('Canal refusé.',400)
  params=parse_qsl(u.query,keep_blank_values=True)
  if any(k!='viewerId' or not re.fullmatch('[a-f0-9]{16,128}',v) for k,v in params) or len(params)>1:raise BridgeError('Paramètres du canal refusés.',400)
