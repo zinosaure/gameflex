@@ -23,6 +23,11 @@ export const interfaces = [
     { id: 'cartouches', name: 'Cartouches', note: 'Tiroir et tranches de jeux', icon: '▥' },
     { id: 'carte-epoques', name: 'Carte des époques', note: 'Frise des consoles et des jeux', icon: '━' },
     { id: 'double-ecran', name: 'Double écran', note: 'Aperçu supérieur et rail inférieur', icon: '▣' },
+    { id: 'club-local', name: 'Club Local', note: 'Multijoueur sur le même appareil', icon: '♣' },
+    { id: 'quai-systemes', name: 'Quai des systèmes', note: 'Dock de consoles et grille directe', icon: '▥' },
+    { id: 'magazine-retro', name: 'Magazine rétro', note: 'Une et dossiers de la collection', icon: '▤' },
+    { id: 'bureau-collectionneur', name: 'Bureau du collectionneur', note: 'Tableau des jeux et éditions', icon: '☷' },
+    { id: 'grand-ecran-accessible', name: 'Grand écran accessible', note: 'Contraste fort et grandes jaquettes', icon: '▣' },
 ];
 // Keep the historical registry for saved preferences and old links. Only verified
 // appearances belong in the picker; a pack can supply additional registry entries.

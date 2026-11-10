@@ -7,6 +7,11 @@ import TerminalPoche from './TerminalPoche.jsx';
 import Cartouches from './Cartouches.jsx';
 import CarteEpoques from './CarteEpoques.jsx';
 import DoubleEcran from './DoubleEcran.jsx';
+import ClubLocal from './ClubLocal.jsx';
+import QuaiSystemes from './QuaiSystemes.jsx';
+import MagazineRetro from './MagazineRetro.jsx';
+import BureauCollectionneur from './BureauCollectionneur.jsx';
+import GrandEcranAccessible from './GrandEcranAccessible.jsx';
 import { apiUrl } from "../libs/serverBase.js";
 import {DownloadOverlay,DownloadList} from './DownloadProgress.jsx';
 import {libraryWithDownloads,jobForGame} from './download-state.js';
@@ -157,6 +162,11 @@ export default function ExperienceView({ mode, games: suppliedGames = [], downlo
         if(mode==='cartouches')return <Cartouches games={games} favorites={favorites} Art={Art} onOpen={onOpen} onNavigate={onNavigate} onSettings={onSettings} onFavorite={onFavorite}/>;
         if(mode==='carte-epoques')return <CarteEpoques games={games} consoles={consoles} Art={Art} onOpen={onOpen} onNavigate={onNavigate} onSettings={onSettings} onConsole={onConsole}/>;
         if(mode==='double-ecran')return <DoubleEcran games={games} favorites={favorites} history={history} Art={Art} onOpen={onOpen} onNavigate={onNavigate} onSettings={onSettings}/>;
+        if(mode==='club-local')return <ClubLocal games={games} Art={Art} onOpen={onOpen} onNavigate={onNavigate} onSettings={onSettings}/>;
+        if(mode==='quai-systemes')return <QuaiSystemes games={games} consoles={consoles} Art={Art} onOpen={onOpen}/>;
+        if(mode==='magazine-retro')return <MagazineRetro games={games} collections={collections} Art={Art} onOpen={onOpen} onNavigate={onNavigate} onSettings={onSettings}/>;
+        if(mode==='bureau-collectionneur')return <BureauCollectionneur games={games} consoles={consoles} Art={Art} onOpen={onOpen} onSettings={onSettings}/>;
+        if(mode==='grand-ecran-accessible')return <GrandEcranAccessible games={games} favorites={favorites} Art={Art} onOpen={onOpen} onNavigate={onNavigate} onSettings={onSettings} onFavorite={onFavorite}/>;
     }
     if(retroModes.includes(mode) && ['home','consoles','settings'].includes(section))return <RetroLibrary mode={mode} onNavigate={onNavigate} games={games} consoles={consoles} selectedConsole={selectedConsole} Art={Art} onConsole={onConsole} onOpen={onOpen} onHome={onHome} onSettings={onSettings} onAppearance={onAppearance} section={section} settingsContent={settingsContent} loading={loading} error={error} onRetry={onRetry} onImportRom={onImportRom} onRefreshLibrary={onRefreshLibrary} refreshing={refreshing}/>;
     return <div className={`gx-app gx-${retroModes.includes(config.id) ? 'common-' + config.id : config.id} em-app em-layout-${config.id}`} data-interface={config.id} ref={root}>
