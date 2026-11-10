@@ -1,8 +1,16 @@
-import sys,unittest
+import re,sys,unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'tools/pi-tv'))
 from server import validate_preferences
 class InterfaceRevisionTests(unittest.TestCase):
+ def test_all_registered_interfaces_can_sync(self):
+  registry=Path(__file__).resolve().parents[2]/'src/webapp/src/app/gameflex/experience/interfaces.js'
+  ids=re.findall(r"\bid\s*:\s*'([^']+)'",registry.read_text())
+  self.assertEqual(len(ids),28) # 22 appearances and six historical destinations.
+  for mode in ids:
+   with self.subTest(interface=mode):
+    value={'interface':mode,'interfaceUpdatedAt':1794333000000,'favorites':['gba:a'],'history':['gba:a'],'collections':[{'id':'a','name':'Test','games':['gba:a']}]}
+    self.assertEqual(validate_preferences(value),value)
  def test_timestamp_round_trip_preserves_library(self):
   value={'interface':'shelf','interfaceUpdatedAt':1794333000000,'favorites':['gba:a'],'history':['gba:a'],'collections':[{'id':'a','name':'Test','games':['gba:a']}]}
   self.assertEqual(validate_preferences(value),value)

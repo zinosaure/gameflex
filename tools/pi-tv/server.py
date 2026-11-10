@@ -13,6 +13,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parents[2]
 MODES = ['minimal', 'covers', 'consoles', 'favorites', 'resume', 'collections', 'detail', 'archives', 'multiplayer', 'dashboard', 'station', 'crt', 'shelf', 'orbit', 'arcade']
+MODES += ['hub-canape', 'ligne-cinema', 'mosaique-joy', 'roue-retro', 'terminal-poche',
+          'cartouches', 'carte-epoques', 'double-ecran', 'club-local', 'quai-systemes',
+          'magazine-retro', 'bureau-collectionneur', 'grand-ecran-accessible']
 LOCK = threading.Lock()
 UPLOAD_SLOT = threading.BoundedSemaphore(1)
 from upload_sessions import UploadSessions
