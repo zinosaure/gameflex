@@ -8,6 +8,8 @@ with sync_playwright() as p:
  launch={'executable_path':'/usr/bin/chromium','headless':True,'args':['--no-sandbox','--disable-dev-shm-usage']}
  tvbrowser=p.chromium.launch(**launch);phonebrowser=p.chromium.launch(**launch)
  tv=tvbrowser.new_page(viewport={'width':1920,'height':1080});phone=phonebrowser.new_page(viewport={'width':844,'height':390},has_touch=True,is_mobile=True)
+ requests=[]
+ tv.on('request',lambda request:requests.append(request.url));phone.on('request',lambda request:requests.append(request.url))
  errors=[];tv.on('pageerror',lambda error:errors.append(str(error)));phone.on('pageerror',lambda error:errors.append(str(error)))
  tv.goto(BASE+'?showcase=1&tv=1');tv.locator('.ps-console-tile').first.wait_for();tv.wait_for_function('document.body.classList.contains("gf-tv-mode")')
  assert tv.evaluate('getComputedStyle(document.querySelector(".ps-row-title h3")).fontSize')=='25px'
@@ -55,6 +57,8 @@ with sync_playwright() as p:
   phone.screenshot(path=str(OUT/'phone-failure.png'));print('Phone state:',phone.locator('body').inner_text(),flush=True);print('TV requests:',tv.evaluate('window.__requests.slice(-8)'),flush=True);raise
  phone.set_viewport_size({'width':390,'height':844});phone.screenshot(path=str(OUT/'phone-join.png'),full_page=True)
  assert not errors,errors
- report={'tvViewport':'1920x1080','phoneViewport':'844x390 + 390x844','actualPairingTransport':'HTTP and WebSocket','explicitTvApproval':True,'navigation':True,'multitouch':True,'analog':True,'watchdogRelease':True,'revocation':True,'gameSink':'shared input hook, simulated session','errors':errors,'passed':True}
+ expected=os.environ.get('EXPECTED_PAD_TRANSPORT','ws');used_http=any('/channel/send' in url for url in requests)
+ assert used_http==(expected=='http'),{'expected':expected,'httpChannelUsed':used_http}
+ report={'tvViewport':'1920x1080','phoneViewport':'844x390 + 390x844','actualPairingTransport':'HTTPS-compatible channel' if used_http else 'HTTP signaling and WebSocket','explicitTvApproval':True,'navigation':True,'multitouch':True,'analog':True,'watchdogRelease':True,'revocation':True,'gameSink':'shared input hook, simulated session','errors':errors,'passed':True}
  (OUT/'tv-phone-browser.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');print(json.dumps(report))
  tvbrowser.close();phonebrowser.close()

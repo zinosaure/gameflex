@@ -22,6 +22,20 @@ class PhonePadHTTPTests(unittest.TestCase):
   self.assertEqual(self.request(path,body)[0],401);self.assertEqual(self.request(path,body,'other')[0],400)
   self.assertEqual(self.request(path,body,'owner')[0],200)
   self.assertEqual(self.request('/'+tv['id']+'/revoke',body,'owner')[0],200)
+ def test_https_channel_has_same_approval_and_capability_checks(self):
+  _,tv=self.request('/create',{},'owner');base='/'+tv['id']+'/channel/'
+  _,host=self.request(base+'connect',{'role':'host','token':tv['hostToken']},'owner')
+  _,phone=self.request('/join',{'code':tv['code'],'name':'Phone'})
+  _,pad=self.request(base+'connect',{'role':'phone','token':phone['phoneToken']})
+  payload={'role':'phone','token':phone['phoneToken'],'connection':pad['connection'],'data':{'type':'pad','buttons':[0],'axes':[0]*4,'seq':1,'epoch':phone_pad.PAIRS.records[tv['id']]['epoch']}}
+  self.assertEqual(self.request(base+'send',payload)[0],400)
+  self.assertEqual(self.request('/'+tv['id']+'/approve',{'hostToken':tv['hostToken']},'owner')[0],200)
+  self.assertEqual(self.request(base+'send',payload)[0],200)
+  status,value=self.request(base+'poll',{'role':'host','token':tv['hostToken'],'connection':host['connection']},'owner')
+  self.assertEqual(status,200);self.assertTrue(any(event.get('buttons')==[0] for event in value['events']))
+  self.assertEqual(self.request(base+'poll',{'role':'host','token':tv['hostToken'],'connection':host['connection']})[0],401)
+  self.request('/'+tv['id']+'/revoke',{'hostToken':tv['hostToken']},'owner')
+  self.assertEqual(self.request(base+'send',payload)[0],400)
  def test_cross_origin_websocket_upgrade_is_refused(self):
   request=urllib.request.Request(self.base+'/v1/phone-pad/'+'a'*32+'/ws',headers={'Origin':'https://other.example','Upgrade':'websocket','Connection':'Upgrade','Sec-WebSocket-Version':'13','Sec-WebSocket-Key':'dGhlIHNhbXBsZSBub25jZQ=='})
   with self.assertRaises(urllib.error.HTTPError) as error:urllib.request.urlopen(request,timeout=3)

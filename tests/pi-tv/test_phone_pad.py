@@ -27,6 +27,13 @@ class PhonePadTests(unittest.TestCase):
   self.p.message(self.tv['id'],'phone',pad,{'type':'pad','buttons':[0],'axes':[0]*4,'seq':5,'epoch':epoch});self.assertEqual(r['buttons'],[])
   self.p.message(self.tv['id'],'phone',pad,{'type':'pad','buttons':[1],'axes':[0]*4,'seq':6,'epoch':r['epoch']})
   self.p.message(self.tv['id'],'phone',pad,{'type':'pad','buttons':[0],'axes':[0]*4,'seq':5,'epoch':r['epoch']});self.assertEqual(r['buttons'],[1])
+ def test_duplicate_context_does_not_invalidate_next_button(self):
+  host,hq,pad,pq=self.connected();r=self.p.records[self.tv['id']]
+  self.p.message(self.tv['id'],'host',host,{'type':'context','screen':'locked'});epoch=r['epoch']
+  self.p.message(self.tv['id'],'host',host,{'type':'context','screen':'locked'})
+  self.assertEqual(r['epoch'],epoch)
+  self.p.message(self.tv['id'],'phone',pad,{'type':'pad','buttons':[1],'axes':[0]*4,'seq':1,'epoch':epoch})
+  self.assertEqual(r['buttons'],[1])
  def test_malformed_input_cannot_become_a_command(self):
   host,hq,pad,pq=self.connected();epoch=self.p.records[self.tv['id']]['epoch']
   for buttons,axes in [([99],[0]*4),([True],[0]*4),([],[math.nan,0,0,0]),([],[2,0,0,0])]:

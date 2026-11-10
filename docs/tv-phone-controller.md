@@ -14,7 +14,7 @@ L’intégration des entrées utilise les canaux existants de l’émulation ré
 
 ## Connexion et limites
 
-Le code expire au bout de 120 secondes et n’est utilisable qu’une fois. Un code saisi ne suffit pas : la TV doit confirmer le téléphone. Les commandes passent par un WebSocket du même serveur, sous le préfixe existant ; aucun port supplémentaire, service de découverte ou serveur tiers n’est requis. Un Wi-Fi commun réduit la latence ; une connexion mobile distante ajoute la latence de son réseau. Le navigateur doit supporter WebSocket et Pointer Events. Les modes portrait et paysage sont prévus ; le plein écran et le maintien de l’écran éveillé dépendent des API du navigateur.
+Le code expire au bout de 120 secondes et n’est utilisable qu’une fois. Un code saisi ne suffit pas : la TV doit confirmer le téléphone. Les commandes passent par un WebSocket du même serveur, avec repli automatique sur un canal HTTPS borné si le proxy du NAS supprime la mise à niveau WebSocket, sous le préfixe existant ; aucun port supplémentaire, service de découverte ou serveur tiers n’est requis. Un Wi-Fi commun réduit la latence ; une connexion mobile distante ajoute la latence de son réseau. Le navigateur doit supporter WebSocket et Pointer Events. Les modes portrait et paysage sont prévus ; le plein écran et le maintien de l’écran éveillé dépendent des API du navigateur.
 
 À la libération d’un doigt, une annulation du toucher, un changement de visibilité ou une déconnexion, les boutons et sticks sont remis au neutre. Une absence de mises à jour relâche aussi les entrées après environ une seconde. Une page téléphone suspendue peut reprendre sa connexion ; si l’association a été révoquée/expirée, elle revient à la saisie d’un code. Le changement d’écran invalide les anciennes commandes en attente.
 
@@ -29,13 +29,13 @@ Le composant ne modifie ni ne contourne le garde d’autorité du moteur : le TV
 - Les messages autorisés sont uniquement des instantanés de boutons/sticks, des informations de contexte hôte et des battements de présence. Le téléphone ne dispose d’aucune commande serveur arbitraire. Sa navigation est bloquée sur les réglages du compte ; seul le retour à l’accueil reste accessible. Les actions du compte restent à la télécommande de la TV.
 - Une déconnexion TV limite la reprise à une minute ; un redémarrage de l’API impose une nouvelle association.
 
-API : `POST /v1/phone-pad/create`, `/join`, `/{id}/approve`, `/{id}/revoke` et `WS /v1/phone-pad/{id}/ws`. Le proxy web conserve Host/Origin et transmet la mise à niveau WebSocket. Les autres routes et services restent inchangés.
+API : `POST /v1/phone-pad/create`, `/join`, `/{id}/approve`, `/{id}/revoke` et `WS /v1/phone-pad/{id}/ws`. Le proxy web conserve Host/Origin et transmet la mise à niveau WebSocket. Les chemins `/{id}/channel/connect`, `/poll`, `/send` et `/close` fournissent le repli HTTPS. Ils exigent la même capacité ; chaque requête hôte valide le compte de la TV. Les entrées sont coalescées et les files restent bornées ; une touche relâchée ne reste pas enfoncée si le téléphone disparaît. Les autres routes et services restent inchangés.
 
 ## Validation
 
 Tests unitaires/HTTP : `PYTHONPATH=tools/pi-tv python3 -m unittest discover -s tests/pi-tv -p 'test_phone_pad*.py'` (wsproto requis, déjà présent dans l’image API).
 
-La prévisualisation dédiée (`tests/pi-tv/serve-tv-phone-preview.py`) utilise le vrai relais HTTP/WebSocket, mais exclusivement une identité et un jeu simulés. Ne jamais utiliser ce serveur de test pour la production. `tests/pi-tv/tv-phone-browser.py` ouvre deux processus Chromium séparés : TV 1920 × 1080, téléphone 844 × 390 et 390 × 844. Il vérifie l’approbation, la navigation, le multitouch, les sticks, la suspension brutale du JavaScript, le relâchement et la révocation. Les parcours de bibliothèque restent couverts par `consoles-first-browser.py`.
+La prévisualisation dédiée (`tests/pi-tv/serve-tv-phone-preview.py`) utilise le vrai relais HTTP/WebSocket, mais exclusivement une identité et un jeu simulés. Ne jamais utiliser ce serveur de test pour la production. `tests/pi-tv/tv-phone-browser.py` ouvre deux processus Chromium séparés : TV 1920 × 1080, téléphone 844 × 390 et 390 × 844. Il vérifie l’approbation, la navigation, le multitouch, les sticks, la suspension brutale du JavaScript, le relâchement et la révocation. La même suite est aussi exécutée avec `--block-upgrade` sur le serveur de prévisualisation, pour reproduire le proxy public du NAS. Les parcours de bibliothèque restent couverts par `consoles-first-browser.py`.
 
 Les essais navigateur ne valent pas un essai sur un téléviseur physique ou une validation de l’APK Android TV. Le mode livré ici est celui de l’application web. Aucun APK ni firmware TV n’est installé par cette modification.
 

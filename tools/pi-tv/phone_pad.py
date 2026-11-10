@@ -35,6 +35,10 @@ class Pairings:
  def _cleanup(self):
   now=self.clock()
   for id,r in list(self.records.items()):
+   for role,deadline in list(r.get('httpDeadline',{}).items()):
+    if now>deadline:
+     r['httpDeadline'].pop(role,None);r['connections'].pop(role,None);self._neutral(r);self._status(r)
+     if role=='host':r['expires']=min(r['expires'],now+60)
    if now>r['expires'] or (not r['connections'] and now-r['activity']>60):self._remove(id)
    elif r['buttons'] or any(r['axes']):
     if now-r['lastInput']>1.2:self._neutral(r)
@@ -46,7 +50,7 @@ class Pairings:
    if len(self.records)>=4 or sum(r['owner']==owner for r in self.records.values())>=2:raise PadError('Fermez une association existante pour continuer.')
    id=secrets.token_hex(16);secret=secrets.token_urlsafe(32);code=''.join(secrets.choice('0123456789') for _ in range(8));now=self.clock()
    while any(r['codeHash']==self._hash(code) for r in self.records.values()):code=''.join(secrets.choice('0123456789') for _ in range(8))
-   self.records[id]={'owner':owner,'hostHash':self._hash(secret),'phoneHash':None,'codeHash':self._hash(code),'approved':False,'name':'','expires':now+120,'activity':now,'lastInput':now,'connections':{},'epoch':0,'screen':'library','buttons':[],'axes':[0,0,0,0],'sequence':-1}
+   self.records[id]={'owner':owner,'hostHash':self._hash(secret),'phoneHash':None,'codeHash':self._hash(code),'approved':False,'name':'','expires':now+120,'activity':now,'lastInput':now,'connections':{},'epoch':0,'screen':'library','buttons':[],'axes':[0,0,0,0],'sequence':-1,'httpDeadline':{}}
    return {'id':id,'hostToken':secret,'code':code,'expiresIn':120}
  def join(self,code,name,client):
   with self.lock:
@@ -76,8 +80,8 @@ class Pairings:
   with self.lock:
    r=self._get(id,role,secret,owner);old=r['connections'].get(role)
    if old:self._emit(r,role,{'type':'closed'})
-   r['epoch']+=1;r['sequence']=-1
-   identity=secrets.token_hex(8);q=queue.Queue(maxsize=4);r['connections'][role]=(identity,q);r['activity']=self.clock();
+   r.get('httpDeadline',{}).pop(role,None);r['epoch']+=1;r['sequence']=-1
+   identity=secrets.token_hex(8);q=queue.Queue(maxsize=64);r['connections'][role]=(identity,q);r['activity']=self.clock();
    if role=='host' and r['approved']:r['expires']=self.clock()+4*3600
    self._neutral(r);self._status(r)
    return identity,q
@@ -97,6 +101,7 @@ class Pairings:
    if data.get('type')=='ping':return
    if role=='host' and data.get('type')=='context':
     if data.get('screen') not in ('library','game','unsupported','locked'):raise PadError('Contexte invalide.')
+    if r['screen']==data['screen']:return
     r['epoch']+=1;r['sequence']=-1;r['screen']=data['screen'];self._neutral(r);self._status(r);return
    if role!='phone' or not r['approved'] or 'host' not in r['connections'] or data.get('type')!='pad':raise PadError('Commande refusée.')
    buttons,axes,seq,epoch=data.get('buttons'),data.get('axes'),data.get('seq'),data.get('epoch')
@@ -113,7 +118,9 @@ PAIRS=Pairings();AUTH_SLOTS=threading.BoundedSemaphore(4)
 def http(handler,verify):
  path=handler.path.removeprefix('/v1/phone-pad')
  try:
-  body=handler.read_small_json(2048)
+  body=handler.read_small_json(4096)
+  channel=re.fullmatch('/([a-f0-9]{32})/channel/(connect|poll|send|close)',path)
+  if channel:return http_channel(handler,verify,channel[1],channel[2],body)
   if path=='/join':return handler.reply(200,PAIRS.join(body.get('code'),body.get('name','Téléphone'),handler.client_address[0]))
   identity=verify(handler.headers.get('Authorization'),handler.server.auth_base)
   if not identity:return handler.reply(401,{'error':'Connexion requise sur la TV.'})
@@ -123,6 +130,33 @@ def http(handler,verify):
   return handler.reply(200,PAIRS.action(match[1],body.get('hostToken'),identity['username'],match[2]))
  except PadError as e:return handler.reply(400,{'error':str(e)})
  except (ValueError,TypeError):return handler.reply(400,{'error':'Demande invalide.'})
+
+def http_channel(handler,verify,id,action,body):
+ role=body.get('role');owner=None
+ if role=='host':
+  user=verify(handler.headers.get('Authorization'),handler.server.auth_base)
+  if not user:return handler.reply(401,{'error':'Connexion requise sur la TV.'})
+  owner=user['username']
+ if action=='connect':
+  identity,inbox=PAIRS.attach(id,role,body.get('token'),owner)
+  with PAIRS.lock:PAIRS.records[id]['httpDeadline'][role]=PAIRS.clock()+5
+  return handler.reply(200,{'connection':identity})
+ identity=body.get('connection')
+ with PAIRS.lock:
+  record=PAIRS._get(id,role,body.get('token'),owner)
+  current=record['connections'].get(role)
+  if not current or current[0]!=identity:raise PadError('Connexion terminée.')
+  inbox=current[1];record['httpDeadline'][role]=PAIRS.clock()+5;record['activity']=PAIRS.clock()
+ if action=='send':PAIRS.message(id,role,identity,body.get('data'));return handler.reply(200,{'ok':True})
+ if action=='close':PAIRS.detach(id,role,identity);return handler.reply(200,{'ok':True})
+ events=[]
+ try:events.append(inbox.get(timeout=.5))
+ except queue.Empty:pass
+ while len(events)<8:
+  try:events.append(inbox.get_nowait())
+  except queue.Empty:break
+ PAIRS.tick()
+ return handler.reply(200,{'events':events})
 
 def websocket(handler,verify,id):
  if not valid_origin(handler.headers):return handler.reply(403,{'error':'Origine refusée.'})

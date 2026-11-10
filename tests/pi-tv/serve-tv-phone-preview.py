@@ -8,7 +8,9 @@ server.verified_identity=lambda auth,base:{'username':'preview','role_level':0} 
 class Handler(server.Handler):
  def do_GET(self):
   if self.path.startswith('/gameflex/experience-api/v1/phone-pad/'):
-   self.path=self.path.removeprefix('/gameflex/experience-api');return super().do_GET()
+   self.path=self.path.removeprefix('/gameflex/experience-api')
+   if self.server.block_upgrade and self.path.endswith('/ws'):return self.reply(400,{'error':'Fixture proxy strips upgrade'})
+   return super().do_GET()
   return static.Handler.do_GET(self)
  def do_POST(self):
   if self.path.startswith('/gameflex/experience-api/v1/phone-pad/'):
@@ -16,5 +18,5 @@ class Handler(server.Handler):
   return self.reply(404,{'error':'Fixture only'})
 if __name__=='__main__':
  import argparse
- p=argparse.ArgumentParser();p.add_argument('--port',type=int,default=18230);a=p.parse_args()
- http=server.BoundedHTTPServer(('0.0.0.0',a.port),Handler);http.auth_base='fixture';http.serve_forever()
+ p=argparse.ArgumentParser();p.add_argument('--port',type=int,default=18230);p.add_argument('--block-upgrade',action='store_true');a=p.parse_args()
+ http=server.BoundedHTTPServer(('0.0.0.0',a.port),Handler);http.auth_base='fixture';http.block_upgrade=a.block_upgrade;http.serve_forever()
