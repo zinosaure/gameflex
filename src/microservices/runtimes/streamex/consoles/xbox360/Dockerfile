@@ -43,8 +43,9 @@ ARG XENIA_FILE=xenia_canary_linux-${XENIA_RELEASE}.AppImage
 ENV XENIA_RELEASE=${XENIA_RELEASE}
 
 # MESA VIENT DE trixie-backports, comme pour toutes les consoles streamex :
-# même APU, même pilote (le pourquoi est dans consoles/ps5/Dockerfile). Mesa
-# d'abord, le reste ensuite.
+# même APU, même pilote (le pourquoi est dans consoles/ps5/Dockerfile ; la PS5
+# y ajoute un correctif de RADV, son étape « radv »). Mesa d'abord, le reste
+# ensuite.
 #
 # Ce que l'AppImage n'embarque pas, et que le conteneur doit donc fournir
 # (relevé sur ses bibliothèques le 2026-10-22) : la libc et libstdc++ (GCC 13

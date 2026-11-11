@@ -537,7 +537,7 @@ func consoleWantsPads(console string) bool {
 }
 
 // sessionMemoryLimit — le plafond mémoire d'une session streamex (memory.max
-// du cgroup : rien n'est réservé). 12 Go, sauf la PS5 : 20 Go. Kyty tient toute
+// du cgroup : rien n'est réservé). 12 Go, sauf la PS5 et la Switch 2 : 20 Go. Kyty tient toute
 // la mémoire du jeu dans un seul bloc partagé, et un jeu PS5 en dispose de
 // 12,5 Go ; le conteneur porte en plus Kyty lui-même, la capture et
 // l'encodage de l'image, le son, et le cache des fichiers du jeu. Mesuré le
@@ -549,8 +549,15 @@ func consoleWantsPads(console string) bool {
 // Au plafond, le noyau pousse la mémoire du jeu en swap, et la partie fige.
 // 16 Go le même soir, puis 20 : « sur la console c'est 16 Go, mais il n'y a
 // pas de docker, d'encodage d'images » (le porteur).
+//
+// La Switch 2 a les mêmes 20 Go (#644). La console a 12 Go de mémoire, que
+// Lichii tient en mémoire partagée (shmem), à côté de son propre tas. Mesuré
+// le 2026-11-11 sur *Zelda Ocarina of Time*, plafonné à 12 Go : Link sort de
+// sa maison, la forêt Kokiri se charge, et le noyau tue Lichii (OOM du
+// cgroup) — 6,8 Go de tas, 5,9 Go de mémoire partagée en mémoire vive et
+// 1,9 Go déjà poussés en swap, la partie coupée net au bout de 8 minutes.
 func sessionMemoryLimit(console string) int64 {
-	if console == "ps5" {
+	if console == "ps5" || console == "switch2" {
 		return 20 * 1024 * 1024 * 1024
 	}
 	return 12 * 1024 * 1024 * 1024

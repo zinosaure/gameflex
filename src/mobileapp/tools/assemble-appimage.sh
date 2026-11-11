@@ -9,7 +9,7 @@
 #   tools/assemble-appimage.sh wiiu              → downloads/cemu-x86_64.zip
 #   tools/assemble-appimage.sh switch aarch64    → downloads/citron-aarch64.zip
 #   tools/assemble-appimage.sh switch-eden aarch64 → downloads/eden-aarch64.zip
-#   tools/assemble-appimage.sh switch2 aarch64 → downloads/eglantine-aarch64.zip
+#   tools/assemble-appimage.sh switch2 aarch64 → downloads/lichii-aarch64.zip
 #   tools/assemble-appimage.sh ps4               → downloads/shadps4-x86_64.zip
 #   tools/assemble-appimage.sh ps5               → downloads/kyty-x86_64.zip
 #
@@ -83,11 +83,11 @@ guest_of() {
         # de l'Eden d'Android sur Linux arm64, qui garde ses zones mémoire sous
         # le plafond d'Android (#434). Un AppDir archivé, rangé dans downloads/.
         switch-eden) echo "eden eden file:///dl/eden-de7e6e01d4-gameflex-aarch64.AppDir.tar.gz" ;;
-        # LA SWITCH 2 (#644) : Eglantine, sa construction quotidienne du même
-        # jour que le serveur (daily-20261105, commit e736dfde9e), en aarch64
-        # avec son profil PGO comme au serveur. L'officielle : sans le
-        # HeapTracker de notre Eden (#434). Pas d'x86_64 pour l'appareil.
-        switch2) echo "eglantine eglantine https://github.com/Djihads80/Eglantine/releases/download/daily-20261105/eglantine-linux-aarch64-pgo.AppImage" ;;
+        # LA SWITCH 2 (#644) : Lichii, fork d'Eglantine, sa version publiée,
+        # la même que le serveur (build-150, commit 17baed7), en aarch64 avec son
+        # profil PGO comme au serveur. L'officielle : sans le HeapTracker de
+        # notre Eden (#434). Pas d'x86_64 pour l'appareil.
+        switch2) echo "lichii lichii https://github.com/zortos293/Lichii/releases/download/build-150/lichii-linux-aarch64-pgo.AppImage" ;;
         # La PS4 en aarch64 n'est pas une AppImage de l'amont : c'est « Box64 +
         # NOTRE shadPS4 x86_64 », assemblé par tools/box64/bundle.sh (chantier
         # 17) — shadPS4 construit avec un réglage qui ramène sa plage d'adresses

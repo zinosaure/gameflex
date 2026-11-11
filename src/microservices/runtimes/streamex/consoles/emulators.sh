@@ -57,9 +57,9 @@ emulator_file() {
     case "$1" in
         switch) echo "citron_nightly-0237a9b88-linux-x86_64_v3.AppImage" ;;
         switch-eden) echo "Eden-Linux-de7e6e01d4-amd64-clang-pgo.AppImage" ;;
-        # Eglantine publie, comme Xenia, un nom SANS version : celui rangé ici la
-        # porte (sa construction quotidienne).
-        switch2) echo "Eglantine-daily-20261105-x86_64-pgo.AppImage" ;;
+        # Lichii publie, comme Xenia, un nom SANS version : celui rangé ici la
+        # porte (sa version publiée, build-150).
+        switch2) echo "Lichii-build-150-x86_64-pgo.AppImage" ;;
         xbox)   echo "xemu-0.8.139-x86_64.AppImage" ;;
         wiiu)   echo "Cemu-2.6-x86_64.AppImage" ;;
         ps3)    echo "rpcs3-v0.0.43-20508-8e26652c_linux64.AppImage" ;;
@@ -90,9 +90,10 @@ emulator_url() {
         # La nocturne officielle d'Eden, épinglée par son étiquette (chantier 25) :
         # la seule qui lit les jeux du firmware 22 (ZBIC).
         switch-eden) echo "https://nightly.eden-emu.dev/v1792353251.de7e6e01d4/Eden-Linux-de7e6e01d4-amd64-clang-pgo.AppImage" ;;
-        # Eglantine (#644), l'émulateur de la Switch 2 : sa construction quotidienne
-        # du 2026-11-05, épinglée par son étiquette.
-        switch2) echo "https://github.com/Djihads80/Eglantine/releases/download/daily-20261105/eglantine-linux-x86_64-pgo.AppImage" ;;
+        # Lichii (#644), l'émulateur de la Switch 2, fork d'Eglantine : sa version
+        # build-150 (17baed7, 2026-11-10), avec son profil PGO, épinglée par son
+        # étiquette.
+        switch2) echo "https://github.com/zortos293/Lichii/releases/download/build-150/lichii-linux-x86_64-pgo.AppImage" ;;
         xbox)   echo "https://github.com/xemu-project/xemu/releases/download/v0.8.139/xemu-0.8.139-x86_64.AppImage" ;;
         wiiu)   echo "https://github.com/cemu-project/Cemu/releases/download/v2.6/Cemu-2.6-x86_64.AppImage" ;;
         ps3)    echo "https://github.com/RPCS3/rpcs3-binaries-linux/releases/download/build-8e26652c85bb5658965fa5731d9a0309ca10b42b/rpcs3-v0.0.43-20508-8e26652c_linux64.AppImage" ;;

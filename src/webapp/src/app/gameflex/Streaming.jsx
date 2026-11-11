@@ -32,8 +32,8 @@ import { useMenuButtonStyle, useMenuHotkey, useIdleVisibility } from "./stream/s
 import { setGameInputSuspended } from "./libs/gameInput.js";
 import { useScreenOrientation } from "./libs/screenOrientation.js";
 import { createSwitchesStore } from "./stream/shared/switches-store.js";
-import { FloatingPanel, StreamingStatsPanel } from "./stream/onscreen/FloatingPanel.jsx";
-import { TouchpadOnlyContext } from "./stream/onscreen/Controllers.jsx";
+import { FloatingPanel, StreamingStatsPanel, StreamingStatsStrip, STATS_STRIP_PORTRAIT_HEIGHT } from "./stream/onscreen/FloatingPanel.jsx";
+import { TouchpadOnlyContext, PAD_COLUMN_WIDTH } from "./stream/onscreen/Controllers.jsx";
 // Vendor-prefixed fullscreen, already written once — the page was calling
 // the raw API and ignoring this.
 import { requestFullscreen, exitFullscreen, isFullscreen, isMobileDevice, isTabletDevice } from "./shared/utils/device-detection.js";
@@ -1070,6 +1070,11 @@ export function StreamingShell({ t, user, token, session, context, setTerminateR
             isFullscreen: false,
             isChromeCasting: !!getCurrentCastSession(),
             isResourceMonitoringVisible: false,
+            // LA VUE DISCRÈTE (le porteur, 2026-11-10). Elle et le panneau
+            // s'excluent, par défaut en attendant sa réponse (FloatingPanel,
+            // performanceForm). Déclarée ici : sans elle, SkeletonSwitch
+            // écrirait `null` dans l'instantané du magasin.
+            isCompactStatsVisible: false,
             // LE DOUBLE FLUX (chantier 31) : le mode de la catégorie « Vidéo »
             // du menu (`auto` par défaut, `current`, `low`), et ce que la
             // passerelle dit du spectateur de la page.
@@ -1346,6 +1351,8 @@ export function StreamingShell({ t, user, token, session, context, setTerminateR
         // à en sortir. C'est un réglage à part, avec son propre interrupteur.
         onFullscreen: () => switchesStore.setValues({ isFullscreen: true }),
     });
+    // Une surface tournée est un paysage ; la règle s'écrit une fois.
+    const isPortraitLayout = isPortraitViewport && !rotateSurface;
 
     useEffect(() => {
         const sync = () => switchesStore.setValues({ isFullscreen: isFullscreen() });
@@ -1438,7 +1445,10 @@ export function StreamingShell({ t, user, token, session, context, setTerminateR
     //
     // Un téléphone suit aussi la température et la batterie panneau fermé :
     // ses deux pastilles, à côté du bouton du menu, les montrent.
-    const statsResult = input.onMonitoringResource(switches.isResourceMonitoringVisible, isHandheld);
+    //
+    // La vue discrète ouvre le MÊME relevé : un seul appel, puisqu'il contient
+    // un hook, et un relevé qui reste ouvert quand on passe de l'un à l'autre.
+    const statsResult = input.onMonitoringResource(switches.isResourceMonitoringVisible || switches.isCompactStatsVisible, isHandheld);
     const handPower = statsResult?.device;
 
     // The controller (and every menu below) needs the real role, so it waits
@@ -1665,7 +1675,10 @@ export function StreamingShell({ t, user, token, session, context, setTerminateR
     }, []);
 
     const menuButtonVisible = useIdleVisibility(playing);
-    const menuButtonStyle = useMenuButtonStyle(Boolean(drivesPad && switches.isControllerVisible && controller?.Component));
+    // La manette à l'écran est affichée : le bouton du menu, la bande du bas et
+    // la vue discrète en paysage la lisent ici.
+    const isPadVisible = Boolean(drivesPad && switches.isControllerVisible && controller?.Component);
+    const menuButtonStyle = useMenuButtonStyle(isPadVisible);
 
     // LE RACCOURCI SE DIT, une fois, à qui joue avec une manette : sans
     // bouton à l'écran, il faut savoir qu'il existe.
@@ -1690,6 +1703,9 @@ export function StreamingShell({ t, user, token, session, context, setTerminateR
                 // Otherwise the visible height: 100vh, or the top half when a
                 // clip-on controller hides the bottom one (#410, app.css).
                 height: switches.isFullscreen ? "100%" : "var(--gameflex-visible-height)",
+                // La vue discrète, sous la vidéo en portrait : le pavé tactile
+                // seul descend d'autant (Controllers.jsx, TOUCHPAD_ALONE_PLACE).
+                "--gameflex-stats-strip-height": isPortraitLayout && switches.isCompactStatsVisible ? `${STATS_STRIP_PORTRAIT_HEIGHT}px` : "0px",
                 // The fallback rotation, and ONLY while the viewport is
                 // actually standing up: if the person turned the device
                 // themselves, the goal is already met and turning the surface
@@ -1800,11 +1816,17 @@ export function StreamingShell({ t, user, token, session, context, setTerminateR
                 connectingLabel={phase === "live" ? OVERLAY_HIDDEN : t(`streaming.connection.phase.${phase}`)}
             >
                 {/* Sous la vidéo, en portrait (le porteur, 2026-11-03). Une
-                    surface tournée est un paysage : la vidéo y prend tout. */}
-                {isPortraitViewport && !rotateSurface && (
-                    <div className="text-center text-white text-opacity-50 small py-1" style={{ pointerEvents: "none" }}>
-                        {t("streaming.page.brand")}
-                    </div>
+                    surface tournée est un paysage : la vidéo y prend tout.
+                    La vue discrète passe entre les deux (le porteur,
+                    2026-11-10), dans le flux et sans z-index : « GameFlex »
+                    descend seulement de sa hauteur. */}
+                {isPortraitLayout && (
+                    <>
+                        {switches.isCompactStatsVisible && <StreamingStatsStrip stats={statsResult} session={session} t={t} layout="portrait" />}
+                        <div className="text-center text-white text-opacity-50 small py-1" style={{ pointerEvents: "none" }}>
+                            {t("streaming.page.brand")}
+                        </div>
+                    </>
                 )}
             </SessionStream>
 
@@ -1932,9 +1954,9 @@ export function StreamingShell({ t, user, token, session, context, setTerminateR
                     width: "100%",
                     zIndex: 1002,
                 }}>
-                    {drivesPad && switches.isControllerVisible && controller?.Component && controller.Component}
+                    {isPadVisible && controller.Component}
                     {drivesPad && !switches.isControllerVisible && hasPhysicalGamepad && controller?.Component && (
-                        <TouchpadOnlyContext.Provider value={isPortraitViewport && !rotateSurface ? "portrait" : "landscape"}>
+                        <TouchpadOnlyContext.Provider value={isPortraitLayout ? "portrait" : "landscape"}>
                             {controller.Component}
                         </TouchpadOnlyContext.Provider>
                     )}
@@ -1994,6 +2016,27 @@ export function StreamingShell({ t, user, token, session, context, setTerminateR
                     overflowY: "auto",
                 }}>
                     <StreamingStatsPanel stats={statsResult} session={session} t={t} />
+                </div>
+            )}
+
+            {/* LA VUE DISCRÈTE EN PAYSAGE (le porteur, 2026-11-10), à la place du
+            panneau : les deux s'excluent, par défaut en attendant sa réponse.
+            Le fond est transparent, comme demandé, sans voile : un voile
+            teinterait la roue des shaders que Kyty dessine dans l'image.
+            Deux lignes, l'émulateur puis le flux (le porteur, 2026-11-11 :
+            « sur 2 lignes pour comprendre la différence »). Avec la manette à
+            l'écran, la vue reste dans la colonne centrale : le haut de L2/R2
+            est à H − 324 et sort par le haut dès que H < 346 (Chrome couché),
+            et la colonne centrale n'a aucun bouton en haut. */}
+            {!isPortraitLayout && switches.isCompactStatsVisible && statsResult && (
+                <div className="position-absolute top-0 start-0 w-100" style={{
+                    zIndex: 1001,
+                    pointerEvents: "none",
+                    paddingTop: "max(2px, env(safe-area-inset-top))",
+                    paddingLeft: isPadVisible ? `${PAD_COLUMN_WIDTH}px` : "max(8px, env(safe-area-inset-left))",
+                    paddingRight: isPadVisible ? `${PAD_COLUMN_WIDTH}px` : "max(8px, env(safe-area-inset-right))",
+                }}>
+                    <StreamingStatsStrip stats={statsResult} session={session} t={t} layout="landscape" />
                 </div>
             )}
 

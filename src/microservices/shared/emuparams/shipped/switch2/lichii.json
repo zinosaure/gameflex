@@ -1,13 +1,13 @@
 {
   "enabled": true,
   "name": "Nintendo Switch 2",
-  "description": "Settings of Eglantine, a Nintendo Switch 2 emulator derived from Eden, applied when a game starts. Very experimental: few games run yet.",
+  "description": "Settings of Lichii, a Nintendo Switch 2 emulator derived from Eglantine and Eden, applied when a game starts. Very experimental: few games run yet.",
   "translations": {
     "fr": {
-      "description": "Les réglages d'Eglantine, un émulateur de la Nintendo Switch 2 dérivé d'Eden, appliqués au démarrage d'un jeu. Très expérimental : peu de jeux tournent pour l'instant."
+      "description": "Les réglages de Lichii, un émulateur de la Nintendo Switch 2 dérivé d'Eglantine et d'Eden, appliqués au démarrage d'un jeu. Très expérimental : peu de jeux tournent pour l'instant."
     }
   },
-  "system": "Eglantine",
+  "system": "Lichii",
   "requirements": [
     "prod.keys"
   ],
@@ -288,6 +288,27 @@
         "fr": {
           "label": "Entrée de sommets dynamique",
           "description": "Laisse aussi la disposition des sommets au pilote graphique."
+        }
+      }
+    },
+    "meshShaders": {
+      "type": "select",
+      "label": "Mesh shaders",
+      "description": "Switch 2 games draw their geometry with mesh shaders. The compute fallback, the default, has the emulator draw them itself: often as fast, and it spares the graphics driver. Native hands them to the graphics driver, which some drivers handle badly.",
+      "config": "Environment > EDEN_NX2_FORCE_MESH_FALLBACK",
+      "value": "1",
+      "options": {
+        "auto": "Native",
+        "1": "Compute fallback"
+      },
+      "translations": {
+        "fr": {
+          "label": "Mesh shaders",
+          "description": "Les jeux de la Switch 2 dessinent leur géométrie avec des mesh shaders. Avec le repli en calcul, le réglage par défaut, l'émulateur les dessine lui-même : souvent aussi vite, et le pilote graphique est ménagé. Natifs, le pilote graphique les exécute, et certains pilotes les gèrent mal.",
+          "options": {
+            "auto": "Natifs",
+            "1": "Repli en calcul"
+          }
         }
       }
     },

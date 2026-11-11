@@ -20,7 +20,92 @@
 ARG STREAMEX_BIN=streamex-bin
 FROM ${STREAMEX_BIN} AS skeleton
 
-FROM debian:trixie-slim
+# MESA VIENT DE trixie-backports (26.1.6 au 2026-11-10), comme pour la PS3.
+#
+# Le RADV 25.0.7 de trixie a fait planter RPCS3 au passage en combat de Final
+# Fantasy XIII (segfault DANS libvulkan_radeon.so, 2026-09-11 — le détail est
+# dans consoles/ps3/Dockerfile). Toutes les consoles streamex tournent sur le
+# même APU et le même pilote : elles s'alignent, plutôt que d'attendre leur
+# propre crash. Simulé image par image avant l'écriture : aucun paquet issu de
+# Mesa ne reste en 25.0.7.
+#
+# MESA D'ABORD, le reste ensuite (dans l'étape finale) : Weston et Xwayland
+# tirent Mesa en dépendance, et dans l'ordre inverse apt poserait la 25.0.7 pour
+# la remplacer aussitôt. libglx-mesa0 fait partie du lot : libgl1/libglx0 le
+# tirent, et venu de trixie il réclamerait une autre version exacte de
+# libgallium.
+#
+# UNE ÉTAPE À LUI, d'où partent l'étape « radv » et l'étape finale. L'étape
+# « radv » reconstruit libvulkan_radeon.so de la version que cette couche
+# installe, et l'étape finale repart de cette même couche : quoi que garde le
+# cache, les deux tiennent le même Mesa. Refaire cette couche refait les deux. Une
+# montée de Kyty, un paquet ajouté à l'étape finale ou un fichier de mesa/
+# touché ne la refont pas.
+#
+# LA PS5 S'EN ÉCARTE par libvulkan_radeon.so seulement : le même paquet, de la
+# même version, plus deux correctifs (l'étape « radv », juste après). Rien n'épingle
+# la version (décidé le 2026-11-10) : quand cette couche se refait sur des
+# backports qui ont avancé, ou bien le pilote se reconstruit sur la nouvelle
+# version, ou bien la construction s'arrête. Elle ne mêle jamais deux versions.
+FROM debian:trixie-slim AS mesa
+ENV DEBIAN_FRONTEND=noninteractive
+RUN echo "deb http://deb.debian.org/debian trixie-backports main" \
+        > /etc/apt/sources.list.d/backports.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends -t trixie-backports \
+        libgl1-mesa-dri mesa-vulkan-drivers libegl-mesa0 libgbm1 libglx-mesa0 mesa-va-drivers \
+    && rm -rf /var/lib/apt/lists/*
+
+# RADV CORRIGÉ : libvulkan_radeon.so reconstruit avec deux correctifs (chantier
+# 48, #654, décidé par le porteur le 2026-11-10 ; le second pour #644, décidé le
+# 2026-11-11).
+#
+# Ce que c'est : le pilote Vulkan d'AMD du paquet mesa-vulkan-drivers que
+# l'étape « mesa » installe, reconstruit de SON paquet source (même version,
+# correctifs de Debian compris), avec la configuration de debian/rules réduite
+# à RADV, plus, dans cet ordre :
+#   - ../mesa/radv-mesh-stale-drawid.patch, celui de Mesa (!45092) porté sur
+#     26.1 : un mesh shader sans SGPR de sommets ne garde plus ceux du shader
+#     précédent, qui faisaient émettre un paquet tronqué et bloquaient le GPU
+#     (« Illegal opcode »). La Switch 2 le prend aussi ;
+#   - mesa/radv-gang-preambles.patch, le nôtre : à chaque soumission « en gang »
+#     (un étage de tâche, que Kyty emploie pour les mesh shaders), RADV 26.1
+#     reconstruisait les préambules de la file ACE, même quand rien n'avait
+#     changé. vkQueueSubmit y coûtait 206-270 µs au lieu de 54-70 µs.
+# Le détail est dans l'en-tête de chacun. Ni l'outillage ni la source n'entrent
+# dans l'image : elle ne reçoit que la bibliothèque.
+#
+# Ce qui la garde (../mesa/build-radv.sh, la recette partagée avec la Switch 2) :
+#   - un témoin SANS correctif doit avoir les sections chargées (code, données,
+#     symboles) du pilote que l'étape « mesa » a installé. L'équivalence avec la
+#     construction de Debian se mesure donc à chaque construction ;
+#   - chaque correctif s'applique sans flou (--fuzz=0). Celui des préambules a un
+#     contexte qui couvre toute la fonction qu'il change : si Mesa y touche, il ne
+#     s'applique plus.
+# Si l'un ou l'autre manque, la construction s'arrête, avec ce qu'il faut faire.
+#
+# MESA 26.2 L'ARRÊTERA. Il est dans unstable le 2026-11-10, et aucun des deux
+# correctifs ne s'y applique : celui des mesh shaders y est déjà (26.2.5), et la
+# fonction des préambules y prend un argument de plus (le portage est préparé).
+# Tant qu'ils ne sont pas retirés ou portés, une construction qui refait l'étape
+# « mesa » sur des backports en 26.2 s'arrête partout : sur la dev, au kernel,
+# dans tools/publish.sh images, et pour la reconstruction d'une étiquette. Une
+# mise à jour de la chaîne de compilation de trixie (gcc-14, binutils, llvm-19…)
+# arrête de même le témoin, jusqu'au prochain envoi de mesa dans les backports.
+#
+# Ce qu'elle coûte, le temps de la construction : ~1,2 Gio de dépendances, ~6,3
+# Gio de mémoire au pic, deb.debian.org joignable, et ~1 min 30 (~3 min sans
+# BuildKit). Le coût est le même sur une machine sans GPU AMD, où RADV ne sert
+# pas. Dans l'image, +19 Mo : la bibliothèque du paquet reste dans la couche de
+# l'étape « mesa », et c'est là que le témoin la lit.
+#
+# Quand retirer chacun, et tout ce qui part avec lui : son en-tête.
+FROM mesa AS radv
+COPY src/microservices/runtimes/streamex/consoles/mesa/ /radv/
+COPY src/microservices/runtimes/streamex/consoles/ps5/mesa/ /radv/
+RUN bash /radv/build-radv.sh /radv/out /radv/radv-mesh-stale-drawid.patch /radv/radv-gang-preambles.patch
+
+FROM mesa
 
 # GARDÉE À L'ABRI DE `docker system prune -a`.
 #
@@ -40,35 +125,10 @@ FROM debian:trixie-slim
 # 2026-09-23 : `streamex-ps3` construite le même jour la portait, pas celle-ci).
 LABEL gameflex.prune=keep
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-# LA VERSION EST UN ARGUMENT, et le projet publie une archive PAR JOUR.
-#
-# Épingler une version datée plutôt que « latest » : un émulateur qui bouge
-# tous les jours ne doit pas changer sous une session en cours, et une
-# régression doit pouvoir se comparer à quelque chose. Pour monter : la
-# version ici ET dans consoles/emulators.sh, puis
-#   tools/streamex-emulators.sh build ps5
-ARG KYTY_RELEASE=KytyPS5-2026-11-04-91c5820
-
-# MESA VIENT DE trixie-backports (26.1.2), comme pour la PS3.
-#
-# Le RADV 25.0.7 de trixie a fait planter RPCS3 au passage en combat de Final
-# Fantasy XIII (segfault DANS libvulkan_radeon.so, 2026-09-11 — le détail est
-# dans consoles/ps3/Dockerfile). Toutes les consoles streamex tournent sur le
-# même APU et le même pilote : elles s'alignent, plutôt que d'attendre leur
-# propre crash. Simulé image par image avant l'écriture : aucun paquet issu de
-# Mesa ne reste en 25.0.7.
-#
-# MESA D'ABORD, le reste ensuite — Weston et Xwayland tirent Mesa en
-# dépendance, et dans l'ordre inverse apt poserait la 25.0.7 pour la remplacer
-# aussitôt. libglx-mesa0 fait partie du lot : libgl1/libglx0 le tirent, et
-# venu de trixie il réclamerait une autre version exacte de libgallium.
-RUN echo "deb http://deb.debian.org/debian trixie-backports main" \
-        > /etc/apt/sources.list.d/backports.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends -t trixie-backports \
-        libgl1-mesa-dri mesa-vulkan-drivers libegl-mesa0 libgbm1 libglx-mesa0 mesa-va-drivers \
+# Le reste, sur le Mesa de l'étape « mesa ». Sans -t trixie-backports : apt
+# garde les paquets de Mesa installés, que rien ici ne demande plus récents (la
+# vérification de la pose le contrôle).
+RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         openbox pulseaudio pulseaudio-utils dbus dbus-x11 \
         weston xwayland \
@@ -88,9 +148,45 @@ RUN echo "deb http://deb.debian.org/debian trixie-backports main" \
         ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
+# LE RADV DE L'ÉTAPE « radv », par-dessus celui du paquet. Seul Kyty le
+# charge : Weston rend en GL, Xwayland passe par glamor.
+#
+# Puis trois vérifications :
+#   - la version installée est celle qui a été construite. Les deux étapes
+#     partent de l'étape « mesa » ; seul l'apt ci-dessus pourrait les séparer, en
+#     montant Mesa ;
+#   - le fichier posé est le nôtre (son empreinte) ;
+#   - rien ne manque à ses liens.
+# La version, l'empreinte et les correctifs restent dans
+# /usr/share/doc/gameflex/radv/, et une image qui dérive de celle-ci les
+# revérifie après son propre apt (tools/kyty/bench/Dockerfile). `dpkg --verify`
+# signale le fichier remplacé : c'est voulu, le remplacement reste visible.
+COPY --from=radv /radv/out/libvulkan_radeon.so /usr/lib/x86_64-linux-gnu/libvulkan_radeon.so
+COPY --from=radv /radv/out/mesa-version /radv/out/libvulkan_radeon.so.sha256 /radv/out/*.patch /usr/share/doc/gameflex/radv/
+RUN installed=$(dpkg-query -W -f='${Version}' mesa-vulkan-drivers) \
+    && built=$(cat /usr/share/doc/gameflex/radv/mesa-version) \
+    && if [ "$installed" != "$built" ]; then \
+        echo "mesa-vulkan-drivers installé en $installed, RADV construit depuis $built : l'apt de l'étape finale a monté Mesa. Reconstruire sans cache" >&2; \
+        exit 1; \
+    fi \
+    && sha256sum --check --quiet /usr/share/doc/gameflex/radv/libvulkan_radeon.so.sha256 \
+    && if ldd -r /usr/lib/x86_64-linux-gnu/libvulkan_radeon.so 2>&1 | grep -E 'not found|undefined symbol'; then \
+        exit 1; \
+    fi
+
 # L'utilisateur système « pulse » est exigé par PulseAudio en mode --system
 RUN id pulse >/dev/null 2>&1 || useradd -r -d /var/run/pulse -s /usr/sbin/nologin pulse
 RUN groupadd -f pulse-access && usermod -aG pulse-access root && usermod -aG pulse-access pulse
+
+# LA VERSION EST UN ARGUMENT, et le projet publie une archive PAR JOUR.
+#
+# Épingler une version datée plutôt que « latest » : un émulateur qui bouge
+# tous les jours ne doit pas changer sous une session en cours, et une
+# régression doit pouvoir se comparer à quelque chose. Pour monter : la
+# version ici ET dans consoles/emulators.sh, puis
+#   tools/streamex-emulators.sh build ps5
+# Elle est déclarée ici, après les apt : une montée ne refait que la suite.
+ARG KYTY_RELEASE=KytyPS5-2026-11-04-91c5820
 
 # KytyPS5, la publication officielle, DÉBALLÉE AU LANCEMENT. L'archive porte
 # le binaire, son Qt et ses plugins : on la déballe telle quelle, sans rien

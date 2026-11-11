@@ -1,14 +1,14 @@
 {
   "name": "Default",
-  "description": "The values GameFlex recommends: Eglantine's own, and the resolution of the stream.",
+  "description": "The values GameFlex recommends: Lichii's own, and the resolution of the stream.",
   "translations": {
     "fr": {
       "name": "Par défaut",
-      "description": "Les valeurs que recommande GameFlex : celles d'Eglantine, et la résolution du flux."
+      "description": "Les valeurs que recommande GameFlex : celles de Lichii, et la résolution du flux."
     }
   },
   "override": false,
-  "system": "Eglantine",
+  "system": "Lichii",
   "values": {
     "resolution": "auto",
     "consoleMode": "1",
@@ -27,6 +27,7 @@
     "asyncPresentation": false,
     "dynamicState": "2",
     "vertexInputDynamicState": true,
+    "meshShaders": "1",
     "nativeExecution": "auto"
   }
 }

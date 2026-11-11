@@ -1,5 +1,5 @@
 {
-    "window_name": "eglantine",
+    "window_name": "lichii",
     "emulator_fps": {
         "accessible_name": "^Game: ([0-9.]+) FPS"
     },
@@ -18,8 +18,8 @@
         ]
     },
     "launch": {
-        "bin": "/opt/eglantine/usr/bin/eglantine",
-        "cwd": "/opt/eglantine",
+        "bin": "/opt/lichii/usr/bin/lichii",
+        "cwd": "/opt/lichii",
         "base_args": [
             "-f",
             "-g"
@@ -28,7 +28,7 @@
     },
     "stop": {
         "mode": "pkill",
-        "process_name": "eglantine"
+        "process_name": "lichii"
     },
     "gamepad": {
         "enabled": true,
@@ -40,7 +40,7 @@
         },
         {
             "name": "ini_reapply",
-            "file": "eden/qt-config.ini",
+            "file": "lichii/qt-config.ini",
             "section": "[Controls]",
             "strip_prefix": "player_",
             "content": [

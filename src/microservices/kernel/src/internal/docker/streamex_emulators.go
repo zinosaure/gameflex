@@ -48,8 +48,11 @@ var streamexEmulators = map[string][]streamexEmulator{
 		{core: "Eden (streamex)", params: "eden", image: "streamex-switch-eden", data: "/root/.local/share/eden"},
 		{core: "Citron (streamex)", params: "citron", image: "streamex-switch", data: "/root/.local/share/citron"},
 	},
-	// La Switch 2 (#644) : Eglantine, un fork d'Eden qui en garde les dossiers.
-	"switch2": {{core: "Eglantine (streamex)", params: "eglantine", image: "streamex-switch2", data: "/root/.local/share/eden"}},
+	// La Switch 2 (#644) : Lichii, un fork d'Eglantine (fork d'Eden), qui range
+	// ses données sous `lichii/`. Un ~/.local/share/eden lui ferait ouvrir son
+	// assistant d'import et figerait la partie : les sauvegardes se montent sur
+	// son dossier à lui.
+	"switch2": {{core: "Lichii (streamex)", params: "lichii", image: "streamex-switch2", data: "/root/.local/share/lichii"}},
 	"ps3":     {{core: "RPCS3 (streamex)", params: "rpcs3", image: "streamex-ps3"}},
 	"xbox":    {{core: "xemu (streamex)", params: "xemu", image: "streamex-xbox"}},
 	"wiiu":    {{core: "Cemu (streamex)", params: "cemu", image: "streamex-wiiu"}},

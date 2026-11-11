@@ -96,7 +96,7 @@ COMPOSE_PROFILES=ps3,switch
 docker compose pull
 ```
 
-The names are `ps3`, `ps4`, `ps5`, `switch`, `wiiu`, `xbox`, `xbox360`, and `ports` for the
+The names are `ps3`, `ps4`, `ps5`, `switch`, `switch2`, `wiiu`, `xbox`, `xbox360`, and `ports` for the
 PC Ports ([Consoles](consoles.md#pc-ports)). The images hold no
 emulator: once signed in, download each console's emulator from **Settings › Emulators** (see
 [Organize your library](library.md#3-get-the-emulators)). Retro consoles need no extra image; their cores also come from **Settings › Emulators**.
@@ -149,7 +149,7 @@ All settings live in `.env`.
 | `GAMEFLEX_GPU` | no | the first one | The graphics card games run on, when the machine has several (a chip in the processor and a card added over OCuLink, for example): its PCI address, such as `0000:03:00.0`. `ls /dev/dri/by-path` lists them, and the kernel log says at start-up which one games use. |
 | `GAMEFLEX_MIRROR_URL` | no | | A mirror for emulators and BIOS files. When set, the settings screens show a link to it. It must be a full `http://` or `https://` address, or GameFlex does not start. |
 | `GAMEFLEX_STAGING` | no | | `1` marks a test server: GameFlex writes *staging* next to its name, and **Settings › Download the GameFlex app** gives the APK this server builds (in `/downloads`) instead of the GitHub Release. Leave empty for a normal server. |
-| `COMPOSE_PROFILES` | no | none | The recent consoles whose images you want, separated by commas: `ps3`, `ps4`, `ps5`, `switch`, `wiiu`, `xbox`, `xbox360`, `ports`. Add `wireguard` for the optional VPN (see [Play away from home](remote-access.md)). |
+| `COMPOSE_PROFILES` | no | none | The recent consoles whose images you want, separated by commas: `ps3`, `ps4`, `ps5`, `switch`, `switch2`, `wiiu`, `xbox`, `xbox360`, `ports`. Add `wireguard` for the optional VPN (see [Play away from home](remote-access.md)). |
 | `GAMEFLEX_NAME` | no | `gameflex` | The name of the containers (`gameflex-kernel`…). Change it only to run a second GameFlex on the same computer, which then also needs other ports: `GAMEFLEX_PORT`, and the fixed ports in `docker-compose.yml`. |
 
 ### Volumes
@@ -236,7 +236,7 @@ services:
             - GAMEFLEX_REMOTEPLAY_CONTROL_URL=http://${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}:10205
             - GAMEFLEX_PORT_RANGE=9001-9100
             - GAMEFLEX_MAX_PLAYERS=${GAMEFLEX_MAX_PLAYERS:-4}
-            - GAMEFLEX_CONSOLE_LIMITS=${GAMEFLEX_CONSOLE_LIMITS:-switch:1,ps3:1,xbox:1,ps4:1,ps5:1,wiiu:1,xbox360:1}
+            - GAMEFLEX_CONSOLE_LIMITS=${GAMEFLEX_CONSOLE_LIMITS:-switch:1,switch2:1,ps3:1,xbox:1,ps4:1,ps5:1,wiiu:1,xbox360:1}
             - GAMEFLEX_MIRROR_URL=${GAMEFLEX_MIRROR_URL:-}
             - GAMEFLEX_GPU=${GAMEFLEX_GPU:-}
             - GAMEFLEX_STAGING=${GAMEFLEX_STAGING:-}
@@ -247,6 +247,7 @@ services:
             - GAMEFLEX_PS5_IMAGE=zinosaure/gameflex-ps5:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_SWITCH_IMAGE=zinosaure/gameflex-switch:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_SWITCH_EDEN_IMAGE=zinosaure/gameflex-switch-eden:${GAMEFLEX_VERSION:-latest}
+            - GAMEFLEX_SWITCH2_IMAGE=zinosaure/gameflex-switch2:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_WIIU_IMAGE=zinosaure/gameflex-wiiu:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_XBOX_IMAGE=zinosaure/gameflex-xbox:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_XBOX360_IMAGE=zinosaure/gameflex-xbox360:${GAMEFLEX_VERSION:-latest}
@@ -341,6 +342,11 @@ services:
     gameflex-switch-eden:
         image: zinosaure/gameflex-switch-eden:${GAMEFLEX_VERSION:-latest}
         profiles: [ "switch" ]
+        entrypoint: [ "true" ]
+        restart: "no"
+    gameflex-switch2:
+        image: zinosaure/gameflex-switch2:${GAMEFLEX_VERSION:-latest}
+        profiles: [ "switch2" ]
         entrypoint: [ "true" ]
         restart: "no"
     gameflex-wiiu:
@@ -463,7 +469,7 @@ GAMEFLEX_ROOT_USERNAME=root
 GAMEFLEX_MAX_PLAYERS=4
 
 # How many games of each recent console can run at the same time.
-GAMEFLEX_CONSOLE_LIMITS=switch:1,ps3:1,xbox:1,ps4:1,ps5:1,wiiu:1,xbox360:1
+GAMEFLEX_CONSOLE_LIMITS=switch:1,switch2:1,ps3:1,xbox:1,ps4:1,ps5:1,wiiu:1,xbox360:1
 
 # A mirror where you download emulators and BIOS files yourself. When set,
 # GameFlex shows a link to it in its settings.
@@ -480,7 +486,7 @@ GAMEFLEX_GPU=
 GAMEFLEX_STAGING=
 
 # The recent consoles whose images you want, separated by commas: ps3, ps4,
-# ps5, switch, wiiu, xbox, xbox360, and ports for the PC Ports. Add wireguard for
+# ps5, switch, switch2, wiiu, xbox, xbox360, and ports for the PC Ports. Add wireguard for
 # the optional VPN that lets you play away from home (docs/remote-access.md).
 # Docker Compose reads this setting itself.
 COMPOSE_PROFILES=

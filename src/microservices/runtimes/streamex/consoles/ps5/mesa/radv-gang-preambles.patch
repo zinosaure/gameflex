@@ -1,0 +1,172 @@
+radv-gang-preambles.patch : RADV (Mesa 26.1) ne reconstruit plus les préambules
+du suiveur ACE à chaque soumission en gang. Chantier 48 (#654), pièce B.
+
+D'OÙ IL VIENT. Écrit pour GameFlex le 2026-11-10, contre Mesa 26.1.6
+(src/amd/vulkan/radv_queue.c). Il n'est pas proposé à Mesa pour l'instant :
+c'est la décision du porteur. ../Dockerfile (étape « radv ») l'applique au
+paquet source de Debian, via ../../mesa/build-radv.sh, après
+../../mesa/radv-mesh-stale-drawid.patch (un autre fichier, radv_cmd_buffer.c).
+
+VALIDÉ SUR 26.1.6-1~bpo13+1 (rapport du chantier 48, P4, §11). C'est le
+changement qui a été mesuré. Seul le contexte du troisième bloc est plus large
+(voir plus bas), et le radv_queue.c corrigé est le même à l'octet.
+
+POURQUOI. À CHAQUE vkQueueSubmit en gang, radv_update_gang_preambles
+reconstruit les préambules de la file ACE, le « suiveur » de la soumission,
+même quand rien n'a changé : trois flux de commandes de 80 Kio sont créés, et
+les trois précédents, identiques, sont détruits. Kyty soumet en gang dès
+qu'un dessin passe par un étage de tâche (mesh shaders). Mesuré en A/B entre
+deux constructions qui ne différaient que par ce correctif : vkQueueSubmit
+coûte 54-70 µs au lieu de 206-270 µs dans Tekken 8, Clair Obscur, Astro Bot
+(le jardin) et Wukong. Rien ne bouge dans FF7 Remake ni dans KH3.
+
+CE QU'IL CHANGE. radv_queue_preambles_match() reprend la comparaison que
+radv_update_preambles faisait déjà pour le chef, sans changer son
+comportement. Le suiveur ne se reconstruit plus que si ses besoins diffèrent,
+ou si les anneaux de tâche du chef ont changé. Ce changement est relevé AVANT
+la recopie de ces anneaux, qui sinon le cacherait. Le premier appel construit
+toujours.
+
+SON CONTEXTE SERT DE GARDE. Le troisième bloc porte toute la fonction
+radv_update_gang_preambles, de sa signature à son accolade. Le correctif n'est
+juste que si task_rings_changed surveille tout ce que cette fonction recopie du
+chef. Si Mesa change quoi que ce soit dans la fonction, le correctif ne
+s'applique plus (--fuzz=0) et la construction s'arrête. Une combinaison que
+personne n'a relue ne part donc pas. Si les backports avancent sans toucher à
+ces lignes, le pilote se reconstruit sur la nouvelle version, et ce code-ci
+reste le même.
+
+QUAND IL NE S'APPLIQUE PLUS, lire radv_update_gang_preambles dans la nouvelle
+version :
+  - si le suiveur ne s'y reconstruit plus quand rien n'a changé, Mesa a corrigé
+    le défaut, sous quelque forme que ce soit : on retire le RADV corrigé (la
+    liste suit) ;
+  - sinon, on porte le correctif à cette version, puis on l'éprouve sur le GPU
+    (un jeu en gang, FF7 Remake, KH3) avant que l'image ne serve aux parties.
+Il ne faut pas attendre « Reversed (or previously applied) patch detected ». Ce
+message ne viendrait que si Mesa reprenait ce diff à l'identique, et il ne lui
+est pas proposé. Mesa 26.2 (dans unstable le 2026-11-10) a toujours le défaut,
+et la construction s'y arrêtera : radv_update_preamble_cs et
+radv_update_gang_preambles y prennent un argument « secure ». Le portage est
+préparé (rapport du chantier 48, P4) : c'est le même changement, avec cet
+argument en plus.
+
+LE RETIRER, tout ensemble, sans garde-fou. S'il reste un autre correctif dans
+l'appel de build-radv.sh (../../mesa/radv-mesh-stale-drawid.patch), seul le nom
+de celui-ci en part, avec ce dossier, mesa/, et la ligne qui le copie dans
+l'étape « radv » ; sinon, tout ce qui suit :
+  - ../Dockerfile : l'étape « radv » ; l'étape « mesa », dont le RUN revient en
+    tête de l'apt de l'étape finale (qui repart de debian:trixie-slim) ; les
+    deux COPY --from=radv et le RUN qui vérifie la version, l'empreinte et les
+    liens ; dans les commentaires, « UNE ÉTAPE À LUI », « LA PS5 S'EN ÉCARTE »,
+    « RADV CORRIGÉ », « LE RADV DE L'ÉTAPE « radv » » et la note « Le reste, sur
+    le Mesa de l'étape « mesa » » ;
+  - ce dossier, mesa/ ;
+  - tools/kyty/bench/Dockerfile : la vérification qui suit l'apt ;
+  - ../xbox360/Dockerfile : la parenthèse sur la PS5 ;
+  - THIRD-PARTY-NOTICES.md : la ligne de gameflex-ps5 et la phrase sur dpkg ;
+  - CHANGELOG.md : une ligne « Changed » ; docs/TROUBLESHOOTING.md : annoter
+    les lignes du RADV corrigé ; tools/kyty/README.md : la ligne du banc ;
+  - les images de banc : reconstruire celle de tools/kyty/bench.sh, et refaire
+    sans cette couche celles qui l'ont reçue par-dessus.
+
+patch(1) ignore ce texte, qui précède le premier en-tête du diff.
+
+--- a/src/amd/vulkan/radv_queue.c
++++ b/src/amd/vulkan/radv_queue.c
+@@ -1208,6 +1208,22 @@
+    return vk_error(device, result);
+ }
+ 
++/* Whether the queue's preambles were already built for these needs. */
++static bool
++radv_queue_preambles_match(const struct radv_queue_state *queue, const struct radv_queue_ring_info *needs)
++{
++   return queue->initial_full_flush_preamble_cs && queue->ring_info.scratch_size_per_wave == needs->scratch_size_per_wave &&
++          queue->ring_info.scratch_waves == needs->scratch_waves &&
++          queue->ring_info.compute_scratch_size_per_wave == needs->compute_scratch_size_per_wave &&
++          queue->ring_info.compute_scratch_waves == needs->compute_scratch_waves &&
++          queue->ring_info.esgs_ring_size == needs->esgs_ring_size &&
++          queue->ring_info.gsvs_ring_size == needs->gsvs_ring_size && queue->ring_info.tess_rings == needs->tess_rings &&
++          queue->ring_info.task_rings == needs->task_rings &&
++          queue->ring_info.mesh_scratch_ring == needs->mesh_scratch_ring &&
++          queue->ring_info.ge_rings == needs->ge_rings && queue->ring_info.gds == needs->gds &&
++          queue->ring_info.gds_oa == needs->gds_oa && queue->ring_info.sample_positions == needs->sample_positions;
++}
++
+ static VkResult
+ radv_update_preambles(struct radv_queue_state *queue, struct radv_device *device,
+                       struct vk_command_buffer *const *cmd_buffers, uint32_t cmd_buffer_count, bool *use_perf_counters,
+@@ -1275,16 +1291,7 @@
+     * Note that it's not possible for any of the needed values to be less
+     * than what the queue already had, because we only ever increase the allocated size.
+     */
+-   if (queue->initial_full_flush_preamble_cs && queue->ring_info.scratch_size_per_wave == needs.scratch_size_per_wave &&
+-       queue->ring_info.scratch_waves == needs.scratch_waves &&
+-       queue->ring_info.compute_scratch_size_per_wave == needs.compute_scratch_size_per_wave &&
+-       queue->ring_info.compute_scratch_waves == needs.compute_scratch_waves &&
+-       queue->ring_info.esgs_ring_size == needs.esgs_ring_size &&
+-       queue->ring_info.gsvs_ring_size == needs.gsvs_ring_size && queue->ring_info.tess_rings == needs.tess_rings &&
+-       queue->ring_info.task_rings == needs.task_rings &&
+-       queue->ring_info.mesh_scratch_ring == needs.mesh_scratch_ring && queue->ring_info.ge_rings == needs.ge_rings &&
+-       queue->ring_info.gds == needs.gds && queue->ring_info.gds_oa == needs.gds_oa &&
+-       queue->ring_info.sample_positions == needs.sample_positions)
++   if (radv_queue_preambles_match(queue, &needs))
+       return VK_SUCCESS;
+ 
+    return radv_update_preamble_cs(queue, device, &needs);
+@@ -1535,39 +1542,51 @@
+ static VkResult
+ radv_update_gang_preambles(struct radv_queue *queue)
+ {
+    struct radv_device *device = radv_queue_device(queue);
+ 
+    if (!radv_queue_init_follower_state(queue))
+       return VK_ERROR_OUT_OF_HOST_MEMORY;
+ 
+    VkResult r = VK_SUCCESS;
+ 
++   /* Whether the follower's preambles predate the leader's task rings: compared before the copy
++    * below, which would hide the change from radv_queue_preambles_match.
++    */
++   const bool task_rings_changed = queue->follower_state->ring_info.task_rings != queue->state.ring_info.task_rings ||
++                                   queue->follower_state->task_rings_bo != queue->state.task_rings_bo;
++
+    /* Copy task rings state.
+     * Task shaders that are submitted on the ACE queue need to share
+     * their ring buffers with the mesh shaders on the GFX queue.
+     */
+    queue->follower_state->ring_info.task_rings = queue->state.ring_info.task_rings;
+    queue->follower_state->task_rings_bo = queue->state.task_rings_bo;
+ 
+    /* Copy some needed states from the parent queue state.
+     * These can only increase so it's okay to copy them as-is without checking.
+     * Note, task shaders use the scratch size from their graphics pipeline.
+     */
+    struct radv_queue_ring_info needs = queue->follower_state->ring_info;
+    needs.compute_scratch_size_per_wave = queue->state.ring_info.scratch_size_per_wave;
+    needs.compute_scratch_waves = queue->state.ring_info.scratch_waves;
+    needs.task_rings = queue->state.ring_info.task_rings;
+ 
+-   r = radv_update_preamble_cs(queue->follower_state, device, &needs);
+-   if (r != VK_SUCCESS)
+-      return r;
++   /* Like the leader's: rebuild only when something changed. Otherwise every gang submission
++    * creates three new preamble command streams (and their BOs) for the follower and destroys
++    * the previous ones, identical to the new ones.
++    */
++   if (task_rings_changed || !radv_queue_preambles_match(queue->follower_state, &needs)) {
++      r = radv_update_preamble_cs(queue->follower_state, device, &needs);
++      if (r != VK_SUCCESS)
++         return r;
++   }
+ 
+    r = radv_create_gang_wait_preambles_postambles(queue);
+    if (r != VK_SUCCESS)
+       return r;
+ 
+    return VK_SUCCESS;
+ }
+ 
+ static struct radv_cmd_stream *
+ radv_create_perf_counter_lock_cs(struct radv_device *device, unsigned pass, bool unlock)

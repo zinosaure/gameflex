@@ -43,7 +43,7 @@ behalf.
 2. **Ask the person** for:
    - the folder for their library (games, BIOS, saves), as a full path;
    - an administrator password, or their agreement to generate one;
-   - the recent consoles they want, among `ps3 ps4 ps5 switch wiiu xbox xbox360 ports` (none is fine).
+   - the recent consoles they want, among `ps3 ps4 ps5 switch switch2 wiiu xbox xbox360 ports` (none is fine).
 
 3. **Find the machine's address** on the local network:
 

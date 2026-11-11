@@ -78,6 +78,24 @@ export function FloatingPanel({ t, session, input, title = null, isWatching, swi
             switchesStore.setValues(values);
         }
     };
+    // LES DEUX AFFICHAGES S'EXCLUENT — un choix par défaut, en attendant la
+    // réponse du porteur (questions du 2026-11-10). En UNE écriture : le relevé
+    // reste ouvert pendant la bascule (open = panneau || vue), pas de tirets le
+    // temps de se réabonner. SkeletonSwitch rend toutes les valeurs, une seule a
+    // changé (Form.jsx, SkeletonSwitch) : on la retrouve en comparant au magasin.
+    const performanceForm = {
+        values: switches,
+        setValues: (values) => {
+            const panelTurnedOn = values.isResourceMonitoringVisible && !switches.isResourceMonitoringVisible;
+            const compactTurnedOn = values.isCompactStatsVisible && !switches.isCompactStatsVisible;
+
+            contextForm.setValues({
+                ...values,
+                ...(panelTurnedOn ? { isCompactStatsVisible: false } : {}),
+                ...(compactTurnedOn ? { isResourceMonitoringVisible: false } : {}),
+            });
+        },
+    };
     // The handover request rides the façade WS (`requestslot`); the kernel
     // routes the prompt to the holder and the result back. `freeSlots` and
     // `swapDevice` lived here until v1 removed join/takeover from this panel —
@@ -782,8 +800,24 @@ export function FloatingPanel({ t, session, input, title = null, isWatching, swi
                             reverse
                             variant="md"
                             name="isResourceMonitoringVisible"
-                            context={contextForm}
+                            context={performanceForm}
                             label={t("streaming.settings.performance.label")}
+                            helpText={t("streaming.settings.performance.labelHelp")}
+                            onText={t("streaming.settings.switch.visible")}
+                            offText={t("streaming.settings.switch.hidden")}
+                        />
+                        {/* LA VUE DISCRÈTE (le porteur, 2026-11-10) : les
+                            chiffres principaux, en petit — voir
+                            StreamingStatsStrip. Elle et le panneau s'excluent
+                            par défaut (performanceForm) : les deux aides le
+                            disent. */}
+                        <Form.SkeletonSwitch
+                            reverse
+                            variant="md"
+                            name="isCompactStatsVisible"
+                            context={performanceForm}
+                            label={t("streaming.settings.performance.compact")}
+                            helpText={t("streaming.settings.performance.compactHelp")}
                             onText={t("streaming.settings.switch.visible")}
                             offText={t("streaming.settings.switch.hidden")}
                         />
@@ -865,46 +899,131 @@ function StatsSection({ title, first = false }) {
     );
 }
 
-export function StreamingStatsPanel({ stats, session, t }) {
-    // != null is not enough for these: NaN and undefined both pass it, and
-    // the panel then printed "NaN" and "undefinedxundefined" (React even warns
-    // about the NaN child). A stat is shown when it is a real finite number,
-    // and every other case is the same em dash the rest of the rows use.
-    const num = (value) => (typeof value === "number" && Number.isFinite(value) ? value : null);
-    const rate = (kbps) => (num(kbps) != null ? `${Math.round(kbps)} kbps` : "—");
-    // Mo en dessous du gigaoctet, Go au-dessus : « 4341 Mo » se relit deux
-    // fois, « 4,2 Go » se lit une.
-    const bytes = (value) => {
-        const v = num(value);
-        if (v == null) return null;
+// LES FORMATS DES CHIFFRES, UNE SEULE FOIS POUR LE PANNEAU ET POUR LA VUE
+// DISCRÈTE, comme le veut la règle d'homogénéité. Ils vivaient dans
+// StreamingStatsPanel ; la vue les aurait recopiés, et deux copies d'un même
+// écart finissent par ne plus s'écrire pareil. Les deux composants vivent dans
+// ce fichier : rien n'est exporté.
 
-        return v >= 1024 ** 3 ? `${(v / 1024 ** 3).toFixed(1)} Go` : `${Math.round(v / 1024 ** 2)} Mo`;
-    };
-    // L'ÉCART DEPUIS LE DÉBUT DE LA PARTIE, entre parenthèses (le porteur,
-    // 2026-10-28 : « commencé à 20°, 34° vingt minutes plus tard : (+14°) »).
-    // Le départ est la première mesure de la partie, gardée par le serveur
-    // (sessionstatus.Baselines) : la même pour tous, et un rechargement ne la
-    // remet pas à zéro. Rien sans départ connu.
+// != null is not enough for these: NaN and undefined both pass it, and
+// the panel then printed "NaN" and "undefinedxundefined" (React even warns
+// about the NaN child). A stat is shown when it is a real finite number,
+// and every other case is the same em dash the rest of the rows use.
+function finiteNumber(value) {
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function formatRate(kbps) {
+    return finiteNumber(kbps) != null ? `${Math.round(kbps)} kbps` : "—";
+}
+
+function formatFrameRate(fps) {
+    return finiteNumber(fps) != null ? Math.round(fps) : "—";
+}
+
+function formatLatency(milliseconds) {
+    return finiteNumber(milliseconds) != null ? `${Math.round(milliseconds)} ms` : "—";
+}
+
+// La taille de l'image que le navigateur reçoit (« Résolution gateway »).
+function formatStreamResolution(resolution) {
+    return finiteNumber(resolution?.width) != null && finiteNumber(resolution?.height) != null
+        ? `${resolution.width}x${resolution.height}`
+        : "—";
+}
+
+// Mo en dessous du gigaoctet, Go au-dessus : « 4341 Mo » se relit deux
+// fois, « 4,2 Go » se lit une.
+function formatBytes(value) {
+    const bytes = finiteNumber(value);
+
+    if (bytes == null) {
+        return null;
+    }
+
+    return bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} Go` : `${Math.round(bytes / 1024 ** 2)} Mo`;
+}
+
+// L'ÉCART DEPUIS LE DÉBUT DE LA PARTIE, entre parenthèses (le porteur,
+// 2026-10-28 : « commencé à 20°, 34° vingt minutes plus tard : (+14°) »).
+// Le départ est la première mesure de la partie, gardée par le serveur
+// (sessionstatus.Baselines) : la même pour tous, et un rechargement ne la
+// remet pas à zéro. Rien sans départ connu.
+//
+// Celui-ci compte des octets, dans les unités de formatBytes ; `delta`, dans
+// le panneau, compte les autres mesures. Le signe suit le chiffre AFFICHÉ,
+// comme dans `delta` : « ±0 Mo » pour un écart qui s'arrondit à zéro, jamais
+// « +0 Mo » ni « −0 Mo ».
+function formatBytesDelta(stats, field) {
+    const now = finiteNumber(stats?.[field]);
+    const then = finiteNumber(stats?.start?.[field]);
+    const formattedDifference = formatBytes(Math.abs(now - then));
+
+    if (now == null || then == null || then === 0) {
+        return "";
+    }
+
+    return ` (${formattedDifference === formatBytes(0) ? "±" : now < then ? "−" : "+"}${formattedDifference})`;
+}
+
+// « 4.5 Go (+200 Mo) / 8.0 Go » : une mémoire, son écart depuis le début de la
+// partie, puis son plafond quand il y en a un. C'est l'ordre de la demande (le
+// porteur, 2026-11-10) : l'écart suit le chiffre dont il parle. L'ordre et le
+// « / » s'écrivent ici seulement, pour le panneau comme pour la vue discrète.
+//
+// En deux morceaux, la valeur et sa suite : la vue discrète écrit la suite plus
+// petit. Rien sans valeur.
+function memoryUsageParts(stats, usedField, totalField = null) {
+    const used = formatBytes(stats?.[usedField]);
+    const total = totalField ? formatBytes(stats?.[totalField]) : null;
+
+    if (used == null) {
+        return null;
+    }
+
+    return { used, suffix: `${formatBytesDelta(stats, usedField)}${total ? ` / ${total}` : ""}` };
+}
+
+// « 960x540 (−50 %) » : la scène que l'émulateur fait calculer au jeu, et
+// sa réduction en hauteur par rapport à l'image que le jeu rend (le
+// porteur, 2026-11-07). La scène seule quand l'image du jeu manque.
+//
+// En deux morceaux, la scène et sa réduction : la vue discrète écrit la
+// réduction plus petit. Rien sans scène.
+function emulatorResolutionParts(stats) {
+    const scene = stats?.emulatorResolution;
+    const sceneHeight = Number(String(scene || "").split("x")[1]);
+    const gameHeight = Number(String(stats?.gameResolution || "").split("x")[1]);
+    const percent = Math.round((sceneHeight / gameHeight - 1) * 100);
+
+    if (!scene) {
+        return null;
+    }
+
+    if (!(sceneHeight > 0) || !(gameHeight > 0)) {
+        return { scene, reduction: "" };
+    }
+
+    return { scene, reduction: ` (${percent > 0 ? "+" : percent < 0 ? "−" : ""}${Math.abs(percent)} %)` };
+}
+
+export function StreamingStatsPanel({ stats, session, t }) {
+    // L'écart des mesures qui ne sont pas des octets (voir formatBytesDelta,
+    // le même pour la mémoire), mis en forme par `format`.
     //
     // `from` — le relevé dont on parle : celui de la partie, ou celui du
     // téléphone qu'on tient (`stats.device`), chacun avec son propre départ.
-    const start = stats?.start || {};
     const delta = (field, format, from = stats) => {
-        const now = num(from?.[field]);
-        const then = num(from?.start?.[field]);
-        if (now == null || then == null) return "";
+        const now = finiteNumber(from?.[field]);
+        const then = finiteNumber(from?.start?.[field]);
         const difference = Math.round(now - then);
         const sign = difference > 0 ? "+" : difference < 0 ? "−" : "±";
 
-        return ` (${sign}${format(Math.abs(difference))})`;
-    };
-    const bytesDelta = (field) => {
-        const now = num(stats?.[field]);
-        const then = num(start[field]);
-        if (now == null || then == null || then === 0) return "";
-        const difference = now - then;
+        if (now == null || then == null) {
+            return "";
+        }
 
-        return ` (${difference < 0 ? "−" : "+"}${bytes(Math.abs(difference))})`;
+        return ` (${sign}${format(Math.abs(difference))})`;
     };
     const uptime = useElapsedSince(stats?.startedAt);
     // LA CHALEUR ET LA BATTERIE, DANS L'APPLICATION SEULEMENT (le porteur,
@@ -925,21 +1044,10 @@ export function StreamingStatsPanel({ stats, session, t }) {
     const maxSlots = session?.maxPlayers
         || ((session?.playerCount ?? 0) + (session?.openSlots ?? 0));
     const padSlot = session?.me?.padSlot;
-
-    // « 960x540 (−50 %) » : la scène que l'émulateur fait calculer au jeu, et
-    // sa réduction en hauteur par rapport à l'image que le jeu rend (le
-    // porteur, 2026-11-07). La scène seule quand l'image du jeu manque.
-    const emulatorResolution = () => {
-        const scene = stats?.emulatorResolution;
-        if (!scene) return null;
-        const sceneHeight = Number(scene.split("x")[1]);
-        const gameHeight = Number(String(stats?.gameResolution || "").split("x")[1]);
-        if (!(sceneHeight > 0) || !(gameHeight > 0)) return scene;
-        const percent = Math.round((sceneHeight / gameHeight - 1) * 100);
-        const sign = percent > 0 ? "+" : percent < 0 ? "−" : "";
-
-        return `${scene} (${sign}${Math.abs(percent)} %)`;
-    };
+    const emulatorResolution = emulatorResolutionParts(stats);
+    const emulatorMemory = memoryUsageParts(stats, "rssBytes");
+    const containerMemory = memoryUsageParts(stats, "containerRssBytes", "containerLimitBytes");
+    const videoMemory = memoryUsageParts(stats, "vramUsedBytes", "vramTotalBytes");
 
     return (
         // EN COLONNES SUR TOUTE LA LARGEUR (le porteur, 2026-10-28) : une
@@ -966,7 +1074,7 @@ export function StreamingStatsPanel({ stats, session, t }) {
                     <div className="d-flex justify-content-between gap-3">
                         <span className="text-white text-opacity-75">{t("streaming.page.stats.phoneTemperature")}</span>
                         <span>
-                            {num(stats?.device?.temperatureCelsius) != null
+                            {finiteNumber(stats?.device?.temperatureCelsius) != null
                                 ? `${Math.round(stats.device.temperatureCelsius)} °C${delta("temperatureCelsius", (v) => `${v} °C`, stats.device)}`
                                 : "—"}
                         </span>
@@ -974,7 +1082,7 @@ export function StreamingStatsPanel({ stats, session, t }) {
                     <div className="d-flex justify-content-between gap-3">
                         <span className="text-white text-opacity-75">{t("streaming.page.stats.phoneBattery")}</span>
                         <span>
-                            {num(stats?.device?.batteryPercent) != null
+                            {finiteNumber(stats?.device?.batteryPercent) != null
                                 ? `${Math.round(stats.device.batteryPercent)} %${delta("batteryPercent", (v) => `${v} %`, stats.device)}`
                                 : "—"}
                         </span>
@@ -1002,15 +1110,13 @@ export function StreamingStatsPanel({ stats, session, t }) {
                     {t("streaming.page.stats.resolution")}
                 </span>
                 <span>
-                    {num(stats?.resolution?.width) != null && num(stats?.resolution?.height) != null
-                        ? `${stats.resolution.width}x${stats.resolution.height}`
-                        : "—"}
+                    {formatStreamResolution(stats?.resolution)}
                 </span>
             </div>
             <div className="d-flex justify-content-between gap-3">
                 <span className="text-white text-opacity-75">{t("streaming.page.stats.fps")}</span>
                 <span>
-                    {num(stats?.fps) != null ? Math.round(stats.fps) : "—"}
+                    {formatFrameRate(stats?.fps)}
                 </span>
             </div>
             <div className="d-flex justify-content-between gap-3">
@@ -1018,7 +1124,7 @@ export function StreamingStatsPanel({ stats, session, t }) {
                     {t("streaming.page.stats.downloadRate")}
                 </span>
                 <span>
-                    {rate(stats?.downloadKbps)}
+                    {formatRate(stats?.downloadKbps)}
                 </span>
             </div>
             <div className="d-flex justify-content-between gap-3">
@@ -1026,19 +1132,19 @@ export function StreamingStatsPanel({ stats, session, t }) {
                     {t("streaming.page.stats.uploadRate")}
                 </span>
                 <span>
-                    {rate(stats?.uploadKbps)}
+                    {formatRate(stats?.uploadKbps)}
                 </span>
             </div>
             <div className="d-flex justify-content-between gap-3">
                 <span className="text-white text-opacity-75">{t("streaming.page.stats.bitrate")}</span>
                 <span>
-                    {rate(stats?.videoBitrateKbps)}
+                    {formatRate(stats?.videoBitrateKbps)}
                 </span>
             </div>
             <div className="d-flex justify-content-between gap-3">
                 <span className="text-white text-opacity-75">{t("streaming.page.stats.latency")}</span>
                 <span>
-                    {num(stats?.latencyMs) != null ? `${Math.round(stats.latencyMs)} ms` : "—"}
+                    {formatLatency(stats?.latencyMs)}
                 </span>
             </div>
 
@@ -1062,25 +1168,25 @@ export function StreamingStatsPanel({ stats, session, t }) {
             </div>
             <div className="d-flex justify-content-between gap-3">
                 <span className="text-white text-opacity-75">{t("streaming.page.stats.emulatorResolution")}</span>
-                <span>{emulatorResolution() || "—"}</span>
+                <span>{emulatorResolution ? emulatorResolution.scene + emulatorResolution.reduction : "—"}</span>
             </div>
             <div className="d-flex justify-content-between gap-3">
                 <span className="text-white text-opacity-75">{t("streaming.page.stats.emulationFps")}</span>
                 <span>
-                    {num(stats?.emulationFps) != null ? `${Math.round(stats.emulationFps)}` : "—"}
+                    {formatFrameRate(stats?.emulationFps)}
                 </span>
             </div>
             <div className="d-flex justify-content-between gap-3">
                 <span className="text-white text-opacity-75">{t("streaming.page.stats.cpuEmulator")}</span>
                 <span>
-                    {num(stats?.cpuPercent) != null
+                    {finiteNumber(stats?.cpuPercent) != null
                         ? `${Math.round(stats.cpuPercent)} %${delta("cpuPercent", (v) => `${v} %`)}`
                         : "—"}
                 </span>
             </div>
             <div className="d-flex justify-content-between gap-3">
                 <span className="text-white text-opacity-75">{t("streaming.page.stats.ram")}</span>
-                <span>{bytes(stats?.rssBytes) != null ? `${bytes(stats.rssBytes)}${bytesDelta("rssBytes")}` : "—"}</span>
+                <span>{emulatorMemory ? emulatorMemory.used + emulatorMemory.suffix : "—"}</span>
             </div>
             {/* Le conteneur ENTIER, tel que Docker le compte : l'émulateur
                 plus l'encodeur, le serveur X, l'audio. Avec son plafond quand
@@ -1089,9 +1195,7 @@ export function StreamingStatsPanel({ stats, session, t }) {
             <div className="d-flex justify-content-between gap-3">
                 <span className="text-white text-opacity-75">{t("streaming.page.stats.containerRam")}</span>
                 <span>
-                    {bytes(stats?.containerRssBytes) != null
-                        ? `${bytes(stats.containerRssBytes)}${bytes(stats?.containerLimitBytes) ? ` / ${bytes(stats.containerLimitBytes)}` : ""}`
-                        : "—"}
+                    {containerMemory ? containerMemory.used + containerMemory.suffix : "—"}
                 </span>
             </div>
             {/* Ce que l'émulateur lit sur le disque, par seconde
@@ -1101,7 +1205,7 @@ export function StreamingStatsPanel({ stats, session, t }) {
             <div className="d-flex justify-content-between gap-3">
                 <span className="text-white text-opacity-75">{t("streaming.page.stats.diskRead")}</span>
                 <span>
-                    {num(stats?.diskReadBytesPerSec) != null
+                    {finiteNumber(stats?.diskReadBytesPerSec) != null
                         ? `${(stats.diskReadBytesPerSec / 1024 ** 2).toFixed(stats.diskReadBytesPerSec < 10 * 1024 ** 2 ? 1 : 0)} Mo/s`
                         : "—"}
                 </span>
@@ -1124,7 +1228,7 @@ export function StreamingStatsPanel({ stats, session, t }) {
                     <div className="d-flex justify-content-between gap-3">
                         <span className="text-white text-opacity-75">{t("streaming.page.stats.temperature")}</span>
                         <span>
-                            {num(stats?.temperatureCelsius) != null
+                            {finiteNumber(stats?.temperatureCelsius) != null
                                 ? `${Math.round(stats.temperatureCelsius)} °C${delta("temperatureCelsius", (v) => `${v} °C`)}`
                                 : "—"}
                         </span>
@@ -1132,7 +1236,7 @@ export function StreamingStatsPanel({ stats, session, t }) {
                     <div className="d-flex justify-content-between gap-3">
                         <span className="text-white text-opacity-75">{t("streaming.page.stats.battery")}</span>
                         <span>
-                            {num(stats?.batteryPercent) != null
+                            {finiteNumber(stats?.batteryPercent) != null
                                 ? `${Math.round(stats.batteryPercent)} %${delta("batteryPercent", (v) => `${v} %`)}`
                                 : "—"}
                         </span>
@@ -1142,18 +1246,136 @@ export function StreamingStatsPanel({ stats, session, t }) {
             <div className="d-flex justify-content-between gap-3">
                 <span className="text-white text-opacity-75">{t("streaming.page.stats.gpuBusyPercent")}</span>
                 <span>
-                    {num(stats?.gpuBusyPercent) != null ? `${Math.round(stats.gpuBusyPercent)} %` : "—"}
+                    {finiteNumber(stats?.gpuBusyPercent) != null ? `${Math.round(stats.gpuBusyPercent)} %` : "—"}
                 </span>
             </div>
             <div className="d-flex justify-content-between gap-3">
                 <span className="text-white text-opacity-75">{t("streaming.page.stats.vramUsedBytes")}</span>
                 <span>
-                    {bytes(stats?.vramUsedBytes) != null
-                        ? `${bytes(stats.vramUsedBytes)}${bytes(stats?.vramTotalBytes) ? ` / ${bytes(stats.vramTotalBytes)}` : ""}${bytesDelta("vramUsedBytes")}`
-                        : "—"}
+                    {videoMemory ? videoMemory.used + videoMemory.suffix : "—"}
                 </span>
             </div>
         </div>
     );
 }
 
+const STATS_STRIP_LINE_HEIGHT = 14;
+// Deux lignes et 4 px d'air, fixe : rien ne saute quand les valeurs arrivent,
+// et Remote Play, qui n'a que la ligne du flux, la centre dans la même bande.
+// La page la passe au pavé tactile seul (--gameflex-stats-strip-height).
+export const STATS_STRIP_PORTRAIT_HEIGHT = 2 * STATS_STRIP_LINE_HEIGHT + 4;
+// PLUS FORTE QUE L'OMBRE DU PANNEAU : sans voile, seule l'ombre détache le
+// texte d'une image claire. Le panneau, lui, a un voile à 50 % (Streaming.jsx),
+// et son ombre seule y laissait disparaître le texte atténué (mesuré le
+// 2026-11-10).
+const STATS_STRIP_SHADOW = "0 0 3px #000, 0 0 1px #000, 0 1px 2px #000";
+// La racine de la vue, en portrait comme en paysage. Aucune touche captée.
+const STATS_STRIP_STYLE = {
+    fontSize: "0.65rem",
+    lineHeight: `${STATS_STRIP_LINE_HEIGHT}px`,
+    textShadow: STATS_STRIP_SHADOW,
+    fontVariantNumeric: "tabular-nums",
+    pointerEvents: "none",
+};
+
+// LA VUE DISCRÈTE DES PERFORMANCES (le porteur, 2026-11-10 : « les infos de
+// la performance mais plus discrètes » ; 2026-11-11 : « sur 2 lignes pour
+// comprendre la différence entre ce qui est Gateway et Émulateur […] pas
+// d'icônes, juste les infos séparées par • »). Deux lignes, en portrait comme
+// en paysage : l'émulateur, puis le flux. En petit, sans voile : sous la vidéo
+// en portrait, dans le flux de la page ; en haut de l'écran en paysage. Elle
+// et le panneau s'excluent, par défaut en attendant la réponse du porteur
+// (voir performanceForm).
+//
+// LES FORMATS ET LEUR ASSEMBLAGE SONT CEUX DU PANNEAU (formatBytes,
+// formatBytesDelta, memoryUsageParts, emulatorResolutionParts…), pris tels
+// quels : « 2.5 Go (+300 Mo) » et « 4.5 Go (+200 Mo) / 8.0 Go » s'écrivent
+// pareil aux deux endroits, et un format changé, son ordre et son « / »
+// compris, change les deux. La vue ne fait que donner sa taille à chaque
+// morceau.
+//
+// Deux choix par défaut, eux aussi en attendant ses réponses (questions du
+// 2026-11-10). Pas d'écart sur les FPS : le serveur ne garde pas de départ
+// pour la cadence (sessionstatus.Baseline), et le panneau n'en montre pas non
+// plus. Pas de total sur la RAM : rssBytes est la mémoire de l'émulateur
+// seul ; le plafond que montre le panneau est celui du conteneur entier, un
+// autre périmètre.
+//
+// Pas de voile, comme demandé : l'avis de compilation des shaders est une roue
+// que Kyty dessine DANS l'image (tools/kyty/README.md, 0058), qu'un voile
+// teinterait. L'ombre seule détache le texte.
+export function StreamingStatsStrip({ stats, session, t, layout }) {
+    // Chaque <span> porte text-white ET son opacité : la classe d'opacité ne
+    // règle que --bs-text-opacity de l'élément qui porte text-white.
+    const value = (text) => <span className="text-white text-opacity-75">{text}</span>;
+    // Les compléments, plus petits : la réduction, l'écart, le total.
+    const smallNote = (text) => (text ? <span className="text-white text-opacity-50" style={{ fontSize: "0.8em" }}>{text}</span> : null);
+    // La cadence, le seul relief de la vue.
+    const frames = (fps) => (
+        <>
+            <span className="text-white fw-semibold">{formatFrameRate(fps)}</span>
+            {value(` ${t("streaming.page.stats.fpsUnit")}`)}
+        </>
+    );
+    // Les morceaux d'une ligne, séparés par « • ». De vraies espaces autour du
+    // point : sans elles, le texte se collait pour un lecteur d'écran et au
+    // copier-coller (« 960x54060 FPS0 ms », épreuve du 2026-11-10).
+    const joined = (parts) =>
+        parts.map((part, index) => (
+            <React.Fragment key={index}>
+                {index > 0 && <span className="text-white text-opacity-50">{" • "}</span>}
+                {part}
+            </React.Fragment>
+        ));
+    const emulatorResolution = emulatorResolutionParts(stats);
+    const emulatorMemory = memoryUsageParts(stats, "rssBytes");
+    const videoMemory = memoryUsageParts(stats, "vramUsedBytes", "vramTotalBytes");
+    // Dans l'ordre du porteur : l'émulateur, puis le flux.
+    const lines = [
+        // Selon le GENRE de partie, et non selon l'arrivée des données : la
+        // ligne du flux sauterait d'une rangée au premier relevé. Remote Play
+        // n'émule rien (remoteplay.go) : son rssBytes est la mémoire du relais.
+        session?.platform !== "remoteplay" && {
+            key: "emulator",
+            content: joined([
+                // Sans taille de sortie, la scène EST l'image du jeu
+                // (sessionstatus, SetEmulatorSize) : le rétro au serveur et
+                // le téléphone.
+                emulatorResolution
+                    ? <>{value(emulatorResolution.scene)}{smallNote(emulatorResolution.reduction)}</>
+                    : value(stats?.gameResolution || "—"),
+                frames(stats?.emulationFps),
+                <>{value(emulatorMemory?.used ?? "—")}{smallNote(emulatorMemory?.suffix)}</>,
+                // Le total retiré quand il manque : kgsl, au téléphone, n'en
+                // donne pas.
+                <>{value(videoMemory?.used ?? "—")}{smallNote(videoMemory?.suffix)}</>,
+            ]),
+        },
+        // Ce que le navigateur mesure, une fois par seconde (GatewayWebRTC).
+        {
+            key: "gateway",
+            content: joined([
+                value(formatStreamResolution(stats?.resolution)),
+                frames(stats?.fps),
+                value(formatLatency(stats?.latencyMs)),
+                value(formatRate(stats?.videoBitrateKbps)),
+            ]),
+        },
+    ].filter(Boolean);
+
+    // Une ligne par source, centrée, chacune en text-truncate : l'ellipse,
+    // blanche, mange la fin. En portrait, la bande a sa hauteur fixe (rien ne
+    // saute quand les valeurs arrivent) ; en paysage, elle prend la sienne en
+    // haut de l'écran.
+    return (
+        <div
+            data-stats-strip={layout}
+            className="d-flex flex-column justify-content-center px-1 text-center"
+            style={layout === "portrait" ? { ...STATS_STRIP_STYLE, height: STATS_STRIP_PORTRAIT_HEIGHT } : STATS_STRIP_STYLE}
+        >
+            {lines.map((line) => (
+                <div key={line.key} className="text-truncate text-white text-opacity-50">{line.content}</div>
+            ))}
+        </div>
+    );
+}

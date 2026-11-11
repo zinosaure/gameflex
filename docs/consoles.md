@@ -84,6 +84,7 @@ quickly.
 | PlayStation 4 *(experimental)* | `ps4` | [shadPS4](https://shadps4.net) | a folder with `eboot.bin` at its root (recommended), or `.pkg` | optional system modules (`.sprx` files, such as `libSceLibcInternal.sprx`), directly in `bios/ps4/` |
 | PlayStation 5 *(experimental)* | `ps5` | [KytyPS5](https://github.com/KytyPS5/KytyPS5) | a folder with `eboot.bin` at its root, `.zar`, `.elf` | none |
 | Nintendo Switch *(experimental)* | `switch` | [Eden](https://eden-emu.dev), or [Citron](https://github.com/citron-neo/emulator) | `.xci` `.nsp` | `prod.keys` (required), `title.keys` (optional) |
+| Nintendo Switch 2 *(experimental)* | `switch2` | [Lichii](https://github.com/zortos293/Lichii) | `.xci` `.nsp`, `.nup` (a game packed with its updates and downloadable content by Lichii) | `prod.keys` (required), `title.keys` (optional) |
 | Nintendo Wii U *(experimental)* | `wiiu` | [Cemu](https://cemu.info) | `.wux` `.wud` `.wua` (a file, or in a folder named after the game), or an extracted game (a folder with `code/`, `content/` and `meta/`) | `keys.txt` (required) |
 | Xbox | `xbox` | [xemu](https://xemu.app) | `.iso` in XISO format (a file, or in a folder) | `mcpx_1.0.bin`, `Complex_4627.bin`, and the hard disk image `xbox_hdd.qcow2` |
 | Xbox 360 *(experimental)* | `xbox360` | [Xenia Canary](https://github.com/xenia-canary/xenia-canary) | `.iso` (a file, or in a folder) | none |
@@ -129,6 +130,9 @@ own games: nothing goes in your library.
   `.pkg`.
 - **Switch:** GameFlex does not install the console's firmware, and does not install updates or
   downloadable content. An extra `.nsp` shows up as a separate game.
+- **Switch 2:** its emulator is very new, and only a few games start. The same limits as the Switch
+  apply. To play a game with its updates, pack them into one `.nup` file with Lichii. A game can use up to
+  20 GB of memory.
 - **Xbox 360:** extracted games (`default.xex`) and GOD containers are not supported. Use an
   `.iso`.
 - **PlayStation:** some European games are protected and need a subchannel file (`.sbi` or `.sub`)

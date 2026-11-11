@@ -12,6 +12,17 @@
 #
 # GAMEFLEX_NAMESPACE names the rebuilt images elsewhere (to compare them with the
 # published ones, for instance); the closed binaries always come from zinosaure.
+#
+# The PlayStation 5 image rebuilds Mesa's AMD Vulkan driver (RADV) from Debian's
+# source with two patches (the recipe in src/microservices/runtimes/streamex/consoles/mesa/,
+# the patches there and in consoles/ps5/mesa/).
+# For about a minute and a half it needs deb.debian.org, ~1.2 GiB of build
+# dependencies and ~6.3 GiB of memory, even on a machine without an AMD GPU. It
+# builds on the Mesa that trixie-backports offers that day, never on a pinned one,
+# so the PS5 image of an older tag stops building once the backports have moved
+# to a Mesa its patches do not apply to (26.2 for the 26.1 patches), or once
+# Debian's compilers have changed since that Mesa was built. The build then says
+# why; the other images are not affected.
 name: gameflex-build
 
 x-arguments: &arguments
@@ -91,6 +102,9 @@ services:
     gameflex-switch-eden:
         image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-switch-eden:${GAMEFLEX_VERSION}
         build: { context: ., dockerfile: src/microservices/runtimes/streamex/consoles/switch-eden/Dockerfile, args: *console-arguments }
+    gameflex-switch2:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-switch2:${GAMEFLEX_VERSION}
+        build: { context: ., dockerfile: src/microservices/runtimes/streamex/consoles/switch2/Dockerfile, args: *console-arguments }
     gameflex-wiiu:
         image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-wiiu:${GAMEFLEX_VERSION}
         build: { context: ., dockerfile: src/microservices/runtimes/streamex/consoles/wiiu/Dockerfile, args: *console-arguments }

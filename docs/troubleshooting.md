@@ -10,7 +10,8 @@
   `remoteplay`).
 - **A game's log:** **Settings › Logs**, one log per game, by day.
 - **The connection:** in a game, the menu's **Show connection statistics** gives the frame rate,
-  the bitrate and the machine's load.
+  the bitrate and the machine's load; **Show the compact view** keeps the main ones on screen, in
+  small type.
 
 ## Common problems
 

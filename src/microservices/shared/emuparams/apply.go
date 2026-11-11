@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -58,6 +59,24 @@ type writer struct {
 	// Le téléphone le lit comme celui d'un invité sous Box64, et l'adaptateur
 	// du serveur le donne au processus de l'émulateur (Environment).
 	environment string
+	// environmentDefaults — les variables que le LANCEUR pose dans cet
+	// environnement quand aucun paramètre n'en décide, comme `launcher` dans le
+	// fichier principal. Un paramètre à « auto » en décide, et ne pose rien :
+	// pour une variable que l'émulateur ne lit que par sa présence, c'est le
+	// seul moyen de l'éteindre.
+	environmentDefaults map[string]string
+	// launcherValue — la valeur du lanceur quand elle ne passe pas par `auto`
+	// (environmentDefaults) : « auto » reste alors sans valeur.
+	launcherValue func(config string) (string, bool)
+}
+
+// launcherAuto — la valeur que le lanceur pose à l'une de ses adresses.
+func (w writer) launcherAuto(config string, streamHeight int, lines []string) (string, bool) {
+	if w.launcherValue != nil {
+		return w.launcherValue(config)
+	}
+
+	return w.auto(config, streamHeight, lines)
 }
 
 var writers = map[string]writer{
@@ -75,11 +94,18 @@ var writers = map[string]writer{
 	"eden": {file: "eden/qt-config.ini", format: qtINIFormat, auto: edenAuto, launcher: []string{"Renderer > resolution_setup"},
 		environment: "eden/environment",
 		language:    "System > language_index", languages: map[string]string{"fr": "2", "en": "1"}},
-	// EGLANTINE, la Switch 2 (#644) : un fork d'Eden, qui en garde le fichier et
-	// les paliers de résolution.
-	"eglantine": {file: "eden/qt-config.ini", format: qtINIFormat, auto: edenAuto, launcher: []string{"Renderer > resolution_setup"},
-		environment: "eden/environment",
-		language:    "System > language_index", languages: map[string]string{"fr": "2", "en": "1"}},
+	// LICHII, la Switch 2 (#644) : un fork d'Eglantine, lui-même fork d'Eden, qui
+	// en garde le qt-config.ini et les paliers de résolution, mais sous ses
+	// propres dossiers (`lichii/`).
+	"lichii": {file: "lichii/qt-config.ini", format: qtINIFormat, auto: edenAuto, launcher: []string{"Renderer > resolution_setup"},
+		environment: "lichii/environment",
+		// LE REPLI DES MESH SHADERS PAR DÉFAUT (#644, 2026-11-11) : sur le 780M,
+		// les mesh shaders natifs font fuir le noyau (#657, ~2 000 objets/s) et
+		// sont plus lents que le repli dans la maison de Link (25,4 contre
+		// 28,1 i/s). Lichii ne teste que la présence de la variable : « Natifs »
+		// est le paramètre à « auto ».
+		environmentDefaults: map[string]string{"Environment > EDEN_NX2_FORCE_MESH_FALLBACK": "1"},
+		language:            "System > language_index", languages: map[string]string{"fr": "2", "en": "1"}},
 	"cemu": {file: "Cemu/settings.xml", format: xmlFormat,
 		language: "content > console_language", languages: map[string]string{"fr": "2", "en": "1"}},
 	// LES INVITÉS DU TÉLÉPHONE SOUS BOX64 (chantier 17, #371) : leurs réglages
@@ -93,9 +119,12 @@ var writers = map[string]writer{
 	// shaders aussi, comme le fait son propre lanceur (tools/kyty/0016). Et
 	// sa mémoire unique (tools/kyty/0026, 0027) : FF7 Remake de 7,6 à 21,8 i/s ;
 	// et la hauteur de rendu d'un jeu Unreal, 540p (0028, 0040) : FF7 Remake de 29 à 60 i/s.
+	// Et le pixel sur quatre (fourche, 0070) dans les dessins deux fois plus hauts que la fenêtre :
+	// Astro Bot au jardin +8 %, invisible dans un flux 540p (2026-11-09).
 	"kyty": {file: "kyty/environment", format: envFormat, env: true, auto: kytyAuto,
 		launcher: []string{"Environment > KYTY_OCCLUSION_QUERIES", "Environment > KYTY_SHADER_CACHE",
-			"Environment > KYTY_UNIFIED_MEMORY", "Environment > KYTY_UE_RENDER_HEIGHT"}},
+			"Environment > KYTY_UNIFIED_MEMORY", "Environment > KYTY_UE_RENDER_HEIGHT",
+			"Environment > KYTY_COARSE_SHADING"}},
 	// shadPS4 : son config.json (chantier 21, la langue de la console) ; ses
 	// paramètres — Box64, le son de SDL — restent dans l'environnement d'à
 	// côté, au même chemin pour GlibcGuest. Le téléphone pose aussi la plage
@@ -239,10 +268,12 @@ func xemuAuto(config string, streamHeight int, _ []string) (string, bool) {
 // `KYTY_SHADER_CACHE` vaut `--shader-cache` (0016), `KYTY_UNIFIED_MEMORY`
 // tire la mémoire du jeu du tas dma-buf (0026) — sans lui, Kyty garde la
 // sienne, et le téléphone ne l'a pas. `KYTY_UE_RENDER_HEIGHT` (0040) : la
-// hauteur à laquelle un jeu Unreal calcule sa scène, 540p.
+// hauteur à laquelle un jeu Unreal calcule sa scène, 540p. `KYTY_COARSE_SHADING`
+// (0070) : un pixel sur quatre dans les dessins deux fois plus hauts que la fenêtre.
 func kytyAuto(config string, _ int, _ []string) (string, bool) {
 	switch config {
-	case "Environment > KYTY_OCCLUSION_QUERIES", "Environment > KYTY_SHADER_CACHE", "Environment > KYTY_UNIFIED_MEMORY":
+	case "Environment > KYTY_OCCLUSION_QUERIES", "Environment > KYTY_SHADER_CACHE", "Environment > KYTY_UNIFIED_MEMORY",
+		"Environment > KYTY_COARSE_SHADING":
 	case "Environment > KYTY_UE_RENDER_HEIGHT":
 		return "540", true
 	default:
@@ -395,6 +426,17 @@ func Apply(emulator string, settings Settings, configHome string, streamHeight i
 		return report
 	}
 	companion := writer{file: w.environment, format: envFormat, env: true}
+	if len(w.environmentDefaults) > 0 {
+		for config := range w.environmentDefaults {
+			companion.launcher = append(companion.launcher, config)
+		}
+		sort.Strings(companion.launcher)
+		companion.launcherValue = func(config string) (string, bool) {
+			value, ok := w.environmentDefaults[config]
+
+			return value, ok
+		}
+	}
 	companion.write(&report, environment, configHome, streamHeight, "", "gameflex-params-environment.json")
 	w.patchLanguage(&report, configHome, language)
 
@@ -466,7 +508,7 @@ func (w writer) write(report *Report, entries []Entry, configHome string, stream
 		if written[config] {
 			continue
 		}
-		value, ok := w.auto(config, streamHeight, lines)
+		value, ok := w.launcherAuto(config, streamHeight, lines)
 		cut := strings.LastIndex(config, ">")
 		if !ok || cut <= 0 {
 			continue
@@ -488,7 +530,7 @@ func (w writer) write(report *Report, entries []Entry, configHome string, stream
 			continue
 		}
 		if launcher[config] {
-			value, _ := w.auto(config, streamHeight, lines)
+			value, _ := w.launcherAuto(config, streamHeight, lines)
 			report.Released = append(report.Released, config+" (suit le flux : "+value+")")
 
 			continue

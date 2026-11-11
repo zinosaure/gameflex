@@ -772,6 +772,7 @@
                 "uptime": "Running for",
                 "resolution": "Gateway resolution",
                 "fps": "Gateway FPS",
+                "fpsUnit": "FPS",
                 "bitrate": "Bitrate",
                 "downloadRate": "Download rate",
                 "uploadRate": "Upload rate",
@@ -899,7 +900,10 @@
             "performance": {
                 "title": "Performance",
                 "help": "Live figures about the connection and the game.",
-                "label": "Show connection statistics"
+                "label": "Show connection statistics",
+                "labelHelp": "Every figure, along the top of the screen on a darkened background. Showing them hides the compact view.",
+                "compact": "Show the compact view",
+                "compactHelp": "The main figures, in small type, on two lines (the emulator, then the stream): under the picture when the screen is upright, along the top when it is sideways. Turning this view on hides the connection statistics, and the other way round."
             },
             "session": {
                 "title": "Session",

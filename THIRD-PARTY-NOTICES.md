@@ -44,7 +44,7 @@ any later version", and so on.
 | `zinosaure/gameflex-edge` | Debian 12 base (91 packages), Go standard library, web interface (31 npm packages) |
 | `zinosaure/gameflex-kernel`, `-credential`, `-gateway-webrtc`, `-remoteplay` | Debian 12 base (93 packages), Go modules (13 to 26 per binary) |
 | `zinosaure/gameflex-retrogaming` | Debian 12 base (293 packages, including FFmpeg and Mesa), 2 Go modules, `libretro.h` |
-| `zinosaure/gameflex-ps3`, `-ps4`, `-ps5`, `-switch`, `-switch-eden`, `-wiiu`, `-xbox`, `-xbox360` | Debian 13 base (411 to 436 packages, Mesa from trixie-backports), 4 Go modules, FFmpeg 9.0.2 (shared libraries, LGPL, with its source), `pkgextract` (PS4 image only). **No emulator.** |
+| `zinosaure/gameflex-ps3`, `-ps4`, `-ps5`, `-switch`, `-switch-eden`, `-switch2`, `-wiiu`, `-xbox`, `-xbox360` | Debian 13 base (411 to 436 packages, Mesa from trixie-backports), 4 Go modules, FFmpeg 9.0.2 (shared libraries, LGPL, with its source), `pkgextract` (PS4 image only). **No emulator.** |
 | `gameflex.apk` | AndroidX, Kotlin, ZXing (Apache-2.0), 35 Go modules, the web interface, the glibc dynamic loader (LGPL), `xkbcomp` (MIT) |
 | `glibc-x86_64.zip`, `glibc-aarch64.zip` | ~115 libraries from Debian forky (glibc, Mesa, LLVM, PulseAudio, X11…), DejaVu fonts, MIME database |
 | `xvfb-bundle-x86_64.zip`, `xvfb-bundle-aarch64.zip` | Xvfb and its libraries from the Termux package repository (X.Org, Mesa, LLVM, ICU, OpenSSL, GNU libiconv…) |
@@ -202,6 +202,7 @@ official download address of the version it was tested with (image labels
 | `gameflex-ps5` | KytyPS5 |
 | `gameflex-switch` | Citron |
 | `gameflex-switch-eden` | Eden |
+| `gameflex-switch2` | Lichii |
 | `gameflex-wiiu` | Cemu |
 | `gameflex-xbox` | xemu |
 | `gameflex-xbox360` | Xenia Canary |
@@ -212,7 +213,8 @@ redistribute it.
 ### Base image and Debian packages
 
 All eight images are built `FROM debian:trixie-slim` (Debian 13.7; 13.6 for `gameflex-ps5` and
-`gameflex-xbox360` in the inventoried build), with Mesa taken from `trixie-backports`. They hold
+`gameflex-xbox360` in the inventoried build), with Mesa taken from `trixie-backports`
+(`gameflex-ps5` replaces one Mesa library with its own build of it, see below). They hold
 411 to 436 Debian packages each; 274 source packages are common to all eight. The build stages
 (`debian:trixie-slim` for FFmpeg, `golang:1.24-trixie`) are not part of the published images.
 
@@ -250,7 +252,8 @@ Additional packages per image:
 |---|---|
 | `gameflex-ps3` | ImageMagick 8:7.1.1.43+dfsg1-1+deb13u12 (ImageMagick license), libc++ 19 (Apache-2.0 WITH LLVM-exception), wmctrl 1.07+git20240228.1105759-1 (GPL-2+) |
 | `gameflex-ps4` | SDL 3 3.2.10+ds-1 (Zlib), UnZip 6.0-29+deb13u1 (Info-ZIP), `pkgextract` (see below) |
-| `gameflex-ps5` | XCB utility libraries (MIT) |
+| `gameflex-ps5` | XCB utility libraries (MIT); `libvulkan_radeon.so`, Mesa's AMD Vulkan driver (RADV), rebuilt from Debian's `mesa` source package of the installed version with two patches (MIT): Mesa's own fix for mesh shaders (commit 48da0f3a), backported, and one GameFlex patch. The version, the patches and the library's SHA-256 are in `/usr/share/doc/gameflex/radv/`, the build recipe in `src/microservices/runtimes/streamex/consoles/mesa/` |
+| `gameflex-switch2` | `libvulkan_radeon.so`, Mesa's AMD Vulkan driver (RADV), rebuilt from Debian's `mesa` source package of the installed version with one patch (MIT): Mesa's own fix for mesh shaders (commit 48da0f3a), backported. The version, the patch and the library's SHA-256 are in `/usr/share/doc/gameflex/radv/`, the build recipe in `src/microservices/runtimes/streamex/consoles/mesa/` |
 | `gameflex-switch`, `gameflex-switch-eden` | ImageMagick 8:7.1.1.43+dfsg1-1+deb13u12, libc++ 19, AT-SPI2 2.56.2-1+deb13u2 (LGPL-2.1+) |
 | `gameflex-wiiu` | GTK 3 3.24.49-3 and GTK 4 4.18.6+ds-2 (LGPL-2.1+), SDL 2 2.32.4+dfsg-1 (Zlib), BlueZ library `libbluetooth3` 5.82-1.1 (GPL-2+), libzip 1.11.3-2 (BSD-3-Clause), GLU 9.0.2-1.1 (SGI-B-2.0), AT-SPI2 2.56.2-1+deb13u2 |
 | `gameflex-xbox` | SDL 2 2.32.4+dfsg-1 (Zlib), libusb 2:1.0.28-1 (LGPL-2.1+) |
@@ -554,7 +557,10 @@ archives under `lic/gameflex/`.
   The license of each package is in `/usr/share/doc/<package>/copyright` inside the image. Its
   source is the Debian source package of the same version, at
   `https://snapshot.debian.org/package/<source>/<version>/`, or with `apt-get source` from a
-  Debian system.
+  Debian system. One file is not as its package shipped it, and this list does not show it:
+  `gameflex-ps5`'s `/usr/lib/x86_64-linux-gnu/libvulkan_radeon.so`, rebuilt from the same
+  Debian source plus two patches. `dpkg --verify mesa-vulkan-drivers` reports it as changed, and
+  `/usr/share/doc/gameflex/radv/` holds its version and the patches.
 - **Go modules in a GameFlex binary.** `go version -m <binary>` prints every module and version
   linked into it. Each module's license is in its source at that version, also shown at
   `https://pkg.go.dev/<module>@<version>`.

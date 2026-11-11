@@ -92,22 +92,26 @@ func TestAnImageSaysWhichEmulatorFileItWants(t *testing.T) {
 	}
 }
 
-// LA SWITCH 2 (#644) : Eglantine, son image, ses paramètres, et les dossiers
-// d'Eden qu'il garde ; ses sauvegardes à elle, pas celles de la Switch.
-func TestTheSwitch2RunsEglantine(t *testing.T) {
+// LA SWITCH 2 (#644) : Lichii, son image, ses paramètres, et SES dossiers —
+// `lichii/`, jamais `eden/`, qui lui ferait ouvrir son assistant d'import ; ses
+// sauvegardes à elle, pas celles de la Switch.
+func TestTheSwitch2RunsLichii(t *testing.T) {
 	cfg := config.Config{SwitchImage: "streamex-switch:latest", Switch2Image: "streamex-switch2:latest"}
-	for _, core := range []string{"", "Eglantine (streamex)"} {
-		if params, _ := StreamexParams("switch2", core); params != "eglantine" {
+	for _, core := range []string{"", "Lichii (streamex)"} {
+		if params, _ := StreamexParams("switch2", core); params != "lichii" {
 			t.Errorf("« %s » : paramètres %q", core, params)
 		}
 		if image := sessionImage(cfg, "switch2", core); image != cfg.Switch2Image {
 			t.Errorf("« %s » : image %q", core, image)
 		}
-		if data := switchDataTarget("switch2", core); data != "/root/.local/share/eden" {
+		if data := switchDataTarget("switch2", core); data != "/root/.local/share/lichii" {
 			t.Errorf("« %s » : données sur %q", core, data)
 		}
 	}
-	if cores := StreamexCores("switch2"); len(cores) != 1 || cores[0] != "Eglantine (streamex)" {
+	if cores := StreamexCores("switch2"); len(cores) != 1 || cores[0] != "Lichii (streamex)" {
 		t.Errorf("cœurs de la Switch 2 : %v", cores)
+	}
+	if _, ok := StreamexParams("switch2", "Eglantine (streamex)"); ok {
+		t.Errorf("Eglantine est retiré : aucune image ne le porte plus")
 	}
 }

@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-11
+
+### Added
+
+- **Nintendo Switch 2, a new console** *(experimental)*, through the Lichii emulator: keep the games
+  in `roms/switch2/` (`.xci`, `.nsp`, or `.nup`, a game packed with its updates by Lichii) and
+  `prod.keys` in `bios/switch2/`, download Lichii in **Settings › Emulators**, and add `switch2` to
+  `COMPOSE_PROFILES`. Only a few games start yet. A Switch 2 game can use up to 20 GB of memory. Its
+  image carries the same mesh shader fix of the AMD Vulkan driver as the PlayStation 5 one, and its
+  *Mesh shaders* setting uses Lichii's compute fallback by default (faster in our tests, and lighter
+  on the graphics driver); *Native* hands them to the driver. See [Consoles](docs/consoles.md).
+- **A compact view of the game's figures**: a second switch in the menu's Performance section
+  shows them in small type on two lines, the emulator's then the stream's, under the picture on an
+  upright screen or along the top on a sideways one; it and the connection statistics replace each
+  other.
+- **New PlayStation 5 settings**: *Coarse shading* (on by default) computes one pixel in four in
+  the images a game draws at least twice as tall as its window, which the stream shows smaller
+  anyway; *Run-ahead of the graphics processor* (1 by default) lets a game prepare its next image
+  while the graphics processor finishes the current one, for the games whose own settings ask for
+  it.
+
+### Changed
+
+- **PlayStation 5 games run much faster**, with our own build of KytyPS5 (offered by the
+  [mirror](README.md#the-mirror), in **Settings › Emulators**): its command thread waits for the
+  graphics processor far less and does less work per draw, and the shaders it translates run
+  faster. On a Radeon 780M, *Astro Bot*'s Celestial Garden went from about 5 to about 20 frames per
+  second, *Clair Obscur: Expedition 33* reaches 20 (with its own settings, from the mirror), and
+  *Black Myth: Wukong* holds its 30.
+- **KytyPS5 keeps its shader cache across its own updates**, as long as they leave its shaders
+  alone: a new version no longer recompiles every game from scratch.
+- **The Performance panel writes video memory as used (change since the game started) / total**,
+  and a memory change that rounds to zero as ±0, like the other figures.
+- **PlayStation 5 games that draw with mesh shaders spend much less time handing their work to the
+  GPU** (55 to 70 µs per submission instead of 210 to 270 in *Tekken 8*, *Clair Obscur*, *Astro Bot*
+  and *Wukong*): the PlayStation 5 image carries its own build of Mesa's AMD Vulkan driver (RADV),
+  Debian's with one patch, which no longer rebuilds the compute queue's preambles at every
+  submission. The first session of each game after the update compiles its pipelines again.
+
+### Fixed
+
+- **A slow screen capture no longer slows the stream down**: the capture runs on its own thread,
+  and the stream keeps the emulator's frame rate.
+- **An encoder that fails to open no longer brings the whole streaming service down.**
+- **A GPU hang that could reset the whole graphics processor, after some mesh shaders**, on AMD
+  Radeon RX 7000 graphics and newer (and their integrated relatives): the PlayStation 5 image's
+  Vulkan driver also carries Mesa's own fix for it (Mesa 26.2.5), backported to the Mesa it is
+  built on.
+
 ## [0.10.0] - 2026-11-08
 
 ### Added

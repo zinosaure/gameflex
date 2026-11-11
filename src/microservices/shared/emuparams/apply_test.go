@@ -202,8 +202,8 @@ func TestTheEnvironmentWriterSpeaksBox64(t *testing.T) {
 		{Config: "Environment > bad name", Value: "1"},
 	}}, home, 540, "")
 	content, _ := os.ReadFile(filepath.Join(home, "kyty", "environment"))
-	// Les quatre dernières lignes sont celles du lanceur (kytyAuto, #445).
-	if string(content) != "BOX64_DYNAREC=0\nBOX64_DYNAREC_STRONGMEM=2\nSDL_AUDIO_DRIVER=auto\nKYTY_OCCLUSION_QUERIES=1\nKYTY_SHADER_CACHE=1\nKYTY_UNIFIED_MEMORY=1\nKYTY_UE_RENDER_HEIGHT=540\n" {
+	// Les cinq dernières lignes sont celles du lanceur (kytyAuto, #445).
+	if string(content) != "BOX64_DYNAREC=0\nBOX64_DYNAREC_STRONGMEM=2\nSDL_AUDIO_DRIVER=auto\nKYTY_OCCLUSION_QUERIES=1\nKYTY_SHADER_CACHE=1\nKYTY_UNIFIED_MEMORY=1\nKYTY_UE_RENDER_HEIGHT=540\nKYTY_COARSE_SHADING=1\n" {
 		t.Fatalf("environment après Apply :\n%s", content)
 	}
 	if len(report.Set) != 3 || len(report.Skipped) != 1 || report.Skipped[0] != "Environment > bad name" {
@@ -219,7 +219,7 @@ func TestTheEnvironmentWriterSpeaksBox64(t *testing.T) {
 	Apply("kyty", Settings{State: "enabled", Entries: []Entry{{Config: "Environment > BOX64_LOG", Value: "2"}}}, home, 540, "")
 	report = Apply("kyty", Settings{State: "disabled", Entries: []Entry{}}, home, 540, "")
 	content, _ = os.ReadFile(filepath.Join(home, "kyty", "environment"))
-	if string(content) != "KYTY_OCCLUSION_QUERIES=1\nKYTY_SHADER_CACHE=1\nKYTY_UNIFIED_MEMORY=1\nKYTY_UE_RENDER_HEIGHT=540\n" || len(report.Released) != 1 || report.Released[0] != "Environment > BOX64_LOG" {
+	if string(content) != "KYTY_OCCLUSION_QUERIES=1\nKYTY_SHADER_CACHE=1\nKYTY_UNIFIED_MEMORY=1\nKYTY_UE_RENDER_HEIGHT=540\nKYTY_COARSE_SHADING=1\n" || len(report.Released) != 1 || report.Released[0] != "Environment > BOX64_LOG" {
 		t.Fatalf("désactivé :\n%s\n%+v", content, report)
 	}
 }
@@ -274,6 +274,37 @@ func TestTheEnvironmentOfRpcs3LivesBesideItsConfig(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, "rpcs3", "gameflex-params.json")); err != nil {
 		t.Fatal("la trace du config.yml est partie avec celle de l'environnement")
+	}
+}
+
+// LE REPLI DES MESH SHADERS DE LICHII PAR DÉFAUT (#644, 2026-11-11) : le
+// lanceur pose la variable quand aucun paramètre n'en décide — fiche absente
+// comprise, le cas du serveur ; « Natifs », le paramètre à « auto », l'éteint.
+func TestLichiiFallsBackFromMeshShadersByDefault(t *testing.T) {
+	const fallback = "EDEN_NX2_FORCE_MESH_FALLBACK=1"
+	home := t.TempDir()
+	if got := Apply("lichii", Settings{State: "absent"}, home, 540, ""); got.Error != "" {
+		t.Fatal(got.Error)
+	}
+	if got := Environment("lichii", home); len(got) != 1 || got[0] != fallback {
+		t.Fatalf("fiche absente : Environment = %v", got)
+	}
+
+	native := Settings{State: "enabled", Entries: []Entry{{Config: "Environment > EDEN_NX2_FORCE_MESH_FALLBACK", Value: "auto"}}}
+	Apply("lichii", native, home, 540, "")
+	if got := Environment("lichii", home); got != nil {
+		t.Fatalf("natifs : Environment = %v", got)
+	}
+
+	// Le paramètre retiré, ou la fiche désactivée : le repli revient.
+	Apply("lichii", Settings{State: "disabled"}, home, 540, "")
+	if got := Environment("lichii", home); len(got) != 1 || got[0] != fallback {
+		t.Fatalf("désactivée : Environment = %v", got)
+	}
+	// Eden, qui n'a pas la variable, n'en reçoit rien.
+	Apply("eden", Settings{State: "absent"}, home, 540, "")
+	if got := Environment("eden", home); got != nil {
+		t.Fatalf("eden : Environment = %v", got)
 	}
 }
 
@@ -443,8 +474,8 @@ func TestKytyGetsItsOcclusionQueriesAndShaderCacheFromTheLauncher(t *testing.T) 
 	if report.Error != "" {
 		t.Fatalf("Apply : %s", report.Error)
 	}
-	if got := Environment("kyty", home); len(got) != 4 || got[0] != "KYTY_OCCLUSION_QUERIES=1" || got[1] != "KYTY_SHADER_CACHE=1" ||
-		got[2] != "KYTY_UNIFIED_MEMORY=1" || got[3] != "KYTY_UE_RENDER_HEIGHT=540" {
+	if got := Environment("kyty", home); len(got) != 5 || got[0] != "KYTY_OCCLUSION_QUERIES=1" || got[1] != "KYTY_SHADER_CACHE=1" ||
+		got[2] != "KYTY_UNIFIED_MEMORY=1" || got[3] != "KYTY_UE_RENDER_HEIGHT=540" || got[4] != "KYTY_COARSE_SHADING=1" {
 		t.Fatalf("sans paramètre : %v", got)
 	}
 
@@ -453,18 +484,20 @@ func TestKytyGetsItsOcclusionQueriesAndShaderCacheFromTheLauncher(t *testing.T) 
 		{Config: "Environment > KYTY_SHADER_CACHE", Value: "0"},
 		{Config: "Environment > KYTY_UNIFIED_MEMORY", Value: "0"},
 		{Config: "Environment > KYTY_UE_RENDER_HEIGHT", Value: "720"},
+		{Config: "Environment > KYTY_COARSE_SHADING", Value: "0"},
 		{Config: "Environment > BOX64_DYNAREC", Value: "1"},
 	}}, home, 540, "")
 	got := Environment("kyty", home)
-	if len(got) != 5 || got[0] != "KYTY_OCCLUSION_QUERIES=0" || got[1] != "KYTY_SHADER_CACHE=0" ||
-		got[2] != "KYTY_UNIFIED_MEMORY=0" || got[3] != "KYTY_UE_RENDER_HEIGHT=720" || got[4] != "BOX64_DYNAREC=1" {
+	if len(got) != 6 || got[0] != "KYTY_OCCLUSION_QUERIES=0" || got[1] != "KYTY_SHADER_CACHE=0" ||
+		got[2] != "KYTY_UNIFIED_MEMORY=0" || got[3] != "KYTY_UE_RENDER_HEIGHT=720" || got[4] != "KYTY_COARSE_SHADING=0" ||
+		got[5] != "BOX64_DYNAREC=1" {
 		t.Fatalf("éteints par les paramètres : %v", got)
 	}
 
 	// Les paramètres retirés : le lanceur les rallume, il ne les retire pas.
 	Apply("kyty", Settings{State: "enabled", Entries: nil}, home, 540, "")
-	if got := Environment("kyty", home); len(got) != 4 || got[0] != "KYTY_OCCLUSION_QUERIES=1" || got[1] != "KYTY_SHADER_CACHE=1" ||
-		got[2] != "KYTY_UNIFIED_MEMORY=1" || got[3] != "KYTY_UE_RENDER_HEIGHT=540" {
+	if got := Environment("kyty", home); len(got) != 5 || got[0] != "KYTY_OCCLUSION_QUERIES=1" || got[1] != "KYTY_SHADER_CACHE=1" ||
+		got[2] != "KYTY_UNIFIED_MEMORY=1" || got[3] != "KYTY_UE_RENDER_HEIGHT=540" || got[4] != "KYTY_COARSE_SHADING=1" {
 		t.Fatalf("paramètres retirés : %v", got)
 	}
 }

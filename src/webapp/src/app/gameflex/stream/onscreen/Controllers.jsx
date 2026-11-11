@@ -362,14 +362,23 @@ const PORTRAIT_PAD_LIFT = PORTRAIT_LIFT + 64;
 export const TouchpadOnlyContext = createContext(null);
 
 const TOUCHPAD_ALONE_SCALE = 1.2;
-// En portrait, sous la vidéo et la ligne qui la suit : il n'y a qu'un demi-écran
-// sous une manette clipsée (#410). La rangée du menu y remonte à sa hauteur :
+// En portrait, sous la vidéo, la vue discrète quand elle est allumée, et la
+// ligne qui la suit : il n'y a qu'un demi-écran sous une manette clipsée
+// (#410). La hauteur de la vue n'est définie qu'à un endroit, sa constante
+// (STATS_STRIP_PORTRAIT_HEIGHT, FloatingPanel.jsx), que la page passe par
+// --gameflex-stats-strip-height. La rangée du menu y remonte à sa hauteur :
 // app.css décale alors le pavé à droite de ses pastilles. En paysage, là où la
 // manette entière le met.
+//
+// JAMAIS SOUS LE BAS DE LA PARTIE VISIBLE (8 px au moins) : dans Chrome, le
+// demi-écran ne laisse qu'environ 290 px de haut au S25 (680 − 390, calculé),
+// et la vue discrète poussait alors plus de la moitié du pavé sous la manette
+// clipsée. Il remonte plutôt sur la vue et sur « GameFlex », des textes qui ne
+// captent rien, et il reste à moitié transparent, sans fond.
 const TOUCHPAD_ALONE_PLACE = {
 	portrait: (size) => ({
 		left: "var(--gameflex-touchpad-left, 50%)",
-		bottom: `calc(var(--gameflex-visible-height) - 56.25vw - ${size + 32}px)`,
+		bottom: `max(8px, calc(var(--gameflex-visible-height) - 56.25vw - var(--gameflex-stats-strip-height, 0px) - ${size + 32}px))`,
 		transform: "translateX(-50%)",
 	}),
 	landscape: (size) => ({ left: "50%", bottom: 110 - size / 2, transform: "translateX(-50%)" }),

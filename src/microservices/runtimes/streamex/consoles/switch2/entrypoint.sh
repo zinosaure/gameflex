@@ -1,14 +1,14 @@
 #!/bin/bash
 # ════════════════════════════════════════════════════════════════
 #  Container entrypoint:
-#   PulseAudio (null sink) → X server :2 → openbox → Eglantine (game) → streamex
+#   PulseAudio (null sink) → X server :2 → openbox → Lichii (game) → streamex
 # ════════════════════════════════════════════════════════════════
 set -euo pipefail
 
 # ── L'émulateur, depuis la bibliothèque ──
 # L'image ne le porte pas (chantier 29) : le kernel monte cores/ en lecture
 # seule, et unpack-emulator le déballe là où l'adaptateur le lance.
-unpack-emulator /opt/eglantine
+unpack-emulator /opt/lichii
 
 export DISPLAY="${DISPLAY:-:2}"
 export HOME="${HOME:-/root}"
@@ -19,6 +19,21 @@ export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
 mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
+
+# ── Aucun dossier d'un autre émulateur de la famille yuzu ──
+# Lichii range ses données sous `lichii/`. S'il trouve au démarrage
+# $XDG_DATA_HOME/eden (ou citron, sudachi, suyu, yuzu), il ouvre son assistant
+# d'import, une fenêtre modale que personne ne peut fermer dans une partie : la
+# fenêtre principale ne s'ouvre jamais (mesuré le 2026-11-11, sans GPU). On le
+# dit ici, et on s'arrête, plutôt que de laisser la partie figée. Le kernel
+# monte les sauvegardes sur $XDG_DATA_HOME/lichii (switchDataTarget) : un tel
+# dossier ne vient que d'un montage ou d'une image qui n'est plus la bonne.
+for legacy in eden citron sudachi suyu yuzu; do
+  if [ -d "$XDG_DATA_HOME/$legacy" ]; then
+    echo "[entry] ERROR: $XDG_DATA_HOME/$legacy exists — Lichii would open its import wizard and the game would never start. Lichii keeps its data in $XDG_DATA_HOME/lichii" >&2
+    exit 1
+  fi
+done
 
 # ── D-Bus session bus (Qt likes it) ──
 if command -v dbus-daemon >/dev/null 2>&1 && [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
@@ -55,7 +70,7 @@ if [ ! -S /run/dbus/system_bus_socket ]; then
 fi
 
 # ── PulseAudio in system mode (we run as root) ──
-# The null sink receives Eglantine's audio; streamex captures its monitor.
+# The null sink receives Lichii's audio; streamex captures its monitor.
 # Dedicated config (auth-anonymous) loaded via -n -F: avoids the
 # $HOME/.config/pulse/cookie that the daemon (user pulse) cannot read.
 export PULSE_SERVER="${PULSE_SERVER:-unix:/run/pulse/native}"
@@ -80,14 +95,14 @@ echo "[entry] pulse default sink: $(pactl get-default-sink 2>/dev/null || echo '
 
 # ── Virtual X server ──
 # Weston headless + Xwayland: unlike Xvfb, Xwayland supports DRI3,
-# essential for Eglantine's Vulkan presentation (otherwise the game won't render).
+# essential for Lichii's Vulkan presentation (otherwise the game won't render).
 # Stale X sockets/locks survive `docker compose start` (container reuse).
 rm -f "/tmp/.X11-unix/X${DISPLAY#:}" "/tmp/.X${DISPLAY#:}-lock"
 RES="${STREAMEX_RESOLUTION:-1280x720}"
 RES_W="${RES%x*}"
 RES_H="${RES#*x}"
 # --renderer=gl: required to expose linux-dmabuf/GBM to Xwayland
-# (otherwise glamor fails → no DRI3 → Eglantine's Vulkan cannot present).
+# (otherwise glamor fails → no DRI3 → Lichii's Vulkan cannot present).
 # Headless backend mode syntax: mode=WxH (width/height are invalid here).
 cat > /tmp/weston.ini <<EOF
 [core]
@@ -121,7 +136,8 @@ sleep 1
 
 # ── Auto-dismiss an "Update Available" popup (headless) ──
 # Closed automatically (Return = OK) should the emulator ever show one: a
-# session has nobody to click it.
+# session has nobody to click it. Lichii looks for updates at every start
+# unless told not to: qt-config.ini turns it off (check_for_updates).
 # `|| true` on the search: xdotool exits 1 when nothing matches and set -e
 # would otherwise kill this subshell on its very first iteration.
 ( for _ in $(seq 1 600); do
@@ -134,17 +150,17 @@ sleep 1
   done ) &
 
 # ── Config (only if missing, so the host config is not overwritten) ──
-# Eglantine garde les dossiers d'Eden : ~/.config/eden, ~/.local/share/eden.
-mkdir -p "$XDG_CONFIG_HOME/eden"
-if [ ! -f "$XDG_CONFIG_HOME/eden/qt-config.ini" ]; then
-  cp /opt/eden-config/qt-config.ini "$XDG_CONFIG_HOME/eden/qt-config.ini"
-  echo "[entry] seeded default eglantine config"
+# Lichii a ses propres dossiers : ~/.config/lichii, ~/.local/share/lichii.
+mkdir -p "$XDG_CONFIG_HOME/lichii"
+if [ ! -f "$XDG_CONFIG_HOME/lichii/qt-config.ini" ]; then
+  cp /opt/lichii-config/qt-config.ini "$XDG_CONFIG_HOME/lichii/qt-config.ini"
+  echo "[entry] seeded default lichii config"
 fi
 
 # ── Rendu à la résolution du flux (#340) ──
-# Eglantine, comme Eden, multiplie la sortie de la console — 1080p en mode docké —
+# Lichii, comme Eden, multiplie la sortie de la console — 1080p en mode docké —
 # par `resolution_setup`, un NUMÉRO dans sa liste, celle d'Eden
-# (src/common/settings_enums.h au commit e736dfde9e : Res1_4X, Res1_2X, Res3_4X,
+# (src/common/settings_enums.h au commit 17baed7 : Res1_4X, Res1_2X, Res3_4X,
 # Res1X, Res5_4X, Res3_2X, Res2X, Res3X, …).
 # On prend le palier le plus proche du flux, et à égalité le plus bas : 360p et
 # 540p → ×0,5, 720p → ×0,75, 1080p → ×1. ×0,25 est écarté : Eden ne le
@@ -163,20 +179,20 @@ RES_SETUP=$(awk -v h="$RES_H" 'BEGIN {
   }
   print best
 }')
-EDEN_INI="$XDG_CONFIG_HOME/eden/qt-config.ini"
+LICHII_INI="$XDG_CONFIG_HOME/lichii/qt-config.ini"
 awk -v v="$RES_SETUP" '
   /^resolution_setup(\\default)?=/ { next }
   { print }
   /^\[Renderer\]$/ { print "resolution_setup\\default=false"; print "resolution_setup=" v; done = 1 }
   END { if (!done) { print ""; print "[Renderer]"; print "resolution_setup\\default=false"; print "resolution_setup=" v } }
-' "$EDEN_INI" > "$EDEN_INI.tmp" && mv "$EDEN_INI.tmp" "$EDEN_INI"
-echo "[entry] eglantine resolution_setup → ${RES_SETUP} (stream ${RES_W}x${RES_H})"
+' "$LICHII_INI" > "$LICHII_INI.tmp" && mv "$LICHII_INI.tmp" "$LICHII_INI"
+echo "[entry] lichii resolution_setup → ${RES_SETUP} (stream ${RES_W}x${RES_H})"
 
 # ── Decryption keys: bios/switch2/, the console's own folder ──
 # Les clés de la Switch 2 (prod.keys, title.keys) se rangent dans bios/switch2/,
 # comme celles de la Switch dans bios/switch/ : un seul chemin par console.
 KEYS_SRC=/gameflex/bios/switch2
-KEYS_DIR="$XDG_DATA_HOME/eden/keys"
+KEYS_DIR="$XDG_DATA_HOME/lichii/keys"
 if [ -d "$KEYS_SRC" ] && [ -n "$(ls -A "$KEYS_SRC"/*.keys 2>/dev/null)" ]; then
     mkdir -p "$KEYS_DIR"
     ln -sfn "$KEYS_SRC"/*.keys "$KEYS_DIR" 2>/dev/null || true
@@ -185,20 +201,20 @@ else
     echo "[entry] WARNING: no keys in $KEYS_SRC"
 fi
 
-# ── Bus d'accessibilité : prêt AVANT que streamex lance Eglantine ──
-# Eglantine n'écrit sa cadence que dans sa barre d'état, et streamex la lit par
+# ── Bus d'accessibilité : prêt AVANT que streamex lance Lichii ──
+# Lichii n'écrit sa cadence que dans sa barre d'état, et streamex la lit par
 # le bus d'accessibilité. Qt ne l'y inscrit que si org.a11y.Bus existe déjà à
 # son démarrage, et ce service ne démarre qu'à la première demande : on la fait
 # ici. Sans lui, le panneau n'a pas la cadence, rien d'autre ne change.
 dbus-send --session --print-reply --dest=org.a11y.Bus /org/a11y/bus org.a11y.Bus.GetAddress >/dev/null 2>&1 \
-  || echo "[entry] WARNING: bus d'accessibilité indisponible — pas de FPS d'Eglantine"
+  || echo "[entry] WARNING: bus d'accessibilité indisponible — pas de FPS de Lichii"
 
-# ── Eglantine: launched by streamex (ConsoleAdapter) — no launch here ──
+# ── Lichii: launched by streamex (ConsoleAdapter) — no launch here ──
 # The game is started by streamex at boot (GAME_PATH), and stopped with the
 # session.
 
 # ── streamex: generic WebRTC streaming server (Go) ──
-# Eglantine's audio goes through the eden_sink monitor (system.pa).
-export PULSE_SOURCE="${PULSE_SOURCE:-eden_sink.monitor}"
+# Lichii's audio goes through the lichii_sink monitor (system.pa).
+export PULSE_SOURCE="${PULSE_SOURCE:-lichii_sink.monitor}"
 echo "[entry] starting streamex (session=${SESSION_ID:-standalone}, display=$DISPLAY)"
 exec /usr/local/bin/streamex

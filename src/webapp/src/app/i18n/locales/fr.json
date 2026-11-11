@@ -772,6 +772,7 @@
                 "uptime": "En cours depuis",
                 "resolution": "Résolution gateway",
                 "fps": "FPS gateway",
+                "fpsUnit": "FPS",
                 "bitrate": "Bitrate",
                 "downloadRate": "Débit descendant",
                 "uploadRate": "Débit montant",
@@ -899,7 +900,10 @@
             "performance": {
                 "title": "Performance",
                 "help": "Les chiffres en direct de la connexion et du jeu.",
-                "label": "Afficher les statistiques de connexion"
+                "label": "Afficher les statistiques de connexion",
+                "labelHelp": "Toutes les mesures, en haut de l'écran sur un fond assombri. Les afficher masque la vue discrète.",
+                "compact": "Afficher la vue discrète",
+                "compactHelp": "Les chiffres principaux, en petit, sur deux lignes (l'émulateur, puis le flux) : sous l'image quand l'écran est en hauteur, en haut quand il est en largeur. Allumer cette vue masque les statistiques de connexion, et inversement."
             },
             "session": {
                 "title": "Session",

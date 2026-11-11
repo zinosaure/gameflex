@@ -62,7 +62,9 @@ Change them in **Settings › Controllers and devices**, with *Keyboard* as the 
   multi-disc game, and **Reset the console**. On a recent console, **Write some text** types into
   the field the game has open (a profile name, for instance), letter by letter, then Enter.
   **Show connection statistics** shows the frame rate, the bitrate and the machine's load; in the
-  Android app, the phone's temperature and battery come first.
+  Android app, the phone's temperature and battery come first. **Show the compact view** shows the
+  main figures in small type instead: under the picture on an upright screen, along the top on a
+  sideways one. The two replace each other.
 - **Quit the game** offers to **Leave the game running**, to pause it, or to **End the session**
   for everyone.
 

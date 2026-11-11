@@ -113,6 +113,19 @@
         }
       }
     },
+    "coarseShading": {
+      "type": "switch",
+      "label": "Coarse shading",
+      "description": "Computes the colour of one pixel in four, and copies it to the three others, in the images a game draws at least twice as tall as its window. The stream shows them smaller anyway, so the difference hardly shows, and the graphics processor works less. Turn it off for a sharper image when the stream is as large as the game's images.",
+      "config": "Environment > KYTY_COARSE_SHADING",
+      "value": true,
+      "translations": {
+        "fr": {
+          "label": "Ombrage réduit",
+          "description": "Calcule la couleur d'un pixel sur quatre, et la recopie sur les trois autres, dans les images qu'un jeu dessine au moins deux fois plus hautes que sa fenêtre. Le flux les montre plus petites de toute façon : la différence se voit à peine, et le processeur graphique travaille moins. Désactivez-le pour une image plus nette quand le flux est aussi grand que les images du jeu."
+        }
+      }
+    },
     "frameRateCap": {
       "type": "select",
       "label": "Frame rate limit",
@@ -133,6 +146,25 @@
             "auto": "Suivre le flux",
             "0": "Aucune limite"
           }
+        }
+      }
+    },
+    "suspendPointsAhead": {
+      "type": "select",
+      "label": "Run-ahead of the graphics processor",
+      "description": "How far a game may get ahead of the graphics processor at the points where it marks its frames. With 1, a game waits there until the graphics processor has finished what came before: this suits most games. Higher, the emulator prepares the next image while the graphics processor finishes the current one, which makes some games faster; others stop working, or show images that do not belong together. A game's patch raises it for a game whose images were checked with it.",
+      "config": "Environment > KYTY_SUSPEND_POINTS_AHEAD",
+      "value": "1",
+      "options": {
+        "1": "1",
+        "2": "2",
+        "4": "4",
+        "8": "8"
+      },
+      "translations": {
+        "fr": {
+          "label": "Avance sur le processeur graphique",
+          "description": "Jusqu'où un jeu peut prendre de l'avance sur le processeur graphique aux points où il marque ses images. À 1, le jeu y attend que le processeur graphique ait fini ce qui précède : cela convient à la plupart des jeux. Plus haut, l'émulateur prépare l'image suivante pendant que le processeur graphique finit la courante, ce qui accélère certains jeux ; d'autres ne marchent plus, ou montrent des images qui ne vont pas ensemble. Le correctif d'un jeu le relève pour un jeu dont les images ont été vérifiées ainsi."
         }
       }
     },

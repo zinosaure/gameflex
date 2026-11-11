@@ -61,7 +61,7 @@ type Config struct {
 	// SwitchEdenImage — Eden, le second émulateur de la Switch (chantier 26) ;
 	// SwitchImage porte Citron, le premier.
 	SwitchEdenImage string
-	// Switch2Image — Eglantine, l'émulateur de la Nintendo Switch 2 (#644).
+	// Switch2Image — Lichii, l'émulateur de la Nintendo Switch 2 (#644).
 	Switch2Image string
 	PS3Image     string
 	XboxImage       string

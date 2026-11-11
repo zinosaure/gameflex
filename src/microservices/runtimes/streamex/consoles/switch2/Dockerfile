@@ -1,11 +1,12 @@
 # syntax=docker/dockerfile:1
 # ════════════════════════════════════════════════════════════════
-#  streamex-switch2: Eglantine (Nintendo Switch 2, an Eden fork)
-#                    streamed over WebRTC by streamex
+#  streamex-switch2: Lichii (Nintendo Switch 2, a fork of Eglantine,
+#                    itself an Eden fork) streamed over WebRTC by streamex
 #
-#  Stage 1: build streamex (generic WebRTC server in Go,
-#           pion + cgo openh264/opus/pulse).
-#  Stage 2: minimal runtime (weston + xwayland + pulseaudio + eglantine).
+#  Stage skeleton: streamex, built once (streamex-bin).
+#  Stage mesa:     Mesa from trixie-backports.
+#  Stage radv:     RADV rebuilt from Debian's source, plus Mesa's mesh fix.
+#  Final stage:    weston + xwayland + pulseaudio, Lichii unpacked at launch.
 # ════════════════════════════════════════════════════════════════
 
 # Squelette pré-compilé (streamex/sessreg/sdiag-guid).
@@ -14,10 +15,63 @@
 ARG STREAMEX_BIN=streamex-bin
 FROM ${STREAMEX_BIN} AS skeleton
 
-# ────────────────────────── Runtime ──────────────────────────
-# Trixie (Debian 13): recent Mesa, needed for Xwayland glamor/DRI3
-# and RDNA3 (Radeon 780M) support for Eglantine's Vulkan presentation.
-FROM debian:trixie-slim
+# MESA VIENT DE trixie-backports (26.1.6 au 2026-11-11), comme pour la PS3.
+#
+# Le RADV 25.0.7 de trixie a fait planter RPCS3 au passage en combat de Final
+# Fantasy XIII (segfault DANS libvulkan_radeon.so, 2026-09-11 — le détail est
+# dans consoles/ps3/Dockerfile). Toutes les consoles streamex tournent sur le
+# même APU et le même pilote : elles s'alignent, plutôt que d'attendre leur
+# propre crash. Simulé image par image avant l'écriture : aucun paquet issu de
+# Mesa ne reste en 25.0.7.
+#
+# MESA D'ABORD, le reste ensuite (dans l'étape finale) : Weston et Xwayland
+# tirent Mesa en dépendance, et dans l'ordre inverse apt poserait la 25.0.7 pour
+# la remplacer aussitôt. libglx-mesa0 fait partie du lot : libgl1/libglx0 le
+# tirent, et venu de trixie il réclamerait une autre version exacte de
+# libgallium.
+#
+# UNE ÉTAPE À LUI, d'où partent l'étape « radv » et l'étape finale, comme pour la
+# PS5 : quoi que garde le cache, les deux tiennent le même Mesa. Refaire cette
+# couche refait les deux ; une montée de Lichii, un paquet ajouté à l'étape
+# finale ou un fichier de consoles/mesa/ touché ne la refont pas.
+FROM debian:trixie-slim AS mesa
+ENV DEBIAN_FRONTEND=noninteractive
+RUN echo "deb http://deb.debian.org/debian trixie-backports main" \
+        > /etc/apt/sources.list.d/backports.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends -t trixie-backports \
+        libgl1-mesa-dri mesa-vulkan-drivers libegl-mesa0 libgbm1 libglx-mesa0 mesa-va-drivers \
+    && rm -rf /var/lib/apt/lists/*
+
+# RADV CORRIGÉ : libvulkan_radeon.so reconstruit avec le correctif des mesh
+# shaders de Mesa (#644, décidé par le porteur le 2026-11-11).
+#
+# Ce que c'est : le pilote Vulkan d'AMD du paquet que l'étape « mesa » installe,
+# reconstruit de SON paquet source (même version, correctifs de Debian compris),
+# avec la configuration de debian/rules réduite à RADV, plus
+# ../mesa/radv-mesh-stale-drawid.patch : le commit 48da0f3a de Mesa (!45092),
+# porté sur 26.1. La recette est celle de la PS5, partagée
+# (../mesa/build-radv.sh) : un témoin sans correctif doit être, section par
+# section, le pilote du paquet, et le correctif s'applique sans flou, sinon la
+# construction s'arrête avec ce qu'il faut faire.
+#
+# Pourquoi : les jeux de la Switch 2 dessinent par mesh shaders. Sur GFX11 (le
+# 780M), RADV avant 26.2.5 gardait l'état du shader précédent en liant un mesh
+# shader qui ne lit ni la taille de la grille ni l'index du dessin : un paquet
+# tronqué, puis « Illegal opcode in command stream », et le GPU entier remis à
+# zéro. C'est la signature de la panne du 2026-11-06 sous Eglantine (journal
+# 459) ; le détail, et ce qui n'est pas prouvé, sont dans l'en-tête du correctif.
+#
+# MESA 26.2 L'ARRÊTERA : le correctif y est déjà (26.2.5), et patch le refusera.
+# C'est voulu : on le retire alors, selon la liste de son en-tête. Ce qu'elle
+# coûte, le temps de la construction : ~1,2 Gio de dépendances, ~6,3 Gio de
+# mémoire au pic, deb.debian.org joignable, et ~1 min 30 avec BuildKit (mesuré
+# pour la PS5).
+FROM mesa AS radv
+COPY src/microservices/runtimes/streamex/consoles/mesa/ /radv/
+RUN bash /radv/build-radv.sh /radv/out /radv/radv-mesh-stale-drawid.patch
+
+FROM mesa
 
 # GARDÉE À L'ABRI DE `docker system prune -a`.
 #
@@ -34,38 +88,10 @@ FROM debian:trixie-slim
 # Voir `tools/prune.sh`, qui l'écrit pour ne pas avoir à s'en souvenir.
 LABEL gameflex.prune=keep
 
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Eglantine (#644, 2026-11-06), l'émulateur de la Nintendo Switch 2 : un fork
-# d'Eden (GPL-3.0), qui en garde les dossiers (~/.config/eden, ~/.local/share/eden)
-# et la ligne de commande (-f -g <jeu>). Sa construction quotidienne du
-# 2026-11-05 (daily-20261105), en AppImage : l'archive tar.gz du même jour est
-# liée aux bibliothèques d'Ubuntu 24.04 (FFmpeg 6), que trixie n'a pas.
-# L'éditeur publie un nom SANS version (eglantine-linux-x86_64-pgo.AppImage) :
-# celui rangé dans cores/switch2/ la porte, comme pour Xenia.
-# Même valeur que emulator_file switch2 (consoles/emulators.sh) : ce build le
-# PREND là, et nulle part ailleurs (#145).
-ARG EGLANTINE_FILE=Eglantine-daily-20261105-x86_64-pgo.AppImage
-
-# MESA VIENT DE trixie-backports (26.1.2), comme pour la PS3.
-#
-# Le RADV 25.0.7 de trixie a fait planter RPCS3 au passage en combat de Final
-# Fantasy XIII (segfault DANS libvulkan_radeon.so, 2026-09-11 — le détail est
-# dans consoles/ps3/Dockerfile). Toutes les consoles streamex tournent sur le
-# même APU et le même pilote : elles s'alignent, plutôt que d'attendre leur
-# propre crash. Simulé image par image avant l'écriture : aucun paquet issu de
-# Mesa ne reste en 25.0.7.
-#
-# MESA D'ABORD, le reste ensuite — Weston et Xwayland tirent Mesa en
-# dépendance, et dans l'ordre inverse apt poserait la 25.0.7 pour la remplacer
-# aussitôt. libglx-mesa0 fait partie du lot : libgl1/libglx0 le tirent, et
-# venu de trixie il réclamerait une autre version exacte de libgallium.
-RUN echo "deb http://deb.debian.org/debian trixie-backports main" \
-        > /etc/apt/sources.list.d/backports.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends -t trixie-backports \
-        libgl1-mesa-dri mesa-vulkan-drivers libegl-mesa0 libgbm1 libglx-mesa0 mesa-va-drivers \
+# Le reste, sur le Mesa de l'étape « mesa ». Sans -t trixie-backports : apt
+# garde les paquets de Mesa installés, que rien ici ne demande plus récents (la
+# vérification de la pose le contrôle).
+RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         openbox pulseaudio pulseaudio-utils dbus dbus-x11 \
         weston xwayland \
@@ -74,48 +100,73 @@ RUN echo "deb http://deb.debian.org/debian trixie-backports main" \
         x11-xserver-utils xauth xdotool procps imagemagick \
         # streamex runtime: VA-API (encodage GPU) + openh264 (repli) + opus + pulse
         libpulse0 libopenh264-8 libopus0 libva2 libva-drm2 libxcb-cursor0 libc++1 libc++abi1 \
-        # Les deux bibliothèques qu'Eglantine attend du système, et que son
-        # AppImage n'emporte pas (ldd, 2026-11-06) : sans elles, il ne
-        # démarre même pas (« libusb-1.0.so.0: cannot open shared object file »).
+        # Les deux bibliothèques que Lichii attend du système, et que son
+        # AppImage n'emporte pas (ldd, 2026-11-06 pour Eglantine, 2026-11-11
+        # pour Lichii) : sans elles, il ne démarre même pas
+        # (« libusb-1.0.so.0: cannot open shared object file »).
         libusb-1.0-0 libopengl0 \
-        # Bus d'accessibilité : streamex y lit la barre d'état d'Eglantine (FPS)
+        # Bus d'accessibilité : streamex y lit la barre d'état de Lichii (FPS)
         at-spi2-core \
         ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
+
+# LE RADV DE L'ÉTAPE « radv », par-dessus celui du paquet. Seul Lichii le
+# charge : Weston rend en GL, Xwayland passe par glamor. Puis les trois
+# vérifications de la PS5 : la version installée est celle qui a été construite,
+# le fichier posé est le nôtre (son empreinte), rien ne manque à ses liens. La
+# version, l'empreinte et le correctif restent dans /usr/share/doc/gameflex/radv/.
+# `dpkg --verify` signale le fichier remplacé : c'est voulu.
+COPY --from=radv /radv/out/libvulkan_radeon.so /usr/lib/x86_64-linux-gnu/libvulkan_radeon.so
+COPY --from=radv /radv/out/mesa-version /radv/out/libvulkan_radeon.so.sha256 /radv/out/*.patch /usr/share/doc/gameflex/radv/
+RUN installed=$(dpkg-query -W -f='${Version}' mesa-vulkan-drivers) \
+    && built=$(cat /usr/share/doc/gameflex/radv/mesa-version) \
+    && if [ "$installed" != "$built" ]; then \
+        echo "mesa-vulkan-drivers installé en $installed, RADV construit depuis $built : l'apt de l'étape finale a monté Mesa. Reconstruire sans cache" >&2; \
+        exit 1; \
+    fi \
+    && sha256sum --check --quiet /usr/share/doc/gameflex/radv/libvulkan_radeon.so.sha256 \
+    && if ldd -r /usr/lib/x86_64-linux-gnu/libvulkan_radeon.so 2>&1 | grep -E 'not found|undefined symbol'; then \
+        exit 1; \
+    fi
 
 # The "pulse" system user is required by PulseAudio in --system mode
 RUN id pulse >/dev/null 2>&1 || useradd -r -d /var/run/pulse -s /usr/sbin/nologin pulse
 # In system mode, module-native-protocol-unix only accepts the pulse-access group
 RUN groupadd -f pulse-access && usermod -aG pulse-access root && usermod -aG pulse-access pulse
 
-# ── Eglantine : l'AppImage officielle, DÉBALLÉE AU LANCEMENT ──
+# LICHII (#644, 2026-11-11), l'émulateur de la Nintendo Switch 2 : un fork
+# d'Eglantine (renommé le 2026-10-31), lui-même fork d'Eden (GPL-3.0). Il en
+# garde la ligne de commande (-f -g <jeu>) et le qt-config.ini, mais range ses
+# données sous `lichii/` (~/.config/lichii, ~/.local/share/lichii,
+# ~/.cache/lichii) et NON plus sous `eden/` : un ~/.local/share/eden lui fait
+# ouvrir son assistant d'import, une fenêtre que personne ne peut fermer
+# (l'entrypoint refuse de démarrer dans ce cas). Sa version publiée build-150
+# (17baed7, 2026-11-10), en AppImage avec son profil PGO.
+# L'éditeur publie un nom SANS version (lichii-linux-x86_64-pgo.AppImage) :
+# celui rangé dans cores/switch2/ la porte, comme pour Xenia.
+# Même valeur que emulator_file switch2 (consoles/emulators.sh) : ce build le
+# PREND là, et nulle part ailleurs (#145). Déclarée après les apt : une montée
+# de Lichii ne refait que la suite.
+ARG LICHII_FILE=Lichii-build-150-x86_64-pgo.AppImage
+
+# ── Lichii : l'AppImage officielle, DÉBALLÉE AU LANCEMENT ──
 # L'image ne la porte pas : on ne redistribue pas un émulateur (#145), et
 # c'est ce qui permet de publier l'image (chantier 29). Elle dit comment
 # reconnaître ses versions — un motif de nom —, et laquelle a été testée avec
 # elle : celle de consoles/emulators.sh, que l'écran Émulateurs propose de
 # télécharger quand le dossier n'en a aucune. Le kernel monte `cores/` à
-# l'exécution, et l'entrypoint déballe la DERNIÈRE DÉPOSÉE dans /opt/eglantine
+# l'exécution, et l'entrypoint déballe la DERNIÈRE DÉPOSÉE dans /opt/lichii
 # (voir consoles/unpack-emulator.sh). Son fichier se range sous cores/switch2/.
-ARG EGLANTINE_URL=https://github.com/Djihads80/Eglantine/releases/download/daily-20261105/eglantine-linux-x86_64-pgo.AppImage
+ARG LICHII_URL=https://github.com/zortos293/Lichii/releases/download/build-150/lichii-linux-x86_64-pgo.AppImage
 # Les versions éprouvées avec cette image (emulator_tested) : la liste informe,
 # elle ne bloque pas — toute version que reconnaît le motif se lance.
-#
-# LA VERSION D'ESSAI D'UNE BRANCHE AUSSI (2026-11-06). Eglantine publie, à côté de
-# ses constructions quotidiennes, celles de ses branches de correction, sans
-# profil PGO (eglantine-linux-x86_64.AppImage). Celle de `fix/oot-blackscreen`
-# (743d5bb) est la seule qui affiche *Zelda Ocarina of Time* sur la puce AMD du
-# serveur : avec la quotidienne du 5, l'image est noire en 540p, le son et les
-# sous-titres passent (« SPIR-V Instruction is not implemented » à la
-# cinématique ; banc du 2026-11-06). Le motif couvre donc les deux formes de nom,
-# et la plus récente déposée gagne. Son adresse n'est pas celle d'emulators.sh :
-# une branche la remplace à chaque poussée.
-ARG EGLANTINE_TESTED="${EGLANTINE_FILE} Eglantine-branch-fix-oot-743d5bb-x86_64.AppImage"
-ENV GAMEFLEX_EMULATOR_FILE=${EGLANTINE_FILE} GAMEFLEX_EMULATOR_DIR=/gameflex/cores/switch2 \
-    GAMEFLEX_EMULATOR_PATTERN="Eglantine-*.AppImage" GAMEFLEX_EMULATOR_NAME="Eglantine nightly" \
-    GAMEFLEX_EMULATOR_TESTED="${EGLANTINE_TESTED}"
-LABEL gameflex.emulator.file=${EGLANTINE_FILE} gameflex.emulator.url=${EGLANTINE_URL} \
-    gameflex.emulator.pattern="Eglantine-*.AppImage" \
-    gameflex.emulator.tested="${EGLANTINE_TESTED}"
+ARG LICHII_TESTED="${LICHII_FILE}"
+ENV GAMEFLEX_EMULATOR_FILE=${LICHII_FILE} GAMEFLEX_EMULATOR_DIR=/gameflex/cores/switch2 \
+    GAMEFLEX_EMULATOR_PATTERN="Lichii-*.AppImage" GAMEFLEX_EMULATOR_NAME="Lichii" \
+    GAMEFLEX_EMULATOR_TESTED="${LICHII_TESTED}"
+LABEL gameflex.emulator.file=${LICHII_FILE} gameflex.emulator.url=${LICHII_URL} \
+    gameflex.emulator.pattern="Lichii-*.AppImage" \
+    gameflex.emulator.tested="${LICHII_TESTED}"
 COPY src/microservices/runtimes/streamex/consoles/unpack-emulator.sh /usr/local/bin/unpack-emulator
 
 COPY --from=skeleton /streamex /usr/local/bin/streamex
@@ -125,16 +176,17 @@ COPY --from=skeleton /ffmpeg/lib/ /usr/local/lib/
 COPY --from=skeleton /ffmpeg/*.tar.xz /usr/share/doc/gameflex/sources/
 RUN ldconfig
 COPY src/microservices/runtimes/streamex/consoles/switch2/entrypoint.sh /entrypoint.sh
-COPY src/microservices/runtimes/streamex/consoles/switch2/qt-config.ini /opt/eden-config/qt-config.ini
+COPY src/microservices/runtimes/streamex/consoles/switch2/qt-config.ini /opt/lichii-config/qt-config.ini
 COPY src/microservices/runtimes/streamex/consoles/switch2/system.pa /opt/pulse/system.pa
-# L'adaptateur lance usr/bin/eglantine, PAS AppRun. Dans cette AppImage, AppRun
-# n'est qu'un lien vers ce binaire : lancé par lui, le processus s'appelle
-# « AppRun », et l'arrêt (`pkill -x eglantine`) ne le trouvait pas (vérifié le
-# 2026-11-06). Le binaire trouve seul ses bibliothèques (RUNPATH $ORIGIN/../lib)
+# L'adaptateur lance usr/bin/lichii, PAS AppRun. Dans cette AppImage, AppRun
+# n'est qu'un lien vers ce binaire : lancé par lui, le processus s'appellerait
+# « AppRun », et l'arrêt (`pkill -x lichii`) ne le trouverait pas (le même piège
+# qu'Eglantine, vérifié le 2026-11-06 ; l'arbre de Lichii a le même lien,
+# 2026-11-11). Le binaire trouve seul ses bibliothèques (RUNPATH $ORIGIN/../lib)
 # et ses modules Qt (usr/bin/qt.conf).
 COPY src/microservices/runtimes/streamex/consoles/switch2/adapter.json /opt/adapter.json
 
-# Pad identity (Switch Pro ids). Eglantine reads the pad through cemuhook, fed from
+# Pad identity (Switch Pro ids). Lichii reads the pad through cemuhook, fed from
 # streamex's own pad state; the uinput device itself is only visible in this
 # container, streamex creating its node (gamepad.createNode).
 ENV STREAMEX_PAD_VENDOR=0x057e STREAMEX_PAD_PRODUCT=0x2009
@@ -142,13 +194,15 @@ ENV STREAMEX_PAD_VENDOR=0x057e STREAMEX_PAD_PRODUCT=0x2009
 # streamex (le squelette) ne les connaît pas, il lit ce fichier (voir
 # internal/adapter/config.go).
 ENV STREAMEX_ADAPTER_CONFIG=/opt/adapter.json
-# Accessibilité Qt allumée d'office : Eglantine n'écrit sa cadence que dans sa
+# Accessibilité Qt allumée d'office : Lichii n'écrit sa cadence que dans sa
 # barre d'état, et c'est par le bus d'accessibilité (at-spi2-core, ci-dessus)
 # que streamex peut la lire.
 ENV QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
-# Une AppImage d'Eden sait se mettre à jour elle-même : jamais dans une image,
-# qui épingle sa version.
-ENV DISABLE_AUTO_UPDATES=1
+# L'ÉCRAN EST X11. Le Qt que Lichii embarque a aussi ses greffons Wayland, et
+# le weston de l'entrypoint ouvre `wayland-0` : sans ce choix, Qt pourrait
+# ouvrir sa fenêtre hors de l'écran X que streamex capture. Les autres images
+# forcent de même SDL et GTK en X11.
+ENV QT_QPA_PLATFORM=xcb
 
 RUN chmod +x /entrypoint.sh /usr/local/bin/streamex /usr/local/bin/unpack-emulator
 
@@ -172,7 +226,9 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=45s --retries=3 \
 # dédiés » à la taille du tas mémoire, et llvmpipe annonce toute la RAM de
 # l'hôte contre la seule VRAM de l'APU. RPCS3 et Kyty choisissent RADV (mesuré),
 # mais rien ne le garantit pour les autres : le chargeur l'écarte pour tous.
-# Vérifié : avec cette variable, vulkaninfo ne liste plus que RADV.
+# Vérifié : avec cette variable, vulkaninfo ne liste plus que RADV. Lichii
+# embarque son propre chargeur Vulkan, qui lit aussi cette variable
+# (2026-11-11, `strings`).
 ENV VK_LOADER_DRIVERS_DISABLE="*lvp*"
 
 ENTRYPOINT ["/entrypoint.sh"]

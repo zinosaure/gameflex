@@ -89,8 +89,8 @@ case "$guest" in
     rpcs3)   binary=rpcs3;         [ -n "$game" ] && args=(--no-gui "$game") ;;
     cemu)    binary=Cemu;          args=(-f); [ -n "$game" ] && args+=(-g "$game") ;;
     eden)    binary=eden;          [ -n "$game" ] && args=(-f -g "$game") ;;
-    # La Switch 2 (#644) : Eglantine, un fork d'Eden — même ligne de commande.
-    eglantine) binary=eglantine;    [ -n "$game" ] && args=(-f -g "$game") ;;
+    # La Switch 2 (#644) : Lichii, un fork d'Eglantine (fork d'Eden) — même ligne de commande.
+    lichii)  binary=lichii;        [ -n "$game" ] && args=(-f -g "$game") ;;
     # Un jeu PS4 déballé est un DOSSIER : shadPS4 prend son eboot.bin. En
     # aarch64 le bundle est « Box64 + NOTRE shadPS4 x86_64 » (tools/box64/
     # bundle.sh, chantier 17) : Box64 exécute le x86, la plage d'adresses du jeu
@@ -116,7 +116,7 @@ export VK_ICD_FILENAMES="$G/lvp_icd.aarch64.json"
 export FONTCONFIG_FILE="$G/fonts.conf"
 export SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy
 case "$guest" in
-    rpcs3|eden|eglantine) export QT_QPA_PLATFORM=xcb ;;
+    rpcs3|eden|lichii) export QT_QPA_PLATFORM=xcb ;;
     cemu)
         U="$C/usr"
         export GDK_BACKEND=x11 GTK_THEME=Adwaita:dark GTK_DATA_PREFIX="$C" GTK_EXE_PREFIX="$U"
@@ -136,19 +136,21 @@ case "$guest" in
         fi ;;
 esac
 case "$guest" in
-    eden|eglantine)
-        # stageSwitchKeys et stageSwitchConfig : les clés là où Eden les lit,
-        # et sa question d'arrêt désarmée (chantier 16). Eglantine garde les
-        # dossiers d'Eden (eden/).
-        mkdir -p "$XDG_DATA_HOME/eden/keys" "$XDG_CONFIG_HOME/eden"
-        [ -d /bios ] && cp /bios/*.keys "$XDG_DATA_HOME/eden/keys/" 2> /dev/null
-        printf '[UI]\nconfirmStop\\default=false\nconfirmStop=2\n' > "$XDG_CONFIG_HOME/eden/qt-config.ini"
-        # LE BANC NE VA PAS AU-DELÀ DE L'INTERFACE D'EGLANTINE (2026-11-06).
-        # Au démarrage, il se relance lui-même (fork + execlp de argv[0]) pour
+    eden|lichii)
+        # stageSwitchKeys et stageSwitchConfig : les clés là où l'émulateur les
+        # lit, et sa question d'arrêt désarmée (chantier 16). Chacun sous son
+        # dossier (eden/, lichii/) ; Lichii ne cherche pas non plus les mises à
+        # jour.
+        mkdir -p "$XDG_DATA_HOME/$guest/keys" "$XDG_CONFIG_HOME/$guest"
+        [ -d /bios ] && cp /bios/*.keys "$XDG_DATA_HOME/$guest/keys/" 2> /dev/null
+        printf '[UI]\nconfirmStop\\default=false\nconfirmStop=2\ncheck_for_updates\\default=false\ncheck_for_updates=false\n' > "$XDG_CONFIG_HOME/$guest/qt-config.ini"
+        # LE BANC N'ALLAIT PAS AU-DELÀ DE L'INTERFACE D'EGLANTINE (2026-11-06), le
+        # prédécesseur de Lichii, qui fait le même test au démarrage.
+        # Il se relance lui-même (fork + execlp de argv[0]) pour
         # éprouver Vulkan. Sous qemu-user sans binfmt, l'exec d'un ELF arm64 rend
         # ENOEXEC, execlp le confie à /bin/sh, qui sort en erreur : « Broken Vulkan
         # Installation Detected », une boîte modale ; fermée (xdotool, Entrée),
-        # Eglantine passe à OpenGL, qu'il n'a pas : « OpenGL not available! ».
+        # Eglantine passait à OpenGL, qu'il n'a pas : « OpenGL not available! ».
         # `[Debugging] perform_vulkan_check=false` n'y fait rien : il est lu après
         # le test. Sur le téléphone, Eden, qui fait le même test, le passe et rend
         # en Vulkan : l'exec y rend ENOENT (pas de /lib/ld-linux-aarch64.so.1), et
@@ -157,7 +159,7 @@ case "$guest" in
         # par printf %b — « [Cpu]\ncpu_backend\\default=false\ncpu_backend=0 »
         # impose Dynarmic comme le fait le téléphone (#358).
         if [ -n "${QT_INI:-}" ]; then
-            printf '%b\n' "$QT_INI" >> "$XDG_CONFIG_HOME/eden/qt-config.ini"
+            printf '%b\n' "$QT_INI" >> "$XDG_CONFIG_HOME/$guest/qt-config.ini"
         fi ;;
     xemu)
         # stageBios et stageXemuConfig : les BIOS, le disque dur recopié (xemu
@@ -195,8 +197,8 @@ case "$guest" in
             printf '{"General": {"user_vaddr_max_in_gbytes": %s}}\n' "${VADDR_GB:-256}" > "$P/config.json"
         fi ;;
 esac
-if [ "$guest" != cemu ] && [ "$guest" != eden ] && [ "$guest" != eglantine ] && [ "$guest" != xemu ] && { [ -d /bios ] || [ -d /patches ]; }; then
-    echo "  (BIOS et correctifs : seuls Cemu, Eden, Eglantine et xemu sont mis en scène par ce banc — ignorés pour ${guest})"
+if [ "$guest" != cemu ] && [ "$guest" != eden ] && [ "$guest" != lichii ] && [ "$guest" != xemu ] && { [ -d /bios ] || [ -d /patches ]; }; then
+    echo "  (BIOS et correctifs : seuls Cemu, Eden, Lichii et xemu sont mis en scène par ce banc — ignorés pour ${guest})"
 fi
 
 Xvfb :0 -ac -nolisten tcp -screen 0 1280x720x24 > /dev/null 2>&1 &
@@ -236,8 +238,8 @@ code=0; wait "$pid" 2> /dev/null || code=$?
 echo "  vivant à la fin : ${alive} (code ${code}), ${shots} capture(s)"
 echo "── la fin de sa sortie :"
 tail -25 /out/sortie.txt | sed 's/^/  | /'
-# Le journal de l'émulateur lui-même, quand il en écrit un (Eden, Cemu).
-for log in "$XDG_DATA_HOME/eden/log/eden_log.txt" "$XDG_DATA_HOME/Cemu/log.txt" "$XDG_DATA_HOME/shadPS4/log/shad_log.txt"; do
+# Le journal de l'émulateur lui-même, quand il en écrit un (Eden, Lichii, Cemu).
+for log in "$XDG_DATA_HOME/eden/log/eden_log.txt" "$XDG_DATA_HOME/lichii/log/eden_log.txt" "$XDG_DATA_HOME/Cemu/log.txt" "$XDG_DATA_HOME/shadPS4/log/shad_log.txt"; do
     [ -f "$log" ] && cp "$log" /out/
 done
 chown -R "$(stat -c '%u:%g' /out)" /out

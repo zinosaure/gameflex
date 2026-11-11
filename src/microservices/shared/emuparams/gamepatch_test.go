@@ -225,6 +225,61 @@ func TestAGamePatchReachesKytyEnvironment(t *testing.T) {
 	}
 }
 
+// CLAIR OBSCUR, L'AVANCE SUR LE GPU (#654, Kyty 0097) : son correctif la relève à 8, un
+// autre jeu garde celle de la fiche, 1. Une fiche enregistrée avant ce paramètre ne pose
+// pas la valeur du correctif (layValues ne connaît que ses paramètres) tant qu'un Ensure
+// (completeLocked, la page des réglages) ne l'y a pas ajouté.
+func TestAGamePatchRaisesKytySuspendPointsAhead(t *testing.T) {
+	store := Store{Root: t.TempDir()}
+	if err := store.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Save(kyty, "PlayStation 5", nil, map[string]any{"occlusionQueries": true}, "", nil); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	writeGamePatch(t, filepath.Join(store.Root, "patches"), "ps5", "PPSA17599", "KytyPS5",
+		map[string]any{"suspendPointsAhead": "8"})
+	const ahead = "Environment > KYTY_SUSPEND_POINTS_AHEAD"
+
+	// La fiche d'avant ce paramètre.
+	content, err := os.ReadFile(store.emulatorFile(kyty))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var old map[string]any
+	if err := json.Unmarshal(content, &old); err != nil {
+		t.Fatal(err)
+	}
+	delete(old["params"].(map[string]any), "suspendPointsAhead")
+	encoded, _ := json.Marshal(old)
+	if err := os.WriteFile(store.emulatorFile(kyty), encoded, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := valueAt(store.SettingsFor(kyty, "unreal", "PPSA17599"), ahead); got != "" {
+		t.Fatalf("fiche d'avant : %s = %q, attendu rien", ahead, got)
+	}
+	if err := store.Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	if got := valueAt(store.SettingsFor(kyty, "unreal", "PPSA17599"), ahead); got != "8" {
+		t.Fatalf("Clair Obscur : %s = %q, attendu 8", ahead, got)
+	}
+	if got := valueAt(store.SettingsFor(kyty, "unreal", "PPSA10594"), ahead); got != "1" {
+		t.Fatalf("un autre jeu : %s = %q, attendu 1", ahead, got)
+	}
+	home := t.TempDir()
+	if report := Apply("kyty", store.SettingsFor(kyty, "unreal", "PPSA17599"), home, 540, ""); report.Error != "" {
+		t.Fatalf("Apply : %s", report.Error)
+	}
+	found := false
+	for _, line := range Environment("kyty", home) {
+		found = found || line == "KYTY_SUSPEND_POINTS_AHEAD=8"
+	}
+	if !found {
+		t.Fatalf("KYTY_SUSPEND_POINTS_AHEAD=8 manque : %v", Environment("kyty", home))
+	}
+}
+
 // LES PRÉRÉGLAGES PAR JEU NE SONT PLUS LIVRÉS, ET CE QU'UNE VERSION PRÉCÉDENTE AVAIT
 // POSÉ S'EN VA AU DÉMARRAGE (pas de rétro compatibilité) : la liste n'a plus aucune
 // ligne par jeu.

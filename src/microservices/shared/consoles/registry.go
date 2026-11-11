@@ -489,25 +489,29 @@ var registry = []Console{
 	// (`ma`) : sa manette, en cemuhook, atteint AUSSI le jeu derrière le
 	// clavier — B y efface une lettre et fait revenir le jeu en arrière.
 	{ID: "switch", Name: "Nintendo Switch", Publisher: "Nintendo", Year: 2017, Method: MethodStreamex, Cores: []string{"Eden (streamex)", "Citron (streamex)"}, MaxPlayers: 8, Width: 1280, Height: 720, Bios: []string{"prod.keys"}, BiosOptional: []string{"title.keys"}, Touch: true, Experimental: ExperimentalHeavy, Enabled: true},
-	// switch2 — streamex + Eglantine (#644, 2026-11-06), un fork d'Eden qui lit
-	// les jeux de la Switch 2 : ses clés dans bios/switch2/, ses jeux dans
-	// roms/switch2/. Très expérimental, comme son émulateur. Ses formats, en
-	// plus de ceux de la Switch : le .nup, un conteneur propre à Eglantine qui
-	// réunit un jeu, ses mises à jour et ses contenus (`--pack-nup`), et qu'il
-	// lance tel quel.
+	// switch2 — streamex + Lichii (#644, 2026-11-11), un fork d'Eglantine (lui-même
+	// fork d'Eden) qui lit les jeux de la Switch 2 : ses clés dans bios/switch2/,
+	// ses jeux dans roms/switch2/. Très expérimental, comme son émulateur. Ses
+	// formats, en plus de ceux de la Switch : le .nup, un conteneur propre à
+	// Lichii qui réunit un jeu, ses mises à jour et ses contenus
+	// (`--pack-nup`), et qu'il lance tel quel. prod.keys reste exigé : un .nup
+	// n'en a pas besoin, un .nsp ou un .xci si.
 	//
-	// RETIRÉE LE 2026-11-06, en attendant une version d'Eglantine qui tienne
-	// (le porteur : « on peut attendre un peu qu'une mise à jour arrive. En
-	// attendant on retire l'émulateur »). Sa quotidienne du 5 laisse la 3D de
-	// *Zelda Ocarina of Time* noire ; la version corrective de sa branche
-	// fix/oot-blackscreen l'affiche, puis envoie au GPU une commande invalide :
-	// la puce entière a été remise à zéro, l'affichage du serveur perdu, et la
-	// machine redémarrée (journal 459). Le branchement reste (image, adaptateur,
-	// invité du téléphone) ; les fichiers de l'émulateur sont sur Gamebox.
-	// Rallumer : Enabled, un Eglantine dans cores/switch2/, la distribution
-	// publique (compose, guides, publish.sh), et une partie éprouvée sans
-	// personne d'autre sur le serveur.
-	{ID: "switch2", Name: "Nintendo Switch 2", Publisher: "Nintendo", Year: 2025, Method: MethodStreamex, Cores: []string{"Eglantine (streamex)"}, MaxPlayers: 8, Extensions: []string{"xci", "nsp", "nup"}, Width: 1920, Height: 1080, Bios: []string{"prod.keys"}, BiosOptional: []string{"title.keys"}, Touch: true, Experimental: ExperimentalGeneral, Enabled: false},
+	// RETIRÉE LE 2026-11-06 avec Eglantine, son premier émulateur : la version
+	// corrective de sa branche fix/oot-blackscreen affichait la 3D de *Zelda
+	// Ocarina of Time*, puis envoyait au GPU une commande invalide — la puce
+	// entière remise à zéro, l'affichage du serveur perdu, la machine
+	// redémarrée (journal 459). La signature est celle d'un défaut de RADV après
+	// certains mesh shaders, corrigé dans Mesa 26.2.5 : l'image porte ce
+	// correctif, reporté sur notre Mesa (consoles/mesa/). Lichii a remplacé
+	// Eglantine partout le 2026-11-11 (le porteur).
+	// RALLUMÉE LE 2026-11-11 : deux essais de quinze minutes sur le GPU, mesh
+	// shaders en repli puis natifs, sans une ligne du GPU au journal du noyau,
+	// puis la vraie partie par la webapp (rapport 2026-11-11-switch2-lichii) —
+	// avec 20 Go par partie (sessionMemoryLimit) : à 12, le noyau tuait Lichii
+	// dès la forêt Kokiri. Reste : le fichier de l'émulateur dans
+	// cores/switch2/ de la release, et le téléphone.
+	{ID: "switch2", Name: "Nintendo Switch 2", Publisher: "Nintendo", Year: 2025, Method: MethodStreamex, Cores: []string{"Lichii (streamex)"}, MaxPlayers: 8, Extensions: []string{"xci", "nsp", "nup"}, Width: 1920, Height: 1080, Bios: []string{"prod.keys"}, BiosOptional: []string{"title.keys"}, Touch: true, Experimental: ExperimentalGeneral, Enabled: true},
 
 	// xbox — streamex + xemu, same per-console pattern as switch above.
 	//

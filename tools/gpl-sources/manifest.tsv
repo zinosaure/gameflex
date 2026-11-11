@@ -38,7 +38,19 @@ ps4/shadps4-0.20.0+box64-d653d0ebe-forky-r7-aarch64.zip	ours	https://github.com/
 ps4/shadps4-0.20.0+box64-d653d0ebe-forky-r1-x86_64.zip	repackaged	https://github.com/shadps4-emu/shadPS4@v.0.18.0	src/mobileapp/tools/assemble-appimage.sh@006bc43c src/mobileapp/tools/assemble-glibc.sh@006bc43c	src/mobileapp/tools/assemble-appimage.sh ps4 x86_64
 
 ps5/KytyPS5-2026-11-04-91c5820-Linux-x86_64.tar.gz	upstream	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591	-	-
-ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591	tools/kyty@17d8eab5	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p58	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591	tools/kyty@17d8eab5	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p69	ours	https://github.com/zinosaure/KytyPS5@3230d7747385285fb99f45709baf718ccbb14053	tools/kyty@0687f338	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p70	ours	https://github.com/zinosaure/KytyPS5@3f4f60066d7c1ee9d52406fbf37625e208b4fb01	tools/kyty@6d72bb0e	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p71	ours	https://github.com/zinosaure/KytyPS5@0056bcd44a51daa41a6f70a2fcc22025413fb86f	tools/kyty@28680185	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p77	ours	https://github.com/zinosaure/KytyPS5@08ee63893c673d9bb6217699a12a4fac39e893b2	tools/kyty@7a686846	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p84	ours	https://github.com/zinosaure/KytyPS5@7e6db46fa64bd397229c03337f7f0bde7a29a342	tools/kyty@7abcf177	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p85	ours	https://github.com/zinosaure/KytyPS5@0c20933efce1348bc8eadf8ddbb00848bfb90bac	tools/kyty@901bad53	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p86	ours	https://github.com/zinosaure/KytyPS5@6ba5e1bb283e0beb1e7d9e4b7d69ff1ac63e7e4a	tools/kyty@b71739e8	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p87	ours	https://github.com/zinosaure/KytyPS5@0d652016cf62bfed062fae244016c7ab1b0fd103	tools/kyty@e7688dfe	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p92	ours	https://github.com/zinosaure/KytyPS5@7158f17546ee06cbc660b5d401636f3d4226e53b	tools/kyty@7abfd0a3	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p93	ours	https://github.com/zinosaure/KytyPS5@41d2131fb0612cb849e63d353ad91603762dd2cf	tools/kyty@4a231393	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p95	ours	https://github.com/zinosaure/KytyPS5@c7e5ffb749688483aff5334bc3af5acc77b35650	tools/kyty@2bc6491c	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820	ours	https://github.com/zinosaure/KytyPS5@06197cdc832e6edf6177efa32b5106df686fd833	tools/kyty@a62c569b	tools/kyty/build.sh --server
 ps5/kyty-2026-11-04+box64-d653d0ebe-forky-r11-aarch64.zip	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 https://github.com/ptitSeb/box64@d653d0ebefeba2c9abe13a5c4c13663bbd242549	tools/kyty@83832e5f tools/box64@83832e5f tools/box64/bundle.sh@83832e5f	tools/kyty/build.sh; tools/box64/build.sh; tools/box64/bundle.sh
 ps5/kyty-2026-11-04+box64-d653d0ebe-forky-r11-x86_64.zip	repackaged	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591	src/mobileapp/tools/assemble-appimage.sh@83832e5f src/mobileapp/tools/assemble-glibc.sh@83832e5f src/microservices/runtimes/streamex/consoles/emulators.sh@83832e5f	src/mobileapp/tools/assemble-appimage.sh ps5 x86_64
 ps5/KytyPS5-2026-10-29-5eab0ec-Linux-x86_64.tar.gz	upstream	https://github.com/KytyPS5/KytyPS5@5eab0ec73855acdf776f5c0669911e2f5ddfb743	-	-
@@ -55,6 +67,8 @@ switch/eden-de7e6e01d4-gameflex-r4-x86_64.zip	repackaged	https://git.eden-emu.de
 switch/citron_nightly-0237a9b88-linux-x86_64_v3.AppImage	upstream	https://github.com/citron-neo/emulator@0237a9b88a5047b9940ab3b3c3412d71cf8e50be	-	-
 switch/citron-0237a9b88-forky-r3-x86_64.zip	repackaged	https://github.com/citron-neo/emulator@0237a9b88a5047b9940ab3b3c3412d71cf8e50be	src/mobileapp/tools/assemble-appimage.sh@e92f5609 src/mobileapp/tools/assemble-glibc.sh@e92f5609 src/microservices/runtimes/streamex/consoles/emulators.sh@e92f5609	src/mobileapp/tools/assemble-appimage.sh switch x86_64
 switch/citron-0237a9b88-forky-r3-aarch64.zip	repackaged	https://github.com/citron-neo/emulator@0237a9b88a5047b9940ab3b3c3412d71cf8e50be	src/mobileapp/tools/assemble-appimage.sh@e92f5609 src/mobileapp/tools/assemble-glibc.sh@e92f5609	src/mobileapp/tools/assemble-appimage.sh switch aarch64
+switch2/Lichii-build-150-x86_64-pgo.AppImage	upstream	https://github.com/zortos293/Lichii@17baed716da04fd743fbd8f9604bec96eab0a123	-	-
+switch2/lichii-build-150-forky-r1-aarch64.zip	repackaged	https://github.com/zortos293/Lichii@17baed716da04fd743fbd8f9604bec96eab0a123	src/mobileapp/tools/assemble-appimage.sh@c980602d src/mobileapp/tools/assemble-glibc.sh@c980602d	src/mobileapp/tools/assemble-appimage.sh switch2 aarch64
 
 wiiu/Cemu-2.6-x86_64.AppImage	upstream	https://github.com/cemu-project/Cemu@v2.6	-	-
 wiiu/cemu-2.6-fced55a-forky-r2-x86_64.zip	repackaged	https://github.com/cemu-project/Cemu@v2.6	src/mobileapp/tools/assemble-appimage.sh@e92f5609 src/mobileapp/tools/assemble-glibc.sh@e92f5609 src/microservices/runtimes/streamex/consoles/emulators.sh@e92f5609	src/mobileapp/tools/assemble-appimage.sh wiiu x86_64
@@ -73,6 +87,7 @@ xbox360/xenia_canary_linux-57cddf7.AppImage	upstream	https://github.com/xenia-ca
 ps3/rpcs3-0.0.43-20247-forky-r2-x86_64.zip	repackaged	https://github.com/RPCS3/rpcs3@222754bfd3d2a482ea60b27d5661a12960491fd9	src/mobileapp/tools/assemble-appimage.sh@43719c4f src/mobileapp/tools/assemble-glibc.sh@43719c4f src/microservices/runtimes/streamex/consoles/emulators.sh@43719c4f	src/mobileapp/tools/assemble-appimage.sh ps3 x86_64
 ps3/rpcs3-0.0.43-20247-forky-r2-aarch64.zip	repackaged	https://github.com/RPCS3/rpcs3@222754bfd3d2a482ea60b27d5661a12960491fd9	src/mobileapp/tools/assemble-appimage.sh@43719c4f src/mobileapp/tools/assemble-glibc.sh@43719c4f	src/mobileapp/tools/assemble-appimage.sh ps3 aarch64
 
+ps4/shadps4-gameflex-0.20.0-2026-11-04	ours	https://github.com/shadps4-emu/shadPS4@3eecea94ddaca360b19f4b800523b609a8b2ffcc	tools/shadps4@f343170f	tools/shadps4/build.sh
 ps4/shadps4-gameflex-0.20.0-p9	ours	https://github.com/shadps4-emu/shadPS4@3eecea94ddaca360b19f4b800523b609a8b2ffcc	tools/shadps4@7f5dfcd4	tools/shadps4/build.sh
 ps4/shadps4-gameflex-0.19.0	ours	https://github.com/shadps4-emu/shadPS4@v.0.19.0	tools/shadps4@54337754	tools/shadps4/build.sh
 ps4/shadps4-0.19.0+box64-d653d0ebe-forky-r5-aarch64.zip	ours	https://github.com/shadps4-emu/shadPS4@v.0.19.0 https://github.com/ptitSeb/box64@d653d0ebefeba2c9abe13a5c4c13663bbd242549	tools/shadps4@2a1ad705 tools/box64@2a1ad705	tools/shadps4/build.sh; tools/box64/build.sh; tools/box64/bundle.sh

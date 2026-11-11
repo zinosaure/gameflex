@@ -51,7 +51,7 @@ services:
             - GAMEFLEX_REMOTEPLAY_CONTROL_URL=http://${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}:10205
             - GAMEFLEX_PORT_RANGE=9001-9100
             - GAMEFLEX_MAX_PLAYERS=${GAMEFLEX_MAX_PLAYERS:-4}
-            - GAMEFLEX_CONSOLE_LIMITS=${GAMEFLEX_CONSOLE_LIMITS:-switch:1,ps3:1,xbox:1,ps4:1,ps5:1,wiiu:1,xbox360:1}
+            - GAMEFLEX_CONSOLE_LIMITS=${GAMEFLEX_CONSOLE_LIMITS:-switch:1,switch2:1,ps3:1,xbox:1,ps4:1,ps5:1,wiiu:1,xbox360:1}
             - GAMEFLEX_MIRROR_URL=${GAMEFLEX_MIRROR_URL:-}
             - GAMEFLEX_GPU=${GAMEFLEX_GPU:-}
             - GAMEFLEX_STAGING=${GAMEFLEX_STAGING:-}
@@ -62,6 +62,7 @@ services:
             - GAMEFLEX_PS5_IMAGE=zinosaure/gameflex-ps5:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_SWITCH_IMAGE=zinosaure/gameflex-switch:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_SWITCH_EDEN_IMAGE=zinosaure/gameflex-switch-eden:${GAMEFLEX_VERSION:-latest}
+            - GAMEFLEX_SWITCH2_IMAGE=zinosaure/gameflex-switch2:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_WIIU_IMAGE=zinosaure/gameflex-wiiu:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_XBOX_IMAGE=zinosaure/gameflex-xbox:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_XBOX360_IMAGE=zinosaure/gameflex-xbox360:${GAMEFLEX_VERSION:-latest}
@@ -156,6 +157,11 @@ services:
     gameflex-switch-eden:
         image: zinosaure/gameflex-switch-eden:${GAMEFLEX_VERSION:-latest}
         profiles: [ "switch" ]
+        entrypoint: [ "true" ]
+        restart: "no"
+    gameflex-switch2:
+        image: zinosaure/gameflex-switch2:${GAMEFLEX_VERSION:-latest}
+        profiles: [ "switch2" ]
         entrypoint: [ "true" ]
         restart: "no"
     gameflex-wiiu:
