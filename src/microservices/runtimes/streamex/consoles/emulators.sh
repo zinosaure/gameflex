@@ -56,13 +56,13 @@
 emulator_file() {
     case "$1" in
         switch) echo "citron_nightly-0237a9b88-linux-x86_64_v3.AppImage" ;;
-        switch-eden) echo "Eden-Linux-de7e6e01d4-amd64-clang-pgo.AppImage" ;;
+        switch-eden) echo "Eden-Linux-d85bad8924-amd64-clang-pgo.AppImage" ;;
         # Lichii publie, comme Xenia, un nom SANS version : celui rangé ici la
-        # porte (sa version publiée, build-150).
-        switch2) echo "Lichii-build-150-x86_64-pgo.AppImage" ;;
+        # porte (sa version publiée, build-316).
+        switch2) echo "Lichii-build-316-x86_64-pgo.AppImage" ;;
         xbox)   echo "xemu-0.8.139-x86_64.AppImage" ;;
         wiiu)   echo "Cemu-2.6-x86_64.AppImage" ;;
-        ps3)    echo "rpcs3-v0.0.43-20508-8e26652c_linux64.AppImage" ;;
+        ps3)    echo "rpcs3-v0.0.43-20607-fb6737b1_linux64.AppImage" ;;
         # La PS4 publie un ZIP qui CONTIENT l'AppImage : le fichier gardé est
         # donc le zip, et le déballage fait les deux étages (unzip, puis
         # --appimage-extract). Le pkgextract, lui, est un outil et non
@@ -73,7 +73,7 @@ emulator_file() {
         # Xenia publie une AppImage par commit, sous un nom SANS version :
         # celui rangé ici la porte, pour qu'une montée de version ne
         # retrouve pas l'ancienne sous le même nom.
-        xbox360) echo "xenia_canary_linux-57cddf7.AppImage" ;;
+        xbox360) echo "xenia_canary_linux-f9431eb.AppImage" ;;
         # Les ports PC (chantier 40) : un port par image, tous rangés sous
         # cores/ports/ (emulator_console). Zelda 64: Recompiled publie un zip
         # qui porte une archive tar.gz.
@@ -89,17 +89,17 @@ emulator_url() {
         switch) echo "https://github.com/citron-neo/emulator/releases/download/2026-04-27/citron_nightly-0237a9b88-linux-x86_64_v3.AppImage" ;;
         # La nocturne officielle d'Eden, épinglée par son étiquette (chantier 25) :
         # la seule qui lit les jeux du firmware 22 (ZBIC).
-        switch-eden) echo "https://nightly.eden-emu.dev/v1792353251.de7e6e01d4/Eden-Linux-de7e6e01d4-amd64-clang-pgo.AppImage" ;;
+        switch-eden) echo "https://nightly.eden-emu.dev/v1794878467.d85bad8924/Eden-Linux-d85bad8924-amd64-clang-pgo.AppImage" ;;
         # Lichii (#644), l'émulateur de la Switch 2, fork d'Eglantine : sa version
-        # build-150 (17baed7, 2026-11-10), avec son profil PGO, épinglée par son
+        # build-316 (5a66c89, 2026-11-16), avec son profil PGO, épinglée par son
         # étiquette.
-        switch2) echo "https://github.com/zortos293/Lichii/releases/download/build-150/lichii-linux-x86_64-pgo.AppImage" ;;
+        switch2) echo "https://github.com/zortos293/Lichii/releases/download/build-316/lichii-linux-x86_64-pgo.AppImage" ;;
         xbox)   echo "https://github.com/xemu-project/xemu/releases/download/v0.8.139/xemu-0.8.139-x86_64.AppImage" ;;
         wiiu)   echo "https://github.com/cemu-project/Cemu/releases/download/v2.6/Cemu-2.6-x86_64.AppImage" ;;
-        ps3)    echo "https://github.com/RPCS3/rpcs3-binaries-linux/releases/download/build-8e26652c85bb5658965fa5731d9a0309ca10b42b/rpcs3-v0.0.43-20508-8e26652c_linux64.AppImage" ;;
+        ps3)    echo "https://github.com/RPCS3/rpcs3-binaries-linux/releases/download/build-fb6737b1c8306ceeccb53b7fa051acfc9e641cd7/rpcs3-v0.0.43-20607-fb6737b1_linux64.AppImage" ;;
         ps4)    echo "https://github.com/shadps4-emu/shadPS4/releases/download/v.0.20.0/shadps4-linux-sdl-0.20.0.zip" ;;
         ps5)    echo "https://github.com/KytyPS5/KytyPS5/releases/download/KytyPS5-2026-11-04-91c5820/KytyPS5-2026-11-04-91c5820-Linux-x86_64.tar.gz" ;;
-        xbox360) echo "https://github.com/xenia-canary/xenia-canary/releases/download/57cddf7/xenia_canary_linux.AppImage" ;;
+        xbox360) echo "https://github.com/xenia-canary/xenia-canary/releases/download/f9431eb/xenia_canary_linux.AppImage" ;;
         ports-zelda64recomp) echo "https://github.com/Zelda64Recomp/Zelda64Recomp/releases/download/v1.2.2/Zelda64Recompiled-v1.2.2-Linux-X64.zip" ;;
         *)      echo "" ;;
     esac

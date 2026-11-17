@@ -84,3 +84,70 @@ func TestFileNamePorteLExtension(t *testing.T) {
 		t.Error("un titre « ../../databases » a été accepté comme nom de fichier")
 	}
 }
+
+// LA FICHE ET UNE IMAGE D'UN JEU D'UN PAIR (chantier 57) passent telles quelles — leur statut, leur type, leur ETag, et
+// un 304 quand l'ETag est encore le bon — ; un refus se rend avant le premier octet : 403 pour un jeton refusé, 404
+// pour un pair qui ne prête pas cette fiche (une version plus ancienne n'a pas la route), 502 pour un pair muet.
+func TestRelayMetadataPasseLaFicheEtDitSesRefus(t *testing.T) {
+	answer := http.StatusOK
+	peerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if answer != http.StatusOK {
+			w.WriteHeader(answer)
+
+			return
+		}
+		switch r.URL.RequestURI() {
+		case "/api/v1/federation/metadata/ps3/jeu":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"success":true,"data":{"gameId":"BLES01269"}}`))
+		case "/api/v1/federation/metadata/ps3/jeu/images/cover?w=256":
+			w.Header().Set("ETag", `"v1"`)
+			w.Header().Set("Cache-Control", "private, no-cache")
+			if r.Header.Get("If-None-Match") == `"v1"` {
+				w.WriteHeader(http.StatusNotModified)
+
+				return
+			}
+			w.Header().Set("Content-Type", "image/jpeg")
+			_, _ = w.Write([]byte("jpeg"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer peerServer.Close()
+	peer := Peer{ID: 3, Link: peerServer.URL, Token: "jeton"}
+
+	sheet := httptest.NewRecorder()
+	if err := RelayMetadata(sheet, httptest.NewRequest(http.MethodGet, "/", nil), peer, "ps3", "jeu"); err != nil {
+		t.Fatal(err)
+	}
+	if sheet.Code != http.StatusOK || sheet.Body.String() != `{"success":true,"data":{"gameId":"BLES01269"}}` || sheet.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("la fiche relayée = %d %q %v", sheet.Code, sheet.Body.String(), sheet.Header())
+	}
+	cover := httptest.NewRecorder()
+	if err := RelayImage(cover, httptest.NewRequest(http.MethodGet, "/?w=256", nil), peer, "ps3", "jeu", "cover"); err != nil {
+		t.Fatal(err)
+	}
+	if cover.Code != http.StatusOK || cover.Body.String() != "jpeg" || cover.Header().Get("ETag") != `"v1"` || cover.Header().Get("Cache-Control") != "private, no-cache" {
+		t.Fatalf("l'image relayée = %d %q %v", cover.Code, cover.Body.String(), cover.Header())
+	}
+	revalidating := httptest.NewRequest(http.MethodGet, "/?w=256", nil)
+	revalidating.Header.Set("If-None-Match", `"v1"`)
+	unchanged := httptest.NewRecorder()
+	if err := RelayImage(unchanged, revalidating, peer, "ps3", "jeu", "cover"); err != nil || unchanged.Code != http.StatusNotModified || unchanged.Body.Len() != 0 {
+		t.Fatalf("revalidée = %d %q (%v), attendu 304", unchanged.Code, unchanged.Body.String(), err)
+	}
+
+	var refused *StatusError
+	for status, want := range map[int]int{http.StatusUnauthorized: http.StatusForbidden, http.StatusForbidden: http.StatusForbidden,
+		http.StatusNotFound: http.StatusNotFound, http.StatusMethodNotAllowed: http.StatusNotFound, http.StatusInternalServerError: http.StatusBadGateway} {
+		answer = status
+		if err := RelayMetadata(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil), peer, "ps3", "jeu"); !errors.As(err, &refused) || refused.Status != want {
+			t.Errorf("le pair répond %d : %v, attendu %d", status, err, want)
+		}
+	}
+	silent := Peer{ID: 3, Link: "http://127.0.0.1:1", Token: "jeton"}
+	if err := RelayImage(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil), silent, "ps3", "jeu", "cover"); !errors.As(err, &refused) || refused.Status != http.StatusBadGateway {
+		t.Errorf("un pair éteint : %v, attendu 502", err)
+	}
+}

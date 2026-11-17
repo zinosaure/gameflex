@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -36,8 +37,28 @@ func TestDeletingAPS4GameRemovesItsUnpackedCopy(t *testing.T) {
 		t.Helper()
 		recorder := httptest.NewRecorder()
 		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodDelete, "/ps4/roms/"+storage.RomID("ps4", name)+query, nil))
-		if recorder.Code != http.StatusOK {
+		// La suppression part en tâche suivie (202, son identifiant) : la test attend sa fin, comme la page.
+		if recorder.Code != http.StatusAccepted {
 			t.Fatalf("suppression de %s : %d %s", name, recorder.Code, recorder.Body.String())
+		}
+		var answer struct {
+			Data struct {
+				DownloadID string `json:"downloadId"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &answer); err != nil || answer.Data.DownloadID == "" {
+			t.Fatalf("suppression de %s : pas d'identifiant (%s)", name, recorder.Body.String())
+		}
+		// Sans jeton, la tâche n'a pas de compte : elle se suit sous « ».
+		steps, last, _, known := server.downloads.Subscribe(answer.Data.DownloadID, "")
+		if !known {
+			t.Fatalf("suppression de %s : tâche inconnue", name)
+		}
+		for step := range steps {
+			last = step
+		}
+		if last.Type != "done" {
+			t.Fatalf("suppression de %s : %+v", name, last)
 		}
 	}
 	exists := func(name string) bool {

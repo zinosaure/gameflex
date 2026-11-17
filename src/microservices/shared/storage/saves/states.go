@@ -65,7 +65,8 @@ func CopySlot(fromTree, toTree, consoleID, reference, toReference string, slot i
 	return nil
 }
 
-// BackupSlot — un emplacement du principal, copié dans `local`.
+// BackupSlot — un emplacement du principal, copié dans `local`. La note de
+// celui qu'il remplace part avec lui (notes.go).
 func BackupSlot(savesRoot, username, consoleID, reference string, slot int) error {
 	principal, err := Tree(savesRoot, username, "")
 	if err != nil {
@@ -75,8 +76,11 @@ func BackupSlot(savesRoot, username, consoleID, reference string, slot int) erro
 	if err != nil {
 		return err
 	}
+	if err := CopySlot(principal, local, consoleID, reference, reference, slot); err != nil {
+		return err
+	}
 
-	return CopySlot(principal, local, consoleID, reference, reference, slot)
+	return ForgetNote(local, NoteItem{Kind: KindStates, Console: consoleID, Reference: reference, Slot: slot})
 }
 
 // RestoreSlot — un emplacement d'une copie remis dans le principal, sous

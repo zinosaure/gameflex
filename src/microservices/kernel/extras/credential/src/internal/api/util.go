@@ -2,23 +2,15 @@ package api
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
-	"gameflex/credential/internal/auth"
 	"github.com/gorilla/websocket"
 )
 
 func marshalPayload(payload map[string]any) ([]byte, error) {
 	return json.Marshal(payload)
-}
-
-func claimsUserID(claims *auth.Claims) (int64, error) {
-	var id int64
-	_, err := fmt.Sscanf(claims.Subject, "%d", &id)
-	return id, err
 }
 
 var webSocketUpgrader = websocket.Upgrader{

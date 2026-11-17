@@ -103,8 +103,8 @@ func seedRoot(db *sql.DB, cfg config.Config) {
 		return
 	}
 	if _, err := db.Exec(
-		`INSERT INTO users (username, hashed_password, display_name, role_level, created_at) VALUES (?, ?, ?, 0, ?)`,
-		cfg.RootUsername, hashed, "Root", time.Now().Format("2006-01-02 15:04:05.999999"),
+		`INSERT INTO users (username, hashed_password, display_name, role_level, created_at, password_set_at) VALUES (?, ?, ?, 0, ?, ?)`,
+		cfg.RootUsername, hashed, "Root", time.Now().Format("2006-01-02 15:04:05.999999"), time.Now().Format("2006-01-02 15:04:05.999999"),
 	); err != nil {
 		slog.Error("root seed failed", "error", err)
 		return
@@ -137,7 +137,10 @@ func resetRootPassword(db *sql.DB, cfg config.Config) error {
 	if err != nil {
 		return fmt.Errorf("hashing: %w", err)
 	}
-	if _, err := db.Exec(`UPDATE users SET hashed_password = ? WHERE id = ?`, hashed, id); err != nil {
+	// La génération des sessions avance (chantier 55) : qui avait l'ancien mot
+	// de passe perd aussi ses sessions.
+	if _, err := db.Exec(`UPDATE users SET hashed_password = ?, password_set_at = ?, session_generation = session_generation + 1 WHERE id = ?`,
+		hashed, time.Now().Format("2006-01-02 15:04:05.999999"), id); err != nil {
 		return fmt.Errorf("update: %w", err)
 	}
 	slog.Warn("root password reset to GAMEFLEX_ROOT_PASSWORD", "username", cfg.RootUsername)

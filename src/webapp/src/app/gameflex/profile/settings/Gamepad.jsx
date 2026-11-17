@@ -1,10 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as bs from "react-bootstrap";
-import { useNavigate } from "react-router-dom";
 import Skeleton from "../../../skeleton/skeleton.js";
 import { useGamepad } from "../../hooks/use-gamepad.jsx";
 import { CONTROLLER_PRESETS } from "../../controllers/presets.js";
-import { can } from "../../libs/capabilities.js";
 import ButtonPositioningPanel from "./gamepad/ButtonPositioning.jsx";
 import {
     getKeyboardDeviceId,
@@ -145,7 +143,6 @@ function KeyMappingCaptureRow({ label, currentInput, deviceType, gamepadIndex, i
 // remote-play's PS5_BUTTON_MAP): this is an opt-in override, not a required
 // setup step.
 export default function Gamepad({ context, token, t }) {
-    const navigate = useNavigate();
     const { connectedGamepads } = useGamepad();
     const [keyboardId] = useState(() => getKeyboardDeviceId());
     // Guard: only ONE capture can listen at a time (see the screenshot of
@@ -341,13 +338,6 @@ export default function Gamepad({ context, token, t }) {
         { size: null }
     );
 
-    // Full-page route (not the offcanvas): the stream must survive a
-    // reload, and the offcanvas's own close fought the Escape blocking.
-    const openLayout = () => {
-        context.offcanvas.close();
-        navigate(`/keytest/${controllerName}`);
-    };
-
     return (
         <>
             <SectionPanel>
@@ -355,7 +345,7 @@ export default function Gamepad({ context, token, t }) {
                     label={t("profile.gamepad.virtualController")}
                     helpText={t("profile.gamepad.virtualControllerHelp")}>
                     <div className="d-flex gap-2 align-items-start">
-                        <div className={can("gamepadTest") ? "w-75" : "w-100"}>
+                        <div className="w-100">
                             <Form.Select
                                 name="controllerName"
                                 context={formContext}
@@ -364,17 +354,6 @@ export default function Gamepad({ context, token, t }) {
                                     label: p.label || key,
                                 }))} />
                         </div>
-                        {/* Caché pour l'instant : voir `gamepadTest` dans capabilities.js. */}
-                        {can("gamepadTest") && (
-                            <div className="w-25">
-                                <bs.Button
-                                    className="w-100"
-                                    variant="secondary"
-                                    onClick={openLayout}>
-                                    Test
-                                </bs.Button>
-                            </div>
-                        )}
                     </div>
                 </Form.Group>
                 <Form.Group>

@@ -30,6 +30,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -121,7 +122,7 @@ func peerRomEntry(entry registeredServer, source, consoleID, consoleStatus strin
 //
 // 403 quand il refuse notre jeton, 502 quand il ne répond pas : la page dit
 // alors pourquoi il n'y a rien, au lieu d'une liste vide qui ne dit rien.
-func (server *Server) servePeerRoms(w http.ResponseWriter, rawID, consoleID, query string) {
+func (server *Server) servePeerRoms(ctx context.Context, w http.ResponseWriter, rawID, consoleID, query string) {
 	entry, ok := server.registeredByIDValue(w, rawID)
 	if !ok {
 		return
@@ -131,7 +132,7 @@ func (server *Server) servePeerRoms(w http.ResponseWriter, rawID, consoleID, que
 	items, err := server.copies().Items(peer, listing.Roms, consoleID)
 	if err != nil {
 		refused := remote.Refusal(err)
-		writeError(w, refused.Status, refused.Message)
+		writeErrorCode(w, refused.Status, codeOr(refused.Code, "peer_failed"), refused.Message)
 
 		return
 	}
@@ -139,13 +140,20 @@ func (server *Server) servePeerRoms(w http.ResponseWriter, rawID, consoleID, que
 
 	// Par titre : la copie l'est déjà, comme tout listing.
 	needle := strings.ToLower(strings.TrimSpace(query))
+	// « DÉJÀ ICI » (chantier 53, #674) : le même jeu, par son identifiant, dans
+	// la bibliothèque ou sur un disque interne — l'écran ne propose plus de le
+	// télécharger.
+	here := server.gamesHere(ctx, consoleID)
 	roms := []retro_files.RomEntry{}
 	for _, item := range items {
 		if needle != "" && !strings.Contains(strings.ToLower(item.Name), needle) {
 			continue
 		}
-		roms = append(roms, peerRomEntry(entry, header.Name, consoleID, header.Statuses[consoleID], item))
+		rom := peerRomEntry(entry, header.Name, consoleID, header.Statuses[consoleID], item)
+		rom.Here = item.ID != "" && here[item.ID]
+		roms = append(roms, rom)
 	}
+	annotateRoms(consoleID, roms)
 
 	writeJSON(w, http.StatusOK, roms)
 }

@@ -83,8 +83,8 @@ func TestStatusRetroGivesUpOnAMuteContainer(t *testing.T) {
 	}
 }
 
-// Les trois lectures d'état partagent le même client : ce qui vaut pour l'une
-// vaut pour les deux autres. On le vérifie plutôt que de le supposer — elles
+// Les lectures d'état partagent le même client : ce qui vaut pour l'une
+// vaut pour les autres. On le vérifie plutôt que de le supposer — elles
 // étaient déjà triplées à l'identique une fois.
 func TestEveryStatusReadIsBounded(t *testing.T) {
 	port, stop := acceptAndStayMute(t)
@@ -93,11 +93,6 @@ func TestEveryStatusReadIsBounded(t *testing.T) {
 	client := &Client{config: config.Config{PublicHost: "127.0.0.1"}}
 
 	reads := map[string]func() error{
-		"StatusExternal": func() error {
-			_, err := client.StatusExternal(context.Background(), "muet", port)
-
-			return err
-		},
 		"StatusRemoteplay": func() error {
 			_, err := client.StatusRemoteplay(context.Background(), "muet", port)
 

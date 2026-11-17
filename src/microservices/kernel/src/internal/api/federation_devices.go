@@ -21,6 +21,7 @@ package api
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,7 +35,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gorilla/websocket"
+
 	"gameflex/consoles"
+	"gameflex/facade"
+	"gameflex/kernel/internal/auth"
 	"gameflex/kernel/internal/retro_files"
 	"gameflex/storage"
 	"gameflex/storage/listing"
@@ -65,14 +70,21 @@ var errNoRemoteplay = errors.New("remote play is not configured")
 // est le cas le plus courant (un téléphone, par exemple). Répondre 404 ou 503
 // obligerait chaque client à distinguer « pas de console » de « serveur en
 // panne », alors que les deux se traitent pareil — on n'affiche rien.
+//
+// En WebSocket, la même liste POUSSÉE à chaque changement d'état (`#750`, serveFederationDevices).
 func (server *Server) handleFederationDevices(w http.ResponseWriter, r *http.Request) {
+	if websocket.IsWebSocketUpgrade(r) {
+		server.serveFederationDevices(w, r)
+
+		return
+	}
 	devices, err := server.remoteplayDevices()
 	if errors.Is(err, errNoRemoteplay) {
 		writeJSON(w, http.StatusOK, []federationDevice{})
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "cannot reach remote play: "+err.Error())
+		writeErrorCode(w, http.StatusBadGateway, "peer_unreachable", "cannot reach remote play: "+err.Error())
 		return
 	}
 
@@ -122,6 +134,152 @@ func (server *Server) remoteplayDevices() ([]federationDevice, error) {
 	}
 
 	return envelope.Data, nil
+}
+
+// ── L'état de nos consoles, poussé à un ami (`#750`) ─────────────────────
+//
+// Le porteur, 2026-11-16 : « Quand j'allume la PS5 d'un serveur fédéré, ça me dit allumage mais l'état ne change
+// jamais en "jouer" j'étais obligé de refresh la page ». L'ami ne lisait la liste qu'au chargement de sa page. Ici, le
+// pair la pousse (facade.ServePeerDevices) ; l'ami la relaie au sujet `servers/<id>/devices` de son canal
+// (facade.FollowPeerDevices). La source de chaque changement est celle des pages d'ici : le canal d'état du service
+// remote-play (`subscribeDevices` sur son socket d'entrée, qui sonde ses consoles et pousse à chaque changement, et
+// juste après un réveil). Rien ne se relit à intervalle ici : le kernel relaie ce que le service pousse.
+
+// remoteplayDevicesRetryFirst, remoteplayDevicesRetryMax — le pas auquel le canal du service perdu se rouvre, qui
+// double jusqu'au plafond. Des variables, pour que les tests les raccourcissent.
+var (
+	remoteplayDevicesRetryFirst = 2 * time.Second
+	remoteplayDevicesRetryMax   = time.Minute
+)
+
+// serveFederationDevices — le socket d'un ami : l'instantané de la route en HTTP tout de suite, puis chaque liste
+// que pousse le service, dans la même projection (federationDevice : ni clé d'appairage, ni compte PSN). Le jeton se
+// revérifie à chaque battement, comme celui des parties ; seul un refus ferme.
+func (server *Server) serveFederationDevices(w http.ResponseWriter, r *http.Request) {
+	token := auth.BearerToken(r)
+	first, err := server.remoteplayDevices()
+	follow := !errors.Is(err, errNoRemoteplay)
+	if err != nil {
+		first = []federationDevice{}
+	}
+
+	socket, err := facade.Upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	var mu sync.Mutex
+	latest := peerDevices(first)
+	wake := make(chan struct{}, 1)
+
+	if follow {
+		go server.followRemoteplayDevices(ctx, func(list []federationDevice) {
+			mu.Lock()
+			latest = peerDevices(list)
+			mu.Unlock()
+
+			select {
+			case wake <- struct{}{}:
+			default:
+			}
+		})
+	}
+
+	facade.ServePeerDevices(socket, wake, func() []facade.PeerDevice {
+		mu.Lock()
+		defer mu.Unlock()
+
+		return latest
+	}, func() bool {
+		verified, err := server.verifyFederationToken(token)
+		if errors.Is(err, errFederationDenied) {
+			return false
+		}
+
+		return err != nil || hasScope(verified.Scopes, scopeDevices)
+	})
+}
+
+// peerDevices — la liste dans la forme du socket : les mêmes champs, rien de plus.
+func peerDevices(list []federationDevice) []facade.PeerDevice {
+	out := make([]facade.PeerDevice, 0, len(list))
+	for _, device := range list {
+		out = append(out, facade.PeerDevice(device))
+	}
+
+	return out
+}
+
+// followRemoteplayDevices — le canal d'état du service remote-play, tant que `ctx` vit : chaque liste qu'il pousse va à
+// `onList`. Perdu (le service redémarre), l'état ne se sait plus : une liste vide, puis un nouvel essai à un pas borné.
+func (server *Server) followRemoteplayDevices(ctx context.Context, onList func([]federationDevice)) {
+	target := "ws" + strings.TrimPrefix(server.config.RemoteplayControlURL, "http") + "/api/v1/remoteplay/input/ws"
+	delay := remoteplayDevicesRetryFirst
+
+	for {
+		opened := time.Now()
+		err := server.followRemoteplayOnce(ctx, target, onList)
+
+		if ctx.Err() != nil {
+			return
+		}
+		slog.Info("federation devices: remote play status channel lost", "error", err)
+		onList(nil)
+
+		if time.Since(opened) >= 30*time.Second {
+			delay = remoteplayDevicesRetryFirst
+		}
+
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return
+		}
+		delay = min(delay*2, remoteplayDevicesRetryMax)
+	}
+}
+
+// followRemoteplayOnce — une connexion au canal du service, jusqu'à sa fin ou celle de `ctx`. On ne décode que les
+// champs de federationDevice : les clés que la trame porterait n'entrent jamais en mémoire ici.
+func (server *Server) followRemoteplayOnce(ctx context.Context, target string, onList func([]federationDevice)) error {
+	dialer := websocket.Dialer{HandshakeTimeout: 5 * time.Second}
+	socket, _, err := dialer.DialContext(ctx, target, http.Header{"X-Internal-Secret": []string{server.config.InternalSecret}})
+	if err != nil {
+		return err
+	}
+	defer socket.Close()
+
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-ctx.Done():
+			socket.Close()
+		case <-done:
+		}
+	}()
+
+	if err := socket.WriteJSON(map[string]string{"type": "subscribeDevices"}); err != nil {
+		return err
+	}
+	socket.SetReadLimit(1 << 20)
+
+	for {
+		var frame struct {
+			Type    string             `json:"type"`
+			Devices []federationDevice `json:"devices"`
+		}
+		_, payload, err := socket.ReadMessage()
+		if err != nil {
+			return err
+		}
+		if json.Unmarshal(payload, &frame) != nil || frame.Type != "devices" {
+			continue
+		}
+		onList(frame.Devices)
+	}
 }
 
 // ── L'autre sens : les consoles des serveurs qu'ON a enregistrés ──────────
@@ -311,7 +469,7 @@ func (server *Server) registeredByID(w http.ResponseWriter, r *http.Request) (re
 func (server *Server) registeredByIDValue(w http.ResponseWriter, raw string) (registeredServer, bool) {
 	wanted, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid server id")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid server id")
 
 		return registeredServer{}, false
 	}
@@ -322,12 +480,12 @@ func (server *Server) registeredByIDValue(w http.ResponseWriter, raw string) (re
 		return candidate.ID == wanted
 	})
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "cannot read the server registry")
+		writeErrorCode(w, http.StatusServiceUnavailable, "server_failed", "cannot read the server registry")
 
 		return registeredServer{}, false
 	}
 	if !found {
-		writeError(w, http.StatusNotFound, "unknown server")
+		writeErrorCode(w, http.StatusNotFound, "not_found", "unknown server")
 
 		return registeredServer{}, false
 	}
@@ -374,7 +532,7 @@ func (server *Server) handleRemoteRescan(w http.ResponseWriter, r *http.Request)
 	header, err := server.copies().Refresh(peerOf(entry))
 	if err != nil {
 		refused := remote.Refusal(err)
-		writeError(w, refused.Status, refused.Message)
+		writeErrorCode(w, refused.Status, codeOr(refused.Code, "peer_failed"), refused.Message)
 
 		return
 	}
@@ -418,21 +576,18 @@ func (server *Server) handleRemoteStorageImport(w http.ResponseWriter, r *http.R
 	// greffer une branche — un garde en tête invalide silencieusement tout ce
 	// qu'on ajoute plus bas.
 	section := r.PathValue("section")
-	// LES PARAMÈTRES ET LES CORRECTIFS (chantier 15) ont leur propre corps :
-	// un réglage d'émulateur, un dossier de packs — pas un fichier désigné
-	// par un nom ou une référence.
-	switch section {
-	case listing.Params:
-		server.importPeerParams(w, r)
-
-		return
-	case listing.Patches:
+	// LES CORRECTIFS (chantier 15) ont leur propre corps : un dossier de packs,
+	// pas un fichier désigné par un nom ou une référence. LES PARAMÈTRES NE
+	// S'IMPORTENT PLUS (chantier 53, après la P7) : ce qu'un ami prête est un
+	// préréglage du formulaire d'ici, qui n'écrit qu'à « Enregistrer »
+	// (handleRemoteStorageParams) — une section inconnue ici, comme une autre.
+	if section == listing.Patches {
 		server.importPeerPatch(w, r)
 
 		return
 	}
 	if section != "cores" && section != "bios" && section != "roms" {
-		writeError(w, http.StatusBadRequest, "section must be cores, bios, roms, params or patches")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "section must be cores, bios, roms or patches")
 
 		return
 	}
@@ -453,7 +608,7 @@ func (server *Server) handleRemoteStorageImport(w http.ResponseWriter, r *http.R
 		Folder bool `json:"folder"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "corps illisible")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "corps illisible")
 
 		return
 	}
@@ -461,7 +616,7 @@ func (server *Server) handleRemoteStorageImport(w http.ResponseWriter, r *http.R
 	body.Name = strings.TrimSpace(body.Name)
 	body.Reference = strings.TrimSpace(body.Reference)
 	if body.ConsoleID == "" {
-		writeError(w, http.StatusBadRequest, "consoleId est requis")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "consoleId est requis")
 
 		return
 	}
@@ -471,7 +626,7 @@ func (server *Server) handleRemoteStorageImport(w http.ResponseWriter, r *http.R
 	// en root, dans un conteneur qui a le socket Docker (revue de sécurité,
 	// 2026-10-28).
 	if !consoles.Exists(body.ConsoleID) {
-		writeError(w, http.StatusBadRequest, "console inconnue")
+		writeErrorCode(w, http.StatusBadRequest, "console_unknown", "console inconnue")
 
 		return
 	}
@@ -485,12 +640,12 @@ func (server *Server) handleRemoteStorageImport(w http.ResponseWriter, r *http.R
 		}
 		derived, err := storage.RomFileName(body.Title, files)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err.Error())
+			writeErrorCode(w, http.StatusBadRequest, "peer_failed", err.Error())
 
 			return
 		}
 		if body.Reference == "" {
-			writeError(w, http.StatusBadRequest, "reference est requise pour un jeu")
+			writeErrorCode(w, http.StatusBadRequest, "bad_request", "reference est requise pour un jeu")
 
 			return
 		}
@@ -498,7 +653,7 @@ func (server *Server) handleRemoteStorageImport(w http.ResponseWriter, r *http.R
 		// contrôle d'existence et la réponse n'ont pas à connaître trois cas.
 		body.Name = derived
 	} else if body.Name == "" {
-		writeError(w, http.StatusBadRequest, "name est requis")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "name est requis")
 
 		return
 	}
@@ -510,7 +665,7 @@ func (server *Server) handleRemoteStorageImport(w http.ResponseWriter, r *http.R
 
 	client, err := remote.New(entry.Link, entry.Token)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "this address did not answer")
+		writeErrorCode(w, http.StatusBadGateway, "peer_unreachable", "this address did not answer")
 
 		return
 	}
@@ -532,8 +687,7 @@ func (server *Server) handleRemoteStorageImport(w http.ResponseWriter, r *http.R
 			break
 		}
 		if !coreBelongsTo(body.ConsoleID, body.Name) {
-			writeError(w, http.StatusBadRequest,
-				fmt.Sprintf("le core « %s » n'est pas déclaré pour %s", body.Name, body.ConsoleID))
+			writeErrorCode(w, http.StatusBadRequest, "emulator_unknown", fmt.Sprintf("le core « %s » n'est pas déclaré pour %s", body.Name, body.ConsoleID))
 
 			return
 		}
@@ -542,8 +696,7 @@ func (server *Server) handleRemoteStorageImport(w http.ResponseWriter, r *http.R
 		open = func() (io.ReadCloser, error) { return client.OpenCore(body.ConsoleID, body.Name) }
 	case "bios":
 		if !biosBelongsTo(body.ConsoleID, body.Name) {
-			writeError(w, http.StatusBadRequest,
-				fmt.Sprintf("le BIOS « %s » n'est pas attendu par %s", body.Name, body.ConsoleID))
+			writeErrorCode(w, http.StatusBadRequest, "bios_unknown", fmt.Sprintf("le BIOS « %s » n'est pas attendu par %s", body.Name, body.ConsoleID))
 
 			return
 		}
@@ -565,15 +718,13 @@ func (server *Server) handleRemoteStorageImport(w http.ResponseWriter, r *http.R
 		// FILET, et non validation : le garde en tête de fonction a déjà
 		// tranché. Il reste parce qu'un `switch` sans défaut laisserait
 		// `target` et `open` vides, et on écrirait alors n'importe où.
-		writeError(w, http.StatusBadRequest,
-			"section inconnue : cores, bios ou roms")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "section inconnue : cores, bios ou roms")
 
 		return
 	}
 
 	if _, err := os.Stat(target); err == nil {
-		writeError(w, http.StatusConflict,
-			"ce fichier existe déjà : le supprimer d'abord pour en reprendre une version")
+		writeErrorCode(w, http.StatusConflict, "already_installed", "ce fichier existe déjà : le supprimer d'abord pour en reprendre une version")
 
 		return
 	}
@@ -585,11 +736,18 @@ func (server *Server) handleRemoteStorageImport(w http.ResponseWriter, r *http.R
 	// d'une ROM. C'est aussi le repli le plus sûr quand le pair n'annonce
 	// rien : un cœur sait lire un jeu zippé, il ne sait pas lire un dossier
 	// nommé « … .zip ».
-	written, err := importIntoLibrary(open, target, policy)
+	written, err := importIntoLibrary(r.Context(), open, target, policy)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeErrorCode(w, http.StatusBadGateway, "peer_failed", err.Error())
 
 		return
+	}
+	// UN JEU TÉLÉCHARGÉ EMPORTE SA FICHE (chantier 57, décision 10) : la copie de celle de son serveur, sous la
+	// référence qu'il prend ici (la console et son nom sur le disque) ; un échec ne fait qu'une ligne au journal.
+	if section == "roms" {
+		// L'ÉTAPE « fiche du jeu » (le porteur, 2026-11-17 : « C'est quoi l'étape après décompression ? ») : jusqu'à une minute.
+		facade.ReportPhase(r.Context(), "sheet", -1, 0)
+		server.copyPeerSheet(r.Context(), entry, body.ConsoleID, target, storage.RomID(body.ConsoleID, body.Name), body.Reference, body.Title)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -677,14 +835,8 @@ func zipPolicyFor(section, name string, files []string, folder bool) zipPolicy {
 }
 
 func importIntoLibrary(
-	open func() (io.ReadCloser, error), target string, policy zipPolicy,
-) (int64, error) {
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return 0, fmt.Errorf("dossier impossible à créer : %w", err)
-	}
-	// Ce qu'on rapatrie est à la personne, pas au noyau (#146).
-	adoptParentOwner(filepath.Dir(target))
-
+	ctx context.Context, open func() (io.ReadCloser, error), target string, policy zipPolicy,
+) (written int64, err error) {
 	body, err := open()
 	if err != nil {
 		if errors.Is(err, remote.ErrDenied) {
@@ -694,6 +846,27 @@ func importIntoLibrary(
 		return 0, fmt.Errorf("ce serveur ne l'a pas donné : %w", err)
 	}
 	defer body.Close()
+
+	// LE DOSSIER DE LA CONSOLE NAÎT QUAND IL Y A QUELQUE CHOSE À Y METTRE : créé
+	// avant de demander le fichier, un refus du pair laissait un `roms/<console>/`
+	// vide dans la bibliothèque (vu le 2026-11-16, un jeu inconnu de la release) ;
+	// et un téléchargement qui échoue ou s'annule repart avec le dossier qu'il a
+	// créé, s'il est resté vide (os.Remove ne retire pas un dossier qui ne l'est
+	// pas).
+	folder := filepath.Dir(target)
+	_, statErr := os.Stat(folder)
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		return 0, fmt.Errorf("dossier impossible à créer : %w", err)
+	}
+	if os.IsNotExist(statErr) {
+		defer func() {
+			if err != nil {
+				_ = os.Remove(folder)
+			}
+		}()
+	}
+	// Ce qu'on rapatrie est à la personne, pas au noyau (#146).
+	storage.AdoptParentOwner(filepath.Dir(target))
 
 	partial := target + ".part"
 	file, err := os.Create(partial)
@@ -715,7 +888,7 @@ func importIntoLibrary(
 			"ce serveur a répondu une archive là où un seul fichier est attendu")
 	}
 
-	written, err := io.Copy(file, io.MultiReader(bytes.NewReader(head[:read]), body))
+	written, err = io.Copy(facade.ProgressWriter(ctx, file, 0), io.MultiReader(bytes.NewReader(head[:read]), body))
 	closeErr := file.Close()
 	if err == nil {
 		err = closeErr
@@ -754,7 +927,7 @@ func importIntoLibrary(
 	// pour la personne. `extractCore` et `writeGameFile` adoptaient déjà après
 	// leur renommage ; ce chemin-ci avait été oublié, et seul un transfert réel
 	// pouvait le dire.
-	adoptParentOwner(target)
+	storage.AdoptParentOwner(target)
 
 	return written, nil
 }
@@ -781,7 +954,7 @@ func expandZipInto(archivePath, targetDir string) (int64, error) {
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
 		return 0, fmt.Errorf("dossier impossible à créer : %w", err)
 	}
-	adoptParentOwner(targetDir)
+	storage.AdoptParentOwner(targetDir)
 
 	// CE QUE L'ARCHIVE ANNONCE, AVANT D'EN ÉCRIRE UN OCTET (#601) : elle vient
 	// d'un autre serveur, et rien ne bornait ce qu'elle déplie.
@@ -811,7 +984,7 @@ func expandZipInto(archivePath, targetDir string) (int64, error) {
 		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 			return total, fmt.Errorf("dossier impossible à créer : %w", err)
 		}
-		adoptParentOwner(filepath.Dir(destination))
+		storage.AdoptParentOwner(filepath.Dir(destination))
 
 		// `extractCore` n'a de spécifique à un cœur que son nom : il ouvre une
 		// entrée, l'écrit en `.part`, puis renomme. Le réemployer évite un
@@ -864,14 +1037,19 @@ type knownServer struct {
 }
 
 // peerListing — ce que la copie du listing d'un ami dit de lui (chantier 15) :
-// sa date, sa version, sa machine, et ce que notre jeton nous ouvre chez lui
-// — « devices », c'est lancer ses jeux chez lui. Absent tant qu'on n'a pas
-// de copie.
+// sa date, sa version, sa machine, ce que notre jeton nous ouvre chez lui
+// — « devices », c'est lancer ses jeux chez lui —, et ses jeux par console.
+// Absent tant qu'on n'a pas de copie.
 type peerListing struct {
 	UpdatedAt time.Time        `json:"updatedAt"`
 	Server    *listing.Server  `json:"server,omitempty"`
 	Machine   *listing.Machine `json:"machine,omitempty"`
 	Scopes    []string         `json:"scopes"`
+	// Consoles — ses jeux par console, comptés par sa copie (2026-11-15) : la
+	// bibliothèque d'une console réunit ceux d'ici et les siens, et son bouton
+	// « Bibliothèque (N) » les compte sans lire leurs listes. Sans lui, un
+	// téléphone sans jeu à lui voyait ce bouton grisé sur chaque console.
+	Consoles map[string]int `json:"consoles"`
 }
 
 // listingOf — l'en-tête de la copie d'un ami, à la forme de knownServer.
@@ -884,8 +1062,12 @@ func (server *Server) listingOf(entry registeredServer) *peerListing {
 	if scopes == nil {
 		scopes = []string{}
 	}
+	consoles := header.Sections[listing.Roms].Consoles
+	if consoles == nil {
+		consoles = map[string]int{}
+	}
 
-	return &peerListing{UpdatedAt: header.UpdatedAt, Server: header.Server, Machine: header.Machine, Scopes: scopes}
+	return &peerListing{UpdatedAt: header.UpdatedAt, Server: header.Server, Machine: header.Machine, Scopes: scopes, Consoles: consoles}
 }
 
 // handleKnownServer — GET /api/v1/servers/{id} : CE serveur, vérifié chez lui
@@ -931,7 +1113,7 @@ func (server *Server) handleKnownServer(w http.ResponseWriter, r *http.Request) 
 func (server *Server) handleKnownServers(w http.ResponseWriter, r *http.Request) {
 	registered, err := server.registeredServers()
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "cannot read the server registry")
+		writeErrorCode(w, http.StatusBadGateway, "server_failed", "cannot read the server registry")
 		return
 	}
 

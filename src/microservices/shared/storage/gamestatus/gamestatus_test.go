@@ -111,8 +111,8 @@ func TestLaVersionNeVoyagePas(t *testing.T) {
 	}
 }
 
-func TestLeFichierDUneConsole(t *testing.T) {
-	store := Store{Dir: t.TempDir()}
+func TestLesStatutsDUneConsole(t *testing.T) {
+	store := Store{Backend: NewMemory()}
 	if console, err := store.Load("nes"); err != nil || console.Status != "" || len(console.Games) != 0 {
 		t.Fatalf("fichier absent : %+v, %v", console, err)
 	}
@@ -140,7 +140,7 @@ func TestLeFichierDUneConsole(t *testing.T) {
 }
 
 func TestUnSignalementInvalideEstRefuse(t *testing.T) {
-	store := Store{Dir: t.TempDir()}
+	store := Store{Backend: NewMemory()}
 	for _, attempt := range []func() error{
 		func() error { return store.Add("nes", "jeu", report("peut-être")) },
 		func() error { return store.Add("nes", "", report(Playable)) },
@@ -155,7 +155,7 @@ func TestUnSignalementInvalideEstRefuse(t *testing.T) {
 
 // DEUX SIGNALEMENTS EN MÊME TEMPS ne s'écrasent pas.
 func TestLesSignalementsSimultanesSontTousGardes(t *testing.T) {
-	store := Store{Dir: t.TempDir()}
+	store := Store{Backend: NewMemory()}
 	var group sync.WaitGroup
 	for range 20 {
 		group.Add(1)

@@ -37,7 +37,7 @@ if [ "${1:-}" != "--inner" ]; then
     HERE=$(cd "$(dirname "$0")/../.." && pwd)                       # src/mobileapp
     # DL : un autre dossier de bundles — pour éprouver un build sans remplacer
     # celui que la pile sert au téléphone.
-    DL="${DL:-${HERE}/../webapp/src/public/downloads}"
+    DL="${DL:-${HERE}/../microservices/edge/src/public/downloads}"
     for zip in glibc-aarch64.zip "${guest}-aarch64.zip"; do
         [ -f "${DL}/${zip}" ] || { echo "✗ ${DL}/${zip} absent — assemble-le d'abord" >&2; exit 2; }
     done

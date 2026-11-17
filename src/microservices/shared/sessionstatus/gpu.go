@@ -30,6 +30,9 @@ type GPU struct {
 	Render string
 	// VRAMBytes — sa mémoire vidéo, quand le pilote la dit (amdgpu).
 	VRAMBytes int64
+	// Name — son nom de modèle, quand le pilote le dit (`product_name` d'une
+	// carte amdgpu) ; vide sinon (gpuName complète).
+	Name string
 }
 
 var drmCard = regexp.MustCompile(`^card[0-9]+$`)
@@ -58,6 +61,7 @@ func GPUs(sysRoot string) []GPU {
 			}
 		}
 		gpu.VRAMBytes, _ = strconv.ParseInt(readTrimmed(filepath.Join(device, "mem_info_vram_total")), 10, 64)
+		gpu.Name = readTrimmed(filepath.Join(device, "product_name"))
 		gpus = append(gpus, gpu)
 	}
 	sort.SliceStable(gpus, func(i, j int) bool { return gpus[i].PCI < gpus[j].PCI })

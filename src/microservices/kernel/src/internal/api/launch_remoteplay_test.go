@@ -142,3 +142,80 @@ func TestAskRemoteplayControlAcceptsAnIgnoredBody(t *testing.T) {
 		t.Fatalf("la poignée de main ne lit aucun corps, elle ne doit pas échouer : %v", err)
 	}
 }
+
+// LE FLUX DE L'UTILISATEUR ARRIVE À LA POIGNÉE DE MAIN (le porteur,
+// 2026-11-16 : « C'est l'utilisateur qui choisit »).
+//
+// La page envoie le flux choisi dans l'engrenage de la console avec le
+// lancement, dans les champs de celui d'un jeu ; la porte le décode, le
+// revalide avec la table des deux kernels et le passe au runtime, qui le donne
+// à la partie. Jusqu'ici, la porte ne lisait que `hostId` : le runtime
+// prenait le réglage de la ligne de la console, le même pour tout le monde.
+//
+// Les corps sont ceux de la page (`streamingService.startSession`), tels
+// qu'ils arrivent par la commande `launch` du centre de messages.
+func TestRemoteplayLaunchCarriesTheChosenStream(t *testing.T) {
+	for _, cas := range []struct {
+		name string
+		raw  string
+		want map[string]any
+	}{
+		{"le choix de l'utilisateur",
+			`{"platform":"remoteplay","hostId":"192.168.1.12","resolution":"1080p","fps":30,"bitrate":15000}`,
+			map[string]any{"resolution": "1080p", "fps": float64(30), "bitrate": float64(15000)}},
+		{"débit non mesuré : celui de la définition, au runtime",
+			`{"platform":"remoteplay","hostId":"192.168.1.12","resolution":"540P","fps":60}`,
+			map[string]any{"resolution": "540p", "fps": float64(60)}},
+		// Hors de l'échelle et des bornes, ou rien de choisi : le défaut de
+		// toutes les consoles, 540p à 30 (le porteur, 2026-11-16) — il partait
+		// vide, et le runtime prenait 720p à 60. 480p : une PS5 refuse la
+		// partie après la poignée de main.
+		{"hors de l'échelle et des bornes",
+			`{"platform":"remoteplay","hostId":"192.168.1.12","resolution":"480p","fps":240,"bitrate":99999}`,
+			map[string]any{"resolution": "540p", "fps": float64(30)}},
+		{"rien de choisi", `{"platform":"remoteplay","hostId":"192.168.1.12"}`,
+			map[string]any{"resolution": "540p", "fps": float64(30)}},
+	} {
+		t.Run(cas.name, func(t *testing.T) {
+			var handshake map[string]any
+			runtime := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/internal/remoteplay/handshake" {
+					t.Errorf("appel inattendu : %s", r.URL.Path)
+				}
+				_ = json.NewDecoder(r.Body).Decode(&handshake)
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "data": map[string]any{"status": "handshaken"}})
+			}))
+			defer runtime.Close()
+
+			server := &Server{config: config.Config{RemoteplayControlURL: runtime.URL, InternalSecret: "secret-de-test"}}
+
+			var body remoteplayDoorBody
+			if err := json.Unmarshal([]byte(cas.raw), &body); err != nil {
+				t.Fatalf("corps illisible : %v", err)
+			}
+			if body.HostID != "192.168.1.12" {
+				t.Fatalf("hostId = %q", body.HostID)
+			}
+			if err := server.askRemoteplayHandshake("id_60aac685aa380173dbdb4cc2fa7dc2c0", 9601, "claude", body.remoteplayStream); err != nil {
+				t.Fatalf("poignée de main : %v", err)
+			}
+
+			stream, ok := handshake["stream"].(map[string]any)
+			if !ok {
+				t.Fatalf("la poignée de main ne porte pas le flux : %v", handshake)
+			}
+			if len(stream) != len(cas.want) {
+				t.Fatalf("flux = %v, attendu %v", stream, cas.want)
+			}
+			for key, value := range cas.want {
+				if stream[key] != value {
+					t.Fatalf("flux[%s] = %v, attendu %v (flux reçu %v)", key, stream[key], value, stream)
+				}
+			}
+			if handshake["deviceId"] != "id_60aac685aa380173dbdb4cc2fa7dc2c0" || handshake["port"] != float64(9601) || handshake["username"] != "claude" {
+				t.Fatalf("la poignée de main a perdu l'appareil, le port ou le joueur : %v", handshake)
+			}
+		})
+	}
+}

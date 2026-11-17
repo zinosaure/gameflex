@@ -37,7 +37,7 @@ LABEL gameflex.prune=keep
 ENV DEBIAN_FRONTEND=noninteractive
 
 # RPCS3 version/variant (official AppImage, rpcs3-binaries-linux).
-ARG RPCS3_APPIMAGE=rpcs3-v0.0.43-20508-8e26652c_linux64.AppImage
+ARG RPCS3_APPIMAGE=rpcs3-v0.0.43-20607-fb6737b1_linux64.AppImage
 
 # MESA VIENT DE trixie-backports (26.1.2), PAS DE trixie (25.0.7).
 #
@@ -91,7 +91,7 @@ RUN groupadd -f pulse-access && usermod -aG pulse-access root && usermod -aG pul
 # (voir consoles/unpack-emulator.sh).
 # NB: AppRun must be invoked as squashfs-root/AppRun (a symlink outside would
 # break its APPDIR resolution and the apprun-hooks lookup).
-ARG RPCS3_URL=https://github.com/RPCS3/rpcs3-binaries-linux/releases/download/build-8e26652c85bb5658965fa5731d9a0309ca10b42b/rpcs3-v0.0.43-20508-8e26652c_linux64.AppImage
+ARG RPCS3_URL=https://github.com/RPCS3/rpcs3-binaries-linux/releases/download/build-fb6737b1c8306ceeccb53b7fa051acfc9e641cd7/rpcs3-v0.0.43-20607-fb6737b1_linux64.AppImage
 # Les versions éprouvées avec cette image (emulator_tested) : la liste informe,
 # elle ne bloque pas — toute version que reconnaît le motif se lance.
 ARG RPCS3_TESTED="${RPCS3_APPIMAGE}"

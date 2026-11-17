@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -36,7 +37,56 @@ var (
 	ErrInvitationTokenOff = errors.New("le jeton de ce compte n'est pas actif")
 	// ErrInvitationThrottled — trop d'échecs depuis chez nous : attendre.
 	ErrInvitationThrottled = errors.New("trop d'invitations refusées, réessayer plus tard")
+	// ErrPairingClosed — un code d'appairage (chantier 60) présenté à un
+	// serveur, ou un compte, qui n'est pas en mode découverte.
+	ErrPairingClosed = errors.New("ce serveur n'est pas en mode découverte")
+	// ErrNotPairingCode — ce texte n'est pas un code de six chiffres.
+	ErrNotPairingCode = errors.New("un code d'appairage a six chiffres")
 )
+
+// pairingCode — six chiffres, zéros de tête compris (chantier 60).
+var pairingCode = regexp.MustCompile(`^[0-9]{6}$`)
+
+// PairingCode — le code tapé, sans espace (« 482 913 » s'affiche en deux
+// groupes) ; ErrNotPairingCode s'il n'a pas six chiffres.
+func PairingCode(text string) (string, error) {
+	code := strings.Join(strings.Fields(text), "")
+	if !pairingCode.MatchString(code) {
+		return "", ErrNotPairingCode
+	}
+
+	return code, nil
+}
+
+// NormalizeLink — l'adresse d'un serveur tapée à la main : sans schéma, elle
+// reçoit http:// si elle est privée, locale ou en .local (un serveur du réseau
+// local), https:// sinon. La barre finale part.
+func NormalizeLink(text string) (string, error) {
+	link := strings.TrimRight(strings.TrimSpace(text), "/")
+	if link == "" {
+		return "", ErrNoLink
+	}
+	if !strings.Contains(link, "://") {
+		host, _, _ := strings.Cut(link, "/")
+		if name, _, err := net.SplitHostPort(host); err == nil {
+			host = name
+		}
+		host = strings.ToLower(strings.Trim(host, "[]"))
+		address := net.ParseIP(host)
+		local := address != nil && (address.IsPrivate() || address.IsLoopback() || address.IsLinkLocalUnicast())
+		scheme := "https://"
+		if local || strings.HasSuffix(host, ".local") || !strings.Contains(host, ".") {
+			scheme = "http://"
+		}
+		link = scheme + link
+	}
+	parsed, err := url.Parse(link)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return "", ErrNoLink
+	}
+
+	return link, nil
+}
 
 // invitationCode — 16 octets d'aléa en base64 sans remplissage.
 var invitationCode = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
@@ -61,6 +111,21 @@ func ParseInvitation(text string) (link, code string, err error) {
 	return parsed.Scheme + "://" + parsed.Host + parsed.Path[:at], code, nil
 }
 
+// IsMemberLink — ce texte est-il le lien d'un compte (chantier 55) :
+// `<launcher>/join/<code>`, qu'une personne ouvre dans son navigateur pour
+// choisir son mot de passe ? Il ne s'échange pas de serveur à serveur :
+// ParseInvitation le refuse, et le coller à la place d'une invitation ne
+// consomme rien. Seul le QR le dessine (InvitationPNG).
+func IsMemberLink(text string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(text))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return false
+	}
+	at := strings.LastIndex(parsed.Path, "/join/")
+
+	return at >= 0 && invitationCode.MatchString(strings.Trim(parsed.Path[at+len("/join/"):], "/"))
+}
+
 // Redeemed — ce que l'échange rend : le jeton, et sous quel nom on y est connu.
 type Redeemed struct {
 	Kind        string   `json:"kind"`
@@ -72,9 +137,10 @@ type Redeemed struct {
 }
 
 // Redeem — échanger chez ce serveur une invitation de la sorte attendue contre
-// son jeton. Une seule fois : un second appel est refusé.
-func (server *Server) Redeem(code, kind string) (Redeemed, error) {
-	payload, _ := json.Marshal(map[string]string{"code": code, "kind": kind})
+// son jeton. Une seule fois : un second appel est refusé. `from` est notre nom,
+// que la fenêtre d'un code d'appairage montre là-bas (« Code utilisé par … »).
+func (server *Server) Redeem(code, kind, from string) (Redeemed, error) {
+	payload, _ := json.Marshal(map[string]string{"code": code, "kind": kind, "from": from})
 	request, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
 		server.link+"/api/v1/federation/redeem", bytes.NewReader(payload))
 	if err != nil {
@@ -97,6 +163,8 @@ func (server *Server) Redeem(code, kind string) (Redeemed, error) {
 		return Redeemed{}, ErrInvitationTokenOff
 	case http.StatusTooManyRequests:
 		return Redeemed{}, ErrInvitationThrottled
+	case http.StatusLocked:
+		return Redeemed{}, ErrPairingClosed
 	default:
 		return Redeemed{}, &answeredError{code: response.StatusCode, status: response.Status}
 	}
@@ -118,16 +186,24 @@ func (server *Server) Redeem(code, kind string) (Redeemed, error) {
 // l'invitation collée. L'adresse de l'invitation ne compte pas : le compte est
 // chez le serveur de la fiche, et une invitation d'ailleurs y est simplement
 // inconnue — refusée sans être consommée là-bas.
-func RedeemAccount(link, invitation string) (string, error) {
+func RedeemAccount(link, invitation, from string) (string, error) {
 	_, code, err := ParseInvitation(invitation)
 	if err != nil {
 		return "", err
 	}
+
+	return RedeemAccountCode(link, code, from)
+}
+
+// RedeemAccountCode — la même chose avec un code déjà lu : celui d'une
+// invitation, ou les six chiffres d'un code d'appairage (chantier 60), tapés
+// pour le serveur de la fiche.
+func RedeemAccountCode(link, code, from string) (string, error) {
 	distant, err := New(link, "")
 	if err != nil {
 		return "", err
 	}
-	redeemed, err := distant.Redeem(code, InvitationAccount)
+	redeemed, err := distant.Redeem(code, InvitationAccount, from)
 	if err != nil {
 		return "", err
 	}
@@ -154,6 +230,12 @@ func RefusalCode(err error) (status int, code string, ok bool) {
 		return http.StatusBadRequest, "invitationTokenOff", true
 	case errors.Is(err, ErrInvitationThrottled):
 		return http.StatusTooManyRequests, "invitationThrottled", true
+	case errors.Is(err, ErrPairingClosed):
+		return http.StatusBadRequest, "pairingClosed", true
+	case errors.Is(err, ErrNotPairingCode):
+		return http.StatusBadRequest, "notPairingCode", true
+	case errors.Is(err, ErrNoLink):
+		return http.StatusBadRequest, "invalidLink", true
 	case errors.As(err, &transport):
 		return http.StatusBadGateway, "serverUnreachable", true
 	}

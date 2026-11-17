@@ -134,7 +134,7 @@ func (server *Server) handleCreateInvitation(w http.ResponseWriter, r *http.Requ
 	switch body.Kind {
 	case InvitationFederation:
 		if !principal.IsAdmin() {
-			respondError(w, http.StatusForbidden, "Admin access required.")
+			respondErrorCode(w, http.StatusForbidden, "admin_only", "Admin access required.")
 			return
 		}
 		label := strings.TrimSpace(body.Label)
@@ -153,7 +153,7 @@ func (server *Server) handleCreateInvitation(w http.ResponseWriter, r *http.Requ
 		}
 		created, err := server.insertInvitation(InvitationFederation, label, scopes, nil, principal.ID)
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		respondItem(w, http.StatusCreated, created)
@@ -164,11 +164,11 @@ func (server *Server) handleCreateInvitation(w http.ResponseWriter, r *http.Requ
 		}
 		token, err := server.accountToken(principal.ID, false)
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		if !token.Enabled {
-			respondError(w, http.StatusForbidden, "Your token is not enabled: ask an administrator.")
+			respondErrorCode(w, http.StatusForbidden, "token_not_enabled", "Your token is not enabled: ask an administrator.")
 			return
 		}
 		label := principal.DisplayName
@@ -177,13 +177,13 @@ func (server *Server) handleCreateInvitation(w http.ResponseWriter, r *http.Requ
 		}
 		created, err := server.insertInvitation(InvitationAccount, label, "", principal.ID, principal.ID)
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		respondItem(w, http.StatusCreated, created)
 
 	default:
-		respondError(w, http.StatusBadRequest, "kind must be federation or account")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "kind must be federation or account")
 	}
 }
 
@@ -191,10 +191,14 @@ func (server *Server) handleCreateInvitation(w http.ResponseWriter, r *http.Requ
 // attente, des deux sortes — pour qui, jusqu'à quand. Jamais le code.
 func (server *Server) handleListInvitations(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	server.purgeInvitations()
+	// Ses deux sortes : les liens des comptes (member_links.go) ne sont pas des
+	// invitations de fédération. Ni les codes d'appairage (pairing.go) : ils
+	// vivent deux minutes, et leur fenêtre est le seul endroit où on les voit.
 	rows, err := server.db.Query(
-		`SELECT id, kind, label, scopes, expires_at, created_at FROM invitations ORDER BY id DESC`)
+		`SELECT id, kind, label, scopes, expires_at, created_at FROM invitations WHERE kind IN (?, ?) AND pairing = 0 ORDER BY id DESC`,
+		InvitationFederation, InvitationAccount)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	defer rows.Close()
@@ -204,7 +208,7 @@ func (server *Server) handleListInvitations(w http.ResponseWriter, r *http.Reque
 		var item invitationResponse
 		var createdAt sql.NullString
 		if err := rows.Scan(&item.ID, &item.Kind, &item.Label, &item.Scopes, &item.ExpiresAt, &createdAt); err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		item.CreatedAt = isoDatetime(createdAt)
@@ -215,21 +219,22 @@ func (server *Server) handleListInvitations(w http.ResponseWriter, r *http.Reque
 
 // handleRevokeInvitation — DELETE /api/v1/token-invitations/{id}.
 func (server *Server) handleRevokeInvitation(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
-	result, err := server.db.Exec(`DELETE FROM invitations WHERE id = ?`, r.PathValue("id"))
+	result, err := server.db.Exec(`DELETE FROM invitations WHERE id = ? AND kind IN (?, ?) AND pairing = 0`, r.PathValue("id"), InvitationFederation, InvitationAccount)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {
-		respondError(w, http.StatusNotFound, "Invitation not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "Invitation not found.")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleRedeemInvitation — POST /internal/federation/redeem {code, kind,
+// handleRedeemInvitation — POST /internal/federation/redeem {code, kind, from,
 // address}. Appelée par le kernel, qui relaie le serveur d'en face ; le
-// téléphone passe par RedeemInvitation directement (embed).
+// téléphone passe par RedeemInvitation directement (embed). `from` est le nom
+// du serveur qui échange : la fenêtre d'un code d'appairage le montre.
 func (server *Server) handleRedeemInvitation(w http.ResponseWriter, r *http.Request) {
 	if !server.internalCaller(w, r) {
 		return
@@ -237,26 +242,29 @@ func (server *Server) handleRedeemInvitation(w http.ResponseWriter, r *http.Requ
 	var body struct {
 		Code    string `json:"code"`
 		Kind    string `json:"kind"`
+		From    string `json:"from"`
 		Address string `json:"address"`
 	}
 	if !decodeBody(w, r, &body) {
 		return
 	}
 
-	redeemed, err := server.RedeemInvitation(body.Code, body.Kind, body.Address)
+	redeemed, err := server.RedeemInvitation(body.Code, body.Kind, body.From, body.Address)
 	var throttled ThrottledError
 	switch {
 	case errors.As(err, &throttled):
 		w.Header().Set("Retry-After", strconv.Itoa(int(throttled.Wait.Seconds())+1))
-		respondError(w, http.StatusTooManyRequests, "Too many failed invitations. Try again later.")
+		respondErrorCode(w, http.StatusTooManyRequests, "invitationThrottled", "Too many failed invitations. Try again later.")
+	case errors.Is(err, ErrPairingClosed):
+		respondErrorCode(w, http.StatusLocked, "pairingClosed", "Discovery mode is off.")
 	case errors.Is(err, ErrInvitationRefused):
-		respondError(w, http.StatusUnauthorized, "This invitation was already used, has expired or does not exist.")
+		respondErrorCode(w, http.StatusUnauthorized, "invitationRefused", "This invitation was already used, has expired or does not exist.")
 	case errors.Is(err, ErrInvitationKind):
-		respondError(w, http.StatusConflict, "This invitation is of another kind.")
+		respondErrorCode(w, http.StatusConflict, "invitationWrongKind", "This invitation is of another kind.")
 	case errors.Is(err, ErrInvitationTokenOff):
-		respondError(w, http.StatusForbidden, "The token of this account is not enabled.")
+		respondErrorCode(w, http.StatusForbidden, "invitationTokenOff", "The token of this account is not enabled.")
 	case err != nil:
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 	default:
 		respondItem(w, http.StatusOK, redeemed)
 	}
@@ -269,7 +277,22 @@ func (server *Server) handleRedeemInvitation(w http.ResponseWriter, r *http.Requ
 // sorte, ou celle d'un compte dont le jeton est éteint, n'est PAS consommée.
 // Les échecs sont freinés par adresse, comme la connexion (#454). Exporté pour
 // le téléphone (embed).
-func (server *Server) RedeemInvitation(code, kind, address string) (Redeemed, error) {
+//
+// SIX CHIFFRES, C'EST UN CODE D'APPAIRAGE (chantier 60, pairing.go) : il prend
+// son propre chemin, sous son mode et ses deux compteurs. Une invitation en
+// lien ne voit jamais une de ses lignes.
+func (server *Server) RedeemInvitation(code, kind, from, address string) (Redeemed, error) {
+	// SES DEUX SORTES SEULEMENT (chantier 55) : la sorte vient du serveur d'en
+	// face, et le lien d'un compte (join, reset) ne s'échange jamais contre un
+	// jeton — sans cette garde, un code `join` présenté sous sa propre sorte
+	// serait devenu un jeton de catalogue. Rien n'est consommé.
+	if kind != InvitationFederation && kind != InvitationAccount {
+		return Redeemed{}, ErrInvitationKind
+	}
+	code = strings.TrimSpace(code)
+	if pairingCodeForm.MatchString(code) {
+		return server.redeemPairingCode(code, kind, from, address)
+	}
 	limiterKey := "invitation\x00" + address
 	if wait := server.logins.wait(limiterKey, address); wait > 0 {
 		slog.Warn("invitation delayed", "from", address, "wait", wait.Round(time.Second))
@@ -283,7 +306,6 @@ func (server *Server) RedeemInvitation(code, kind, address string) (Redeemed, er
 		return Redeemed{}, err
 	}
 
-	code = strings.TrimSpace(code)
 	if code == "" {
 		return refuse(ErrInvitationRefused)
 	}
@@ -293,7 +315,7 @@ func (server *Server) RedeemInvitation(code, kind, address string) (Redeemed, er
 		userID, createdBy                    sql.NullInt64
 	)
 	err := server.db.QueryRow(
-		`SELECT id, kind, label, scopes, user_id, expires_at, created_by_id FROM invitations WHERE code_hash = ?`,
+		`SELECT id, kind, label, scopes, user_id, expires_at, created_by_id FROM invitations WHERE code_hash = ? AND pairing = 0`,
 		hashToken(code),
 	).Scan(&id, &storedKind, &label, &scopes, &userID, &expiresAt, &createdBy)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -334,6 +356,13 @@ func (server *Server) RedeemInvitation(code, kind, address string) (Redeemed, er
 	}
 	server.logins.succeed(limiterKey, address)
 
+	return server.deliverInvitation(kind, label, scopes, createdBy, account, accountToken, address)
+}
+
+// deliverInvitation — ce qu'une invitation consommée rend : le jeton du compte,
+// ou un jeton de catalogue né maintenant, sous le nom et les portées choisis à
+// sa création. Commun au lien et au code d'appairage.
+func (server *Server) deliverInvitation(kind, label, scopes string, createdBy sql.NullInt64, account TokenAccount, accountToken, address string) (Redeemed, error) {
 	if kind == InvitationAccount {
 		slog.Info("invitation redeemed", "kind", kind, "account", account.Username, "from", address)
 

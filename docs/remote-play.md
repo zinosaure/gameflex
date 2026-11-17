@@ -14,30 +14,36 @@ controller back.
 
 ## Add your console
 
-1. Open **Remote Play** in the menu, choose your console (PlayStation 4 or PlayStation 5), and press
-   **Add a console**.
-2. **Device name:** any name, such as *Living Room PS5*.
-3. **IP address:** press **Discover consoles on the network** and pick yours, or type its address
+An administrator adds it once, in **Settings › Remote Play**:
+
+1. Press **Add a console**.
+2. **Console name:** any name, such as *Living room PS5*.
+3. **IP address:** press **Discover consoles on the network** and touch yours, or type its address
    (shown in the console's network settings).
-4. **PSN ID (Base64):** your account ID. **Get via PSN Login** opens a website, outside GameFlex, that
+4. **PSN ID (Base64):** your account ID. **Get it by signing in to PSN** opens a website, outside GameFlex, that
    finds it from your PSN sign-in; copy the ID it gives you.
-5. **PIN code:** on the console, open the Remote Play settings and choose to add (link) a device. The
-   console shows an 8-digit code: type it here while it is on screen.
-6. Press **Register device**. GameFlex shows *Device registered successfully.*
+5. **PIN code:** on the console, open **Settings › Remote Play › Add Device**. The console shows an
+   8-digit code: type it here while it is on screen.
+6. Press **Register the console**. GameFlex shows *Console registered.*
+
+The console's page, in the same place, shows its details, lets you change its **Background image**,
+and **Unlink this console**.
 
 ## Play
 
-Your console shows its state: **Online**, **Standby** or **Offline**.
+The **Remote Play** tab, at the top, shows each console with its state: **Online**, **Standby** or
+**Offline**.
 
 - **Turn on** wakes it from rest mode.
-- **Play** starts the stream. Choose the picture quality first: 720p at 60 frames per second by
-  default, from 540p to 1080p; **Auto** adapts the bitrate to your connection.
-- **Watch** looks on while someone else plays.
+- **Play** starts the stream. The picture quality is in the console's settings (the gear): 540p at
+  30 frames per second by default, up to 1080p at 60, with an automatic bitrate that follows your
+  network. It is kept in this browser only.
+- **Busy · Watch** looks on while someone else plays.
 
 One player holds the controller at a time; the others watch, and the controller can be lent or
 given (see [Controllers and playing together](controllers.md)).
 
-**Share it with a friend's GameFlex:** when you create their token, tick **Also share the consoles**
+**Share it with a friend's GameFlex:** when you give their server access, turn on **Also share the consoles**
 (see [Federation](federation.md)). To play on it, they also need an account on your server.
 
 ## Limitations
@@ -53,8 +59,8 @@ given (see [Controllers and playing together](controllers.md)).
 
 | What you see | What to do |
 |---|---|
-| *No consoles found on the network* | The console must be on and on the same network as the GameFlex server. Type its IP address instead. |
-| *Failed to register the device.* | Type the PIN while the console still shows it (it expires), and check the PSN ID. |
+| *No console on the network.* | The console must be on and on the same network as the GameFlex server. Type its IP address instead. |
+| *The console could not be registered.* | Type the PIN while the console still shows it (it expires), and check the PSN ID. |
 | **Turn on** does nothing | In the console's power-saving settings, let it stay connected to the Internet in rest mode. |
-| *The console just closed a session* | Wait a few seconds, then press **Play** again. |
+| *The console just closed a session: try again in a few seconds.* | Wait a few seconds, then press **Play** again. |
 | Black picture away from home | See [Play away from home](remote-access.md). |

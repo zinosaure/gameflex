@@ -16,8 +16,6 @@ import (
 	"gameflex/credential/internal/auth"
 )
 
-const passwordMinLength = 8
-
 type credentialsBody struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -33,7 +31,7 @@ func decodeBody(w http.ResponseWriter, r *http.Request, target any) bool {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid request body.")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "Invalid request body.")
 		return false
 	}
 	return true
@@ -52,19 +50,18 @@ func (server *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		minutes := int((wait + time.Minute - 1) / time.Minute)
 		slog.Warn("login delayed", "username", body.Username, "from", address, "wait", wait.Round(time.Second))
 		w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
-		respondError(w, http.StatusTooManyRequests,
-			fmt.Sprintf("Too many failed sign-ins. Try again in %d minute(s).", minutes))
+		respondErrorCode(w, http.StatusTooManyRequests, "too_many_attempts", fmt.Sprintf("Too many failed sign-ins. Try again in %d minute(s).", minutes))
 		return
 	}
 
 	var userID int64
 	var username, displayName string
-	var roleLevel int
+	var roleLevel, generation int
 	var hashedPassword string
 	err := server.db.QueryRow(
-		`SELECT id, username, display_name, role_level, hashed_password FROM users WHERE username = ?`,
+		`SELECT id, username, display_name, role_level, hashed_password, session_generation FROM users WHERE username = ?`,
 		body.Username,
-	).Scan(&userID, &username, &displayName, &roleLevel, &hashedPassword)
+	).Scan(&userID, &username, &displayName, &roleLevel, &hashedPassword, &generation)
 
 	// UN REFUS LAISSE UNE TRACE, ET C'EST TOUT CE QU'IL LAISSE.
 	//
@@ -83,27 +80,34 @@ func (server *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// La cause exacte du refus est dite ICI et seulement ici. La réponse HTTP,
 	// elle, reste la même dans les deux cas — « invalid username or password »
 	// — sinon elle dirait à un inconnu quels comptes existent.
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && !auth.VerifyPassword(body.Password, hashedPassword)) {
+	//
+	// UN COMPTE QUI ATTEND SON LIEN (chantier 55) n'a pas de mot de passe : il est
+	// refusé avant bcrypt, avec la même réponse et le même compte d'échecs qu'un
+	// mot de passe faux — rien ne dit à un inconnu qu'un compte attend.
+	awaiting := err == nil && hashedPassword == ""
+	if errors.Is(err, sql.ErrNoRows) || awaiting || (err == nil && !auth.VerifyPassword(body.Password, hashedPassword)) {
 		reason := "wrong password"
 		if errors.Is(err, sql.ErrNoRows) {
 			reason = "no such account"
+		} else if awaiting {
+			reason = "awaiting its invitation link"
 		}
 		server.logins.fail(body.Username, address)
 		slog.Warn("login refused",
 			"username", body.Username, "reason", reason,
 			"from", address, "origin", r.Header.Get("Origin"))
-		respondError(w, http.StatusUnauthorized, "Invalid username or password.")
+		respondErrorCode(w, http.StatusUnauthorized, "login_refused", "Invalid username or password.")
 		return
 	}
 	if err != nil {
 		slog.Error("login failed", "username", body.Username, "error", err)
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 
-	token, err := auth.CreateToken(server.config.JWTSecret, userID, username, roleLevel)
+	token, err := auth.CreateToken(server.config.JWTSecret, userID, username, roleLevel, generation)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 
@@ -144,30 +148,55 @@ func (server *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request, pri
 	if body.DisplayName != nil {
 		updates["display_name"] = *body.DisplayName
 	}
-	if body.NewPassword != nil && *body.NewPassword != "" {
+	// UN NOUVEAU MOT DE PASSE (chantier 55, le porteur : « ça reste, et pareil
+	// comme pour l'initialisation du mot de passe, il faut que ça soit sur les
+	// mêmes recommandations ») : la règle du lien, puis la génération des
+	// sessions avance — les autres appareils tombent, celui-ci reçoit un jeton
+	// neuf (`access_token`, à côté du compte).
+	changingPassword := body.NewPassword != nil && *body.NewPassword != ""
+	if changingPassword {
 		if body.CurrentPassword == nil || !server.verifyCurrentPassword(principal.ID, *body.CurrentPassword) {
-			respondError(w, http.StatusBadRequest, "Current password is incorrect.")
+			respondErrorCode(w, http.StatusBadRequest, "password_wrong", "Current password is incorrect.")
 			return
 		}
-		if len(*body.NewPassword) < passwordMinLength {
-			respondError(w, http.StatusBadRequest, fmt.Sprintf("Password must be at least %d characters.", passwordMinLength))
+		if refusals := auth.PasswordRefusals(*body.NewPassword); len(refusals) > 0 {
+			respondPasswordRefused(w, refusals)
 			return
 		}
 		hashed, err := auth.HashPassword(*body.NewPassword)
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		updates["hashed_password"] = hashed
+		updates["password_set_at"] = now()
 	}
 
 	if len(updates) > 0 {
 		if err := server.applyUserUpdate(principal.ID, updates); err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 	}
-	respondItem(w, http.StatusOK, server.fetchUserResponse(principal.ID))
+	if !changingPassword {
+		respondItem(w, http.StatusOK, server.fetchUserResponse(principal.ID))
+		return
+	}
+
+	if err := server.AdvanceSessions(principal.ID); err != nil {
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
+		return
+	}
+	token, err := server.SessionToken(principal.ID)
+	if err != nil {
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
+		return
+	}
+	slog.Info("password changed", "username", principal.Username)
+	respondItem(w, http.StatusOK, struct {
+		userResponse
+		AccessToken string `json:"access_token"`
+	}{server.fetchUserResponse(principal.ID), token})
 }
 
 func (server *Server) handleLogout(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
@@ -206,7 +235,7 @@ func (server *Server) handleListMembers(w http.ResponseWriter, r *http.Request, 
 		 ORDER BY last_login IS NULL, last_login DESC, username ASC`,
 	)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	defer rows.Close()
@@ -222,13 +251,13 @@ func (server *Server) handleListMembers(w http.ResponseWriter, r *http.Request, 
 	for rows.Next() {
 		var entry member
 		if err := rows.Scan(&entry.ID, &entry.Username, &entry.DisplayName, &entry.LastLogin); err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		members = append(members, entry)
 	}
 	if err := rows.Err(); err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 
@@ -249,13 +278,31 @@ func (server *Server) handleListUsers(w http.ResponseWriter, r *http.Request, pr
 	// propose un filtre par rôle, et la liste est paginée PAR LE SERVEUR —
 	// trier côté page n'aurait filtré que la page affichée, en laissant le
 	// compteur annoncer le total non filtré.
-	where, args, err := parseSearch(r.URL.Query().Get("search"), "username,display_name,role_level")
+	//
+	// password_set_at depuis le chantier 55 : le filtre « invitation validée »
+	// (`not_null` : ceux qui ont choisi leur mot de passe ; `null` : ceux qui
+	// attendent leur lien).
+	where, args, err := parseSearch(r.URL.Query().Get("search"), "username,display_name,role_level,password_set_at")
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid 'search' parameter. Expected a JSON object or array of objects.")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "Invalid 'search' parameter. Expected a JSON object or array of objects.")
 		return
 	}
 
-	base := "SELECT id, username, display_name, role_level, created_at, created_by_id, consoles FROM users"
+	// token_enabled=1 depuis le 2026-11-14 (chantier 53, P11) : le filtre des
+	// membres du launcher propose « jeton activé ». Le jeton vit dans sa table
+	// (account_tokens.go) : il se joint ici, au serveur, pour la même raison que
+	// le rôle — la liste est paginée, et le compteur doit dire le total filtré.
+	// Les groupes de `search` se combinent en OU : ils restent entre parenthèses.
+	if r.URL.Query().Get("token_enabled") == "1" {
+		tokenClause := "id IN (SELECT user_id FROM account_tokens WHERE enabled = 1)"
+		if where != "" {
+			where = "(" + where + ") AND " + tokenClause
+		} else {
+			where = tokenClause
+		}
+	}
+
+	base := "SELECT " + userColumns + " FROM users"
 	countQuery := "SELECT COUNT(*) FROM users"
 	if where != "" {
 		base += " WHERE " + where
@@ -264,14 +311,14 @@ func (server *Server) handleListUsers(w http.ResponseWriter, r *http.Request, pr
 
 	var count int
 	if err := server.db.QueryRow(countQuery, args...).Scan(&count); err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 
 	offset := (page - 1) * itemsPerPage
 	rows, err := server.db.Query(base+" ORDER BY id LIMIT ? OFFSET ?", append(args, itemsPerPage, offset)...)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	defer rows.Close()
@@ -280,7 +327,7 @@ func (server *Server) handleListUsers(w http.ResponseWriter, r *http.Request, pr
 	for rows.Next() {
 		user, err := scanUser(rows)
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		users = append(users, user)
@@ -290,6 +337,7 @@ func (server *Server) handleListUsers(w http.ResponseWriter, r *http.Request, pr
 		if token, err := server.accountToken(users[index].ID, true); err == nil {
 			users[index].Token = &token
 		}
+		users[index].Invitation = server.memberLink(users[index].ID)
 	}
 	respondItems(w, http.StatusOK, users, newPagination(count, page, itemsPerPage))
 }
@@ -297,25 +345,26 @@ func (server *Server) handleListUsers(w http.ResponseWriter, r *http.Request, pr
 func (server *Server) handleFetchUser(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "User not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "User not found.")
 		return
 	}
 
 	row := server.db.QueryRow(
-		`SELECT id, username, display_name, role_level, created_at, created_by_id, consoles FROM users WHERE id = ?`, id,
+		"SELECT "+userColumns+" FROM users WHERE id = ?", id,
 	)
 	user, err := scanUser(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		respondError(w, http.StatusNotFound, "User not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "User not found.")
 		return
 	}
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	if token, err := server.accountToken(user.ID, true); err == nil {
 		user.Token = &token
 	}
+	user.Invitation = server.memberLink(user.ID)
 	respondItem(w, http.StatusOK, user)
 }
 
@@ -334,9 +383,11 @@ func assignableRole(level int) bool {
 }
 
 func (server *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
+	// SANS MOT DE PASSE (chantier 55) : le membre le choisit par son lien.
+	// `password` n'est plus un champ : envoyé, il est refusé (400,
+	// DisallowUnknownFields).
 	var body struct {
 		Username    string    `json:"username"`
-		Password    string    `json:"password"`
 		DisplayName string    `json:"display_name"`
 		RoleLevel   *int      `json:"role_level"`
 		Consoles    *[]string `json:"consoles"`
@@ -350,80 +401,85 @@ func (server *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, p
 	}
 
 	if roleLevel == auth.RoleRoot {
-		respondError(w, http.StatusForbidden, "Cannot create another root account.")
+		respondErrorCode(w, http.StatusForbidden, "root_locked", "Cannot create another root account.")
 		return
 	}
 	if !assignableRole(roleLevel) {
-		respondError(w, http.StatusBadRequest, "Role must be 1 (admin) or 2 (user).")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "Role must be 1 (admin) or 2 (user).")
 		return
 	}
 	grants := consoles.GrantAll
 	if body.Consoles != nil {
 		parsed, err := consoles.ParseGrants(*body.Consoles)
 		if err != nil {
-			respondError(w, http.StatusBadRequest, err.Error())
+			respondErrorCode(w, http.StatusBadRequest, "bad_request", err.Error())
 			return
 		}
 		grants = parsed
 	}
 	if !usernamePattern.MatchString(body.Username) {
-		respondError(w, http.StatusBadRequest,
-			"Username must be 3 to 32 letters, digits, dots, dashes or underscores.")
+		respondErrorCode(w, http.StatusBadRequest, "username_invalid", "Username must be 3 to 32 letters, digits, dots, dashes or underscores.")
 		return
 	}
-	if len(body.Password) < passwordMinLength {
-		respondError(w, http.StatusBadRequest, fmt.Sprintf("Password must be at least %d characters.", passwordMinLength))
-		return
+	// Le compte et son lien, dans la même transaction : un compte n'existe
+	// jamais sans le moyen d'y entrer.
+	label := body.DisplayName
+	if label == "" {
+		label = body.Username
 	}
+	var userID int64
+	link, err := server.inTransaction(func(transaction *sql.Tx) (memberLinkResponse, error) {
+		result, err := transaction.Exec(
+			`INSERT INTO users (username, hashed_password, display_name, role_level, created_at, created_by_id, consoles)
+			 VALUES (?, '', ?, ?, ?, ?, ?)`,
+			body.Username, body.DisplayName, roleLevel, now(), principal.ID, grants,
+		)
+		if err != nil {
+			return memberLinkResponse{}, err
+		}
+		userID, _ = result.LastInsertId()
 
-	hashed, err := auth.HashPassword(body.Password)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
-		return
-	}
-
-	result, err := server.db.Exec(
-		`INSERT INTO users (username, hashed_password, display_name, role_level, created_at, created_by_id, consoles)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		body.Username, hashed, body.DisplayName, roleLevel, now(), principal.ID, grants,
-	)
+		return replaceMemberLink(transaction, InvitationJoin, userID, label, principal)
+	})
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
-			respondError(w, http.StatusConflict, "Username already taken.")
+			respondErrorCode(w, http.StatusConflict, "username_taken", "Username already taken.")
 			return
 		}
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		slog.Error("create member failed", "username", body.Username, "error", err)
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
-	userID, _ := result.LastInsertId()
 	server.accountsChanged()
-	respondItem(w, http.StatusCreated, server.memberResponse(userID))
+	slog.Info("member invited", "username", body.Username, "by", principal.Username, "until", link.ExpiresAt)
+	respondItem(w, http.StatusCreated, server.memberWithLink(userID, link))
 }
 
 func (server *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "User not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "User not found.")
 		return
 	}
 
 	var targetRole int
 	err = server.db.QueryRow(`SELECT role_level FROM users WHERE id = ?`, id).Scan(&targetRole)
 	if errors.Is(err, sql.ErrNoRows) {
-		respondError(w, http.StatusNotFound, "User not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "User not found.")
 		return
 	}
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	if targetRole == auth.RoleRoot {
-		respondError(w, http.StatusForbidden, "Cannot modify the root account.")
+		respondErrorCode(w, http.StatusForbidden, "root_locked", "Cannot modify the root account.")
 		return
 	}
 
+	// `password` n'est plus un champ (chantier 55) : un administrateur
+	// réinitialise (member_links.go), il ne choisit plus.
 	var body struct {
-		Password    *string   `json:"password"`
 		DisplayName *string   `json:"display_name"`
 		RoleLevel   *int      `json:"role_level"`
 		Consoles    *[]string `json:"consoles"`
@@ -433,11 +489,11 @@ func (server *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request, p
 	}
 
 	if body.RoleLevel != nil && *body.RoleLevel == auth.RoleRoot {
-		respondError(w, http.StatusForbidden, "Cannot grant root access.")
+		respondErrorCode(w, http.StatusForbidden, "root_locked", "Cannot grant root access.")
 		return
 	}
 	if body.RoleLevel != nil && !assignableRole(*body.RoleLevel) {
-		respondError(w, http.StatusBadRequest, "Role must be 1 (admin) or 2 (user).")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "Role must be 1 (admin) or 2 (user).")
 		return
 	}
 
@@ -445,7 +501,7 @@ func (server *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request, p
 	if body.Consoles != nil {
 		grants, err := consoles.ParseGrants(*body.Consoles)
 		if err != nil {
-			respondError(w, http.StatusBadRequest, err.Error())
+			respondErrorCode(w, http.StatusBadRequest, "bad_request", err.Error())
 			return
 		}
 		updates["consoles"] = grants
@@ -456,21 +512,8 @@ func (server *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request, p
 	if body.RoleLevel != nil {
 		updates["role_level"] = *body.RoleLevel
 	}
-	if body.Password != nil && *body.Password != "" {
-		if len(*body.Password) < passwordMinLength {
-			respondError(w, http.StatusBadRequest, fmt.Sprintf("Password must be at least %d characters.", passwordMinLength))
-			return
-		}
-		hashed, err := auth.HashPassword(*body.Password)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
-			return
-		}
-		updates["hashed_password"] = hashed
-	}
-
 	if err := server.applyUserUpdate(id, updates); err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	server.accountsChanged()
@@ -480,26 +523,29 @@ func (server *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request, p
 func (server *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "User not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "User not found.")
 		return
 	}
 	if id == principal.ID {
-		respondError(w, http.StatusBadRequest, "Cannot delete your own account.")
+		respondErrorCode(w, http.StatusBadRequest, "own_account_delete", "Cannot delete your own account.")
 		return
 	}
 
-	var targetRole int
-	err = server.db.QueryRow(`SELECT role_level FROM users WHERE id = ?`, id).Scan(&targetRole)
+	var (
+		targetName string
+		targetRole int
+	)
+	err = server.db.QueryRow(`SELECT username, role_level FROM users WHERE id = ?`, id).Scan(&targetName, &targetRole)
 	if errors.Is(err, sql.ErrNoRows) {
-		respondError(w, http.StatusNotFound, "User not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "User not found.")
 		return
 	}
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	if targetRole == auth.RoleRoot {
-		respondError(w, http.StatusForbidden, "Cannot delete the root account.")
+		respondErrorCode(w, http.StatusForbidden, "root_locked", "Cannot delete the root account.")
 		return
 	}
 
@@ -521,43 +567,53 @@ func (server *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request, p
 	//     administrateur ne doit ni révoquer les accès qu'il a distribués, ni
 	//     effacer les comptes qu'il a créés.
 	//
-	// Les dossiers de sauvegarde, eux, restent en place : supprimer un compte
-	// ne doit pas détruire ses parties en silence.
+	// SES SAUVEGARDES PARTENT AUSSI (le porteur, 2026-11-14 : « Supprimer ») :
+	// ce sont des fichiers, au kernel, qui les efface quand la liste des comptes
+	// le nomme supprimé (server.deleted). Pas en silence : la fenêtre qui
+	// confirme la suppression le dit.
 	ownedByUser := []string{
 		"play_history", "controller_mappings", "key_mappings",
 		"key_positionings", "notification_preferences", "push_subscriptions",
 		// Ses jetons chez nos amis (chantier 20) : ses comptes là-bas, à lui.
 		"federated_accounts",
+		// Ses favoris (favorites.go).
+		"favorites",
+		// Les serveurs fédérés qu'il a éteints (hidden_servers.go).
+		"hidden_servers",
 	}
-	authoredByUser := []string{
-		"users", "federation_tokens", "remote_mounts", "federation_servers",
+	// Chaque table et sa colonne d'auteur. LE FOURNISSEUR DE MÉTADONNÉES (chantier 49) note QUI a enregistré ses
+	// clés (`metadata_services.updated_by_id`) : il perd son auteur, jamais son réglage — il manquait ici, et
+	// supprimer un administrateur qui avait configuré un fournisseur échouait sur la clé étrangère (un 500).
+	authoredByUser := []struct{ table, column string }{
+		{"users", "created_by_id"}, {"federation_tokens", "created_by_id"}, {"remote_mounts", "created_by_id"},
+		{"federation_servers", "created_by_id"}, {"metadata_services", "updated_by_id"},
 	}
 
 	transaction, err := server.db.Begin()
 	if err != nil {
 		slog.Error("delete user: begin failed", "user_id", id, "error", err)
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 
 		return
 	}
 
 	defer transaction.Rollback()
 
-	// Les noms de tables sont des constantes écrites juste au-dessus, jamais
-	// une valeur venue de la requête.
+	// Les noms de tables et de colonnes sont des constantes écrites juste
+	// au-dessus, jamais une valeur venue de la requête.
 	for _, table := range ownedByUser {
 		if _, err := transaction.Exec("DELETE FROM "+table+" WHERE user_id = ?", id); err != nil {
 			slog.Error("delete user: owned rows failed", "user_id", id, "table", table, "error", err)
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 
 			return
 		}
 	}
 
-	for _, table := range authoredByUser {
-		if _, err := transaction.Exec("UPDATE "+table+" SET created_by_id = NULL WHERE created_by_id = ?", id); err != nil {
-			slog.Error("delete user: authorship failed", "user_id", id, "table", table, "error", err)
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+	for _, authored := range authoredByUser {
+		if _, err := transaction.Exec("UPDATE "+authored.table+" SET "+authored.column+" = NULL WHERE "+authored.column+" = ?", id); err != nil {
+			slog.Error("delete user: authorship failed", "user_id", id, "table", authored.table, "error", err)
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 
 			return
 		}
@@ -569,19 +625,20 @@ func (server *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request, p
 	// n'avait aucune piste à offrir.
 	if _, err := transaction.Exec(`DELETE FROM users WHERE id = ?`, id); err != nil {
 		slog.Error("delete user failed", "user_id", id, "error", err)
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 
 		return
 	}
 
 	if err := transaction.Commit(); err != nil {
 		slog.Error("delete user: commit failed", "user_id", id, "error", err)
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 
 		return
 	}
 
-	slog.Info("user deleted", "user_id", id, "by", principal.Username)
+	slog.Info("user deleted", "user_id", id, "username", targetName, "by", principal.Username)
+	server.deleted.add(targetName, time.Now())
 	server.accountsChanged()
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -590,7 +647,7 @@ func (server *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request, p
 
 func (server *Server) fetchUserResponse(userID int64) userResponse {
 	row := server.db.QueryRow(
-		`SELECT id, username, display_name, role_level, created_at, created_by_id, consoles FROM users WHERE id = ?`, userID,
+		"SELECT "+userColumns+" FROM users WHERE id = ?", userID,
 	)
 	user, err := scanUser(row)
 	if err != nil {
@@ -607,6 +664,7 @@ func (server *Server) memberResponse(userID int64) userResponse {
 	if token, err := server.accountToken(userID, true); err == nil {
 		user.Token = &token
 	}
+	user.Invitation = server.memberLink(userID)
 
 	return user
 }

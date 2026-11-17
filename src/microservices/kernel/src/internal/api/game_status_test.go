@@ -180,7 +180,7 @@ func TestAWholeConsoleInOneGesture(t *testing.T) {
 // UN JOUEUR NE SIGNALE RIEN, et une demande fausse est refusée sans rien
 // écrire.
 func TestOnlyAnAdministratorReportsAndOnlyValidReports(t *testing.T) {
-	server, root := listingServer(t, "roms/nes/Metroid.nes")
+	server, _ := listingServer(t, "roms/nes/Metroid.nes")
 	router := statusRouter(server)
 	metroid := storage.RomID("nes", "Metroid.nes")
 
@@ -209,7 +209,7 @@ func TestOnlyAnAdministratorReportsAndOnlyValidReports(t *testing.T) {
 			t.Fatalf("%s %v = %d, attendu %d", attempt.path, attempt.body, code, attempt.want)
 		}
 	}
-	if console, _ := (gamestatus.Store{Dir: filepath.Join(root, "status")}).Load("nes"); len(console.Games) != 0 || console.Status != "" {
+	if console, _ := server.statusStore().Load("nes"); len(console.Games) != 0 || console.Status != "" {
 		t.Fatalf("une demande refusée a écrit : %+v", console)
 	}
 }

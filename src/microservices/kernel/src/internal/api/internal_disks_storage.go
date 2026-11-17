@@ -12,9 +12,12 @@ package api
 // sous le disque : la liste, à la forme de celle d'ici, et l'import dans le
 // dossier de ce serveur — une copie, jamais par-dessus ce qui existe. Une
 // partie prend toujours sa console dans le dossier : ce qui n'est que sur un
-// disque s'importe d'abord.
+// disque s'importe d'abord. Ses PARAMÈTRES, eux, ne s'importent plus (chantier
+// 53, après la P7) : ce qu'il prête est un préréglage du formulaire d'ici, qui
+// n'écrit qu'à « Enregistrer » (lentSections, storage_params_api.go).
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,8 +32,10 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"gameflex/emuparams"
+	"gameflex/facade"
 	"gameflex/kernel/internal/docker"
 	"gameflex/kernel/internal/retro_files"
+	"gameflex/storage"
 	"gameflex/storage/listing"
 	"gameflex/storage/remote"
 )
@@ -45,7 +50,8 @@ func diskRoots(disk docker.InternalDisk) libraryRoots {
 
 // handleDiskStorage — GET /api/v1/retrogaming/disks/{name}/storage/{section}
 // (cores, bios, params, patches) : ce que ce disque en a, à la forme de la
-// même liste pour ce serveur ou pour un ami — l'écran n'a qu'un dialecte.
+// même liste pour ce serveur ou pour un ami — l'écran n'a qu'un dialecte. Ses
+// paramètres : ce qu'il prête, avec les valeurs (lentPreset).
 func (server *Server) handleDiskStorage(w http.ResponseWriter, r *http.Request) {
 	disk, ok := server.diskNamed(w, r, chi.URLParam(r, "name"))
 	if !ok {
@@ -63,12 +69,19 @@ func (server *Server) handleDiskStorage(w http.ResponseWriter, r *http.Request) 
 	case listing.Patches:
 		shaped = remote.PatchSections(items, patchHere)
 	case listing.Params:
-		store := paramsStore()
-		shaped = remote.ParamsSections(items, func(consoleID, emulator, presetID, presetName string) any {
-			return store.OfferOf(disk.Name, consoleID, emulator, presetID, presetName)
+		// `?console=&emulator=` : les seuls prêts que la page d'un émulateur
+		// demande, chacun avec ses valeurs, lues sur le disque.
+		lender := emuparams.Store{Root: disk.Dir}
+		shaped = lentSections(paramsWanted(r, items), func(ref emuparams.Ref, presetID string) (map[string]any, string) {
+			lent, err := lender.Lend(ref, presetID)
+			if err != nil {
+				return nil, "lacks"
+			}
+
+			return lent.Values, ""
 		})
 	default:
-		writeError(w, http.StatusBadRequest, "section must be cores, bios, params or patches")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "section must be cores, bios, params or patches")
 
 		return
 	}
@@ -76,29 +89,24 @@ func (server *Server) handleDiskStorage(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]any{"consoles": shaped})
 }
 
-// handleDiskStorageImport — POST /api/v1/retrogaming/disks/{name}/storage/{section}
-// avec `{consoleId, name}` (cœurs, BIOS, correctifs) ou `{consoleId, emulator,
-// preset}` (paramètres) : l'élément du disque, copié dans le dossier de ce
-// serveur. Un élément déjà là est REFUSÉ (409), jamais remplacé — la leçon de
-// #142/#143.
+// handleDiskStorageImport — la commande `download` (route `disk`,
+// facade_ws.go) avec `{consoleId, name}` (cœurs, BIOS, correctifs) :
+// l'élément du disque, copié dans le dossier de ce serveur. Un élément déjà là
+// est REFUSÉ (409), jamais remplacé — la leçon de #142/#143. Les paramètres ne
+// s'importent plus (400) : ils remplissent le formulaire d'ici.
 func (server *Server) handleDiskStorageImport(w http.ResponseWriter, r *http.Request) {
 	disk, ok := server.diskNamed(w, r, chi.URLParam(r, "name"))
 	if !ok {
 		return
 	}
 	section := chi.URLParam(r, "section")
-	if section == listing.Params {
-		server.importDiskParams(w, r, disk)
-
-		return
-	}
 
 	var body struct {
 		ConsoleID string `json:"consoleId"`
 		Name      string `json:"name"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "corps illisible")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "corps illisible")
 
 		return
 	}
@@ -119,7 +127,7 @@ func (server *Server) handleDiskStorageImport(w http.ResponseWriter, r *http.Req
 			break
 		}
 		if !coreBelongsTo(consoleID, name) {
-			writeError(w, http.StatusBadRequest, fmt.Sprintf("le core « %s » n'est pas déclaré pour %s", name, consoleID))
+			writeErrorCode(w, http.StatusBadRequest, "emulator_unknown", fmt.Sprintf("le core « %s » n'est pas déclaré pour %s", name, consoleID))
 
 			return
 		}
@@ -135,13 +143,13 @@ func (server *Server) handleDiskStorageImport(w http.ResponseWriter, r *http.Req
 		})
 	case listing.Bios:
 		if !biosBelongsTo(consoleID, name) {
-			writeError(w, http.StatusBadRequest, fmt.Sprintf("le BIOS « %s » n'est pas attendu par %s", name, consoleID))
+			writeErrorCode(w, http.StatusBadRequest, "bios_unknown", fmt.Sprintf("le BIOS « %s » n'est pas attendu par %s", name, consoleID))
 
 			return
 		}
 		path, _, err := retro_files.ResolveBiosFile(disk.Section("bios"), consoleID, name)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			writeError(w, http.StatusBadRequest, "invalid bios reference: "+err.Error())
+			writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid bios reference: "+err.Error())
 
 			return
 		}
@@ -150,33 +158,32 @@ func (server *Server) handleDiskStorageImport(w http.ResponseWriter, r *http.Req
 	case listing.Patches:
 		local, valid := patchPath(consoleID, name)
 		if !valid {
-			writeError(w, http.StatusBadRequest, "invalid patch")
+			writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid patch")
 
 			return
 		}
 		source = filepath.Join(disk.Section("patches"), consoleID, name)
 		target = local
 	default:
-		writeError(w, http.StatusBadRequest, "section must be cores, bios, params or patches")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "section must be cores, bios or patches")
 
 		return
 	}
 
 	if _, err := os.Stat(source); source == "" || err != nil {
-		writeError(w, http.StatusNotFound, fmt.Sprintf("le disque %s n'a pas « %s »", disk.Name, name))
+		writeErrorCode(w, http.StatusNotFound, "not_found", fmt.Sprintf("le disque %s n'a pas « %s »", disk.Name, name))
 
 		return
 	}
 	if _, err := os.Stat(target); err == nil {
-		writeError(w, http.StatusConflict,
-			"ce fichier existe déjà : le supprimer d'abord pour en reprendre une version")
+		writeErrorCode(w, http.StatusConflict, "already_installed", "ce fichier existe déjà : le supprimer d'abord pour en reprendre une version")
 
 		return
 	}
 
-	written, err := copyIntoLibrary(source, target)
+	written, err := copyIntoLibrary(r.Context(), source, target)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "storage_failed", err.Error())
 
 		return
 	}
@@ -192,7 +199,7 @@ func (server *Server) handleDiskStorageImport(w http.ResponseWriter, r *http.Req
 		}
 		// La variante manquée ne défait pas le cœur, qui est copié : elle se
 		// dit au journal, et l'écran la montre absente.
-		size, err := copyIntoLibrary(companion[0], companion[1])
+		size, err := copyIntoLibrary(r.Context(), companion[0], companion[1])
 		if err != nil {
 			slog.Warn("variante non copiée", "disk", disk.Name, "file", companion[0], "error", err)
 
@@ -206,58 +213,20 @@ func (server *Server) handleDiskStorageImport(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, answer)
 }
 
-// importDiskParams — `{consoleId, emulator, preset}` : les valeurs choisies sur
-// ce disque, ou un de ses préréglages perso, rangés ici en préréglage perso
-// sous `<disque>-<préréglage>` (ou `<disque>`) — le même nommage que pour un
-// ami, pour la même raison : deux sources qui ont chacune un « hd » ne
-// s'écrasent pas.
-func (server *Server) importDiskParams(w http.ResponseWriter, r *http.Request, disk docker.InternalDisk) {
-	var body struct {
-		ConsoleID string `json:"consoleId"`
-		Emulator  string `json:"emulator"`
-		Preset    string `json:"preset"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "corps invalide")
-
-		return
-	}
-	ref := emuparams.Ref{ConsoleID: body.ConsoleID, Emulator: body.Emulator}
-	if !emuparams.IsShipped(ref) {
-		writeError(w, http.StatusNotFound, "pas de paramètres pour "+ref.ConsoleID+"/"+ref.Emulator)
-
-		return
-	}
-	lent, err := emuparams.Store{Root: disk.Dir}.Lend(ref, body.Preset)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "ce disque n'a pas ce réglage")
-
-		return
-	}
-
-	presetName := ""
-	if body.Preset != "" {
-		presetName = lent.Name
-	}
-	imported, ignored, err := paramsStore().Import(ref, consoleNames()[ref.ConsoleID],
-		emuparams.ImportName(disk.Name, presetName), lent.Values)
-	answerParamsImport(w, ref, disk.Name, imported, ignored, err)
-}
-
 // copyIntoLibrary — un fichier ou un dossier d'un disque interne, copié dans
 // le dossier de ce serveur. La discipline de importIntoLibrary : un brouillon
 // `.part`, renommé seulement quand tout est copié — un fichier tronqué qui
 // porte le nom du vrai échoue plus tard, ailleurs, sans rien dire —, et ce qui
 // est créé appartient au propriétaire de la bibliothèque (#146).
-func copyIntoLibrary(source, target string) (int64, error) {
+func copyIntoLibrary(ctx context.Context, source, target string) (int64, error) {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return 0, fmt.Errorf("dossier impossible à créer : %w", err)
 	}
-	adoptParentOwner(filepath.Dir(target))
+	storage.AdoptParentOwner(filepath.Dir(target))
 
 	partial := target + ".part"
 	_ = os.RemoveAll(partial)
-	written, err := copyTree(source, partial)
+	written, err := copyTree(ctx, source, partial)
 	if err == nil {
 		err = os.Rename(partial, target)
 	}
@@ -273,13 +242,13 @@ func copyIntoLibrary(source, target string) (int64, error) {
 // copyTree — copie `source` (un fichier, ou un dossier et tout ce qu'il
 // contient) vers `target`, qui n'existe pas encore. Les liens symboliques ne
 // suivent pas : ils pointeraient hors du disque.
-func copyTree(source, target string) (int64, error) {
+func copyTree(ctx context.Context, source, target string) (int64, error) {
 	info, err := os.Stat(source)
 	if err != nil {
 		return 0, err
 	}
 	if !info.IsDir() {
-		return copyFile(source, target, info.Mode())
+		return copyFile(ctx, source, target, info.Mode())
 	}
 
 	var total int64
@@ -296,7 +265,7 @@ func copyTree(source, target string) (int64, error) {
 			if err := os.MkdirAll(destination, 0o755); err != nil {
 				return err
 			}
-			adoptParentOwner(destination)
+			storage.AdoptParentOwner(destination)
 
 			return nil
 		}
@@ -307,7 +276,7 @@ func copyTree(source, target string) (int64, error) {
 		if err != nil {
 			return err
 		}
-		written, err := copyFile(path, destination, fileInfo.Mode())
+		written, err := copyFile(ctx, path, destination, fileInfo.Mode())
 		total += written
 
 		return err
@@ -316,7 +285,7 @@ func copyTree(source, target string) (int64, error) {
 	return total, err
 }
 
-func copyFile(source, target string, mode fs.FileMode) (int64, error) {
+func copyFile(ctx context.Context, source, target string, mode fs.FileMode) (int64, error) {
 	in, err := os.Open(source)
 	if err != nil {
 		return 0, err
@@ -327,11 +296,11 @@ func copyFile(source, target string, mode fs.FileMode) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	written, err := io.Copy(out, in)
+	written, err := io.Copy(facade.ProgressWriter(ctx, out, 0), in)
 	if closeErr := out.Close(); err == nil {
 		err = closeErr
 	}
-	adoptParentOwner(target)
+	storage.AdoptParentOwner(target)
 
 	return written, err
 }

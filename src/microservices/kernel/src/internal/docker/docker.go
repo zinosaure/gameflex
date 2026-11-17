@@ -37,10 +37,11 @@ import (
 	"gameflex/storage/installs"
 )
 
-// statusClient — UN SEUL client, BORNÉ, pour les trois `/status`.
+// statusClient — UN SEUL client, BORNÉ, pour les `/status` du panneau de
+// performances (`StatusRetro`, `StatusRemoteplay`, `StatusStreamex`).
 //
-// `http.DefaultClient` n'a aucun délai de garde. Les trois lectures d'état
-// (`StatusExternal`, `StatusRetro`, `StatusRemoteplay`) s'en servaient, avec un
+// `http.DefaultClient` n'a aucun délai de garde. Les lectures d'état s'en
+// servaient, avec un
 // `context.Background()` sans échéance : un conteneur qui ACCEPTE encore les
 // connexions sans jamais répondre bloquait donc l'appel pour toujours. Et comme
 // le chien de garde est une seule goroutine, il ne revoyait jamais un tic —
@@ -75,9 +76,10 @@ const (
 	labelOwner     = "gameflex.owner"
 	labelGame      = "gameflex.game"
 	labelPort      = "gameflex.port"
-	// Retro-only labels: kind separates retro session containers from the
+	// Retro labels: kind separates retro session containers from the
 	// external ones during adoption (the session.id label alone is shared),
-	// and reference/core/bios rebuild a full record across restarts.
+	// and reference/core/bios rebuild a full record across restarts. The
+	// external (streamex) sessions carry core and reference too.
 	labelKind      = "gameflex.kind"
 	labelReference = "gameflex.reference"
 	labelCore      = "gameflex.core"
@@ -94,12 +96,13 @@ func isRetroContainer(labels map[string]string) bool {
 
 const sessionContainerPort = "8080/tcp"
 
-// Stream quality defaults — the launch request (Stream Settings form,
-// validated in manager.Launch) overrides these per session; they only fill
-// in when the client sends none.
+// LE REPLI DU DÉBIT, par console, quand le lancement n'en porte aucun : la page
+// mesure le réseau pour un débit « Auto » (network-probe.js) et l'envoie comme
+// un débit choisi ; il ne manque que si sa mesure a échoué. La définition et la
+// cadence, elles, arrivent toujours (manager.normalizeLaunchSettings : le choix
+// revalidé, ou 540p à 30) — elles n'ont plus de défaut ici. C'était 1280x720 à
+// 60, alors que la page partait de 540p à 30 (le porteur, 2026-11-16).
 const (
-	streamDefaultResolution  = "1280x720"
-	streamDefaultFPS         = "60"
 	streamDefaultBitrate     = "5000"
 	streamPS3DefaultBitrate  = "6000"
 	streamXboxDefaultBitrate = "6000"
@@ -184,8 +187,12 @@ type SpawnSpec struct {
 	Console     string
 	// Core — l'émulateur choisi sur la fiche, au nom du registre ; vide,
 	// le premier de la console (streamex_emulators.go, chantier 26).
-	Core     string
-	Username string
+	Core string
+	// EmulatorFile — le fichier d'émulateur à déballer, nommé au conteneur
+	// (GAMEFLEX_EMULATOR_CHOSEN, consoles/unpack-emulator.sh) : la version en
+	// service de la console (chantier 53). Vide : le dernier déposé.
+	EmulatorFile string
+	Username     string
 	// Seats — the places of the GAME (manager.Seats): the console's own count
 	// from the registry. The container may carry more pads than that.
 	Seats int
@@ -198,10 +205,10 @@ type SpawnSpec struct {
 	ContainerBase  string
 	ContainerIndex int
 
-	// Per-launch stream quality overrides from the Stream Settings form
-	// (see manager.LaunchSettings) — already normalized to concrete env
-	// values by the manager; zero values keep the console's default.
-	Resolution string // e.g. "1280x720", "" = console default
+	// The launch's stream (see manager.LaunchSettings) — already normalized
+	// to concrete env values by the manager: a resolution and a frame rate
+	// always (540p at 30 by default), a bitrate or 0 (the console's fallback).
+	Resolution string // e.g. "960x540"
 	FPS        int
 	Bitrate    int
 	// Language — la langue de la page qui lance, déjà ramenée à « fr » ou
@@ -217,6 +224,10 @@ type SpawnSpec struct {
 	// GameID — l'identifiant du jeu (storage.GameTitleID) : ses réglages passent
 	// par-dessus ceux de son moteur. Vide : aucun.
 	GameID string
+	// Reference — la référence du jeu dans la bibliothèque (storage.RomID),
+	// gardée sur le conteneur (labelReference) : la page reconnaît la fiche du
+	// jeu en cours, même après un redémarrage du kernel. Vide : inconnue.
+	Reference string
 }
 
 // gamesDir — le dossier de jeux monté sur /opt/game : celui du disque interne
@@ -274,27 +285,14 @@ type AdoptedSession struct {
 	Console   string
 	Game      string
 	Owner     string
+	// Reference — la référence du jeu dans la bibliothèque (labelReference) ;
+	// vide pour un conteneur d'avant (2026-11-15).
+	Reference string
 	Port      int
 	// StartedAt — la création du conteneur, c'est-à-dire le lancement de la
 	// partie : une partie retrouvée après un redémarrage du kernel garde sa
 	// durée (« Live now » l'affiche) au lieu de repartir de zéro.
 	StartedAt time.Time
-}
-
-// ContainerStatus is the /status payload read by the TTL watchdog.
-type ContainerStatus struct {
-	Players        int   `json:"players"`
-	Spectators     int   `json:"spectators"`
-	LastActivityMS int64 `json:"last_activity_ms"`
-	// State — « booting » tant que streamex lance le jeu (un .pkg de PS4 se
-	// déballe d'abord, 2026-10-22) ; la partie n'est prête qu'ensuite.
-	State string `json:"state"`
-	// Unpacking — l'avancée d'un déballage en cours : octets écrits sur ce
-	// que pèse l'archive.
-	Unpacking *struct {
-		Done  int64 `json:"done"`
-		Total int64 `json:"total"`
-	} `json:"unpacking,omitempty"`
 }
 
 type Client struct {
@@ -737,13 +735,14 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 	// manette, et leurs touches seraient allées au clavier de l'émulateur.
 	maxPlayers := padsFor(cfg.MaxPlayers, spec.Seats)
 
-	// Stream quality: per-console defaults, overridable per launch by the
-	// Stream Settings form (validated upstream in manager.Launch). Built
-	// into plain variables FIRST so an override replaces the default
-	// instead of appending a duplicate env key (duplicate keys in the
-	// container env list are undefined behavior — glibc returns the first
-	// match, so an appended override would silently lose).
-	resolution, fps, bitrate := streamDefaultResolution, streamDefaultFPS, streamDefaultBitrate
+	// Stream quality: the resolution and the frame rate come validated from
+	// manager.Launch (540p at 30 when nothing was chosen); the bitrate falls
+	// back per console when the launch carries none. Built into a plain
+	// variable FIRST so an override replaces the default instead of
+	// appending a duplicate env key (duplicate keys in the container env list
+	// are undefined behavior — glibc returns the first match, so an appended
+	// override would silently lose).
+	bitrate := streamDefaultBitrate
 	if spec.Console == "ps3" {
 		bitrate = streamPS3DefaultBitrate
 	} else if spec.Console == "xbox" || spec.Console == "xbox360" || spec.Console == "ps4" || spec.Console == "ps5" || spec.Console == consoles.PortsID {
@@ -751,12 +750,6 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 		// de la Xbox : même famille de rendu 3D, même besoin. Les ports PC
 		// aussi : ils rendent en 720p ce que la console rendait en 240p.
 		bitrate = streamXboxDefaultBitrate
-	}
-	if spec.Resolution != "" {
-		resolution = spec.Resolution
-	}
-	if spec.FPS > 0 {
-		fps = strconv.Itoa(spec.FPS)
 	}
 	if spec.Bitrate > 0 {
 		bitrate = strconv.Itoa(spec.Bitrate)
@@ -774,8 +767,8 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 		// The QUEUE's places: the console's, not the container's ceiling —
 		// it gave four to every console, PS3 and PS5 included (2026-10-09).
 		"GAMEFLEX_MAX_PLAYERS=" + strconv.Itoa(seatsOr(spec.Seats, maxPlayers)),
-		"STREAMEX_RESOLUTION=" + resolution,
-		"STREAMEX_FPS=" + fps,
+		"STREAMEX_RESOLUTION=" + spec.Resolution,
+		"STREAMEX_FPS=" + strconv.Itoa(spec.FPS),
 		"STREAMEX_BITRATE=" + bitrate,
 	}
 	environment = append(environment, sessionKeys(cfg, spec.SessionID)...)
@@ -811,6 +804,9 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 	// pas de la console — deux sessions de la même console se retrouvent
 	// encore avec des pads homonymes.
 	environment = append(environment, "STREAMEX_CONSOLE="+spec.Console)
+	if spec.EmulatorFile != "" {
+		environment = append(environment, "GAMEFLEX_EMULATOR_CHOSEN="+spec.EmulatorFile)
+	}
 	// Les paramètres de l'émulateur, s'il en a (emulator_params.go, #347).
 	var patchDirs []string
 	for _, disk := range dockerClient.InternalDisks(ctx) {
@@ -1173,6 +1169,7 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 				labelGame:      spec.GameTitle,
 				labelPort:      strconv.Itoa(candidatePort),
 				labelCore:      spec.Core,
+				labelReference: spec.Reference,
 
 				// Explicit compose project/service labels: the streamex
 				// images carry their OWN compose project's labels (they are
@@ -1290,77 +1287,6 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 	})
 }
 
-// WaitReadyHostExternal polls the container's /status endpoint until it
-// answers — host networking (see CreateAndStart's own doc), so this is the
-// external/streamex kind's counterpart to WaitReadyHostRetro/WaitReadyHost:
-// a host-mode container has no address on any bridge network, so the
-// bridge-based readiness check cannot work here either.
-//
-// UN DÉBALLAGE QUI AVANCE REPOUSSE L'ÉCHÉANCE (2026-10-22). streamex répond
-// « booting » pendant qu'il lance le jeu, et un .pkg de PS4 se déballe
-// d'abord : deux minutes et demie pour les 90 Go de FF7 Remake, que les 90
-// secondes coupaient en plein milieu. Tant que des octets s'écrivent,
-// l'attente continue ; `timeout` sans progrès reste un échec. onUnpacking
-// reçoit l'avancée (octets écrits, poids de l'archive).
-func (dockerClient *Client) WaitReadyHostExternal(ctx context.Context, containerName string, port int, timeout time.Duration, onUnpacking func(done, total int64)) error {
-	deadline := time.Now().Add(timeout)
-	var unpacked int64
-
-	for time.Now().Before(deadline) {
-		if status, err := dockerClient.StatusExternal(ctx, containerName, port); err == nil {
-			if status.State != "booting" {
-				return nil
-			}
-			if status.Unpacking != nil && status.Unpacking.Done > unpacked {
-				unpacked = status.Unpacking.Done
-				deadline = time.Now().Add(timeout)
-				if onUnpacking != nil {
-					onUnpacking(status.Unpacking.Done, status.Unpacking.Total)
-				}
-			}
-		}
-
-		if exitCode, exited, inspectErr := dockerClient.containerExitInfo(ctx, containerName); inspectErr == nil && exited {
-			return fmt.Errorf("%w (exit code %d): %s", ErrChildExited, exitCode, dockerClient.containerLogTail(ctx, containerName, 5))
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second):
-		}
-	}
-
-	return fmt.Errorf("session did not become ready in time")
-}
-
-// StatusExternal reads the live /status payload — the host's own LAN
-// address on the port the allocator assigned, same as StatusRetro/
-// StatusRemoteplay.
-func (dockerClient *Client) StatusExternal(ctx context.Context, containerName string, port int) (*ContainerStatus, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://%s:%d/status", dockerClient.config.PublicHost, port), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	response, err := statusClient.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status endpoint returned %s", response.Status)
-	}
-
-	var status ContainerStatus
-	if err := json.NewDecoder(response.Body).Decode(&status); err != nil {
-		return nil, err
-	}
-
-	return &status, nil
-}
-
 // IsRunning reports whether the container exists and is running.
 func (dockerClient *Client) IsRunning(ctx context.Context, containerName string) (bool, error) {
 	inspect, err := dockerClient.dockerClient.ContainerInspect(ctx, containerName)
@@ -1425,6 +1351,7 @@ func (dockerClient *Client) AdoptExisting(ctx context.Context) ([]AdoptedSession
 			Console:   labels[labelConsole],
 			Game:      labels[labelGame],
 			Owner:     labels[labelOwner],
+			Reference: labels[labelReference],
 			Port:      port,
 			StartedAt: time.Unix(listed.Created, 0),
 		})
@@ -1568,10 +1495,10 @@ func (dockerClient *Client) CreateAndStartRetro(ctx context.Context, spec RetroS
 			"GAMEFLEX_CONSOLE_ID="+spec.ConsoleID,
 		)
 		containerEnv = append(containerEnv, sessionKeys(cfg, spec.SessionID)...)
-		// #150 — la résolution choisie devient le canevas de l'encodeur.
-		// Absente, le child garde la géométrie d'époque de la console
-		// (`consoles.NativeSize`) : c'est le défaut, et il reste le bon pour
-		// la grande majorité des parties.
+		// #150 — la résolution choisie devient le canevas de l'encodeur. Elle
+		// arrive toujours de manager.LaunchRetro : le choix revalidé, ou le
+		// défaut de toutes les consoles, 540p à 30 (le porteur, 2026-11-16) —
+		// la géométrie d'époque (`consoles.NativeSize`) n'est plus le défaut.
 		if spec.Resolution != "" {
 			containerEnv = append(containerEnv, "GAMEFLEX_RESOLUTION="+spec.Resolution)
 		}
@@ -1623,7 +1550,7 @@ func (dockerClient *Client) CreateAndStartRetro(ctx context.Context, spec RetroS
 		// sides, then times out to "failed" after the standard ~30s, on
 		// EVERY subnet Docker has assigned this project so far, custom or
 		// default. network_mode: host sidesteps Docker's NAT/forwarding
-		// entirely, exactly like remoteplay/coturn already do.
+		// entirely, exactly like remoteplay already does.
 		hostConfig := &container.HostConfig{
 			NetworkMode: "host",
 			Resources: container.Resources{
@@ -1912,78 +1839,11 @@ func (dockerClient *Client) StatusRemoteplay(ctx context.Context, containerName 
 	return &status, nil
 }
 
-// WaitReadyHost polls the child's /status through the host's LAN address
-// (host networking — a host-mode container has no bridge address, so the
-// bridge-based WaitReady cannot work).
 // ErrChildExited — a session container exited before it became ready. Host
 // networking means a port held by a lingering process kills the child at
-// bind time while docker start itself succeeds, so only the readiness poll
-// (and this error) makes the failure visible.
+// bind time while docker start itself succeeds, so only the exit Docker
+// reports (WaitBoot) makes the failure visible.
 var ErrChildExited = errors.New("child exited before becoming ready")
-
-// WaitReadyHost polls the child's /status until it answers, the deadline
-// elapses, the caller cancels, or the container itself exits — a dead
-// child is reported immediately with its exit code and last log lines
-// instead of being polled silently for the whole timeout.
-func (dockerClient *Client) WaitReadyHost(ctx context.Context, containerName string, port int, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-
-	for time.Now().Before(deadline) {
-		if _, err := dockerClient.StatusRemoteplay(ctx, containerName, port); err == nil {
-			return nil
-		}
-
-		if exitCode, exited, inspectErr := dockerClient.containerExitInfo(ctx, containerName); inspectErr == nil && exited {
-			return fmt.Errorf("%w (exit code %d): %s", ErrChildExited, exitCode, dockerClient.containerLogTail(ctx, containerName, 5))
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second):
-		}
-	}
-
-	return fmt.Errorf("session did not become ready in time")
-}
-
-// WaitReadyHostRetro is WaitReadyHost's retro counterpart (StatusRetro
-// instead of StatusRemoteplay) — same host-networking reasoning as
-// CreateAndStartRetro's own doc: a host-mode container has no bridge
-// address, so the bridge-based WaitReady cannot work here either.
-func (dockerClient *Client) WaitReadyHostRetro(ctx context.Context, containerName string, port int, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-
-	for time.Now().Before(deadline) {
-		if _, err := dockerClient.StatusRetro(ctx, containerName, port); err == nil {
-			return nil
-		}
-
-		if exitCode, exited, inspectErr := dockerClient.containerExitInfo(ctx, containerName); inspectErr == nil && exited {
-			return fmt.Errorf("%w (exit code %d): %s", ErrChildExited, exitCode, dockerClient.containerLogTail(ctx, containerName, 5))
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second):
-		}
-	}
-
-	return fmt.Errorf("session did not become ready in time")
-}
-
-// containerExitInfo reports the container's exit code and whether it has
-// left the running state. A failed inspect (container removed mid-poll)
-// counts as exited: in a readiness poll a container that cannot be
-// inspected is certainly not ready either.
-func (dockerClient *Client) containerExitInfo(ctx context.Context, containerName string) (int, bool, error) {
-	inspected, err := dockerClient.dockerClient.ContainerInspect(ctx, containerName)
-	if err != nil {
-		return -1, true, nil
-	}
-	return inspected.State.ExitCode, !inspected.State.Running, nil
-}
 
 // FollowLogs recopie la sortie d'un conteneur dans un fichier, tant qu'il
 // vit.
@@ -2007,16 +1867,13 @@ func (dockerClient *Client) containerExitInfo(ctx context.Context, containerName
 // Détaché, et silencieux en cas d'échec : un journal ne doit jamais retarder
 // ni empêcher le démarrage d'une partie. `Follow` rend la main tout seul
 // quand le conteneur s'arrête.
+//
+// SUIVI MÊME ÉTEINT : c'est le réglage (Stockage › Journaux, « Journaux des
+// parties ») qui décide à chaque ligne d'écrire ou non (logfile.Session).
+// Rallumé pendant la partie, son fichier commence là ; éteint, il s'arrête là.
 func (dockerClient *Client) FollowLogs(containerName string) {
-	if logfile.Disabled() {
-		return
-	}
-
 	go func() {
-		file, err := logfile.Session(storageDir, containerName)
-		if err != nil || file == nil {
-			return
-		}
+		file := logfile.Session(storageDir, containerName)
 		defer file.Close()
 
 		reader, err := dockerClient.dockerClient.ContainerLogs(context.Background(), containerName,

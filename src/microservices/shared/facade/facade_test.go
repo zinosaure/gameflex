@@ -3,6 +3,7 @@ package facade
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -208,7 +209,7 @@ func TestCallReplaysTheHandlerItReplaces(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusConflict)
-		_, _ = w.Write(ErrorBody("déjà en train de jouer"))
+		_, _ = w.Write(ErrorBody("server_failed", "déjà en train de jouer"))
 	})
 
 	connection := serve(t, Router{
@@ -228,19 +229,32 @@ func TestCallReplaysTheHandlerItReplaces(t *testing.T) {
 }
 
 // LE SERVEUR FERME LES CONNEXIONS D'UN COMPTE (chantier 20) : celles qu'il
-// désigne, et pas les autres.
+// désigne, et pas les autres — et il dit pourquoi, par le code de la trame de
+// fermeture (chantier 55) : 1008 pour une session finie, une fermeture ordinaire
+// pour une reconnexion.
 func TestTheServerClosesTheConnectionsOfAnAccount(t *testing.T) {
-	page := serve(t, Router{})
-	time.Sleep(100 * time.Millisecond) // la connexion est inscrite à son ouverture
+	for _, code := range []int{SessionEnded, Reconnect} {
+		page := serve(t, Router{})
+		time.Sleep(100 * time.Millisecond) // la connexion est inscrite à son ouverture
 
-	if closed := Close(func(username, token string) bool { return username == "quelqu-un-d-autre" }); closed != 0 {
-		t.Fatalf("%d connexion(s) fermée(s) pour un autre compte", closed)
-	}
-	if closed := Close(func(username, token string) bool { return username == "root" && token == "jeton" }); closed != 1 {
-		t.Fatalf("%d connexion(s) fermée(s), attendu 1", closed)
-	}
-	page.SetReadDeadline(time.Now().Add(3 * time.Second))
-	if _, _, err := page.ReadMessage(); err == nil {
-		t.Fatal("la page lit encore : sa connexion n'a pas été fermée")
+		if closed := Close(code, func(username, token string) bool { return username == "quelqu-un-d-autre" }); closed != 0 {
+			t.Fatalf("%d connexion(s) fermée(s) pour un autre compte", closed)
+		}
+		if closed := Close(code, func(username, token string) bool { return username == "root" && token == "jeton" }); closed != 1 {
+			t.Fatalf("%d connexion(s) fermée(s), attendu 1", closed)
+		}
+		page.SetReadDeadline(time.Now().Add(3 * time.Second))
+		for {
+			_, _, err := page.ReadMessage()
+			if err == nil {
+				continue
+			}
+			var closedWith *websocket.CloseError
+			if !errors.As(err, &closedWith) || closedWith.Code != code {
+				t.Fatalf("la page voit %v, attendu une fermeture en %d", err, code)
+			}
+
+			break
+		}
 	}
 }

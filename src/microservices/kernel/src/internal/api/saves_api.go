@@ -13,17 +13,23 @@ package api
 //	POST   /api/v1/saves/streamex/restore        des jeux d'une copie, remis dans le principal
 //	POST   /api/v1/saves/states/backup           des emplacements du rétro, dans local
 //	POST   /api/v1/saves/states/restore          des emplacements d'une copie, dans le principal
+//	GET    /api/v1/saves/notes                   les notes des backups (saves/notes.go)
+//	PUT    /api/v1/saves/notes                   la note d'un backup : écrite, corrigée, ou vidée
+//
+// Un backup emporte sa note (`note`, facultative, dans le corps des deux
+// routes `backup`) : pourquoi on l'a fait, et quand.
 //
 // Le rétro se lit et s'envoie par ses routes de toujours, `?source=` en plus
 // (`/api/v1/retrogaming/savestate/*`).
 //
 // CE QU'UNE SESSION VENUE D'UN AUTRE SERVEUR PEUT FAIRE ICI : lire, et
 // déposer dans une copie — c'est tout l'objet de la fédération des
-// sauvegardes. Effacer, faire un backup et restaurer restent des gestes d'ici
+// sauvegardes. Effacer, faire un backup, le noter et restaurer restent des gestes d'ici
 // (`localOnly`) : « ce serait à l'utilisateur ensuite de choisir de faire la
 // synchronisation entre le dossier principal et les sources » (le porteur).
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,13 +38,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"gameflex/consoles"
 	"gameflex/kernel/internal/auth"
+	"gameflex/kernel/internal/docker"
 	"gameflex/kernel/internal/manager"
 	"gameflex/kernel/internal/retro_files"
+	"gameflex/metadata"
 	"gameflex/storage/saves"
 )
 
@@ -53,7 +62,7 @@ const maxStreamexSaveBytes = 16 << 30
 func (server *Server) saveTree(w http.ResponseWriter, r *http.Request) (root, owner string, ok bool) {
 	root, owner, err := saves.TreeParts(server.retroSavesRoot(), auth.Username(r.Context()), r.URL.Query().Get("source"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid save source")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid save source")
 
 		return "", "", false
 	}
@@ -75,6 +84,8 @@ func (server *Server) savesRouter() http.Handler {
 	router.Post("/streamex/restore", localOnly(server.handleStreamexSaveRestore))
 	router.Post("/states/backup", localOnly(server.handleStateBackup))
 	router.Post("/states/restore", localOnly(server.handleStateRestore))
+	router.Get("/notes", server.handleSaveNotes)
+	router.Put("/notes", localOnly(server.handleSaveNote))
 
 	return router
 }
@@ -85,7 +96,7 @@ func (server *Server) savesRouter() http.Handler {
 func (server *Server) handleSaveSources(w http.ResponseWriter, r *http.Request) {
 	names, err := saves.Sources(server.retroSavesRoot(), auth.Username(r.Context()))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "cannot list the save copies")
+		writeErrorCode(w, http.StatusInternalServerError, "saves_failed", "cannot list the save copies")
 
 		return
 	}
@@ -94,7 +105,8 @@ func (server *Server) handleSaveSources(w http.ResponseWriter, r *http.Request) 
 
 // handleStreamexSaves — GET /api/v1/saves/streamex?source=. `consoles` : celles
 // dont les sauvegardes se copient (saves.Consoles — la Xbox 360 n'y est pas
-// encore).
+// encore). Chaque jeu porte le titre de son jeu d'ici quand on le trouve
+// (metadata.NameSaves).
 func (server *Server) handleStreamexSaves(w http.ResponseWriter, r *http.Request) {
 	root, owner, ok := server.saveTree(w, r)
 	if !ok {
@@ -102,8 +114,42 @@ func (server *Server) handleStreamexSaves(w http.ResponseWriter, r *http.Request
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"consoles": saves.Consoles(),
-		"games":    saves.Games(filepath.Join(root, owner)),
+		"games":    metadata.NameSaves(saves.Games(filepath.Join(root, owner)), server.saveLibrary(r.Context())),
 	})
+}
+
+// saveLibrary — les jeux d'une console qui peuvent nommer une sauvegarde : la
+// bibliothèque, puis chaque disque interne présent, tels que leurs catalogues
+// les gardent (retro_files.ListCatalog ne reparcourt un dossier que s'il a
+// changé). Les disques ne se lisent qu'à la première console demandée.
+func (server *Server) saveLibrary(ctx context.Context) func(string) []metadata.LibraryGame {
+	var disks []docker.InternalDisk
+	disksRead := false
+
+	return func(consoleID string) []metadata.LibraryGame {
+		if !disksRead {
+			disks, disksRead = server.presentDisks(ctx), true
+		}
+		games := []metadata.LibraryGame{}
+		add := func(root, disk string) {
+			roms, err := retro_files.ListCatalog(root, consoleID, "")
+			if err != nil {
+				return
+			}
+			paths, _ := retro_files.CatalogPaths(root, consoleID)
+			for _, rom := range roms {
+				if path, found := paths[rom.Reference]; found {
+					games = append(games, metadata.LibraryGame{Path: path, Reference: rom.Reference, Title: rom.Title, Disk: disk})
+				}
+			}
+		}
+		add(server.retroRomsRoot(), "")
+		for _, disk := range disks {
+			add(disk.RomsDir(), disk.Name)
+		}
+
+		return games
+	}
 }
 
 // streamexGame — la console et le jeu d'une requête, vérifiés. Faux : l'erreur
@@ -111,7 +157,7 @@ func (server *Server) handleStreamexSaves(w http.ResponseWriter, r *http.Request
 func streamexGame(w http.ResponseWriter, r *http.Request) (console, id string, ok bool) {
 	console, id = r.URL.Query().Get("console"), r.URL.Query().Get("id")
 	if !saves.Supported(console) || id == "" {
-		writeError(w, http.StatusBadRequest, "a supported console and a game id are required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "a supported console and a game id are required")
 
 		return "", "", false
 	}
@@ -132,7 +178,7 @@ func (server *Server) handleStreamexSaveArchive(w http.ResponseWriter, r *http.R
 	}
 	tree := filepath.Join(root, owner)
 	if !saves.Has(tree, console, id) {
-		writeError(w, http.StatusNotFound, "no save for this game")
+		writeErrorCode(w, http.StatusNotFound, "save_not_found", "no save for this game")
 
 		return
 	}
@@ -152,7 +198,7 @@ func (server *Server) handleStreamexSaveArchive(w http.ResponseWriter, r *http.R
 func (server *Server) handleStreamexSaveUpload(w http.ResponseWriter, r *http.Request) {
 	source := saves.SourceName(r.URL.Query().Get("source"))
 	if source == "" {
-		writeError(w, http.StatusBadRequest, "source is required: an upload only writes into a copy")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "source is required: an upload only writes into a copy")
 
 		return
 	}
@@ -162,18 +208,18 @@ func (server *Server) handleStreamexSaveUpload(w http.ResponseWriter, r *http.Re
 	}
 	tree, err := saves.Tree(server.retroSavesRoot(), auth.Username(r.Context()), source)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid save source")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid save source")
 
 		return
 	}
 	if err := os.MkdirAll(tree, 0o755); err != nil {
-		writeError(w, http.StatusInternalServerError, "cannot create the copy")
+		writeErrorCode(w, http.StatusInternalServerError, "saves_failed", "cannot create the copy")
 
 		return
 	}
 	if r.ContentLength > 0 {
 		if err := fitsOnDisk(tree, uint64(r.ContentLength)); err != nil {
-			writeError(w, http.StatusInsufficientStorage, err.Error())
+			writeErrorCode(w, http.StatusInsufficientStorage, "saves_failed", err.Error())
 
 			return
 		}
@@ -181,7 +227,7 @@ func (server *Server) handleStreamexSaveUpload(w http.ResponseWriter, r *http.Re
 
 	upload, err := os.CreateTemp(tree, ".upload-*.zip")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "cannot receive the archive")
+		writeErrorCode(w, http.StatusInternalServerError, "saves_failed", "cannot receive the archive")
 
 		return
 	}
@@ -190,24 +236,24 @@ func (server *Server) handleStreamexSaveUpload(w http.ResponseWriter, r *http.Re
 	closeErr := upload.Close()
 	var tooLarge *http.MaxBytesError
 	if errors.As(copyErr, &tooLarge) {
-		writeError(w, http.StatusRequestEntityTooLarge, "the save is too large")
+		writeErrorCode(w, http.StatusRequestEntityTooLarge, "save_too_large", "the save is too large")
 
 		return
 	}
 	if copyErr != nil || closeErr != nil {
-		writeError(w, http.StatusInternalServerError, "cannot receive the archive")
+		writeErrorCode(w, http.StatusInternalServerError, "saves_failed", "cannot receive the archive")
 
 		return
 	}
 
 	err = saves.Receive(upload.Name(), tree, console, id, func(size uint64) error { return fitsOnDisk(tree, size) })
 	if errors.Is(err, saves.ErrForeignEntry) {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeErrorCode(w, http.StatusBadRequest, "saves_failed", err.Error())
 
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("cannot store the save: %v", err))
+		writeErrorCode(w, http.StatusInternalServerError, "saves_failed", fmt.Sprintf("cannot store the save: %v", err))
 
 		return
 	}
@@ -219,7 +265,7 @@ func (server *Server) handleStreamexSaveUpload(w http.ResponseWriter, r *http.Re
 // Stockage de l'administration qui le fait, compte par compte.
 func (server *Server) handleStreamexSaveDelete(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("source") == "" {
-		writeError(w, http.StatusBadRequest, "source is required: only a copy is deleted here")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "source is required: only a copy is deleted here")
 
 		return
 	}
@@ -232,29 +278,31 @@ func (server *Server) handleStreamexSaveDelete(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if err := saves.Remove(filepath.Join(root, owner), console, id); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("cannot delete: %v", err))
+		writeErrorCode(w, http.StatusInternalServerError, "delete_failed", fmt.Sprintf("cannot delete: %v", err))
 
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// streamexCopyRequest — le corps d'un backup ou d'une restauration.
+// streamexCopyRequest — le corps d'un backup ou d'une restauration. `Note` :
+// celle d'un backup, posée à côté de chaque jeu copié (saves.WriteNote).
 type streamexCopyRequest struct {
 	Source  string   `json:"source"`
 	Console string   `json:"console"`
 	IDs     []string `json:"ids"`
+	Note    string   `json:"note"`
 }
 
 func decodeStreamexCopy(w http.ResponseWriter, r *http.Request) (streamexCopyRequest, bool) {
 	var body streamexCopyRequest
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid body")
 
 		return body, false
 	}
 	if !saves.Supported(body.Console) || len(body.IDs) == 0 {
-		writeError(w, http.StatusBadRequest, "a supported console and game ids are required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "a supported console and game ids are required")
 
 		return body, false
 	}
@@ -280,16 +328,26 @@ func resultOf(id string, err error) copyResult {
 }
 
 // handleStreamexSaveBackup — POST /api/v1/saves/streamex/backup
-// `{console, ids}` : chaque jeu du principal, copié dans `local`.
+// `{console, ids, note?}` : chaque jeu du principal, copié dans `local`, avec
+// la note — jugée avant le premier jeu (saves.CheckNote).
 func (server *Server) handleStreamexSaveBackup(w http.ResponseWriter, r *http.Request) {
 	body, ok := decodeStreamexCopy(w, r)
 	if !ok {
 		return
 	}
+	if err := saves.CheckNote(body.Note); err != nil {
+		writeErrorCode(w, http.StatusUnprocessableEntity, "saves_failed", err.Error())
+
+		return
+	}
 	username := auth.Username(r.Context())
 	results := []copyResult{}
 	for _, id := range body.IDs {
-		results = append(results, resultOf(id, saves.Backup(server.retroSavesRoot(), username, body.Console, id)))
+		err := saves.Backup(server.retroSavesRoot(), username, body.Console, id)
+		if err == nil {
+			_, err = saves.WriteNote(server.retroSavesRoot(), username, saves.NoteItem{Kind: saves.KindStreamex, Console: body.Console, ID: id}, body.Note, time.Now())
+		}
+		results = append(results, resultOf(id, err))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"results": results})
 }
@@ -306,14 +364,14 @@ func (server *Server) handleStreamexSaveRestore(w http.ResponseWriter, r *http.R
 		return
 	}
 	if body.Source == "" || !saves.ValidSource(body.Source) {
-		writeError(w, http.StatusBadRequest, "a copy to restore from is required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "a copy to restore from is required")
 
 		return
 	}
 	username := auth.Username(r.Context())
 	for _, session := range server.streamexSessions() {
 		if session.Owner == username && session.Console == body.Console {
-			writeError(w, http.StatusConflict, "a game of this console is running: stop it first")
+			writeErrorCode(w, http.StatusConflict, "game_running", "a game of this console is running: stop it first")
 
 			return
 		}
@@ -339,6 +397,7 @@ type stateItem struct {
 type stateCopyRequest struct {
 	Source string      `json:"source"`
 	Items  []stateItem `json:"items"`
+	Note   string      `json:"note"`
 }
 
 type stateResult struct {
@@ -349,7 +408,7 @@ type stateResult struct {
 func decodeStateCopy(w http.ResponseWriter, r *http.Request) (stateCopyRequest, bool) {
 	var body stateCopyRequest
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil || len(body.Items) == 0 {
-		writeError(w, http.StatusBadRequest, "items are required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "items are required")
 
 		return body, false
 	}
@@ -367,11 +426,16 @@ func stateItemError(item stateItem) error {
 	return nil
 }
 
-// handleStateBackup — POST /api/v1/saves/states/backup `{items}` : chaque
-// emplacement du principal, copié dans `local`.
+// handleStateBackup — POST /api/v1/saves/states/backup `{items, note?}` :
+// chaque emplacement du principal, copié dans `local`, avec la note.
 func (server *Server) handleStateBackup(w http.ResponseWriter, r *http.Request) {
 	body, ok := decodeStateCopy(w, r)
 	if !ok {
+		return
+	}
+	if err := saves.CheckNote(body.Note); err != nil {
+		writeErrorCode(w, http.StatusUnprocessableEntity, "saves_failed", err.Error())
+
 		return
 	}
 	username := auth.Username(r.Context())
@@ -380,6 +444,9 @@ func (server *Server) handleStateBackup(w http.ResponseWriter, r *http.Request) 
 		err := stateItemError(item)
 		if err == nil {
 			err = saves.BackupSlot(server.retroSavesRoot(), username, item.ConsoleID, item.Reference, item.Slot)
+		}
+		if err == nil {
+			_, err = saves.WriteNote(server.retroSavesRoot(), username, saves.NoteItem{Kind: saves.KindStates, Console: item.ConsoleID, Reference: item.Reference, Slot: item.Slot}, body.Note, time.Now())
 		}
 		results = append(results, stateResult{stateItem: item, Error: resultOf("", err).Error})
 	}
@@ -395,7 +462,7 @@ func (server *Server) handleStateRestore(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if body.Source == "" || !saves.ValidSource(body.Source) {
-		writeError(w, http.StatusBadRequest, "a copy to restore from is required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "a copy to restore from is required")
 
 		return
 	}
@@ -413,6 +480,55 @@ func (server *Server) handleStateRestore(w http.ResponseWriter, r *http.Request)
 		results = append(results, stateResult{stateItem: item, Error: resultOf("", err).Error})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+}
+
+// handleSaveNotes — GET /api/v1/saves/notes : les notes des backups du compte
+// (saves.Notes), chacune avec la sauvegarde qu'elle accompagne.
+func (server *Server) handleSaveNotes(w http.ResponseWriter, r *http.Request) {
+	notes, err := saves.Notes(server.retroSavesRoot(), auth.Username(r.Context()))
+	if err != nil {
+		writeErrorCode(w, http.StatusInternalServerError, "saves_failed", "cannot read the notes")
+
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"notes": notes})
+}
+
+// noteRequest — une note, et la sauvegarde des backups qu'elle accompagne.
+type noteRequest struct {
+	saves.NoteItem
+	Note string `json:"note"`
+}
+
+// handleSaveNote — PUT /api/v1/saves/notes `{kind, console, reference + slot
+// | id, note}` : la note d'une sauvegarde des backups, écrite ou corrigée ;
+// vide, elle part. `item` : la note telle qu'elle est gardée, nulle quand il
+// n'y en a plus.
+func (server *Server) handleSaveNote(w http.ResponseWriter, r *http.Request) {
+	var body noteRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid body")
+
+		return
+	}
+	if body.Kind == saves.KindStates && stateItemError(stateItem{ConsoleID: body.Console, Reference: body.Reference, Slot: body.Slot}) != nil {
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid slot")
+
+		return
+	}
+	item, err := saves.WriteNote(server.retroSavesRoot(), auth.Username(r.Context()), body.NoteItem, body.Note, time.Now())
+	switch {
+	case errors.Is(err, saves.ErrNoteTooLong):
+		writeErrorCode(w, http.StatusUnprocessableEntity, "saves_failed", err.Error())
+	case errors.Is(err, saves.ErrNotASave):
+		writeErrorCode(w, http.StatusBadRequest, "saves_failed", err.Error())
+	case errors.Is(err, os.ErrNotExist):
+		writeErrorCode(w, http.StatusNotFound, "save_not_found", "the backups have no such save")
+	case err != nil:
+		writeErrorCode(w, http.StatusInternalServerError, "saves_failed", fmt.Sprintf("cannot write the note: %v", err))
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"item": item})
+	}
 }
 
 // streamexSessions — les parties streamex en cours ; aucune sans gestionnaire

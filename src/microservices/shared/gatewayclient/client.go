@@ -8,12 +8,13 @@
 //
 // Child → gateway, text (on connect):
 //
-//	{"type":"register","sessionId":"...","platform":"...","media":{"width":..,"height":..,"fps":..,"bitrate":..,"sd":true}}
+//	{"type":"register","sessionId":"...","platform":"...","media":{"width":..,"height":..,"fps":..,"bitrate":..,"tiers":[{"width":..,"height":..,"fps":..,"bitrate":..},…]}}
+//	{"type":"tiers","tiers":[…]}   — ses paliers ont changé (chantier 58)
 //
 // Child → gateway, binary frames:
 //
-//	[0]        kind: 0=video (H264 Annex-B), 1=audio (Opus), 2=second video
-//	           stream, 540p à 30 (chantier 31)
+//	[0]        kind: 0=video (H264 Annex-B), 1=audio (Opus), 2 et 3 = les
+//	           paliers 1 et 2 sous le flux de l'hôte (chantier 58)
 //	[1:9]      duration in nanoseconds, big-endian uint64
 //	[9:]       encoded payload
 //
@@ -23,8 +24,8 @@
 //	{"type":"input","viewerId":"...","data":"<base64>"}
 //	{"type":"viewer-joined","viewerId":"...","hasInput":true|false}
 //	{"type":"viewer-left","viewerId":"..."}
-//	{"type":"keyframe","reason":"...","quality":"hd"|"sd"}
-//	{"type":"sd","on":true|false}   — encoder ou non le second flux
+//	{"type":"keyframe","reason":"...","index":0|1|2}   — 0 l'hôte, 1 et 2 ses paliers
+//	{"type":"tier","index":1|2,"on":true|false}   — encoder ou non ce palier
 //	{"type":"error","message":"..."}
 //
 // DialSealed adds the seal (seal.go, chantier 34 P9): register carries the
@@ -53,10 +54,22 @@ type MediaInfo struct {
 	Height  int `json:"height"`
 	FPS     int `json:"fps"`
 	Bitrate int `json:"bitrate"`
-	// SD — la partie sait encoder le second flux, 540p à 30 (chantier 31),
-	// et le sien est au-dessus : la passerelle peut le lui demander.
-	SD bool `json:"sd,omitempty"`
+	// Tiers — LES PALIERS sous le flux de l'hôte, du plus grand au plus petit,
+	// à sa cadence (chantier 58, consoles.TierHeights) : la partie sait les
+	// encoder, et la passerelle les lui demande un par un. Vide : un seul flux.
+	Tiers []Tier `json:"tiers,omitempty"`
 }
+
+// Tier — un palier : sa taille, sa cadence (celle de l'hôte), son débit.
+type Tier struct {
+	Width   int `json:"width"`
+	Height  int `json:"height"`
+	FPS     int `json:"fps"`
+	Bitrate int `json:"bitrate"`
+}
+
+// MaxTiers — deux paliers au plus : 720p et 540p sous un 1080p.
+const MaxTiers = 2
 
 // Handlers receives gateway → child events. All callbacks run on the client's
 // read goroutine — keep them fast and non-blocking.
@@ -68,18 +81,19 @@ type Handlers struct {
 	// OnKeyframe — la passerelle demande une image clé fraîche (chantier 31
 	// P0) : un spectateur vient de se connecter, ou un navigateur a perdu
 	// des paquets. Un child sans gestionnaire attend sa prochaine image clé
-	// régulière (le rétro, toutes les 250 ms). `quality` dit de quel flux :
-	// "hd" (le sien) ou "sd" (le second).
-	OnKeyframe func(reason, quality string)
-	// OnSD — encoder ou non le second flux (chantier 31) : un spectateur le
+	// régulière (le rétro, toutes les 250 ms). `index` dit de quel flux : 0
+	// le sien, 1 et 2 ses paliers (chantier 58).
+	OnKeyframe func(reason string, index int)
+	// OnTier — encoder ou non un palier (chantier 58) : un spectateur le
 	// regarde, ou plus personne depuis un moment.
-	OnSD func(on bool)
+	OnTier func(index int, on bool)
 }
 
 const (
 	kindVideo   = 0
 	kindAudio   = 1
-	kindVideoSD = 2
+	// kindVideoTier — le premier palier ; le second est la trame suivante.
+	kindVideoTier = 2
 
 	childWSPath = "/internal/stream/ws"
 )
@@ -181,11 +195,14 @@ func (c *Client) connect() error {
 		return fmt.Errorf("gatewayclient: dial: %w", err)
 	}
 
+	c.mu.Lock()
+	media := c.media
+	c.mu.Unlock()
 	registration := map[string]any{
 		"type":      "register",
 		"sessionId": c.session,
 		"platform":  c.platform,
-		"media":     c.media,
+		"media":     media,
 	}
 	var finishSeal func(proof string) (*Seal, error)
 	if c.gatewayKey != nil {
@@ -364,7 +381,7 @@ func (c *Client) readLoop() {
 			Username string `json:"username"`
 			Message  string `json:"message"`
 			Reason   string `json:"reason"`
-			Quality  string `json:"quality"`
+			Index    int    `json:"index"`
 			On       bool   `json:"on"`
 		}
 		if err := json.Unmarshal(data, &msg); err != nil {
@@ -388,15 +405,11 @@ func (c *Client) readLoop() {
 			}
 		case "keyframe":
 			if c.handlers.OnKeyframe != nil {
-				quality := msg.Quality
-				if quality == "" {
-					quality = "hd"
-				}
-				c.handlers.OnKeyframe(msg.Reason, quality)
+				c.handlers.OnKeyframe(msg.Reason, msg.Index)
 			}
-		case "sd":
-			if c.handlers.OnSD != nil {
-				c.handlers.OnSD(msg.On)
+		case "tier":
+			if c.handlers.OnTier != nil && msg.Index >= 1 && msg.Index <= MaxTiers {
+				c.handlers.OnTier(msg.Index, msg.On)
 			}
 		case "error":
 			slog.Warn("gatewayclient: gateway error", "session_id", c.session, "error", msg.Message)
@@ -445,9 +458,40 @@ func (c *Client) PushVideo(nal []byte, duration time.Duration) error {
 	return c.push(kindVideo, nal, duration)
 }
 
-// PushVideoSD sends one image of the second stream, 540p à 30 (chantier 31).
-func (c *Client) PushVideoSD(nal []byte, duration time.Duration) error {
-	return c.push(kindVideoSD, nal, duration)
+// PushVideoTier sends one image of a tier, 1 or 2 (chantier 58).
+func (c *Client) PushVideoTier(index int, nal []byte, duration time.Duration) error {
+	if index < 1 || index > MaxTiers {
+		return fmt.Errorf("gatewayclient: no tier %d", index)
+	}
+	return c.push(byte(kindVideoTier+index-1), nal, duration)
+}
+
+// SetTiers — les paliers ont changé (la hauteur que rend l'émulateur s'est
+// lue en cours de partie, chantier 58) : la passerelle l'apprend tout de
+// suite, et une réinscription les redira.
+func (c *Client) SetTiers(tiers []Tier) error {
+	c.mu.Lock()
+	c.media.Tiers = append([]Tier(nil), tiers...)
+	c.mu.Unlock()
+	message, err := json.Marshal(map[string]any{"type": "tiers", "tiers": tiers})
+	if err != nil {
+		return err
+	}
+	return c.sendText(message)
+}
+
+// SetStream — le flux de l'hôte, sa taille et sa cadence, une fois connus
+// (#759 : le rétro ne les sait qu'à la création de son encodeur). La
+// passerelle les montre aux pages ; une réinscription les redira.
+func (c *Client) SetStream(width, height, fps int) error {
+	c.mu.Lock()
+	c.media.Width, c.media.Height, c.media.FPS = width, height, fps
+	c.mu.Unlock()
+	message, err := json.Marshal(map[string]any{"type": "media", "width": width, "height": height, "fps": fps})
+	if err != nil {
+		return err
+	}
+	return c.sendText(message)
 }
 
 // PushAudio sends one Opus packet.
@@ -504,6 +548,12 @@ func (c *Client) SendToViewer(viewerID string, payload any) error {
 		return err
 	}
 
+	return c.sendText(message)
+}
+
+// sendText — un message texte à la passerelle, scellé si la connexion l'est ;
+// perdu sans connexion, comme les images.
+func (c *Client) sendText(message []byte) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	conn, seal := c.currentSealed()

@@ -72,12 +72,11 @@ self.addEventListener('push', (event) => {
     if (payload.type !== 'invite') return;
 
     const from = payload.from?.displayName || 'Someone';
-    // LA MÊME ADRESSE QUE LA CLOCHE (index.js, buildStreamingUrl) : une partie
-    // se désigne par son seul identifiant, quelle que soit sa plateforme, et
-    // la page décide qui regarde ou joue. Les adresses d'avant
-    // (/retrogaming/streaming?…, /remoteplay/watch?…) ne menaient plus nulle
-    // part (2026-10-15).
-    const url = `/streaming?sessionId=${encodeURIComponent(payload.sessionId)}`;
+    // L'ACCUEIL, PLUS LA PARTIE : la page de jeu de cette interface est
+    // supprimée (chantier 52, P8), on rejoint une partie depuis le launcher —
+    // l'accueil le dit. Le launcher a son propre service worker, dont
+    // l'invitation ouvre sa page de jeu.
+    const url = "/";
 
     event.waitUntil(
         self.registration.showNotification(`${from} vous invite`, {

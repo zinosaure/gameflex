@@ -1,6 +1,5 @@
 import React, { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { buildStreamingUrl } from "./libs/sessionLinks.js";
+import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as bs from "react-bootstrap";
 import Skeleton from "../skeleton/skeleton.js";
@@ -13,16 +12,14 @@ import {
     wakeDevice,
 } from "./api/remoteplay.js";
 import { can } from "./libs/capabilities.js";
-import { federatedId, parseFederatedId } from "./libs/federatedHost.js";
+import { parseFederatedId } from "./libs/federatedHost.js";
 import { forgetFederationToken, useFederationSession } from "./libs/federationSession.js";
 import { allows } from "./libs/consoleGrants.js";
 import { FederatedAccount, FederatedRefusal, FederatedTokenForm } from "./shared/FederatedAccountPanel.jsx";
-import { handleLaunchConflict } from "./shared/LaunchConflict.jsx";
 import { playStationService } from "./stream/remoteplay/service/playstation.service.js";
 import { StreamSettings } from "./stream/shared/StreamSettings.jsx";
-import { streamingService } from "@/gameflex/stream/remoteplay/service/streaming.service";
 import { useAuth } from "./profile/auth/AuthContext.jsx";
-import { isOwnSession, useSession } from "./libs/SessionPool.js";
+import { useSession } from "./libs/SessionPool.js";
 import {
     loadStreamingSettings,
     saveStreamingSettings,
@@ -122,8 +119,7 @@ function DeviceDetailPanel({
     context,
     onChanged,
 }) {
-    const navigate = useNavigate();
-    const { user, isAdmin, token } = useAuth();
+    const { isAdmin } = useAuth();
     const [device, setDevice] = useState(initialDevice);
     const [pendingAction, setPendingAction] = useState(null);
     // A DEADLINE, not a boolean: "waking until" survives re-renders, makes the
@@ -351,172 +347,37 @@ function DeviceDetailPanel({
             setPendingAction(null);
         }
     };
-    const handleConnect = async () => {
-        // The backend has no per-session settings override — ConnectWebRTC's
-        // launch_spec always reads the device's saved settings row (see
-        // resolveDeviceStreamSettings in playstation_handlers.go), so saving
-        // here (right before launch) is the only way the form's current
-        // values actually reach the stream. Saved to localStorage in
-        // parallel so *this* browser's preference survives independently of
-        // whatever the device row ends up holding after someone else connects.
-        setPendingAction("connect");
+    // LES RÉGLAGES DU FLUX DE CET APPAREIL, enregistrés sur sa ligne : c'est elle que le lancement lit
+    // (resolveDeviceStreamSettings, playstation_handlers.go). On s'y connecte désormais depuis le launcher
+    // (chantier 52, P8, décision du porteur du 2026-11-13) — la page de jeu de la webapp n'existe plus ;
+    // cette page garde l'enregistrement, le réveil et les réglages de l'appareil.
+    const handleSaveSettings = async () => {
+        setPendingAction("save");
         saveStreamingSettings(device.hostType, values);
-        // Même piège qu'à l'ouverture du panneau : un `apiRequest` qui lance
-        // sautait tout le reste, et le bouton gardait son « … » sans jamais
-        // revenir. Un enregistrement raté n'est pas fatal — on le dit, et on
-        // tente quand même la session, qui a sa propre issue juste en dessous.
         try {
             const result = await playStationService.updateDeviceSettings(
                 remoteDeviceId,
                 values,
                 remoteHost,
             );
-            if (!result.success) {
-                context.toast.open(
-                    result.errorMessage || t("remoteplay.settings.saveFailed"),
-                    { variant: "error" },
-                );
-            }
+            context.toast.open(
+                result.success ? t("remoteplay.settings.saved") : (result.errorMessage || t("remoteplay.settings.saveFailed")),
+                { variant: result.success ? "success" : "error" },
+            );
         } catch (error) {
             context.toast.open(
                 error?.message || t("remoteplay.settings.saveFailed"),
                 { variant: "error" },
             );
-        }
-        // Crée la session côté serveur D'ABORD (voir la doc de la page de
-        // streaming unifiée, ../Streaming.jsx) — la porte unique est
-        // idempotente : `launchRemoteplay` reconnaît qu'une session tourne
-        // déjà pour cet appareil et la rend telle quelle (`existing: true`)
-        // au lieu de refaire la poignée de main avec la PS5. Un Connect
-        // rafraîchi ou double-cliqué est donc sans danger.
-        let sessionResponse;
-        try {
-            sessionResponse = await streamingService.startSession(
-                device.hostId,
-                // LE NOM SOUS LEQUEL ON EST CONNU LÀ-BAS, pas celui d'ici.
-                // C'est lui qui prendra la place dans la file de joueurs de
-                // l'hôte : y envoyer notre nom local ferait entrer dans sa
-                // file quelqu'un qui n'existe pas chez lui.
-                remoteHost ? account.username : user?.username,
-                remoteHost,
-            );
-        } catch (error) {
+        } finally {
             setPendingAction(null);
-            // UNE AUTRE PARTIE EST LÀ : le même choix que sur le catalogue
-            // (shared/LaunchConflict.jsx) — y retourner, la terminer, ou
-            // arrêter celle où l'on joue déjà.
-            if (handleLaunchConflict({
-                result: error?.result, context, t, token, host: remoteHost, navigate,
-                retryLaunch: () => handleConnect(),
-            })) {
-                return;
-            }
-            // The PS5 itself refuses a handshake for a few seconds after the
-            // previous session closed — session.go rejects at two different
-            // points depending on timing ("init rejected: HTTP 403" or
-            // "ctrl rejected: HTTP 403", session.go:126/191) — the backend
-            // wraps either as a technical 500, but for the user it's just a
-            // cooldown, so show that instead of the generic failure message.
-            // Confirmed live (2026-08-22): a "ctrl rejected" case was falling
-            // through to the generic message because this only matched
-            // "init rejected".
-            const rawMessage = error instanceof Error ? error.message : "";
-            context.toast.open(
-                rawMessage.includes("init rejected") || rawMessage.includes("ctrl rejected")
-                    ? t("remoteplay.connect.cooldown")
-                    : t("streaming.connection.errors.sessionCreateFailed"),
-                { variant: "error" },
-            );
-            return;
         }
-        setPendingAction(null);
-        if (!sessionResponse.success) {
-            context.toast.open(
-                sessionResponse.errorMessage ||
-                t("streaming.connection.errors.sessionCreateFailed"),
-                { variant: "error" },
-            );
-            return;
-        }
-        const sessionData = sessionResponse.data || sessionResponse.result || {};
-        const sessionId =
-            sessionData.id ||
-            sessionData.Id ||
-            sessionData.sessionId ||
-            sessionData.session_id;
-        // A plain navigation, not an offcanvas — see Streaming.jsx for why
-        // (a fullscreen offcanvas kept growing skeleton.js's generic
-        // offcanvas API with streaming-only concerns for a single caller).
-        // offcanvas.close() first — unlike Wake (you stay on this panel to
-        // see the result), Connect leaves it entirely for a fullscreen page;
-        // without closing it explicitly it just stays open underneath,
-        // reappearing once the streaming page's own Exit navigates back here.
-        context.offcanvas.close();
-        // Connect IS the intent to play (see buildStreamingUrl). Without it
-        // the page lands in watch on a session nobody holds — for remoteplay
-        // that means no controller at all, since the child's queue is now the
-        // only thing that opens the input path.
-        // L'IDENTIFIANT REPART PRÉFIXÉ quand la session vit ailleurs.
-        //
-        // L'hôte l'a frappé dans SON espace, et deux serveurs y frappent les
-        // mêmes ; sans le préfixe, la page de streaming irait chercher cette
-        // session dans notre propre façade — au mieux elle ne trouverait
-        // rien, au pire elle trouverait l'homonyme d'ici. Même raison, même
-        // écriture que pour un jeu fédéré depuis le chantier 6.
-        navigate(buildStreamingUrl({
-            sessionId: federatedServer
-                ? federatedId(federatedServer.id, sessionId)
-                : sessionId,
-            play: true,
-        }));
     };
-    // Someone else already has an active session on this device
-    // (hasActiveSession) — join as a spectator instead of starting a new
-    // session (la porte rendrait simplement la session existante). Le
-    // serveur indexe les sessions par identifiant d'APPAREIL — c'est le
-    // contrat que `launchRemoteplay` respecte, et c'est pourquoi
-    // `device.id` doubles as the session id to attach to here — no separate
-    // lookup needed.
-    // Is the live session on this device MINE? A device with an active
-    // session offers WATCH — correct for somebody else's game, wrong for my
-    // own, which is how "I connected, saw nothing, left, and could not get
-    // back in" happened: the only way back was a watch link, and a watch
-    // link is inert by design. The Dashboard has had this rule since
-    // chantier-3 ("take my session back"); this page never got it.
+    // Une partie en cours sur cet appareil (la ligne le dit, le pool du kernel le confirme) : elle se
+    // regarde ou se reprend depuis le launcher.
     const liveSession = useSession(device.id);
-    const isMySession = isOwnSession(liveSession, user?.username);
-    // hasActiveSession must be CORROBORATED. It comes from a map in the
-    // remoteplay service that nothing reliably cleans (its own comment says
-    // so): the entry outlives the stream, stays hidden while the console is
-    // in standby, and reappears the moment it wakes — so a console nobody is
-    // using answers "someone is connected" and never offers Play again
-    // (reported live 2026-08-25: "j'ai rallumé la PS5 et le bouton n'est
-    // jamais passé à play").
-    //
-    // The kernel's session pool is the registry of REAL sessions. A device
-    // claiming one the kernel has never heard of is a leak, not a session.
-    // Deliberately not the reverse check (trusting the device over the pool):
-    // being wrong this way offers Play on a console somebody else is using,
-    // and starting a session is idempotent per device, while being wrong the
-    // other way locks the owner out of their own console for good.
     const busy = !!device.hasActiveSession && !!liveSession;
 
-    const handleResume = () => {
-        context.offcanvas.close();
-        navigate(buildStreamingUrl({ sessionId: device.id, play: true }));
-    };
-
-    const handleWatch = () => {
-        // Same reason as handleConnect above — this also leaves the panel
-        // for a fullscreen page. No more separate /watch route — a single
-        // /streaming decides owner/player/spectate itself from
-        // session.me.role (see Streaming.jsx's own doc); deviceName/
-        // consoleId still come from the session itself (libs/SessionPool.js).
-        context.offcanvas.close();
-        // Watch carries no intent — deliberately. This is the path for a
-        // device someone else is already using.
-        navigate(buildStreamingUrl({ sessionId: device.id }));
-    };
     const handleDelete = () => {
         context.modal.open(
             t("remoteplay.device.deleteConfirmMessage", {
@@ -569,42 +430,32 @@ function DeviceDetailPanel({
             label={device.hostName || device.hostId}
             helpText={`${device.hostType} · ${device.ipAddress} · (${deviceSourceLabel(device, t)})`}
             callback={(() => {
-                // TANT QU'ON N'A PAS DE SESSION LÀ-BAS, il n'y a rien à
-                // faire : une tentative se ferait refuser par le serveur d'en
-                // face, ce qui est vrai mais illisible. Avec elle, les appels
-                // partent chez lui (C9-P4b) et le bouton reprend son sens.
-                if (needsSignIn) {
+                // TANT QU'ON N'A PAS DE SESSION LÀ-BAS, il n'y a rien à faire : les appels partent chez lui
+                // (C9-P4b) une fois son jeton collé.
+                if (needsSignIn || busy) {
                     return null;
                 }
-                if (busy) {
-                    return isMySession ? handleResume : handleWatch;
-                } else if (device.status === "standby" || device.status === "offline") {
+                if (device.status === "standby" || device.status === "offline") {
                     return handleWake;
-                } else if (isAwake) {
-                    return handleConnect;
                 }
 
-                return null;
+                return handleSaveSettings;
             })()}
             buttonLabel={(() => {
                 if (needsSignIn) {
                     return isOpening ? "•••" : t("federation.notPlayable");
                 }
-                if (busy) {
-                    return isMySession ? t("dashboard.mySessions.resume") : t("remoteplay.device.watch");
-                } else if (isWaking) {
+                if (isWaking) {
                     return t("remoteplay.device.turningOn");
                 } else if (device.status === "standby" || device.status === "offline") {
                     return t("remoteplay.device.turnOn");
-                } else if (isAwake) {
-                    return t("remoteplay.device.play");
                 }
 
-                return t("remoteplay.device.busy");
+                return t("remoteplay.settings.save");
             })()}
             isDisabled={needsSignIn || pendingAction !== null || isWaking}
             isPending={
-                pendingAction === "connect" ||
+                pendingAction === "save" ||
                 pendingAction === "wake" ||
                 pendingAction === "delete"
             }

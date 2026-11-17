@@ -23,12 +23,18 @@ type Server struct {
 	mux      *http.ServeMux
 	// accounts — les kernels abonnés à l'état des comptes (accounts_ws.go).
 	accounts *accountsHub
+	// deleted — les comptes supprimés depuis peu, que la liste nomme au kernel
+	// pour qu'il efface leurs sauvegardes (accounts_ws.go).
+	deleted deletedAccounts
 	// logins — les essais de mot de passe ratés, qui font attendre (#454).
 	logins *loginLimiter
+	// pairing — les modes découverte et les codes d'appairage (chantier 60,
+	// pairing.go), en mémoire.
+	pairing *pairing
 }
 
 func NewServer(config config.Config, db *sql.DB, registry *presence.Registry, pushClient *web_push.Client) *Server {
-	server := &Server{config: config, db: db, presence: registry, web_push: pushClient, mux: http.NewServeMux(), accounts: newAccountsHub(), logins: newLoginLimiter()}
+	server := &Server{config: config, db: db, presence: registry, web_push: pushClient, mux: http.NewServeMux(), accounts: newAccountsHub(), logins: newLoginLimiter(), pairing: newPairing(systemClock{})}
 	server.routes()
 	return server
 }
@@ -67,6 +73,15 @@ func (server *Server) routes() {
 	server.mux.HandleFunc("GET /api/v1/auth/me", server.withUser(server.handleMe))
 	server.mux.HandleFunc("PATCH /api/v1/auth/me", server.withUser(server.handleUpdateMe))
 	server.mux.HandleFunc("POST /api/v1/auth/logout", server.withUser(server.handleLogout))
+	// LA GÉNÉRATION DES SESSIONS (chantier 55, sessions.go) : couper ses autres
+	// appareils (celui-ci reçoit un jeton neuf), ou tous.
+	server.mux.HandleFunc("POST /api/v1/auth/logout/others", server.withUser(server.handleLogoutOthers))
+	server.mux.HandleFunc("POST /api/v1/auth/logout/all", server.withUser(server.handleLogoutAll))
+	// LE LIEN D'UN COMPTE (chantier 55, member_links.go), SANS JETON : à qui il
+	// est, puis le mot de passe choisi — le code dans le corps, jamais dans
+	// l'adresse.
+	server.mux.HandleFunc("POST /api/v1/auth/join/check", server.handleCheckJoin)
+	server.mux.HandleFunc("POST /api/v1/auth/join", server.handleJoin)
 	server.mux.HandleFunc("POST /api/v1/users/resolve", server.withUser(server.handleResolveUsers))
 
 	// Member list for the invite panel — any member can see it
@@ -79,6 +94,10 @@ func (server *Server) routes() {
 	server.mux.HandleFunc("POST /api/v1/users", server.withUser(server.withAdmin(server.handleCreateUser)))
 	server.mux.HandleFunc("PATCH /api/v1/users/{id}", server.withUser(server.withAdmin(server.handleUpdateUser)))
 	server.mux.HandleFunc("DELETE /api/v1/users/{id}", server.withUser(server.withAdmin(server.handleDeleteUser)))
+	// Un nouveau lien pour un membre qui attend ; la réinitialisation d'un membre
+	// qui a rejoint (chantier 55, member_links.go).
+	server.mux.HandleFunc("POST /api/v1/users/{id}/invitation", server.withUser(server.withAdmin(server.handleNewMemberLink)))
+	server.mux.HandleFunc("POST /api/v1/users/{id}/reset", server.withUser(server.withAdmin(server.handleResetMember)))
 
 	// Profile data (history, mappings).
 	server.mux.HandleFunc("GET /api/v1/history", server.withUser(server.handleListHistory))
@@ -127,6 +146,14 @@ func (server *Server) routes() {
 	server.mux.HandleFunc("PATCH /api/v1/users/{id}/token", server.withUser(server.withAdmin(server.handleUpdateAccountToken)))
 	server.mux.HandleFunc("POST /api/v1/users/{id}/token/regenerate", server.withUser(server.withAdmin(server.handleRegenerateAccountToken)))
 	server.mux.HandleFunc("GET /api/v1/auth/me/token", server.withUser(server.handleMyAccountToken))
+	// MES FAVORIS (favorites.go ; le porteur, 2026-11-16) : ceux du compte connecté, sur tous ses appareils.
+	server.mux.HandleFunc("GET /api/v1/auth/me/favorites", server.withUser(server.handleListFavorites))
+	server.mux.HandleFunc("POST /api/v1/auth/me/favorites", server.withUser(server.handleAddFavorite))
+	server.mux.HandleFunc("DELETE /api/v1/auth/me/favorites", server.withUser(server.handleRemoveFavorite))
+	// LES SERVEURS FÉDÉRÉS DONT CE COMPTE NE VOIT PAS LES JEUX (hidden_servers.go ; le porteur, 2026-11-16).
+	server.mux.HandleFunc("GET /api/v1/auth/me/hidden-servers", server.withUser(server.handleListHiddenServers))
+	server.mux.HandleFunc("PUT /api/v1/auth/me/hidden-servers/{id}", server.withUser(server.handleHideServer))
+	server.mux.HandleFunc("DELETE /api/v1/auth/me/hidden-servers/{id}", server.withUser(server.handleShowServer))
 	server.mux.HandleFunc("POST /internal/federation/session", server.handleFederationSession)
 
 	// LES INVITATIONS (chantier 33) : un code à usage unique, valable 12
@@ -136,6 +163,15 @@ func (server *Server) routes() {
 	server.mux.HandleFunc("POST /api/v1/token-invitations", server.withUser(server.handleCreateInvitation))
 	server.mux.HandleFunc("GET /api/v1/token-invitations", server.withUser(server.withAdmin(server.handleListInvitations)))
 	server.mux.HandleFunc("DELETE /api/v1/token-invitations/{id}", server.withUser(server.withAdmin(server.handleRevokeInvitation)))
+	// LE CODE D'APPAIRAGE (chantier 60, pairing.go) : deux modes découverte de
+	// cinq minutes — le serveur, à l'administrateur ; le compte, à chacun pour le
+	// sien —, et un code de six chiffres, valable deux minutes, une fois.
+	server.mux.HandleFunc("POST /api/v1/token-invitations/pairing/server/open", server.withUser(server.withAdmin(server.handleOpenServerPairing)))
+	server.mux.HandleFunc("POST /api/v1/token-invitations/pairing/server/close", server.withUser(server.withAdmin(server.handleCloseServerPairing)))
+	server.mux.HandleFunc("POST /api/v1/token-invitations/pairing/account/open", server.withUser(server.handleOpenAccountPairing))
+	server.mux.HandleFunc("POST /api/v1/token-invitations/pairing/account/close", server.withUser(server.handleCloseAccountPairing))
+	server.mux.HandleFunc("POST /api/v1/token-invitations/pairing/codes", server.withUser(server.handleCreatePairingCode))
+	server.mux.HandleFunc("DELETE /api/v1/token-invitations/pairing/codes/{id}", server.withUser(server.handleCancelPairingCode))
 	server.mux.HandleFunc("POST /internal/federation/redeem", server.handleRedeemInvitation)
 	// L'état des comptes, poussé au kernel (accounts_ws.go) : il coupe un compte
 	// retiré sans attendre l'expiration de ses jetons.
@@ -166,6 +202,20 @@ func (server *Server) routes() {
 	// Les montages distants, mots de passe compris : le kernel monte les
 	// partages, il ne peut pas le faire avec un mot de passe qu'on lui cache.
 	server.mux.HandleFunc("GET /internal/storage/mounts", server.handleInternalRemoteMounts)
+	// Les comptes des services de métadonnées (chantier 49) : même règle —
+	// la liste d'administration ne rend jamais les valeurs.
+	server.mux.HandleFunc("GET /api/v1/metadata-services", server.withUser(server.withAdmin(server.handleListMetadataServices)))
+	server.mux.HandleFunc("GET /api/v1/metadata-services/settings", server.withUser(server.handleGetMetadataSettings))
+	server.mux.HandleFunc("PUT /api/v1/metadata-services/settings", server.withUser(server.withAdmin(server.handlePutMetadataSettings)))
+	server.mux.HandleFunc("PUT /api/v1/metadata-services/{service}", server.withUser(server.withAdmin(server.handlePutMetadataService)))
+	server.mux.HandleFunc("DELETE /api/v1/metadata-services/{service}", server.withUser(server.withAdmin(server.handleDeleteMetadataService)))
+	server.mux.HandleFunc("GET /internal/metadata/services", server.handleInternalMetadataServices)
+	server.mux.HandleFunc("GET /internal/metadata/settings", server.handleInternalMetadataSettings)
+	// Le statut des consoles et des jeux (chantier 30, en base depuis le 2026-11-17 : game_status.go).
+	server.mux.HandleFunc("GET /internal/game-status", server.handleInternalGameStatuses)
+	server.mux.HandleFunc("GET /internal/game-status/{console}", server.handleInternalGameStatus)
+	server.mux.HandleFunc("PUT /internal/game-status/{console}", server.handleInternalGameStatusConsole)
+	server.mux.HandleFunc("POST /internal/game-status/{console}/games/{game}", server.handleInternalGameStatusReport)
 	server.mux.HandleFunc("GET /api/v1/presence/ws", server.handlePresenceWS)
 }
 
@@ -247,11 +297,11 @@ func (server *Server) withUser(next func(http.ResponseWriter, *http.Request, aut
 		if err != nil {
 			switch {
 			case errors.Is(err, auth.ErrMissingToken):
-				respondError(w, http.StatusUnauthorized, "Missing bearer token.")
+				respondErrorCode(w, http.StatusUnauthorized, "auth_required", "Missing bearer token.")
 			case errors.Is(err, auth.ErrUserGone):
-				respondError(w, http.StatusUnauthorized, "User no longer exists.")
+				respondErrorCode(w, http.StatusUnauthorized, "account_gone", "User no longer exists.")
 			default:
-				respondError(w, http.StatusUnauthorized, "Invalid or expired token.")
+				respondErrorCode(w, http.StatusUnauthorized, "auth_required", "Invalid or expired token.")
 			}
 			return
 		}
@@ -262,7 +312,7 @@ func (server *Server) withUser(next func(http.ResponseWriter, *http.Request, aut
 func (server *Server) withAdmin(next func(http.ResponseWriter, *http.Request, auth.Principal)) func(http.ResponseWriter, *http.Request, auth.Principal) {
 	return func(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 		if !principal.IsAdmin() {
-			respondError(w, http.StatusForbidden, "Admin access required.")
+			respondErrorCode(w, http.StatusForbidden, "admin_only", "Admin access required.")
 			return
 		}
 		next(w, r, principal)

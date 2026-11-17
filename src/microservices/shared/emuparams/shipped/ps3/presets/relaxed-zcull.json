@@ -1,10 +1,10 @@
 {
   "name": "Relaxed ZCULL",
-  "description": "Relaxed ZCULL synchronisation and approximate statistics: less waiting on the graphics processor. A single change from “Default”, to try when a game runs too slowly: compare its frame rate with that of “Default”.",
+  "description": "“Default” with relaxed ZCULL sync and approximate statistics, for less waiting on the graphics processor, to try when a game runs too slowly.",
   "translations": {
     "fr": {
       "name": "ZCULL souple",
-      "description": "Synchronisation ZCULL souple et statistiques approchées : moins d'attente du processeur graphique. Un seul changement par rapport à « Par défaut », à essayer quand un jeu est trop lent : comparez ses images par seconde avec celles de « Par défaut »."
+      "description": "« Par défaut » avec synchronisation ZCULL souple et statistiques approchées, pour moins attendre le processeur graphique, à essayer quand un jeu est trop lent."
     }
   },
   "override": false,

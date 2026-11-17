@@ -12,7 +12,7 @@ In every table, the BIOS and firmware files go in `bios/<ID>/`, **with exactly t
 ## Retro consoles
 
 Retro consoles run on libretro cores, which GameFlex downloads for you from the
-[libretro buildbot](https://buildbot.libretro.com/), in **Settings › Emulators**. Every console
+[libretro buildbot](https://buildbot.libretro.com/), in **Settings › Consoles**. Every console
 below also accepts a `.zip` archive that contains a single game file.
 
 You can find the BIOS files below on [RetroBIOS](https://abdess.github.io/retrobios/) or on the
@@ -55,8 +55,10 @@ table.
 | ZX Spectrum | `zxspectrum` | `.tzx` `.tap` `.z80` `.sna` `.szx` | none |
 | Doom | `doom` | `.wad` `.iwad` `.pwad` | none |
 
-**Choosing a BIOS.** When a console has several BIOS files, the game's page lets you pick one
-before you play. *Default* lets the emulator choose among the files you have. If a game shows a
+**Choosing an emulator and a BIOS.** A console's page (**Settings › Consoles**) lists its emulators
+and BIOS files; the one in colour is the default. On a retro console, the game's page lets you pick
+another emulator, or another BIOS when the console has several, before you play; a recent console
+runs all its games with the emulator in colour. *Default* lets the emulator choose among the files you have. If a game shows a
 black screen, pick the BIOS of the game's region.
 
 **Folders named after an emulator.** Three consoles read a folder named after their emulator,
@@ -70,10 +72,10 @@ in `bios/`:
 ## Recent consoles
 
 Recent consoles run on a full emulator, in `cores/<ID>/`: the file its publisher releases, under
-the name GameFlex expects (**Settings › Emulators** shows it). The simplest is the download button in **Settings › Emulators**,
-which gets the version tested with your version of GameFlex. A friend's server and the
+the name GameFlex expects (**Settings › Consoles** shows it). The simplest is **Get it** on the emulator's
+page in **Settings › Consoles**, with the **Official source**: the version tested with your version of GameFlex. A friend's server and the
 [mirror](../README.md#the-mirror) have them too. If `cores/<ID>/` holds several versions, a game
-starts with the most recent file (see [Organize your library](library.md)).
+starts with the one chosen with **Use this version**, or else the file added last (see [Organize your library](library.md#3-get-the-emulators)).
 
 *Experimental* means: many games work, some crash or need a particular firmware, and things change
 quickly.
@@ -103,7 +105,7 @@ Some Nintendo 64 games have been remade for the PC by their community: widescree
 second, high definition. A port reads only its data from your own ROM, which stays in `roms/n64/`
 (the console has no folder of its own): GameFlex lists the game under **PC Ports** as soon as the
 ROM matches the one the port accepts. The port itself is a file from its authors, in
-`cores/ports/`; the download button in **Settings › Emulators** gets it. Its image is `ports` in
+`cores/ports/`; **Get it**, on its page in **Settings › Consoles**, downloads it. Its image is `ports` in
 `COMPOSE_PROFILES` ([Install](install.md)).
 
 | Game | Port | The ROM it accepts |

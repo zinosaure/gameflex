@@ -30,7 +30,16 @@ type userResponse struct {
 	// Token — son jeton de fédération, pour la liste de l'administrateur
 	// seulement (account_tokens.go).
 	Token *accountTokenResponse `json:"token,omitempty"`
+	// PasswordSetAt — quand le membre a choisi son mot de passe (chantier 55) ;
+	// null, il attend son lien.
+	PasswordSetAt any `json:"password_set_at"`
+	// Invitation — son lien vivant, pour l'administrateur seulement
+	// (member_links.go) ; absent, il n'en a pas.
+	Invitation *memberLinkResponse `json:"invitation,omitempty"`
 }
+
+// userColumns — les colonnes d'un compte, dans l'ordre que scanUser lit.
+const userColumns = "id, username, display_name, role_level, created_at, created_by_id, consoles, password_set_at"
 
 type historyResponse struct {
 	ID          int64  `json:"id"`
@@ -122,12 +131,14 @@ func scanUser(rows interface{ Scan(...any) error }) (userResponse, error) {
 	var createdAt sql.NullString
 	var createdBy sql.NullInt64
 	var grants string
-	err := rows.Scan(&user.ID, &user.Username, &user.DisplayName, &user.RoleLevel, &createdAt, &createdBy, &grants)
+	var passwordSetAt sql.NullString
+	err := rows.Scan(&user.ID, &user.Username, &user.DisplayName, &user.RoleLevel, &createdAt, &createdBy, &grants, &passwordSetAt)
 	if err != nil {
 		return user, err
 	}
 	user.Consoles = effectiveGrants(user.RoleLevel, grants)
 	user.CreatedAt = isoDatetime(createdAt)
+	user.PasswordSetAt = isoDatetime(passwordSetAt)
 	if createdBy.Valid {
 		user.CreatedByID = createdBy.Int64
 	}

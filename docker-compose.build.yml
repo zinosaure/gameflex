@@ -81,8 +81,10 @@ services:
     gameflex-edge:
         image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-edge:${GAMEFLEX_VERSION}
         build:
-            context: src
-            dockerfile: microservices/edge/Dockerfile
+            # The repository root: the page carries LICENSE in its bundle.
+            context: .
+            dockerfile: src/microservices/edge/Dockerfile
+            target: release
             args: *arguments
 
     # The consoles: their recipe is here, their skeleton is streamex-bin, and no

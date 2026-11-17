@@ -39,9 +39,8 @@ const ITEMS_PER_PAGE = 10;
 // (`addRemoteMount`), et la couture était déjà là — seul `kind === "gameflex"`
 // passait par la fédération.
 //
-// La forme suit « Serveur TURN » (TurnServer.jsx) : des onglets encadrés dans
-// un seul panneau, parce que ce sont deux vues du même sujet et non deux
-// sujets.
+// Des onglets encadrés dans un seul panneau, parce que ce sont deux vues du
+// même sujet et non deux sujets.
 
 // Un serveur vierge. Une fonction et non une constante : deux ouvertures du
 // formulaire ne doivent pas se passer le même objet (même raison que

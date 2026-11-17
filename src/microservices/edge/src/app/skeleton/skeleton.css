@@ -1,0 +1,474 @@
+/* ::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+    background: var(--bs-gray-400);
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    cursor: grabbing;
+	background: var(--bs-gray-600);
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: var(--bs-gray-500);
+} */
+
+pre {
+    word-break: break-all;
+    break-inside: break-all;
+    white-space: pre-wrap;
+}
+
+/* Bootstrap's reboot sets `code{word-break:normal}` directly (bootstrap.min.css
+   ships this literally) — an explicit rule on the element itself always wins
+   over an inherited value, so `pre`'s word-break above never actually reached
+   the <code> inside it. Long unbroken tokens (import paths, JSX attribute
+   chains) then forced the <code> wider than its container — on mobile, wide
+   enough to push the whole page into horizontal scroll. `pre code` here has
+   higher specificity (0,0,2) than Bootstrap's bare `code` (0,0,1), so it wins
+   regardless of stylesheet order. */
+pre code {
+    word-break: break-all;
+    white-space: pre-wrap;
+}
+
+/* Bootstrap's modal only ships one entrance animation — a vertical slide
+   (`translate(0, -50px)` → `translate(0, 0)`) baked into `.modal.fade
+   .modal-dialog` — there's no "zoom" variant to opt into natively. Every
+   modal created via `app.modal.open(...)` gets the `.modal-zoom` class
+   (skeleton.js), and this overrides just the transform while still riding
+   Bootstrap's own `.fade`/`.show` opacity + transition-duration machinery.
+   Four classes (0,4,0) beats Bootstrap's three-class rule (0,3,0) regardless
+   of stylesheet order. */
+.modal.fade.modal-zoom .modal-dialog {
+    transform: scale(0.7);
+}
+
+.modal.fade.modal-zoom.show .modal-dialog {
+    transform: scale(1);
+}
+
+/* Boxed nav-tabs (Feedbacks.jsx): unlike Bootstrap's default nav-tabs — where
+   the active link's box is flush against the tab bar's own border-bottom,
+   merging into it — this floats the active tab as a fully-rounded box above
+   a separate underline, with inactive tabs rendered as plain borderless
+   muted text. */
+.nav-tabs-boxed {
+    border-bottom: 1px solid var(--bs-border-color);
+    padding-bottom: 0.75rem;
+}
+
+.nav-tabs-boxed .nav-link {
+    border: 1px solid transparent;
+    border-radius: var(--bs-border-radius);
+    color: var(--bs-secondary-color);
+    text-transform: uppercase;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 0.65rem 1rem;
+}
+
+.nav-tabs-boxed .nav-link:hover {
+    border-color: transparent;
+    color: var(--bs-body-color);
+}
+
+.nav-tabs-boxed .nav-link.active {
+    background-color: var(--bs-tertiary-bg);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+}
+
+/* Countdown bar under swal/toastify-style toast and alert notifications
+   (skeleton.js `app.toast.open`/`app.alert`) — the inner div's width
+   animates from 100% to 0% over the notification's own `duration`, set
+   inline per-instance via `animation-duration`. */
+.notif-progress {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.notif-progress>div {
+    height: 100%;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.85);
+    animation-name: notif-countdown;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+}
+
+@keyframes notif-countdown {
+    from {
+        width: 100%;
+    }
+
+    to {
+        width: 0%;
+    }
+}
+
+/* Range group — flex wrapper for range slider + numeric value input */
+.form-range-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.form-range-group .form-range {
+    flex: 1;
+}
+
+/* Filled track (progress) via --range-progress CSS variable */
+.form-range-group .form-range::-webkit-slider-runnable-track {
+    height: 6px;
+    border: none;
+    background: linear-gradient(to right,
+            var(--bs-primary) var(--range-progress, 0%),
+            var(--bs-border-color) var(--range-progress, 0%));
+    border-radius: var(--bs-border-radius-pill);
+}
+
+.form-range-group .form-range::-moz-range-progress {
+    background: var(--bs-primary);
+    border-radius: var(--bs-border-radius-pill);
+}
+
+.form-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 30px;
+    margin-top: -12px;
+    background: var(--bs-primary);
+    border: 2px solid var(--bs-border-color);
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.form-range:hover::-webkit-slider-thumb {
+    transform: scale(1.15);
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 var(--bs-focus-ring-width) var(--bs-color-primary-soft);
+}
+
+/* Numeric value input */
+.form-range-value {
+    width: 70px;
+    font-family: var(--bs-font-monospace);
+    font-size: 0.875rem;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.form-range-value.xs {
+    width: 56px;
+}
+
+.form-range-value.sm {
+    width: 70px;
+}
+
+.form-range-value.md {
+    width: 88px;
+}
+
+.form-range-value.lg {
+    width: 110px;
+}
+
+.form-range-value.xl {
+    width: 137px;
+}
+
+.form-range-value.xxl {
+    width: 171px;
+}
+
+/* Switch pill — uses Bootstrap CSS variables only */
+.form-switch-pill {
+    --sw-w: 80px;
+    --sw-h: 30px;
+    --sw-thumb: 22px;
+    --sw-pad: 6px;
+    position: relative;
+    display: inline-block;
+    width: var(--sw-w);
+    height: var(--sw-h);
+    cursor: pointer;
+    vertical-align: middle;
+    flex-shrink: 0;
+}
+
+.form-switch-pill.xs {
+    --sw-w: 64px;
+}
+
+.form-switch-pill.sm {
+    --sw-w: 80px;
+}
+
+.form-switch-pill.md {
+    --sw-w: 100px;
+}
+
+.form-switch-pill.lg {
+    --sw-w: 125px;
+}
+
+.form-switch-pill.xl {
+    --sw-w: 156px;
+}
+
+.form-switch-pill.xxl {
+    --sw-w: 195px;
+}
+
+.form-switch-pill input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+    width: 0;
+    height: 0;
+}
+
+.form-switch-pill .switch-track {
+    position: absolute;
+    inset: 0;
+    background: var(--bs-secondary-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius-pill);
+    transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+/* Off label */
+.form-switch-pill .switch-track::before {
+    content: attr(data-off);
+    position: absolute;
+    top: 50%;
+    right: calc(var(--sw-pad) + 4px);
+    transform: translateY(-50%);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--bs-secondary-color);
+    white-space: nowrap;
+    transition: color 180ms ease;
+    pointer-events: none;
+}
+
+/* Thumb */
+.form-switch-pill .switch-track::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: var(--sw-pad);
+    width: var(--sw-thumb);
+    height: var(--sw-thumb);
+    background: var(--bs-secondary);
+    border-radius: 50%;
+    transform: translateY(-50%);
+    transition: transform 180ms ease, background-color 180ms ease;
+}
+
+/* Checked */
+.form-switch-pill input:checked+.switch-track {
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+}
+
+.form-switch-pill input:checked+.switch-track::before {
+    content: attr(data-on);
+    right: auto;
+    left: calc(var(--sw-pad) + 4px);
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.form-switch-pill input:checked+.switch-track::after {
+    background: #fff;
+    transform: translate(calc(var(--sw-w) - var(--sw-thumb) - var(--sw-pad) * 2),
+            -50%);
+}
+
+/* LE FOCUS SE VOIT, au clavier comme à la manette (#407) — voir
+   focusForNavigation dans skeleton.js : un focus posé par programme n'allume
+   pas toujours :focus-visible. Un interrupteur cache sa case : c'est sa piste
+   qui s'entoure. */
+.skeleton-nav-focus,
+.list-element:focus-visible,
+[role="button"]:focus-visible {
+    outline: 3px solid var(--bs-primary) !important;
+    outline-offset: 2px;
+}
+
+.form-switch-pill input:focus-visible+.switch-track,
+.form-switch-pill input.skeleton-nav-focus+.switch-track {
+    box-shadow: 0 0 0 3px var(--bs-primary);
+}
+
+/* Ghost button variants — uses Bootstrap CSS variables only */
+.btn-ghost {
+    --bs-btn-color: var(--bs-body-color);
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: transparent;
+    --bs-btn-hover-bg: var(--bs-secondary-bg);
+    --bs-btn-hover-border-color: transparent;
+    --bs-btn-hover-color: var(--bs-body-color);
+    --bs-btn-active-bg: var(--bs-tertiary-bg);
+    --bs-btn-active-border-color: transparent;
+    --bs-btn-active-color: var(--bs-body-color);
+}
+
+.btn-ghost-primary {
+    --bs-btn-color: var(--bs-primary);
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: transparent;
+    --bs-btn-hover-bg: var(--bs-primary-bg-subtle);
+    --bs-btn-hover-border-color: transparent;
+    --bs-btn-hover-color: var(--bs-primary);
+    --bs-btn-active-bg: var(--bs-primary-bg-subtle);
+    --bs-btn-active-border-color: transparent;
+    --bs-btn-active-color: var(--bs-primary);
+}
+
+.btn-ghost-secondary {
+    --bs-btn-color: var(--bs-secondary);
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: transparent;
+    --bs-btn-hover-bg: var(--bs-secondary-bg-subtle);
+    --bs-btn-hover-border-color: transparent;
+    --bs-btn-hover-color: var(--bs-secondary);
+    --bs-btn-active-bg: var(--bs-secondary-bg-subtle);
+    --bs-btn-active-border-color: transparent;
+    --bs-btn-active-color: var(--bs-secondary);
+}
+
+.btn-ghost-tertiary {
+    --bs-btn-color: var(--bs-info);
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: transparent;
+    --bs-btn-hover-bg: var(--bs-info-bg-subtle);
+    --bs-btn-hover-border-color: transparent;
+    --bs-btn-hover-color: var(--bs-info);
+    --bs-btn-active-bg: var(--bs-info-bg-subtle);
+    --bs-btn-active-border-color: transparent;
+    --bs-btn-active-color: var(--bs-info);
+}
+
+.btn-ghost-success {
+    --bs-btn-color: var(--bs-success);
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: transparent;
+    --bs-btn-hover-bg: var(--bs-success-bg-subtle);
+    --bs-btn-hover-border-color: transparent;
+    --bs-btn-hover-color: var(--bs-success);
+    --bs-btn-active-bg: var(--bs-success-bg-subtle);
+    --bs-btn-active-border-color: transparent;
+    --bs-btn-active-color: var(--bs-success);
+}
+
+.btn-ghost-warning {
+    --bs-btn-color: var(--bs-warning);
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: transparent;
+    --bs-btn-hover-bg: var(--bs-warning-bg-subtle);
+    --bs-btn-hover-border-color: transparent;
+    --bs-btn-hover-color: var(--bs-warning);
+    --bs-btn-active-bg: var(--bs-warning-bg-subtle);
+    --bs-btn-active-border-color: transparent;
+    --bs-btn-active-color: var(--bs-warning);
+}
+
+.btn-ghost-danger {
+    --bs-btn-color: var(--bs-danger);
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: transparent;
+    --bs-btn-hover-bg: var(--bs-danger-bg-subtle);
+    --bs-btn-hover-border-color: transparent;
+    --bs-btn-hover-color: var(--bs-danger);
+    --bs-btn-active-bg: var(--bs-danger-bg-subtle);
+    --bs-btn-active-border-color: transparent;
+    --bs-btn-active-color: var(--bs-danger);
+}
+
+.btn-ghost-info {
+    --bs-btn-color: var(--bs-info);
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: transparent;
+    --bs-btn-hover-bg: var(--bs-info-bg-subtle);
+    --bs-btn-hover-border-color: transparent;
+    --bs-btn-hover-color: var(--bs-info);
+    --bs-btn-active-bg: var(--bs-info-bg-subtle);
+    --bs-btn-active-border-color: transparent;
+    --bs-btn-active-color: var(--bs-info);
+}
+
+.dropdown-toggle::after {
+    display: none;
+}
+
+.w-10 {
+    width: 10% !important;
+}
+
+.w-15 {
+    width: 15% !important;
+}
+
+.w-20 {
+    width: 20% !important;
+}
+
+.w-30 {
+    width: 30% !important;
+}
+
+.w-35 {
+    width: 35% !important;
+}
+
+.w-40 {
+    width: 40% !important;
+}
+
+.w-45 {
+    width: 45% !important;
+}
+
+.w-55 {
+    width: 55% !important;
+}
+
+.w-60 {
+    width: 60% !important;
+}
+
+.w-65 {
+    width: 65% !important;
+}
+
+.w-70 {
+    width: 70% !important;
+}
+
+.w-80 {
+    width: 80% !important;
+}
+
+.w-85 {
+    width: 85% !important;
+}
+
+.w-90 {
+    width: 90% !important;
+}
+
+.w-95 {
+    width: 95% !important;
+}

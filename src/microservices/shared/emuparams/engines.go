@@ -170,17 +170,19 @@ func (s Store) writeEnginesLocked(ref Ref, definition file, engines []EngineSett
 // quand le fichier est absent ou coupé — ce qu'ils posent n'en dépend pas. Un moteur
 // inconnu, sans préréglage ou coupé, un jeu sans correctif : rien de plus. Un
 // préréglage ou un correctif illisible : rien de plus, et l'erreur dite (EngineError,
-// GameError) ; la partie part quand même.
+// GameError) ; la partie part quand même. Le moteur ne vaut que pour les consoles
+// dont il se reconnaît (engineConsoles) ; le correctif d'un jeu, pour toute console
+// dont l'identifiant se lit au jeu — la Switch aussi (storage.GameTitleID).
 func (s Store) SettingsFor(ref Ref, engine, game string) Settings {
 	settings := s.Settings(ref)
-	if settings.State == "error" || !engineConsoles[ref.ConsoleID] {
+	if settings.State == "error" {
 		return settings
 	}
 
 	mu.Lock()
 	defer mu.Unlock()
 	definition, _, _ := s.definitionLocked(ref)
-	if name, known := knownEngine(engine); known {
+	if name, known := knownEngine(engine); known && engineConsoles[ref.ConsoleID] {
 		setting := s.engineLocked(ref, definition, engine, name)
 		switch {
 		case setting.Error != "":

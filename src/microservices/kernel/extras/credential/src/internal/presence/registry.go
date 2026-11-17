@@ -8,6 +8,7 @@ package presence
 import (
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -184,6 +185,28 @@ func (registry *Registry) SendToUser(userID int64, payload map[string]any) bool 
 		}
 	}
 	return delivered
+}
+
+// Disconnect — LES SESSIONS DE CE COMPTE ONT ÉTÉ COUPÉES (chantier 55 : sa
+// réinitialisation, un nouveau mot de passe, « déconnecter les autres
+// appareils ») : chacune de ses connexions se ferme en 1008, le code d'un jeton
+// refusé. La page vérifie alors son jeton (/auth/me) : refusé, elle revient à la
+// connexion ; neuf, elle se reconnecte. Rend le nombre de connexions fermées.
+func (registry *Registry) Disconnect(userID int64) int {
+	registry.mu.Lock()
+	victims := make([]*connection, 0, len(registry.connections[userID]))
+	for connection := range registry.connections[userID] {
+		victims = append(victims, connection)
+	}
+	registry.mu.Unlock()
+
+	for _, connection := range victims {
+		_ = connection.conn.WriteControl(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "session ended"), time.Now().Add(2*time.Second))
+		connection.conn.Close()
+	}
+
+	return len(victims)
 }
 
 // Snapshot returns the current user list (used for diagnostics, not part of

@@ -75,23 +75,21 @@ func (server *Server) endThroughChild(ctx context.Context, sessionID, container 
 	return false, 0
 }
 
-// waitForExit — le conteneur sort de lui-même, borné par childEndWait.
+// waitForExit — le conteneur sort de lui-même, borné par childEndWait. Docker dit
+// quand il est sorti (manager.WaitExited) : rien n'est relu en attendant.
 func (server *Server) waitForExit(ctx context.Context, container string) {
 	if server.manager == nil || container == "" {
 		return
 	}
 
-	deadline := time.Now().Add(childEndWait)
-	for time.Now().Before(deadline) {
-		running, err := server.manager.IsRunning(ctx, container)
-		if err != nil || !running {
-			return
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(250 * time.Millisecond):
-		}
+	waitCtx, cancel := context.WithTimeout(ctx, childEndWait)
+	defer cancel()
+	select {
+	case <-server.manager.WaitExited(waitCtx, container):
+		return
+	case <-waitCtx.Done():
 	}
-	slog.Warn("le child a accepté l'arrêt mais ne sort pas — le kernel l'arrête", "container", container)
+	if ctx.Err() == nil {
+		slog.Warn("le child a accepté l'arrêt mais ne sort pas — le kernel l'arrête", "container", container)
+	}
 }

@@ -96,8 +96,15 @@ func RunChild(sessionID string) {
 			}
 		},
 	}
+	// LE FLUX DE LA PARTIE (#759) : la taille et la cadence choisies au
+	// lancement, que la passerelle montre aux pages (le panneau « Vidéo »
+	// disait « 0p · 0 images/s ») ; l'encodeur les redit une fois créé
+	// (startVideoEncoderOnce), à la taille et à la cadence qu'il a vraiment.
+	width, height, _ := chosenSize()
 	client, err := gatewayclient.Dial(gatewayURL, sessionID, "retro",
-		os.Getenv("GAMEFLEX_INTERNAL_SECRET"), gatewayclient.MediaInfo{}, handlers)
+		os.Getenv("GAMEFLEX_INTERNAL_SECRET"), gatewayclient.MediaInfo{
+			Width: width, Height: height, FPS: launchSetting("GAMEFLEX_FPS"), Bitrate: launchSetting("GAMEFLEX_BITRATE"),
+		}, handlers)
 	if err != nil {
 		log.Fatalf("[retrogaming-child %s] gatewaywebrtc unreachable: %v", sessionID, err)
 	}
@@ -155,14 +162,17 @@ func RunChild(sessionID string) {
 	mux.HandleFunc("/session", h.serveEmulationSession)
 	mux.HandleFunc("/session/join", serveJoinerSession)
 	mux.HandleFunc("/session/spectate", serveSpectatorSession)
-	// Container-mode liveness/telemetry: the sessions manager polls
-	// /health while the container boots and /status for the watchdog
-	// (players/spectators) and the performance panel (CPU/RAM).
+	// /status sert le panneau de performances (CPU/RAM), au rythme que la page
+	// demande. Le kernel n'y lit plus ni l'heure du démarrage ni les joueurs :
+	// le child les lui pousse (announceReady, le miroir de sa file ; #751).
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("/status", serveSelfStatus)
+
+	// PRÊT : le port écoute, le child le dit au kernel (#751), qui ne sonde plus son /status pour le savoir.
+	go announceReady(sessionID)
 
 	if err := http.Serve(ln, mux); err != nil {
 		log.Printf("[retrogaming-child %s] serve error: %v", sessionID, err)

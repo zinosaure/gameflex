@@ -15,6 +15,11 @@
 //	                        /api/v1/servers/{id}/account {invitation} fait de
 //	                        même pour le jeton d'un compte.
 //
+// LE CODE D'APPAIRAGE (chantier 60) prend les mêmes chemins : six chiffres
+// tapés avec l'adresse du serveur ({link, code}), ou pour le serveur d'une
+// fiche ({code}). Le service d'identité de celui qui invite le reconnaît à sa
+// forme ; hors de son mode découverte, il répond 423 (`pairingClosed`).
+//
 // Le jeton durable ne passe jamais par une messagerie : seul y voyage un code
 // qui ne vaut plus rien une fois servi ou échu.
 package api
@@ -50,7 +55,9 @@ func claimedAddress(r *http.Request) string {
 	return r.RemoteAddr
 }
 
-// handleFederationRedeem — POST /api/v1/federation/redeem {code, kind}.
+// handleFederationRedeem — POST /api/v1/federation/redeem {code, kind, from}.
+// `from` est le nom du serveur qui échange : la fenêtre d'un code d'appairage
+// le montre (« Code utilisé par … »).
 //
 // Un autre serveur échange une de nos invitations. Pas de jeton : le code en
 // tient lieu, une seule fois. Les refus du service d'identité passent tels
@@ -60,22 +67,23 @@ func (server *Server) handleFederationRedeem(w http.ResponseWriter, r *http.Requ
 	var body struct {
 		Code string `json:"code"`
 		Kind string `json:"kind"`
+		From string `json:"from"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || body.Code == "" {
-		writeError(w, http.StatusBadRequest, "an invitation code is required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "an invitation code is required")
 
 		return
 	}
 	if server.config.CredentialURL == "" || server.config.InternalSecret == "" {
-		writeError(w, http.StatusServiceUnavailable, "federation is not configured")
+		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "federation is not configured")
 
 		return
 	}
 	response, err := server.identityPost("/internal/federation/redeem", map[string]string{
-		"code": body.Code, "kind": body.Kind, "address": claimedAddress(r),
+		"code": body.Code, "kind": body.Kind, "from": strings.TrimSpace(body.From), "address": claimedAddress(r),
 	})
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "cannot redeem: "+err.Error())
+		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "cannot redeem: "+err.Error())
 
 		return
 	}
@@ -84,16 +92,20 @@ func (server *Server) handleFederationRedeem(w http.ResponseWriter, r *http.Requ
 	switch response.StatusCode {
 	case http.StatusOK:
 	case http.StatusUnauthorized, http.StatusConflict, http.StatusForbidden:
-		writeError(w, response.StatusCode, "invitation refused: "+http.StatusText(response.StatusCode))
+		writeErrorCode(w, response.StatusCode, "invitationRefused", "invitation refused: "+http.StatusText(response.StatusCode))
 
 		return
 	case http.StatusTooManyRequests:
 		w.Header().Set("Retry-After", response.Header.Get("Retry-After"))
-		writeError(w, http.StatusTooManyRequests, "too many failed invitations")
+		writeErrorCode(w, http.StatusTooManyRequests, "invitationThrottled", "too many failed invitations")
+
+		return
+	case http.StatusLocked:
+		writeErrorCode(w, http.StatusLocked, "pairingClosed", "discovery mode is off")
 
 		return
 	default:
-		writeError(w, http.StatusServiceUnavailable, "cannot redeem: identity service answered "+response.Status)
+		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "cannot redeem: identity service answered "+response.Status)
 
 		return
 	}
@@ -108,7 +120,7 @@ func (server *Server) handleFederationRedeem(w http.ResponseWriter, r *http.Requ
 		} `json:"item"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&decoded); err != nil {
-		writeError(w, http.StatusServiceUnavailable, "cannot redeem: "+err.Error())
+		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "cannot redeem: "+err.Error())
 
 		return
 	}
@@ -136,7 +148,9 @@ func invitationRefusal(w http.ResponseWriter, err error) bool {
 	return ok
 }
 
-// handleRedeemServerInvitation — POST /api/v1/servers/redeem {invitation}.
+// handleRedeemServerInvitation — POST /api/v1/servers/redeem {invitation}, ou
+// {link, code} pour un code d'appairage (chantier 60) : l'adresse tapée, ou
+// choisie parmi les serveurs du réseau local, et ses six chiffres.
 //
 // Le lien d'une invitation de fédération devient le jeton du lien : échangé
 // chez lui, puis sondé comme /servers/check. La réponse est celle de la sonde
@@ -146,19 +160,26 @@ func invitationRefusal(w http.ResponseWriter, err error) bool {
 func (server *Server) handleRedeemServerInvitation(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Invitation string `json:"invitation"`
+		Link       string `json:"link"`
+		Code       string `json:"code"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid body")
 
 		return
 	}
 	link, code, err := remote.ParseInvitation(body.Invitation)
+	if strings.TrimSpace(body.Code) != "" {
+		if link, err = remote.NormalizeLink(body.Link); err == nil {
+			code, err = remote.PairingCode(body.Code)
+		}
+	}
 	if invitationRefusal(w, err) {
 		return
 	}
 	known, err := server.registeredServers()
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "cannot read the server list: "+err.Error())
+		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "cannot read the server list: "+err.Error())
 
 		return
 	}
@@ -176,12 +197,12 @@ func (server *Server) handleRedeemServerInvitation(w http.ResponseWriter, r *htt
 
 		return
 	}
-	redeemed, err := distant.Redeem(code, remote.InvitationFederation)
+	redeemed, err := distant.Redeem(code, remote.InvitationFederation, server.federationHostname())
 	if invitationRefusal(w, err) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeErrorCode(w, http.StatusBadGateway, "peer_failed", err.Error())
 
 		return
 	}
@@ -224,7 +245,7 @@ func (server *Server) handleInvitationQR(w http.ResponseWriter, r *http.Request)
 		Size int    `json:"size"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid body")
 
 		return
 	}
@@ -233,7 +254,7 @@ func (server *Server) handleInvitationQR(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeErrorCode(w, http.StatusBadRequest, "peer_failed", err.Error())
 
 		return
 	}
@@ -251,7 +272,7 @@ func (server *Server) handleReadInvitationQR(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeErrorCode(w, http.StatusBadRequest, "peer_failed", err.Error())
 
 		return
 	}

@@ -2,7 +2,8 @@
 //
 // Ce que voit quelqu'un qui n'a PAS de compte ici, et qui présente un jeton
 // de catalogue : le LISTING de ce serveur (ses jeux, ses BIOS, ses cœurs, ses
-// correctifs, ses paramètres), sa date, et les fichiers qu'il annonce. Pas de
+// correctifs, ses paramètres), sa date, les fichiers qu'il annonce, et les
+// fiches de ses jeux, en lecture (chantier 57). Pas de
 // session, pas de sauvegarde, pas de stockage, pas d'administration. C'est le
 // LIEN entre deux serveurs, « comme avant » (le porteur, 2026-10-21).
 //
@@ -34,6 +35,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -80,6 +82,14 @@ const scopeCatalog = "catalog"
 // Elle ouvre une liste, pas une console : lancer une session dessus demande
 // un COMPTE chez celui qui la tient.
 const scopeDevices = "devices"
+
+// scopeMetadataProviders — PARTAGER MES FOURNISSEURS DE MÉTADONNÉES (chantier 57, `#719` ; le porteur, 2026-11-15 :
+// « En plus de partager les jeux et consoles on propose de partager les fournisseurs metadata. Comme ça si je partage
+// à moi-même il n'y a pas de risques d'abus de quota »). Sans elle, ce serveur ne prête que les fiches de ses jeux ;
+// avec elle, sa recherche interroge aussi ses comptes (IGDB, SteamGridDB) pour un titre qu'il n'a pas, et relit le jeu
+// d'un de ses fournisseurs pour le porteur du jeton. Ses clés ne sortent jamais. Séparée de scopeCatalog pour la même
+// raison que scopeDevices : coupée par défaut, et aucun jeton déjà distribué ne s'élargit sans qu'on le décide.
+const scopeMetadataProviders = "metadata-providers"
 
 // verifiedToken — ce que le service d'identité rend d'un jeton valide.
 type verifiedToken struct {
@@ -185,17 +195,17 @@ func (server *Server) federationAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := auth.BearerToken(r)
 		if token == "" {
-			writeError(w, http.StatusUnauthorized, "missing catalogue token")
+			writeErrorCode(w, http.StatusUnauthorized, "token_refused", "missing catalogue token")
 			return
 		}
 
 		verified, err := server.verifyFederationToken(token)
 		if errors.Is(err, errFederationDenied) {
-			writeError(w, http.StatusUnauthorized, "invalid catalogue token")
+			writeErrorCode(w, http.StatusUnauthorized, "token_refused", "invalid catalogue token")
 			return
 		}
 		if err != nil {
-			writeError(w, http.StatusServiceUnavailable, "cannot verify catalogue token: "+err.Error())
+			writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "cannot verify catalogue token: "+err.Error())
 			return
 		}
 
@@ -228,13 +238,14 @@ func (server *Server) handleFederationListing(w http.ResponseWriter, r *http.Req
 	server.ensureSelf()
 	served, err := listing.Load(listingCacheDir, listing.SelfKey)
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "the listing of this server is not built yet")
+		writeErrorCode(w, http.StatusServiceUnavailable, "games_not_ready", "the listing of this server is not built yet")
 
 		return
 	}
 	served.Header.Scopes = scopesOf(r)
 	// Les disques internes avec la bibliothèque, comme une seule (chantier 23).
 	server.withInternalDisks(r.Context(), &served)
+	server.withFreshness(&served)
 
 	writeJSON(w, http.StatusOK, served)
 }
@@ -243,16 +254,23 @@ func (server *Server) handleFederationListing(w http.ResponseWriter, r *http.Req
 // date du listing (décision 12) — de quoi savoir s'il a changé sans le
 // re-télécharger —, et ce que le jeton du porteur lui ouvre ici : une portée
 // accordée ou retirée ne change pas la date.
+//
+// DE MÉMOIRE (journal 629) : l'ami ne l'attend que cinq secondes, et un disque
+// endormi en demandait jusqu'à trente-cinq. Rien ne s'y lit sur un disque ;
+// ce qui change le listing fait avancer la date (listing_freshness.go).
 func (server *Server) handleFederationListingUpdated(w http.ResponseWriter, r *http.Request) {
-	server.ensureSelf()
-	header, err := listing.LoadHeader(listingCacheDir, listing.SelfKey)
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "the listing of this server is not built yet")
+	updatedAt, known := server.listingUpdatedAt()
+	if !known {
+		// Avant la fin du démarrage (startListingFreshness) : l'en-tête se
+		// lit une fois, et reste en mémoire.
+		server.ensureSelf()
+		server.rememberSelfListing()
+		if updatedAt, known = server.listingUpdatedAt(); !known {
+			writeErrorCode(w, http.StatusServiceUnavailable, "games_not_ready", "the listing of this server is not built yet")
 
-		return
+			return
+		}
 	}
-
-	updatedAt := server.disksUpdatedAt(r.Context(), header.UpdatedAt)
 
 	writeJSON(w, http.StatusOK, map[string]any{"updatedAt": updatedAt, "scopes": scopesOf(r)})
 }
@@ -284,13 +302,13 @@ type federationSession struct {
 func (server *Server) handleFederationSession(w http.ResponseWriter, r *http.Request) {
 	token := auth.BearerToken(r)
 	if token == "" || server.config.CredentialURL == "" || server.config.InternalSecret == "" {
-		writeError(w, http.StatusUnauthorized, "missing account token")
+		writeErrorCode(w, http.StatusUnauthorized, "token_refused", "missing account token")
 
 		return
 	}
 	response, err := server.identityRelay("/internal/federation/session", token)
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "cannot open a session: "+err.Error())
+		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "cannot open a session: "+err.Error())
 
 		return
 	}
@@ -298,11 +316,11 @@ func (server *Server) handleFederationSession(w http.ResponseWriter, r *http.Req
 	switch response.StatusCode {
 	case http.StatusOK:
 	case http.StatusUnauthorized:
-		writeError(w, http.StatusUnauthorized, "invalid account token")
+		writeErrorCode(w, http.StatusUnauthorized, "token_refused", "invalid account token")
 
 		return
 	default:
-		writeError(w, http.StatusServiceUnavailable, "cannot open a session: identity service answered "+response.Status)
+		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "cannot open a session: identity service answered "+response.Status)
 
 		return
 	}
@@ -318,7 +336,7 @@ func (server *Server) handleFederationSession(w http.ResponseWriter, r *http.Req
 		} `json:"item"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&decoded); err != nil {
-		writeError(w, http.StatusServiceUnavailable, "cannot open a session: "+err.Error())
+		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "cannot open a session: "+err.Error())
 
 		return
 	}
@@ -326,7 +344,7 @@ func (server *Server) handleFederationSession(w http.ResponseWriter, r *http.Req
 	// ce kernel refuserait ensuite ne doit pas sortir d'ici.
 	claims, err := auth.ParseToken(server.config.JWTSecret, decoded.Item.AccessToken)
 	if err != nil || claims.ExpiresAt == nil || claims.Fed == "" {
-		writeError(w, http.StatusServiceUnavailable, "the identity service returned an unusable session")
+		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "the identity service returned an unusable session")
 
 		return
 	}
@@ -356,8 +374,7 @@ func (server *Server) handleFederationCore(w http.ResponseWriter, r *http.Reques
 	consoleID := chi.URLParam(r, "consoleId")
 	name := chi.URLParam(r, "name")
 	if !coreBelongsTo(consoleID, name) {
-		writeError(w, http.StatusBadRequest,
-			fmt.Sprintf("le core « %s » n'est pas déclaré pour %s", name, consoleID))
+		writeErrorCode(w, http.StatusBadRequest, "emulator_unknown", fmt.Sprintf("le core « %s » n'est pas déclaré pour %s", name, consoleID))
 
 		return
 	}
@@ -378,7 +395,7 @@ func (server *Server) handleFederationCore(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
-	writeError(w, http.StatusNotFound, "core not found")
+	writeErrorCode(w, http.StatusNotFound, "not_found", "core not found")
 }
 
 // handleFederationBundle — GET /api/v1/federation/bundles/{consoleId}/{file}.
@@ -393,7 +410,7 @@ func (server *Server) handleFederationBundle(w http.ResponseWriter, r *http.Requ
 	consoleID := chi.URLParam(r, "consoleId")
 	file := chi.URLParam(r, "file")
 	if !retro_files.IsEmulatorFile(consoleID, file) {
-		writeError(w, http.StatusBadRequest, "paquet inconnu")
+		writeErrorCode(w, http.StatusBadRequest, "not_found", "paquet inconnu")
 
 		return
 	}
@@ -405,7 +422,7 @@ func (server *Server) handleFederationBundle(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
-	writeError(w, http.StatusNotFound, "bundle not found")
+	writeErrorCode(w, http.StatusNotFound, "not_found", "bundle not found")
 }
 
 // handleFederationRom — GET/HEAD /api/v1/federation/roms/{consoleId}/{ref}.
@@ -429,11 +446,11 @@ func (server *Server) handleFederationBios(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	if errors.Is(err, os.ErrNotExist) {
-		writeError(w, http.StatusNotFound, "bios not found")
+		writeErrorCode(w, http.StatusNotFound, "not_found", "bios not found")
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid bios reference: "+err.Error())
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid bios reference: "+err.Error())
 		return
 	}
 
@@ -498,8 +515,14 @@ func requireScope(scope string, next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 		}
-		writeError(w, http.StatusForbidden, "this token does not grant "+scope)
+		writeErrorCode(w, http.StatusForbidden, "token_refused", "this token does not grant "+scope)
 	}
+}
+
+// grants — le jeton du porteur lui ouvre-t-il cette portée ? Pour une route qui en sert plus à qui l'a (la recherche des
+// fiches et `metadata-providers`), là où requireScope ferme la route entière.
+func grants(r *http.Request, scope string) bool {
+	return slices.Contains(scopesOf(r), scope)
 }
 
 // federationRouter — la liste complète de ce qu'un jeton ouvre : elle tient
@@ -557,6 +580,27 @@ func (server *Server) catalogRoutes(router chi.Router) {
 	router.Get("/params/{consoleId}/{emulator}/presets/{preset}", requireScope(scopeCatalog, server.handleFederationParams))
 	router.Get("/patches/{consoleId}/{name}", requireScope(scopeCatalog, server.handleFederationPatch))
 	router.Head("/patches/{consoleId}/{name}", requireScope(scopeCatalog, server.handleFederationPatch))
+
+	// LES FICHES DE SES JEUX, en lecture (chantier 57, federation_metadata.go) :
+	// partager ses jeux, c'est partager leurs fiches — la portée du catalogue.
+	router.Get("/metadata/{consoleId}/{ref}", requireScope(scopeCatalog, server.handleFederationGameMetadata))
+	router.Get("/metadata/{consoleId}/{ref}/images/{kind}", requireScope(scopeCatalog, server.handleFederationGameImage))
+	// L'archive de la fiche d'un de ses jeux, que l'ami relaie à son navigateur (metadata_archive.go ; le Catalogue).
+	router.Get("/metadata/{consoleId}/{ref}/archive", requireScope(scopeCatalog, server.handleFederationGameMetadataArchive))
+	// Sa recherche dans ses fiches, source de celles de l'ami (chantier 57, P3) ; le jeu d'un de ses fournisseurs,
+	// seulement si le jeton les partage (`#719`). Un segment statique l'emporte sur `{ref}` chez chi, et une référence
+	// de listing est un UUID.
+	router.Get("/metadata/{consoleId}/search", requireScope(scopeCatalog, server.handleFederationMetadataSearch))
+	router.Get("/metadata/{consoleId}/providers/{service}/{externalId}",
+		requireScope(scopeCatalog, requireScope(scopeMetadataProviders, server.handleFederationProviderGame)))
+	// Le fond d'une console (`#740`, console_images.go) : l'ami dont une console n'a aucune image montre celles-ci —
+	// les miennes seulement, sans `?server=`. Le segment `backgrounds` l'emporte sur `{ref}`, comme `search`.
+	router.Get("/metadata/{consoleId}/backgrounds", requireScope(scopeCatalog, server.handleFederationConsoleBackgrounds))
+	router.Get("/metadata/{consoleId}/backgrounds/{name}", requireScope(scopeCatalog, server.serveConsoleBackground))
+
+	// SES PARTIES EN COURS, à regarder (`#747`, federation_sessions.go) : poussées en WebSocket à l'ami qui a son lien,
+	// de quoi dessiner une carte et regarder — la portée du catalogue ; jouer reste au compte de chez lui.
+	router.Get("/sessions", requireScope(scopeCatalog, server.handleFederationSessions))
 
 	// La LISTE des consoles à distance, et rien d'autre (chantier 9, C9-P2).
 	// Sa portée est distincte : un jeton de catalogue ne la voit pas.

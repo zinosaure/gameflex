@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 
+	"gameflex/facade"
 	"gameflex/kernel/internal/accounts"
 	"gameflex/kernel/internal/auth"
 	"gameflex/kernel/internal/catalog"
@@ -24,15 +25,19 @@ import (
 	"gameflex/kernel/internal/manager"
 	"gameflex/kernel/internal/registry"
 	"gameflex/kernel/internal/retro_files"
+	"gameflex/storage/gamestatus"
 	"gameflex/storage/listing"
 	"gameflex/storage/remote"
 )
 
 type Server struct {
-	manager *manager.Manager
-	catalog *catalog.Catalog
-	config  config.Config
-	pool    *registry.Pool
+	// statusMemory — les statuts des jeux d'un serveur sans service des comptes (les tests) : statusStore.
+	statusOnce   sync.Once
+	statusMemory *gamestatus.Memory
+	manager      *manager.Manager
+	catalog      *catalog.Catalog
+	config       config.Config
+	pool         *registry.Pool
 	// windDownAsks compte les sollicitations d'arrêt restées sans réponse,
 	// par session. Le kernel ne conclut jamais du premier coup : voir
 	// askChildToWindDown, qui explique pourquoi ce compteur existe.
@@ -61,6 +66,13 @@ type Server struct {
 	// session existe. Zéro-valeur utilisable, comme `rescans` juste au-dessus :
 	// rien à initialiser dans NewServer, donc rien à y oublier.
 	launches launchProgress
+	// downloads — les téléchargements en tâche de fond, leur progression et la
+	// file des jeux (gameflex/facade, downloads.go ; chantier 53, puis le
+	// 2026-11-16). Zéro-valeur utilisable.
+	downloads facade.Downloads
+	// requiredCache — les fichiers d'émulateur qu'attendent les images, lus
+	// quelques secondes plus tôt (required_emulators.go). Zéro-valeur utilisable.
+	requiredCache requiredEmulatorsCache
 	// reports — les signalements de chaque compte dans l'heure (#601).
 	// Zéro-valeur utilisable.
 	reports reportBudget
@@ -89,6 +101,21 @@ type Server struct {
 	// la route répond aussitôt et le travail continue en fond, son état se
 	// lisant ici. Zéro-valeur utilisable, comme les caches au-dessus.
 	savesDeletions savesDeletionTracker
+	// freshness — la date du listing servi à un ami, tenue en mémoire par ce
+	// qui le change (listing_freshness.go, journal 629). Zéro-valeur
+	// utilisable.
+	freshness listing.Freshness
+	// pairing — la dernière trame `pairing` du service des comptes : les modes
+	// découverte et les codes d'appairage (chantier 60, pairing.go).
+	// Zéro-valeur utilisable.
+	pairing facade.Pairing
+	// lanAnnounced — l'échéance du mode serveur que la passerelle annonce
+	// (lan_discovery.go) ; vide, rien n'est annoncé.
+	lanAnnounced string
+	lanMu        sync.Mutex
+	// discovery — la recherche des serveurs du réseau local, ouverte tant
+	// qu'une page est abonnée au sujet `discovery` (lan_discovery.go).
+	discovery facade.Discovery
 }
 
 func NewServer(sessionManager *manager.Manager, gameCatalog *catalog.Catalog, cfg config.Config, pool *registry.Pool) *Server {
@@ -111,6 +138,9 @@ func NewServer(sessionManager *manager.Manager, gameCatalog *catalog.Catalog, cf
 		pool:        pool,
 		storageRoot: config.StorageDir,
 	}
+
+	// La recherche du réseau local, par la passerelle (chantier 60).
+	server.discovery.Search = server.searchLAN
 
 	// Les comptes, leur porte et leur coupure (chantier 20).
 	server.followAccounts()
@@ -144,13 +174,9 @@ func bridgeManagerToPool(manager *manager.Manager, pool *registry.Pool) {
 		for _, spawned := range manager.ListRetro() {
 			currentRetro[spawned.SessionID] = true
 
-			// The pool entry keeps REAL player names (the WS relay calls
-			// Add/RemovePlayer) — the watchdog's count is mirrored as a
-			// number only, so it never clobbers the names.
+			// Who plays comes from the child's mirror (applyMirror), never
+			// from a count the kernel would read back from the container.
 			if ownedRetro[spawned.SessionID] {
-				if existing, ok := pool.Lookup(spawned.SessionID); ok && existing.PlayerCount != spawned.PlayerCount {
-					pool.SetPlayerCount(spawned.SessionID, spawned.PlayerCount)
-				}
 				continue
 			}
 
@@ -179,14 +205,10 @@ func bridgeManagerToPool(manager *manager.Manager, pool *registry.Pool) {
 		for _, spawnedRemoteplay := range manager.ListRemoteplay() {
 			currentRemoteplay[spawnedRemoteplay.SessionID] = true
 
-			// Remoteplay sessions — same mirror as the retro kind: real
-			// player names via Add/RemovePlayer, watchdog count mirrored as
-			// a number only. MaxPlayers is 1: one controller slot per
-			// session (the capacity per DEVICE is the manager's data).
+			// Remoteplay sessions — same mirror as the retro kind.
+			// MaxPlayers is 1: one controller slot per session (the
+			// capacity per DEVICE is the manager's data).
 			if ownedRemoteplay[spawnedRemoteplay.SessionID] {
-				if existing, ok := pool.Lookup(spawnedRemoteplay.SessionID); ok && existing.PlayerCount != spawnedRemoteplay.PlayerCount {
-					pool.SetPlayerCount(spawnedRemoteplay.SessionID, spawnedRemoteplay.PlayerCount)
-				}
 				continue
 			}
 			pool.Register(registry.Session{
@@ -226,10 +248,13 @@ func bridgeManagerToPool(manager *manager.Manager, pool *registry.Pool) {
 				continue
 			}
 			pool.Register(registry.Session{
-				ID:         spawned.SessionID,
-				Platform:   "streamex",
-				ConsoleID:  spawned.Console,
-				Reference:  spawned.GameID,
+				ID:        spawned.SessionID,
+				Platform:  "streamex",
+				ConsoleID: spawned.Console,
+				// La référence de bibliothèque : la page y reconnaît la fiche du
+				// jeu en cours. L'identifiant du catalogue pour une partie
+				// lancée sans elle.
+				Reference:  streamexReference(spawned),
 				Title:      spawned.Game,
 				Console:    spawned.Console,
 				Game:       spawned.Game,
@@ -339,12 +364,11 @@ func (server *Server) Routes() http.Handler {
 		auth.Middleware(server.config.JWTSecret, adminOnly(server.handleRemoteStorageParams)))
 	mux.HandleFunc("GET /api/v1/servers/{id}/storage/patches",
 		auth.Middleware(server.config.JWTSecret, adminOnly(server.handleRemoteStoragePatches)))
-	// L'échange DANS NOTRE SENS (#154) : les trois routes ci-dessus disent ce
-	// qu'un pair possède, celle-ci le dépose chez nous. Réservée aux
-	// administrateurs, comme tout ce qui écrit dans la bibliothèque.
-	mux.HandleFunc("POST /api/v1/servers/{id}/storage/{section}",
-		auth.Middleware(server.config.JWTSecret, adminOnly(server.refreshing(
-			func(r *http.Request) string { return r.PathValue("section") }, server.handleRemoteStorageImport))))
+	// L'échange DANS NOTRE SENS (#154) — prendre chez un pair ce que les routes
+	// ci-dessus annoncent — n'est plus une route : c'est la commande `download`
+	// du centre de messages (facadeDownload, route `server`), qui rejoue
+	// handleRemoteStorageImport en comptant les octets. Le POST d'avant est
+	// parti (chantier 53 ; le porteur, 2026-11-14 : « On peut déjà le faire »).
 	// Remettre en cache ce qu'un pair annonce — même nom que pour un montage
 	// (POST /api/v1/mounts/{id}/rescan), parce que c'est le même geste.
 	mux.HandleFunc("POST /api/v1/servers/{id}/rescan",
@@ -394,6 +418,8 @@ func (server *Server) Routes() http.Handler {
 	// chantier 34, P10): a session container no longer holds the
 	// installation's secret, and its own opens nothing but its routes.
 	mux.HandleFunc("POST /internal/sessions/{id}/mirror", server.sessionSecret(server.handleSessionMirror))
+	// LE DÉMARRAGE D'UN CHILD, POUSSÉ PAR LUI (#751) : « booting » et l'avancée d'un déballage, puis « ready ».
+	mux.HandleFunc("POST /internal/sessions/{id}/boot", server.sessionSecret(server.handleSessionBoot))
 	mux.HandleFunc("GET /internal/remoteplay/sessions/{id}", server.sessionSecret(server.handleInternalRemoteplayLookup))
 	mux.HandleFunc("POST /internal/sessions/{id}/unregister", server.sessionSecret(server.handleInternalUnregister))
 	mux.HandleFunc("GET /internal/sessions/{id}", server.sessionSecret(server.handleInternalLookup))
@@ -461,7 +487,7 @@ func (server *Server) handleRetroLaunch(w http.ResponseWriter, r *http.Request) 
 		LaunchID string `json:"launchId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		return
 	}
 
@@ -485,12 +511,12 @@ func (server *Server) handleRetroLaunch(w http.ResponseWriter, r *http.Request) 
 	// Same guard as the old CreateSession: one PLAYING session per user
 	// across platforms (the pool holds every platform's Players).
 	if otherID, already := server.alreadyPlaying(username); already {
-		server.launches.fail(launchID, "session.requested", "already playing another session")
+		server.launches.fail(launchID, "session.requested", "playing_elsewhere", "already playing another session")
 		server.writeAlreadyPlaying(w, otherID)
 		return
 	}
 	if owned, players, goesOn := server.ownedGameGoesOn(username); goesOn {
-		server.launches.fail(launchID, "session.requested", "your game goes on without you")
+		server.launches.fail(launchID, "session.requested", "game_goes_on", "your game goes on without you")
 		server.writeOwnedGameGoesOn(w, owned, players)
 		return
 	}
@@ -498,7 +524,7 @@ func (server *Server) handleRetroLaunch(w http.ResponseWriter, r *http.Request) 
 	// Temporary per-platform cap (étape 4).
 	release, reserved := server.reserveSpawn(w, "retrogaming")
 	if !reserved {
-		server.launches.fail(launchID, "session.requested", "too many sessions running")
+		server.launches.fail(launchID, "session.requested", "too_many_sessions", "too many sessions running")
 		return
 	}
 	defer release()
@@ -519,9 +545,8 @@ func (server *Server) handleRetroLaunch(w http.ResponseWriter, r *http.Request) 
 	// depuis le premier qui l'a, avec la console de la bibliothèque.
 	_, _, disk, err := server.findRom(r.Context(), consoleID, body.Reference)
 	if err != nil {
-		server.launches.fail(launchID, "session.requested", "this game is not in the library")
-		writeError(w, http.StatusNotFound,
-			"this game is not in the library: add it from Settings › Games, or play it on its own server")
+		server.launches.fail(launchID, "session.requested", "not_in_library", "this game is not in the library")
+		writeErrorCode(w, http.StatusNotFound, "not_in_library", "this game is not in the library: add it from Settings › Games, or play it on its own server")
 
 		return
 	}
@@ -532,18 +557,24 @@ func (server *Server) handleRetroLaunch(w http.ResponseWriter, r *http.Request) 
 	// préalable qui manque, et le message dit où la remplir. Descendre un
 	// binaire jamais éprouvé au moment où quelqu'un appuie sur Jouer est
 	// précisément ce qui a rendu deux consoles injouables (#143).
-	if err := server.requireRetroCore(consoleID, body.Core); err != nil {
-		server.launches.fail(launchID, "core.required", err.Error())
-		writeError(w, http.StatusPreconditionFailed, err.Error())
+	//
+	// LE CŒUR ET LE BIOS DE LA FICHE, SINON CEUX DE LA CONSOLE (chantier 53,
+	// console_defaults.go) : la fiche choisit pour ce lancement ; sans choix,
+	// l'émulateur et le BIOS par défaut que l'administrateur a enregistrés.
+	core := server.retroCoreFor(consoleID, body.Core)
+	bios := server.retroBiosFor(consoleID, body.Bios)
+	if err := server.requireRetroCore(consoleID, core); err != nil {
+		server.launches.fail(launchID, "core.required", "emulator_missing", err.Error())
+		writeErrorCode(w, http.StatusPreconditionFailed, "emulator_missing", err.Error())
 
 		return
 	}
 
-	server.launches.publish(launchID, "core.required", body.Core)
+	server.launches.publish(launchID, "core.required", core)
 
 	if err := server.requireBios(consoleID); err != nil {
-		server.launches.fail(launchID, "bios.required", err.Error())
-		writeError(w, http.StatusPreconditionFailed, err.Error())
+		server.launches.fail(launchID, "bios.required", "bios_missing", err.Error())
+		writeErrorCode(w, http.StatusPreconditionFailed, "bios_missing", err.Error())
 
 		return
 	}
@@ -560,7 +591,7 @@ func (server *Server) handleRetroLaunch(w http.ResponseWriter, r *http.Request) 
 	}
 
 	record, err := server.manager.LaunchRetro(
-		r.Context(), consoleID, body.Reference, title, body.Core, body.Bios, username, disk,
+		r.Context(), consoleID, body.Reference, title, core, bios, username, disk,
 		manager.LaunchSettings{Resolution: body.Resolution, FPS: body.FPS, Bitrate: body.Bitrate, Language: body.Language},
 		// Les deux étapes que seul le manager connaît — conteneur créé, puis
 		// conteneur qui répond. Elles remontent par le même canal que les
@@ -581,16 +612,16 @@ func (server *Server) handleRetroLaunch(w http.ResponseWriter, r *http.Request) 
 			// The raw daemon error ("No such image: gameflex-retrogaming:
 			// latest") reached the player as-is before — true, and useless.
 			status = http.StatusServiceUnavailable
-			writeError(w, status, "the game image for this console is being rebuilt — try again in a few minutes")
+			writeErrorCode(w, status, "image_rebuilding", "the game image for this console is being rebuilt — try again in a few minutes")
 			return
 		case errors.Is(err, docker.ErrImageNotInstalled):
 			// Rien ne la reconstruira ici : une installation sans sources la
 			// tire ou la construit elle-même (#136).
-			writeError(w, http.StatusServiceUnavailable, imageNotInstalledMessage)
+			writeErrorCode(w, http.StatusServiceUnavailable, "image_missing", imageNotInstalledMessage)
 			return
 		}
-		server.launches.fail(launchID, "container.creating", err.Error())
-		writeError(w, status, err.Error())
+		server.launches.fail(launchID, "container.creating", "session_failed", err.Error())
+		writeErrorCode(w, status, "session_failed", err.Error())
 		return
 	}
 
@@ -646,13 +677,13 @@ func (server *Server) handleRetroStop(w http.ResponseWriter, r *http.Request) {
 	sessionID := r.PathValue("id")
 	record, ok := server.manager.LookupRetro(sessionID)
 	if !ok {
-		writeError(w, http.StatusNotFound, "session not found")
+		writeErrorCode(w, http.StatusNotFound, "session_not_found", "session not found")
 		return
 	}
 	// LE CHILD JUGE (P2) — voir child_end.go.
 	if handled, status := server.endThroughChild(r.Context(), sessionID, record.Container, record.Port, auth.Username(r.Context()), auth.IsAdmin(r.Context())); handled {
 		if status == http.StatusForbidden {
-			writeError(w, http.StatusForbidden, "not your session")
+			writeErrorCode(w, http.StatusForbidden, "not_your_session", "not your session")
 			return
 		}
 		server.manager.StopRetro(r.Context(), sessionID)
@@ -660,11 +691,11 @@ func (server *Server) handleRetroStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !server.mayEndSession(sessionID, record.Owner, auth.Username(r.Context()), auth.IsAdmin(r.Context())) {
-		writeError(w, http.StatusForbidden, "not your session")
+		writeErrorCode(w, http.StatusForbidden, "not_your_session", "not your session")
 		return
 	}
 	if !server.manager.StopRetro(r.Context(), sessionID) {
-		writeError(w, http.StatusNotFound, "session not found")
+		writeErrorCode(w, http.StatusNotFound, "session_not_found", "session not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sessionId": sessionID})
@@ -677,12 +708,12 @@ func (server *Server) handleRemoteplayStop(w http.ResponseWriter, r *http.Reques
 	sessionID := r.PathValue("id")
 	record, ok := server.manager.LookupRemoteplay(sessionID)
 	if !ok {
-		writeError(w, http.StatusNotFound, "session not found")
+		writeErrorCode(w, http.StatusNotFound, "session_not_found", "session not found")
 		return
 	}
 	if handled, status := server.endThroughChild(r.Context(), sessionID, record.Container, record.Port, auth.Username(r.Context()), auth.IsAdmin(r.Context())); handled {
 		if status == http.StatusForbidden {
-			writeError(w, http.StatusForbidden, "not your session")
+			writeErrorCode(w, http.StatusForbidden, "not_your_session", "not your session")
 			return
 		}
 		server.manager.StopRemoteplay(r.Context(), sessionID)
@@ -690,11 +721,11 @@ func (server *Server) handleRemoteplayStop(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if !server.mayEndSession(sessionID, record.Owner, auth.Username(r.Context()), auth.IsAdmin(r.Context())) {
-		writeError(w, http.StatusForbidden, "not your session")
+		writeErrorCode(w, http.StatusForbidden, "not_your_session", "not your session")
 		return
 	}
 	if !server.manager.StopRemoteplay(r.Context(), sessionID) {
-		writeError(w, http.StatusNotFound, "session not found")
+		writeErrorCode(w, http.StatusNotFound, "session_not_found", "session not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sessionId": sessionID})
@@ -720,7 +751,7 @@ func (server *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 		Language string `json:"language"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		return
 	}
 
@@ -729,8 +760,7 @@ func (server *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 	// ce refus vaut pour un pair, dont la fiche ne juge pas nos émulateurs.
 	core := strings.TrimSpace(body.Core)
 	if cores := docker.StreamexCores(body.ConsoleID); core != "" && len(cores) > 0 && !slices.Contains(cores, core) {
-		writeError(w, http.StatusUnprocessableEntity,
-			fmt.Sprintf("%s does not run on this server: its %s images run %s", core, body.ConsoleID, strings.Join(cores, ", ")))
+		writeErrorCode(w, http.StatusUnprocessableEntity, "emulator_not_here", fmt.Sprintf("%s does not run on this server: its %s images run %s", core, body.ConsoleID, strings.Join(cores, ", ")))
 		return
 	}
 
@@ -758,12 +788,12 @@ func (server *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 
 	if body.ConsoleID != "keytest" {
 		if otherID, already := server.alreadyPlaying(username); already {
-			server.launches.fail(launchID, "session.requested", "already playing another session")
+			server.launches.fail(launchID, "session.requested", "playing_elsewhere", "already playing another session")
 			server.writeAlreadyPlaying(w, otherID)
 			return
 		}
 		if owned, players, goesOn := server.ownedGameGoesOn(username); goesOn {
-			server.launches.fail(launchID, "session.requested", "your game goes on without you")
+			server.launches.fail(launchID, "session.requested", "game_goes_on", "your game goes on without you")
 			server.writeOwnedGameGoesOn(w, owned, players)
 			return
 		}
@@ -774,37 +804,51 @@ func (server *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 	// l'émulateur échouait à sa façon.
 	if body.ConsoleID != "keytest" {
 		if err := server.requireBios(body.ConsoleID); err != nil {
-			server.launches.fail(launchID, "bios.required", err.Error())
-			writeError(w, http.StatusPreconditionFailed, err.Error())
+			server.launches.fail(launchID, "bios.required", "bios_missing", err.Error())
+			writeErrorCode(w, http.StatusPreconditionFailed, "bios_missing", err.Error())
 
 			return
 		}
+	}
+
+	// L'ÉMULATEUR DE LA FICHE, SINON CELUI DE LA CONSOLE (chantier 53,
+	// console_defaults.go) : la fiche choisit pour ce lancement ; sans choix,
+	// celui de la version en service.
+	if body.ConsoleID != "keytest" {
+		core = server.streamexCoreFor(body.ConsoleID, core)
 	}
 
 	// L'ÉMULATEUR DE L'IMAGE (chantier 29) : elle le déballe au lancement
 	// depuis cores/<console>/. Absent, le conteneur s'arrêterait au démarrage ;
 	// on le dit avant, en nommant le fichier.
 	if err := server.requireEmulator(r.Context(), body.ConsoleID, core); err != nil {
-		server.launches.fail(launchID, "emulator.required", err.Error())
-		writeError(w, http.StatusPreconditionFailed, err.Error())
+		server.launches.fail(launchID, "emulator.required", "emulator_missing", err.Error())
+		writeErrorCode(w, http.StatusPreconditionFailed, "emulator_missing", err.Error())
 
 		return
+	}
+	// LE FICHIER QU'IL DÉBALLERA, nommé au conteneur : la version en service,
+	// sinon le dernier déposé — celui que l'écran de la console montre.
+	emulatorFile := ""
+	if need, ok := server.requiredEmulatorFor(r.Context(), body.ConsoleID, core); ok {
+		emulatorFile, _, _ = server.emulatorInUse(need)
 	}
 
 	// Temporary per-platform cap (étape 4).
 	release, reserved := server.reserveSpawn(w, "streamex")
 	if !reserved {
-		server.launches.fail(launchID, "session.requested", "too many sessions running")
+		server.launches.fail(launchID, "session.requested", "too_many_sessions", "too many sessions running")
 		return
 	}
 	defer release()
 
 	session, err := server.manager.Launch(r.Context(), body.ConsoleID, username, gameIdentifier, manager.LaunchSettings{
-		Resolution: body.Resolution,
-		FPS:        body.FPS,
-		Bitrate:    body.Bitrate,
-		Language:   body.Language,
-		Core:       core,
+		Resolution:   body.Resolution,
+		FPS:          body.FPS,
+		Bitrate:      body.Bitrate,
+		Language:     body.Language,
+		Core:         core,
+		EmulatorFile: emulatorFile,
 	},
 		// Les deux étapes que seul le manager connaît — conteneur créé, puis
 		// conteneur qui répond.
@@ -815,25 +859,24 @@ func (server *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 		// rend la main sur une image manquante SANS rien dire au canal : l'écran
 		// resterait alors sur sa dernière étape, à tourner, pour un échec déjà
 		// connu. Une cause d'échec se raconte, quelle qu'elle soit.
-		server.launches.fail(launchID, "container.creating", err.Error())
+		server.launches.fail(launchID, "container.creating", "session_failed", err.Error())
 		switch {
 		case errors.Is(err, manager.ErrInvalidUsername):
-			writeError(w, http.StatusBadRequest, "invalid username")
+			writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid username")
 		case errors.Is(err, manager.ErrGameNotFound):
-			writeError(w, http.StatusNotFound, err.Error())
+			writeErrorCode(w, http.StatusNotFound, "session_failed", err.Error())
 		case errors.Is(err, docker.ErrImageMissing):
 			// Same as the retro path: not broken, just not built. The generic
 			// "session could not be started" below hid the one cause the
 			// operator can actually do something about.
 			slog.Error("launch failed: image missing", "error", err, "console", body.ConsoleID)
-			writeError(w, http.StatusServiceUnavailable,
-				"the game image for this console is being rebuilt — try again in a few minutes")
+			writeErrorCode(w, http.StatusServiceUnavailable, "image_rebuilding", "the game image for this console is being rebuilt — try again in a few minutes")
 		case errors.Is(err, docker.ErrImageNotInstalled):
 			slog.Error("launch failed: image not installed", "error", err, "console", body.ConsoleID)
-			writeError(w, http.StatusServiceUnavailable, imageNotInstalledMessage)
+			writeErrorCode(w, http.StatusServiceUnavailable, "image_missing", imageNotInstalledMessage)
 		default:
 			slog.Error("launch failed", "error", err, "username", username, "game", gameIdentifier)
-			writeError(w, http.StatusInternalServerError, "session could not be started")
+			writeErrorCode(w, http.StatusInternalServerError, "session_failed", "session could not be started")
 		}
 		return
 	}
@@ -858,12 +901,12 @@ func (server *Server) handleStreamexStop(w http.ResponseWriter, r *http.Request)
 
 	session, ok := server.manager.LookupStreamex(sessionID)
 	if !ok {
-		writeError(w, http.StatusNotFound, "session not found")
+		writeErrorCode(w, http.StatusNotFound, "session_not_found", "session not found")
 		return
 	}
 	if handled, status := server.endThroughChild(r.Context(), sessionID, session.Container, session.Port, auth.Username(r.Context()), auth.IsAdmin(r.Context())); handled {
 		if status == http.StatusForbidden {
-			writeError(w, http.StatusForbidden, "not your session")
+			writeErrorCode(w, http.StatusForbidden, "not_your_session", "not your session")
 			return
 		}
 		server.manager.StopStreamex(r.Context(), sessionID)
@@ -871,12 +914,12 @@ func (server *Server) handleStreamexStop(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if !server.mayEndSession(sessionID, session.Owner, auth.Username(r.Context()), auth.IsAdmin(r.Context())) {
-		writeError(w, http.StatusForbidden, "not your session")
+		writeErrorCode(w, http.StatusForbidden, "not_your_session", "not your session")
 		return
 	}
 
 	if !server.manager.StopStreamex(r.Context(), sessionID) {
-		writeError(w, http.StatusNotFound, "session not found")
+		writeErrorCode(w, http.StatusNotFound, "session_not_found", "session not found")
 		return
 	}
 
@@ -914,7 +957,7 @@ func (server *Server) reserveSpawn(w http.ResponseWriter, platform string) (rele
 	server.spawns.mu.Lock()
 	defer server.spawns.mu.Unlock()
 	if server.pool.ActiveCount(platform)+server.spawns.pending[platform] >= maximum {
-		writeError(w, http.StatusConflict, fmt.Sprintf("too many concurrent %s sessions (limit %d)", platform, maximum))
+		writeErrorCode(w, http.StatusConflict, "too_many_sessions", fmt.Sprintf("too many concurrent %s sessions (limit %d)", platform, maximum))
 
 		return nil, false
 	}
@@ -944,6 +987,7 @@ func (server *Server) writeAlreadyPlaying(w http.ResponseWriter, otherID string)
 	w.WriteHeader(http.StatusConflict)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"success":                false,
+		"errorCode":              "playing_elsewhere",
 		"errorMessage":           "you already have an active player session elsewhere: " + otherID,
 		"activeSessionId":        otherID,
 		"activeSessionPlatform":  platform,
@@ -964,6 +1008,7 @@ func (server *Server) writeOwnedGameGoesOn(w http.ResponseWriter, session regist
 	w.WriteHeader(http.StatusConflict)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"success":                false,
+		"errorCode":              "game_goes_on",
 		"errorMessage":           "your game goes on without you: " + session.ID,
 		"ownedGameGoesOn":        true,
 		"activeSessionId":        session.ID,
@@ -974,14 +1019,20 @@ func (server *Server) writeOwnedGameGoesOn(w http.ResponseWriter, session regist
 	})
 }
 
-func writeError(w http.ResponseWriter, status int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "errorMessage": message})
+// writeErrorCode — LE SEUL ÉCRIVAIN D'UN REFUS (chantier 59, P5 ; le porteur :
+// « Un code oui ») : chaque refus porte un code, que la page traduit une fois
+// (`kernelErrors.<code>`, sinon `common.errorCodes.<code>`, libs/api.js) ; le
+// message, en anglais, ne sert qu'aux journaux et ne s'affiche jamais. Il
+// n'existe plus de refus sans code : writeError est parti.
+func codeOr(code, fallback string) string {
+	if code != "" {
+		return code
+	}
+
+	return fallback
 }
 
-// writeErrorCode — un refus avec, en plus du message, un code que la page
-// traduit (`common.errorCodes.<code>`).
+// writeErrorCode — un refus : son statut, son code, son message.
 func writeErrorCode(w http.ResponseWriter, status int, code, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -1067,4 +1118,15 @@ func withCORS(next http.Handler) http.Handler {
 
 		next.ServeHTTP(&corsWriter{ResponseWriter: w}, r)
 	})
+}
+
+// streamexReference — la référence qu'une partie Streamex porte dans la file
+// des parties : celle du jeu dans la bibliothèque, sinon l'identifiant court de
+// son catalogue (une partie lancée par son titre, ou d'avant le 2026-11-15).
+func streamexReference(session manager.Session) string {
+	if session.Reference != "" {
+		return session.Reference
+	}
+
+	return session.GameID
 }

@@ -9,7 +9,6 @@
         "overwrite": "Overwrite",
         "cancel": "Cancel",
         "delete": "Delete",
-        "returnBack": "Back",
         "yes": "Yes",
         "no": "No",
         "download": "Downloading"
@@ -18,8 +17,7 @@
         "retrogaming": "Retro gaming",
         "remotePlay": "Remote Play",
         "streaming": "Streaming",
-        "streamex": "Streamex",
-        "keytest": "Key test"
+        "streamex": "Streamex"
     },
     "auth": {
         "login": "Sign In",
@@ -442,34 +440,6 @@
             "noLine": "No line matches.",
             "redownload": "Download again"
         },
-        "turnConfig": {
-            "usernameHelp": "The account name coturn expects, as configured on your TURN server.",
-            "genericLabel": "Generic",
-            "genericDescription": "A TURN server you run yourself, or any provider that gives you a fixed address and credentials.",
-            "genericTypeLabel": "Which TURN server?",
-            "genericTypeHelp": "Coturn is the most widely used; Eturnal is another open-source option. Each keeps its own settings, so you can fill in both and switch between them.",
-            "cloudflareLabel": "Cloudflare",
-            "cloudflareDescription": "Cloudflare Realtime TURN — you provide a key, and access credentials are created automatically as needed.",
-            "activeProvider": "Current provider",
-            "activeProviderHelp": "Which one is actually used for connections — only one at a time. An option stays unavailable until its settings have been saved and are complete.",
-            "noneSelected": "None — direct connections only",
-            "incomplete": "not set up",
-            "urls": "Server address",
-            "urlsHelp": "For example turn:example.com:3478. Separate several with commas.",
-            "urlsInvalid": "An address must start with turn: or turns:",
-            "username": "Username",
-            "usernameRequired": "Coturn needs a username.",
-            "passphrase": "Passphrase",
-            "coturnPassphraseHelp": "The password that goes with the username above.",
-            "eturnalPassphraseHelp": "Eturnal's shared secret — the same one the Eturnal server itself is set up with. It has no username.",
-            "cloudflareTokenId": "Cloudflare TURN Token ID",
-            "cloudflareTokenIdHelp": "From your Cloudflare Realtime TURN key — this is the ID, not the API token below.",
-            "cloudflareApiToken": "Cloudflare API Token",
-            "cloudflareApiTokenHelp": "The secret token itself, from the same Cloudflare Realtime TURN key as the ID above.",
-            "saved": "TURN settings saved.",
-            "saveFailed": "Couldn't save the TURN settings.",
-            "loadFailed": "Couldn't load the TURN settings."
-        },
         "servers": {
             "consoleHelp": "Show only this console's games. The number is how many it has.",
             "addTitle": "Add a server",
@@ -610,6 +580,30 @@
             "rescanned": "{{name}} rescanned.",
             "rescanFailed": "Rescan failed.",
             "loadFailed": "Cannot read the internal disks."
+        },
+        "metadataServices": {
+            "configured": "Configured",
+            "notConfigured": "Not configured",
+            "stored": "Saved — leave empty to keep it",
+            "saved": "Account saved",
+            "saveFailed": "Unable to save this account",
+            "removed": "Account removed",
+            "remove": "Remove this account",
+            "loadFailed": "Unable to read the service accounts",
+            "igdb": {
+                "label": "IGDB",
+                "help": "Covers, large artwork for backgrounds, and screenshots, for every console. Requires a Twitch account with two-factor authentication, then a \"Confidential\" application on dev.twitch.tv.",
+                "client_id": "Client ID",
+                "client_idHelp": "Shown on your application's page on dev.twitch.tv",
+                "client_secret": "Client Secret",
+                "client_secretHelp": "Generated on the same page (\"New Secret\" button). It is never shown here again."
+            },
+            "steamgriddb": {
+                "label": "SteamGridDB",
+                "help": "Covers, wide banners for backgrounds and transparent logos, contributed by its community. Personal use only.",
+                "api_key": "API key",
+                "api_keyHelp": "Generated in your steamgriddb.com account preferences, API tab. It is never shown here again."
+            }
         }
     },
     "form": {
@@ -800,9 +794,7 @@
                 }
             }
         },
-        "controller": {
-            "keyTest": "Key test"
-        },
+        "controller": {},
         "invite": {
             "title": "Invite someone",
             "confirmMessage": "Send an invitation to {{username}}?",
@@ -953,10 +945,10 @@
         "menu": {
             "open": "Menu",
             "help": "Game settings",
-            "holdHint": "Keep holding L2 + Home to open the menu",
+            "holdHint": "Keep L2 + Home held for three seconds to open the menu",
             "temperature": "Temperature",
             "battery": "Battery",
-            "gamepadTip": "Controller: hold L2, then Home, for a second to open the menu. Keyboard: Esc.",
+            "gamepadTip": "Controller: hold L2, then Home, for three seconds to open the menu. Keyboard: Esc.",
             "quit": {
                 "title": "Leave",
                 "label": "Quit the game",
@@ -1046,45 +1038,14 @@
     },
     "dashboard": {
         "greeting": "Welcome back, {{name}}!",
-        "mySessions": {
-            "title": "Your sessions",
-            "stop": "End this session",
-            "stopConfirmTitle": "End this session?",
-            "stopConfirmMessage": "This closes it for everyone connected, right now — not just for you.",
-            "stopFailed": "Could not end the session.",
-            "resume": "Take back control",
-            "timeLeft": "Ends in {{time}}",
-            "endingNow": "Ending…"
-        },
-        "live": {
-            "title": "Live now",
-            "badge": "LIVE",
-            "join": "Join",
-            "watch": "Watch",
-            "slideLabel": "Session {{position}} of {{count}}",
-            "empty": "No live stream right now, why not start one?",
-            "stop": "End this game for everyone",
-            "stopFirstTitle": "End somebody else's game?",
-            "stopFirstMessage": "{{owner}} is playing {{title}}. As an administrator, you can end this game.",
-            "stopContinue": "Continue",
-            "stopSecondTitle": "Are you sure?",
-            "stopSecondMessage": "The game ends right now for everyone in it, players and spectators. It cannot be undone.",
-            "stopConfirm": "End the game",
-            "stopFailed": "Could not end the game."
-        },
-        "federationLive": {
-            "title": "Live at your servers",
-            "join": "Join",
-            "players_one": "{{count}} player",
-            "players_other": "{{count}} players"
-        }
+        "playInLauncher": "Games are launched, watched and joined from the launcher."
     },
     "remoteplay": {
         "devicesFound": "Consoles found",
         "noDevicesFound": "No console found",
         "addDevice": "Add a console",
         "addDeviceDesc": "Register a new device",
-        "devicesDescription": "Consoles registered for remote play. Connect to one that's online, or add a new device.",
+        "devicesDescription": "Consoles registered for remote play. Wake one, adjust its stream or add a new device: connecting happens from the launcher.",
         "devicesDescriptionRemote": "Consoles held by the servers you have access to. Connect to one that's online — pairing a console happens on the server that has it on its network.",
         "loadFailed": "Failed to load devices.",
         "notSupportedYet": "{{platform}} support is coming soon.",
@@ -1164,7 +1125,9 @@
             "loadFailed": "Failed to load the settings.",
             "probeApplied": "Suggestion applied — review then save.",
             "probeUnreachable": "Network unreachable, couldn't suggest a setting.",
-            "probeFailed": "Network detection failed."
+            "probeFailed": "Network detection failed.",
+            "save": "Save the settings",
+            "saved": "Settings saved: the next connection from the launcher uses them."
         }
     },
     "federation": {
@@ -1183,7 +1146,7 @@
     "retrogaming": {
         "gpuAvailable": "This phone has an Adreno GPU: this console's emulator renders on it.",
         "gamesTitle": "{{console}}",
-        "gamesDescription": "The game library for this console. Pick one to play, or open it for details, cores and BIOS options.",
+        "gamesDescription": "The game library for this console. Open a game for its source, its status and its local copy: games are played from the launcher.",
         "experimentalWarning": "Still experimental: this emulator can crash mid-game, and some titles never start at all.",
         "experimentalHeavyWarning": "Still experimental for the most demanding games: a few heavy titles can crash or run at half speed. The rest play fine.",
         "experimentalFirmwareWarning": "Still experimental: some games need a different system firmware than the one installed, and won't start without it.",
@@ -1312,8 +1275,6 @@
         "membersHelp": "Change your member management settings",
         "remoteTitle": "Remote resources",
         "remoteHelp": "A Samba share, a WebDAV folder or a kDrive — their games join your catalogue.",
-        "turnTitle": "TURN server",
-        "turnHelp": "Change your TURN server settings",
         "downloadTitle": "Download the GameFlex app",
         "downloadReleaseHelp": "The latest version, on GitHub.",
         "downloadHelp": "Download the GameFlex app for Android (v{{version}})",
@@ -1337,14 +1298,9 @@
         "federationsTitle": "Federations",
         "federationsHelp": "The GameFlex servers you registered, and the tokens you issued for others.",
         "internalTitle": "Internal resources",
-        "internalHelp": "This machine's other disks — their games play here, with the library's consoles; their cores, BIOS, settings and patches can be imported."
-    },
-    "keytest": {
-        "controllerLabel": "Controller",
-        "controllerHelp": "Try another one without leaving — the session stays up.",
-        "exitTitle": "Leave the test",
-        "exitConfirm": "Leaving ends this test session. Nobody else is on it.",
-        "exitLabel": "Leave"
+        "internalHelp": "This machine's other disks — their games play here, with the library's consoles; their cores, BIOS, settings and patches can be imported.",
+        "metadataTitle": "Game artwork and information",
+        "metadataHelp": "Accounts for the services that provide the covers, backgrounds and logos your games don't carry"
     },
     "download": {
         "noBuildTitle": "No build published yet.",

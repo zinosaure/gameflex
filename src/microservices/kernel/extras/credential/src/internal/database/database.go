@@ -113,7 +113,9 @@ CREATE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint ON push_subscriptions
 -- label est obligatoire, et c'est le coeur de la décision : un jeton
 -- anonyme ne se révoque qu'en bloc et ne dit jamais qui consomme.
 -- scopes dit CE QUE le jeton ouvre : « catalog » (lire le catalogue,
--- télécharger), « devices » (voir la liste des consoles à distance d'ici).
+-- télécharger), « devices » (voir la liste des consoles à distance d'ici),
+-- « metadata-providers » (la recherche des fiches interroge aussi nos comptes
+-- IGDB et SteamGridDB pour son porteur, chantier 57).
 --
 -- Lancer une session n'est PAS de la lecture : ça démarre un conteneur avec
 -- sa limite mémoire, son bloc de ports ICE et son port alloué — du calcul
@@ -170,11 +172,9 @@ END;
 -- pouvoir REPRÉSENTER à l'autre serveur à chaque appel, pas un mot de passe
 -- qu'on vérifie. Un hachage la rendrait inutilisable.
 --
--- Elle n'est pas chiffrée au repos, contrairement aux identifiants TURN
--- (GAMEFLEX_PASSPHRASE_SALT), et c'est un choix : ce que ce jeton ouvre est
--- la lecture du catalogue de quelqu'un d'autre, et lui peut le révoquer
--- d'un clic. Les identifiants Cloudflare, eux, portent hors de GameFlex.
--- Si la parité est souhaitée un jour, c'est ici qu'elle se fait.
+-- Elle n'est pas chiffrée au repos, et c'est un choix : ce que ce jeton
+-- ouvre est la lecture du catalogue de quelqu'un d'autre, et lui peut le
+-- révoquer d'un clic.
 -- Les montages distants : un partage WebDAV (ou kDrive, qui EST du WebDAV)
 -- monté comme une source de la bibliothèque.
 --
@@ -201,6 +201,18 @@ CREATE TABLE IF NOT EXISTS remote_mounts (
     created_by_id INTEGER REFERENCES users(id)
 );
 
+-- LES COMPTES DES SERVICES DE MÉTADONNÉES (chantier 49, décision du porteur
+-- du 2026-11-11 : « dans la base de données on peut mettre les comptes ») —
+-- IGDB et SteamGridDB. Une ligne par service ; fields est le
+-- JSON de ses champs, scellé comme un mot de passe de partage : il entre par
+-- la page d'administration, sert au kernel, et ne ressort jamais par l'API.
+CREATE TABLE IF NOT EXISTS metadata_services (
+    service       VARCHAR(40) PRIMARY KEY,
+    fields        TEXT NOT NULL,
+    updated_at    DATETIME,
+    updated_by_id INTEGER REFERENCES users(id)
+);
+
 -- LES INVITATIONS (chantier 33, le porteur, 2026-10-26) — ce qui voyage par
 -- une messagerie À LA PLACE d'un jeton : un code de 128 bits, à usage unique,
 -- valable 12 heures. Le serveur d'en face l'échange auprès de nous, de serveur
@@ -211,6 +223,12 @@ CREATE TABLE IF NOT EXISTS remote_mounts (
 --
 -- Seule l'empreinte du code est gardée, comme pour les jetons de catalogue.
 -- expires_at en RFC 3339 UTC, comme l'échéance d'un jeton de compte.
+--
+-- DEUX SORTES DE PLUS, QU'UNE PERSONNE OUVRE ELLE-MÊME (chantier 55) : join (un
+-- nouveau membre choisit son mot de passe) et reset (un administrateur l'a
+-- réinitialisé) — le lien <launcher>/join/<code>, 24 heures, une fois, un seul
+-- vivant par membre (user_id), label étant son nom affiché. La fédération ne les
+-- voit pas (member_links.go).
 CREATE TABLE IF NOT EXISTS invitations (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     kind          VARCHAR(20) NOT NULL,
@@ -248,6 +266,63 @@ CREATE TABLE IF NOT EXISTS federated_accounts (
     created_at DATETIME,
     PRIMARY KEY (user_id, server_id)
 );
+
+-- LES FAVORIS D'UN COMPTE (le porteur, 2026-11-16 : « remplace le bouton
+-- download this rom par add to my favorite ») : un jeu par sa console et sa
+-- référence, celle que la liste des jeux donne — l'UUID d'un jeu d'ici, le
+-- même sur la bibliothèque et sur un disque (storage.RomID), et
+-- srv<id>:<référence> pour un jeu d'un serveur fédéré, qui garde AUSSI son
+-- serveur : retiré du registre, il emporte ses favoris, comme les comptes
+-- qu'on y avait juste au-dessus. Le titre, pour qu'une liste des favoris se
+-- lise sans relire chaque source. Ils étaient partis le 2026-10-29 (journal
+-- 344, leur table effacée à chaque démarrage) ; le porteur les redemande.
+CREATE TABLE IF NOT EXISTS favorites (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    console_id VARCHAR(100) NOT NULL,
+    reference  VARCHAR(255) NOT NULL,
+    server_id  INTEGER REFERENCES federation_servers(id) ON DELETE CASCADE,
+    title      VARCHAR(255),
+    created_at DATETIME,
+    UNIQUE (user_id, console_id, reference)
+);
+
+-- LES SERVEURS FÉDÉRÉS QU'UN COMPTE A ÉTEINTS (le porteur, 2026-11-16 :
+-- « chaque utilisateur choisit quel serveur fédéré il a envie de voir les
+-- jeux » ; Réglages › Application, api/hidden_servers.go) : seulement les
+-- éteints — un serveur se montre par défaut, et un serveur ajouté plus tard
+-- aussi. Retiré du registre, ou le compte supprimé, la ligne part avec lui.
+CREATE TABLE IF NOT EXISTS hidden_servers (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    server_id  INTEGER NOT NULL REFERENCES federation_servers(id) ON DELETE CASCADE,
+    created_at DATETIME,
+    PRIMARY KEY (user_id, server_id)
+);
+
+-- LE STATUT DES CONSOLES ET DES JEUX (chantier 30 ; le porteur, 2026-11-17 : « je vois que les statuts des jeux et
+-- consoles sont pas dans la base de données mais dans un fichier json. Il faut que ça soit dans la base de données »).
+-- Ils vivaient dans status/<console>.json (un fichier par console), abandonnés : on part de zéro. Le statut d'une console réglée d'un geste (vide : son défaut,
+-- gamestatus.Default) ; les SIGNALEMENTS d'un jeu, du plus ancien au plus récent — le statut d'un jeu se calcule
+-- (gamestatus.Resolve), il n'est écrit nulle part. Lus et écrits par le kernel seul (/internal/game-status, et
+-- credential/embed au téléphone) : les gardes de l'administrateur sont les siennes.
+CREATE TABLE IF NOT EXISTS game_status_consoles (
+    console_id VARCHAR(100) PRIMARY KEY,
+    status     VARCHAR(20) NOT NULL,
+    set_by     VARCHAR(255),
+    set_at     DATETIME
+);
+CREATE TABLE IF NOT EXISTS game_status_reports (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    console_id VARCHAR(100) NOT NULL,
+    game_id    VARCHAR(255) NOT NULL,
+    status     VARCHAR(20) NOT NULL,
+    emulators  TEXT,
+    versions   TEXT,
+    note       TEXT,
+    reported_by VARCHAR(255),
+    reported_at DATETIME
+);
+CREATE INDEX IF NOT EXISTS game_status_reports_game ON game_status_reports (console_id, game_id, id);
 `
 
 // Open opens (or creates) the service database and ensures the schema is
@@ -285,12 +360,6 @@ func Open() (*sql.DB, error) {
 		return nil, fmt.Errorf("create schema: %w", err)
 	}
 
-	// LES FAVORIS NE SONT PLUS (le porteur, 2026-10-29 : « on n'aura plus
-	// cette notion de favoris ») : leur table part, avec ses lignes.
-	if _, err := db.Exec(`DROP TABLE IF EXISTS favorites`); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("drop favorites: %w", err)
-	}
 	// Same idempotent column patch as the Python service's on_startup:
 	// a copied file may predate the `title` column (uuid-catalog era).
 	if err := ensureColumn(db, "play_history", "title", "VARCHAR(255)"); err != nil {
@@ -324,6 +393,52 @@ func Open() (*sql.DB, error) {
 	if err := ensureColumn(db, "users", "last_login", "DATETIME"); err != nil {
 		db.Close()
 		return nil, err
+	}
+	// LE MOT DE PASSE QU'UN MEMBRE CHOISIT, ET SES SESSIONS (chantier 55).
+	//
+	// password_set_at — quand le membre a choisi son mot de passe, par le lien
+	// d'un compte ou dans « Mon mot de passe » ; vide, il attend son lien (son
+	// `hashed_password` est vide aussi, et la connexion le refuse). Les comptes
+	// qui ont un mot de passe sans cette date — ceux d'avant la colonne, ceux
+	// qu'un chemin n'a pas datés — reçoivent leur date de création : ils ont
+	// rejoint. Rejoué à chaque démarrage, sans effet une fois fait.
+	//
+	// session_generation — la génération des sessions du compte, que chaque
+	// jeton porte (claim `gen`, auth.Claims) : la faire avancer coupe toutes les
+	// sessions d'avant, sur tous les appareils.
+	if err := ensureColumn(db, "users", "password_set_at", "DATETIME"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := ensureColumn(db, "users", "session_generation", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	// games_generation — la génération de ses PARTIES : quand elle avance, ses
+	// parties en cours finissent, au kernel qui la lit dans la liste des comptes.
+	// Elle avance avec celle des sessions quand toutes ses sessions tombent — une
+	// réinitialisation, « Déconnecter tous les appareils » —, et non quand
+	// celui-ci reste connecté (« Mon mot de passe », « Déconnecter les autres
+	// appareils ») : rien ne dit de quel appareil une partie vient.
+	if err := ensureColumn(db, "users", "games_generation", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	// LES CODES D'APPAIRAGE (chantier 60, api/pairing.go) : six chiffres, deux
+	// minutes, dans la table des invitations. Leurs modes ne vivent qu'en
+	// mémoire : un démarrage les a tous fermés, et les codes restants partent.
+	if err := ensureColumn(db, "invitations", "pairing", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if _, err := db.Exec(`DELETE FROM invitations WHERE pairing = 1`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("purge the pairing codes: %w", err)
+	}
+	if _, err := db.Exec(`UPDATE users SET password_set_at = COALESCE(created_at, strftime('%Y-%m-%d %H:%M:%f', 'now', 'localtime'))
+		WHERE password_set_at IS NULL AND hashed_password != ''`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("date the chosen passwords: %w", err)
 	}
 
 	return db, nil

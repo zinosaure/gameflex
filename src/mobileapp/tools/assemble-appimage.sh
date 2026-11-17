@@ -61,9 +61,9 @@ set -euo pipefail
 guest_of() {
     case "$1" in
         xbox)   echo "xemu xemu https://github.com/xemu-project/xemu/releases/download/v0.8.139/xemu-0.8.139-aarch64.AppImage" ;;
-        # La même build que le serveur : 20508 est publiée pour les deux
+        # La même build que le serveur : 20607 est publiée pour les deux
         # architectures (19749 ne l'était pas, d'où 19751 jusqu'au 2026-10-08).
-        ps3)    echo "rpcs3 rpcs3 https://github.com/RPCS3/rpcs3-binaries-linux-arm64/releases/download/build-8e26652c85bb5658965fa5731d9a0309ca10b42b/rpcs3-v0.0.43-20508-8e26652c_linux_aarch64.AppImage" ;;
+        ps3)    echo "rpcs3 rpcs3 https://github.com/RPCS3/rpcs3-binaries-linux-arm64/releases/download/build-fb6737b1c8306ceeccb53b7fa051acfc9e641cd7/rpcs3-v0.0.43-20607-fb6737b1_linux_aarch64.AppImage" ;;
         # Cemu ne publie aucune RELEASE aarch64, et la 2.6 du serveur n'a pas
         # de recompilateur AArch64 (seulement PPCRecompilerX64*) : elle
         # n'interpréterait le PowerPC qu'instruction par instruction. Sa CI, si :
@@ -82,12 +82,12 @@ guest_of() {
         # NOTRE construction de la même nocturne (tools/eden/) : le HeapTracker
         # de l'Eden d'Android sur Linux arm64, qui garde ses zones mémoire sous
         # le plafond d'Android (#434). Un AppDir archivé, rangé dans downloads/.
-        switch-eden) echo "eden eden file:///dl/eden-de7e6e01d4-gameflex-aarch64.AppDir.tar.gz" ;;
+        switch-eden) echo "eden eden file:///dl/eden-d85bad8924-gameflex-aarch64.AppDir.tar.gz" ;;
         # LA SWITCH 2 (#644) : Lichii, fork d'Eglantine, sa version publiée,
-        # la même que le serveur (build-150, commit 17baed7), en aarch64 avec son
+        # la même que le serveur (build-316, commit 5a66c89), en aarch64 avec son
         # profil PGO comme au serveur. L'officielle : sans le HeapTracker de
         # notre Eden (#434). Pas d'x86_64 pour l'appareil.
-        switch2) echo "lichii lichii https://github.com/zortos293/Lichii/releases/download/build-150/lichii-linux-aarch64-pgo.AppImage" ;;
+        switch2) echo "lichii lichii https://github.com/zortos293/Lichii/releases/download/build-316/lichii-linux-aarch64-pgo.AppImage" ;;
         # La PS4 en aarch64 n'est pas une AppImage de l'amont : c'est « Box64 +
         # NOTRE shadPS4 x86_64 », assemblé par tools/box64/bundle.sh (chantier
         # 17) — shadPS4 construit avec un réglage qui ramène sa plage d'adresses
@@ -138,7 +138,7 @@ if [ "${1:-}" != "--inner" ]; then
         *) echo "✗ architecture inconnue : $arch" >&2; exit 2 ;;
     esac
     [ -n "$url" ] && [ "$url" != "-" ] || { echo "✗ $console : aucun build $arch publié" >&2; exit 2; }
-    DL="${HERE}/../webapp/src/public/downloads"
+    DL="${HERE}/../microservices/edge/src/public/downloads"
     [ -f "${DL}/glibc-${arch}.zip" ] || { echo "✗ assemble d'abord le runtime : tools/assemble-glibc.sh ${arch}" >&2; exit 1; }
     IMAGE=$(unzip -p "${DL}/glibc-${arch}.zip" RUNTIME 2>/dev/null || true)
     [ -n "$IMAGE" ] || { echo "✗ glibc-${arch}.zip ne dit pas son image (RUNTIME) — réassemble-le" >&2; exit 1; }

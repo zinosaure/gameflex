@@ -42,8 +42,6 @@ func (e unplayableError) Error() string { return string(e) }
 
 func (e unplayableError) Unwrap() error { return ErrGameNotFound }
 
-const watchdogInterval = 20 * time.Second
-
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,32}$`)
 
 // Session is one spawned streamex session container.
@@ -52,6 +50,30 @@ type Session struct {
 	Game    string `json:"game"`
 	GameID  string `json:"game_id"`
 	Console string `json:"console"`
+	// Reference — la référence du jeu dans la bibliothèque (storage.RomID),
+	// celle que la page a lancée : elle reconnaît ainsi la fiche du jeu en cours
+	// (« Reprendre » au lieu de « Jouer » grisé). GameID, lui, est l'identifiant
+	// court du catalogue de la console. Vide : inconnue (launchReference).
+	Reference string `json:"reference,omitempty"`
+}
+
+// launchReference — la référence de bibliothèque d'un lancement : l'identifiant
+// demandé quand il en a la forme ; sinon celle du jeu que le catalogue a trouvé
+// — la page lance une console récente par le TITRE du jeu —, dérivée comme la
+// bibliothèque la dérive (storage.RomID de « console/entrée », l'entrée étant
+// le nom sur le disque sous le dossier de la console : un fichier, ou le
+// dossier d'un jeu-dossier). Aucune pour les ports natifs, dont les ROM
+// vivent chez leur console d'origine.
+func launchReference(console, gameIdentifier string, game catalog.Game) string {
+	if identifier := strings.TrimSpace(gameIdentifier); storage.IsRomID(identifier) {
+		return identifier
+	}
+	entry := strings.SplitN(filepath.ToSlash(game.RelPath), "/", 2)[0]
+	if console == consoles.PortsID || entry == "" {
+		return ""
+	}
+
+	return storage.RomID(console, entry)
 }
 
 func (s *Session) base() *BaseSession { return &s.BaseSession }
@@ -95,6 +117,11 @@ type Manager struct {
 	// baselines — la première mesure de chaque partie, pour les écarts du
 	// panneau de performances (sessionstatus.Baselines).
 	baselines sessionstatus.Baselines
+
+	// boots — la boîte de chaque lancement en cours, où son child pousse son
+	// démarrage (exits.go, ReportBoot).
+	bootMu sync.Mutex
+	boots  map[string]chan docker.BootReport
 }
 
 func New(dockerHandler *docker.Client, catalogs map[string]*catalog.Catalog, cfg config.Config) *Manager {
@@ -107,11 +134,11 @@ func New(dockerHandler *docker.Client, catalogs map[string]*catalog.Catalog, cfg
 		retro:         newSessionStore[RetroSession, *RetroSession](),
 		remoteplay:    newSessionStore[RemoteplaySession, *RemoteplaySession](),
 		subscribers:   map[chan struct{}]bool{},
+		boots:         map[string]chan docker.BootReport{},
 	}
 
 	manager.adoptExisting()
-	go manager.watchdog()
-	go manager.watchdogRemoteplay()
+	go manager.watchExits()
 
 	return manager
 }
@@ -150,7 +177,6 @@ func (manager *Manager) adoptExisting() {
 				Port:      adoptedSession.Port,
 				StartedAt: startedAtOf(adoptedSession.StartedAt),
 				State:     "running",
-				// PlayerCount refreshed by the watchdog's next poll.
 			},
 			ConsoleID:  adoptedSession.ConsoleID,
 			Reference:  adoptedSession.Reference,
@@ -211,37 +237,42 @@ func (manager *Manager) sessionFromAdopted(adopted docker.AdoptedSession) *Sessi
 			StartedAt: startedAtOf(adopted.StartedAt),
 			State:     "running",
 		},
-		Game:    adopted.Game,
-		Console: adopted.Console,
+		Game:      adopted.Game,
+		Console:   adopted.Console,
+		Reference: adopted.Reference,
 	}
 }
 
-// LaunchSettings are the optional per-launch stream quality overrides from
-// the frontend's Stream Settings form (GameDetailPanel, external consoles).
-// Zero values mean "keep the console's default"; normalization below
-// revalidates everything the form can send.
+// LaunchSettings — le flux qu'un lancement demande, choisi dans CE navigateur
+// (l'engrenage d'un jeu, edge : GameSettings.jsx), et la langue de la page.
+// Tout est revalidé ci-dessous ; une définition ou une cadence absente prend le
+// défaut de toutes les consoles, 540p à 30 (`consoles.DefaultStreamResolution`).
 type LaunchSettings struct {
-	Resolution string // "360p" | "540p" | "720p" | "1080p", anything else ignored
-	FPS        int    // 15-60, otherwise ignored
-	Bitrate    int    // kbps, 500-20000, otherwise ignored
+	Resolution string // "360p" | "540p" | "720p" | "1080p", anything else → 540p
+	FPS        int    // 15-60, otherwise → 30
+	Bitrate    int    // kbps, 500-20000 (« Auto » : mesuré par la page), otherwise 0 = le repli de l'encodeur
 	Language   string // the page's language, "fr" | "en" (chantier 21), otherwise ignored
 	// Core — l'émulateur choisi sur la fiche, au nom du registre ; vide, le
 	// premier de la console (#438 : Eden, puis Citron, pour la Switch).
 	Core string
+	// EmulatorFile — le fichier de cores/<console>/ que l'image déballera :
+	// la version en service (chantier 53), sinon le dernier déposé. Vide :
+	// l'image prend le dernier déposé d'elle-même.
+	EmulatorFile string
 }
 
 // normalizeLaunchSettings revalidates what the form sent, with the table and
-// the bounds the phone uses too (`consoles.StreamSize`, `StreamFPS`,
+// the bounds the phone uses too (`consoles.StreamResolution`, `StreamFPS`,
 // `StreamBitrate`): the resolution becomes the container's RESOLUTION env
-// format (streamex contract, docs/GAMEFLEX.md), anything unknown — « 480p »,
-// retired on 2026-09-20 — empties it and the container keeps its console's
-// own geometry.
+// format (streamex contract, docs/GAMEFLEX.md).
+//
+// LE DÉFAUT EST ICI, ET IL EST LE MÊME POUR TOUTES LES CONSOLES : 540p à 30
+// (le porteur, 2026-11-16). Un libellé inconnu — « 480p », retiré le
+// 2026-09-20 — ou absent ne laisse plus le conteneur garder sa géométrie : le
+// rétro partait à sa taille d'époque à 60 images, streamex en 720p à 60.
 func normalizeLaunchSettings(settings LaunchSettings) LaunchSettings {
-	if width, height, ok := consoles.StreamSize(settings.Resolution); ok {
-		settings.Resolution = fmt.Sprintf("%dx%d", width, height)
-	} else {
-		settings.Resolution = ""
-	}
+	width, height, _ := consoles.StreamSize(consoles.StreamResolution(settings.Resolution))
+	settings.Resolution = fmt.Sprintf("%dx%d", width, height)
 	settings.FPS = consoles.StreamFPS(settings.FPS)
 	settings.Bitrate = consoles.StreamBitrate(settings.Bitrate)
 	settings.Language = consoles.Language(settings.Language)
@@ -266,8 +297,9 @@ func (manager *Manager) Launch(
 		return nil, ErrInvalidUsername
 	}
 
-	// Revalidate everything the form can send — an empty/invalid value
-	// falls back to the console's default (0/"") downstream.
+	// Revalidate everything the form can send — an empty/invalid resolution
+	// or frame rate becomes 540p at 30; an empty bitrate stays 0, the
+	// console's fallback downstream (docker.go).
 	settings = normalizeLaunchSettings(settings)
 
 	gameCatalog := manager.catalogs[console]
@@ -352,13 +384,17 @@ func (manager *Manager) Launch(
 		Bitrate:        settings.Bitrate,
 		Language:       settings.Language,
 		Core:           settings.Core,
+		EmulatorFile:   settings.EmulatorFile,
 		GamesHostDir:   gamesHostDir,
 		Engine:         gameEngine(console, gamePath, game.RelPath),
 		GameID:         storage.GameTitleID(gamePath),
+		Reference:      launchReference(console, gameIdentifier, game),
 	}
 
 	announce("container.creating", spec.ContainerBase)
 
+	reports := manager.expectBoot(spec.SessionID)
+	defer manager.forgetBoot(spec.SessionID)
 	port, containerName, err := manager.dockerHandler.CreateAndStart(ctx, spec)
 	if err != nil {
 		return nil, fmt.Errorf("spawn container: %w", err)
@@ -388,7 +424,7 @@ func (manager *Manager) Launch(
 		lastTenth, lastGiB = percent/10, done>>30
 		announce("game.unpacking", fmt.Sprintf("%d %% · %s", percent, writtenSize(done)))
 	}
-	if err := manager.dockerHandler.WaitReadyHostExternal(ctx, containerName, port, 90*time.Second, onUnpacking); err != nil {
+	if err := manager.dockerHandler.WaitBoot(ctx, containerName, reports, 90*time.Second, onUnpacking); err != nil {
 		_ = manager.dockerHandler.Stop(context.Background(), containerName)
 		return nil, fmt.Errorf("spawn container: %w", err)
 	}
@@ -404,9 +440,10 @@ func (manager *Manager) Launch(
 			StartedAt: time.Now(),
 			State:     "running",
 		},
-		Game:    game.Title,
-		GameID:  game.ID,
-		Console: console,
+		Game:      game.Title,
+		GameID:    game.ID,
+		Console:   console,
+		Reference: spec.Reference,
 	}
 
 	manager.sessions.register(session)
@@ -584,6 +621,8 @@ func (manager *Manager) LaunchRetro(
 
 	announce("container.creating", spec.ContainerBase)
 
+	reports := manager.expectBoot(spec.SessionID)
+	defer manager.forgetBoot(spec.SessionID)
 	port, containerName, err := manager.dockerHandler.CreateAndStartRetro(ctx, spec)
 	if err != nil {
 		return nil, fmt.Errorf("spawn container: %w", err)
@@ -591,14 +630,14 @@ func (manager *Manager) LaunchRetro(
 
 	// CRÉÉ N'EST PAS PRÊT, et la distinction vaut la seconde étape : docker rend
 	// la main dès que le conteneur démarre, l'émulateur met encore du temps à
-	// répondre — jusqu'à quatre-vingt-dix secondes, sondées chaque seconde
-	// ci-dessous. C'est la plus longue attente du parcours, et elle n'avait
+	// se dire prêt — jusqu'à quatre-vingt-dix secondes, qu'il annonce lui-même
+	// (#751). C'est la plus longue attente du parcours, et elle n'avait
 	// aucun nom à l'écran.
 	announce("container.created", containerName)
 
 	announce("container.waiting", containerName)
 
-	if err := manager.dockerHandler.WaitReadyHostRetro(ctx, containerName, port, 90*time.Second); err != nil {
+	if err := manager.dockerHandler.WaitBoot(ctx, containerName, reports, 90*time.Second, nil); err != nil {
 		_ = manager.dockerHandler.Stop(context.Background(), containerName)
 		return nil, fmt.Errorf("spawn container: %w", err)
 	}
@@ -611,13 +650,12 @@ func (manager *Manager) LaunchRetro(
 
 	record := &RetroSession{
 		BaseSession: BaseSession{
-			SessionID:   spec.SessionID,
-			Container:   containerName,
-			Owner:       username,
-			Port:        port,
-			StartedAt:   time.Now(),
-			State:       "running",
-			PlayerCount: 1, // owner — the watchdog refreshes from /status
+			SessionID: spec.SessionID,
+			Container: containerName,
+			Owner:     username,
+			Port:      port,
+			StartedAt: time.Now(),
+			State:     "running",
 		},
 		ConsoleID:  consoleID,
 		Reference:  reference,
@@ -656,31 +694,6 @@ func (manager *Manager) StopRetro(ctx context.Context, sessionID string) bool {
 		manager.notify()
 	}
 	return ok
-}
-
-// SweepRetro re-runs the watchdog's checks for ONE session — called by the
-// idle watchdog's container sweep (api/idle.go, sweepContainer), so the
-// record and the façade entry drop as soon as the child exits instead of
-// waiting for the next 20 s tick. Idempotent: an unknown session is a no-op.
-func (manager *Manager) SweepRetro(ctx context.Context, sessionID string) {
-	record, ok := manager.retro.lookup(sessionID)
-	if !ok {
-		return
-	}
-
-	running, err := manager.dockerHandler.IsRunning(ctx, record.Container)
-	if err != nil || !running {
-		manager.StopRetro(ctx, sessionID)
-		return
-	}
-
-	status, err := manager.dockerHandler.StatusRetro(ctx, record.Container, record.Port)
-	if err != nil {
-		return
-	}
-	if manager.retro.patchPlayerCount(sessionID, status.Players) {
-		manager.notify()
-	}
 }
 
 // RetroStatus returns the session container's live CPU/RAM telemetry
@@ -816,7 +829,7 @@ func (manager *Manager) notify() {
 // pruneExitedContainers removes stopped session containers that no
 // record owns — they exited while this service was down or mid-restart
 // (adoption only ever sees RUNNING containers), so nothing else would ever
-// remove them. Called on every watchdog tick, cheap (one daemon list).
+// remove them. Called by resync, at each connection to Docker's exit events.
 func (manager *Manager) pruneExitedContainers() {
 	ctx := context.Background()
 
@@ -842,62 +855,6 @@ func (manager *Manager) pruneExitedContainers() {
 			continue
 		}
 		slog.Info("pruned exited session container", "container", containerName)
-	}
-}
-
-// watchdog keeps the manager records in sync with the daemon reality:
-// exited containers drop their records, and the live player count is
-// mirrored into the records (notify → bridge → pool). The IDLE shutdown
-// itself lives in the kernel's unified pool watchdog (api/idle.go) — the
-// per-platform TTL/grace rules this loop used to run (streamex
-// SessionTTLSeconds, retro retroPlayersAt) were removed in étape 3.
-func (manager *Manager) watchdog() {
-	ticker := time.NewTicker(watchdogInterval)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		manager.pruneExitedContainers()
-		ctx := context.Background()
-
-		for _, session := range manager.List() {
-			running, err := manager.dockerHandler.IsRunning(ctx, session.Container)
-			if err != nil || !running {
-				manager.stop(ctx, session.SessionID, "container-gone")
-				continue
-			}
-
-			status, err := manager.dockerHandler.StatusExternal(ctx, session.Container, session.Port)
-			if err != nil {
-				continue
-			}
-
-			// Keep the live player count in the record (and the façade,
-			// via notify → bridge) so join buttons see real slot occupancy.
-			if manager.sessions.patchPlayerCount(session.SessionID, status.Players) {
-				manager.notify()
-			}
-		}
-
-		// Retro sessions: the child is PID 1, so the container stops itself
-		// when the session ends (its own 5-min grace covers orphans and
-		// improper leaves) — this sweep only cleans the record up and
-		// mirrors the live player count (same notify → bridge flow as above).
-		for _, session := range manager.ListRetro() {
-			running, err := manager.dockerHandler.IsRunning(ctx, session.Container)
-			if err != nil || !running {
-				manager.StopRetro(ctx, session.SessionID)
-				continue
-			}
-
-			status, err := manager.dockerHandler.StatusRetro(ctx, session.Container, session.Port)
-			if err != nil {
-				continue
-			}
-
-			if manager.retro.patchPlayerCount(session.SessionID, status.Players) {
-				manager.notify()
-			}
-		}
 	}
 }
 
@@ -951,18 +908,6 @@ func (manager *Manager) StreamexStatus(sessionID string) (sessionstatus.Status, 
 	manager.baselines.Stamp(sessionID, &status)
 
 	return status, true
-}
-
-// IsRunning — is this session container still up? For the kernel's stop path
-// (api/child_end.go), which lets a child that agreed to end its game exit on
-// its own before tidying up behind it. A nil manager or Docker handler (tests)
-// answers false: nothing to wait for.
-func (manager *Manager) IsRunning(ctx context.Context, container string) (bool, error) {
-	if manager == nil || manager.dockerHandler == nil {
-		return false, nil
-	}
-
-	return manager.dockerHandler.IsRunning(ctx, container)
 }
 
 // writtenSize — des octets écrits, lisibles d'un coup d'œil : en Mo sous le

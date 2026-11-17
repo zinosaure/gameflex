@@ -96,6 +96,7 @@ func scanPorts(_, romsDir string) []Game {
 
 // NewKeyTest builds the keytest catalog: ONE fixed entry — the console has
 // no games, the adapter ignores the path (see the streamex keytest console).
+// Banc d'essai interne, plus visible du joueur depuis le 2026-11-13.
 func NewKeyTest() *Catalog {
 	return &Catalog{console: "keytest", scan: func(_, _ string) []Game {
 		return []Game{{ID: "keytest", Title: "Key test", Folder: "", RelPath: "keytest"}}

@@ -17,7 +17,7 @@
     "surfaceScale": {
       "type": "select",
       "label": "Render resolution",
-      "description": "The size xemu draws at, as a multiple of the console's 640×480. “Follow the stream” draws at the resolution chosen for the game: ×1 up to 720p, ×2 for 1080p.",
+      "description": "The size xemu draws at, as a multiple of the console's 640×480; “Follow the stream” matches the resolution chosen for the game.",
       "config": "display.quality > surface_scale",
       "value": "auto",
       "options": {
@@ -29,7 +29,7 @@
       "translations": {
         "fr": {
           "label": "Résolution de rendu",
-          "description": "La taille à laquelle xemu dessine, en multiple des 640×480 de la console. « Suivre le flux » dessine à la résolution choisie pour la partie : ×1 jusqu'au 720p, ×2 pour le 1080p.",
+          "description": "La taille à laquelle xemu dessine, en multiple des 640×480 de la console ; « Suivre le flux » suit la résolution choisie pour la partie.",
           "options": {
             "auto": "Suivre le flux"
           }
@@ -109,39 +109,39 @@
     "hardFpu": {
       "type": "switch",
       "label": "Fast floating point",
-      "description": "Floating-point maths runs on the processor directly. Off is slower and more exact, for the rare game that needs it.",
+      "description": "Runs floating-point maths on the processor directly; off is slower and more exact, for the rare game that needs it.",
       "config": "perf > hard_fpu",
       "value": true,
       "translations": {
         "fr": {
           "label": "Calcul à virgule flottante rapide",
-          "description": "Les calculs à virgule flottante passent directement par le processeur. Désactivé, c'est plus lent et plus exact, pour les rares jeux qui en ont besoin."
+          "description": "Fait passer les calculs à virgule flottante directement par le processeur ; désactivé, plus lent et plus exact, pour les rares jeux qui en ont besoin."
         }
       }
     },
     "dsp": {
       "type": "switch",
       "label": "Audio DSP",
-      "description": "Emulates the Xbox's audio processor, which a few games use for effects. Costs processor time.",
+      "description": "Emulates the Xbox's audio processor, which a few games use for effects; costs processor time.",
       "config": "audio > use_dsp",
       "value": false,
       "translations": {
         "fr": {
           "label": "DSP audio",
-          "description": "Émule le processeur audio de la Xbox, que quelques jeux utilisent pour leurs effets. Coûte du temps processeur."
+          "description": "Émule le processeur audio de la Xbox, que quelques jeux utilisent pour leurs effets ; coûte du temps processeur."
         }
       }
     },
     "hrtf": {
       "type": "switch",
       "label": "3D audio (HRTF)",
-      "description": "Positions sounds in space for headphones. Off saves processor time.",
+      "description": "Positions sounds in space for headphones; off saves processor time.",
       "config": "audio > hrtf",
       "value": true,
       "translations": {
         "fr": {
           "label": "Son 3D (HRTF)",
-          "description": "Place les sons dans l'espace pour un casque. Désactivé, cela économise du temps processeur."
+          "description": "Place les sons dans l'espace pour un casque ; désactivé, économise du temps processeur."
         }
       }
     }

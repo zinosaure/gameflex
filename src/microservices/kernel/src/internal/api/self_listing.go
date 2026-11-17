@@ -23,6 +23,7 @@ import (
 
 	"gameflex/consoles"
 	"gameflex/emuparams"
+	"gameflex/facade"
 	"gameflex/kernel/internal/retro_files"
 	"gameflex/storage/gamestatus"
 	"gameflex/storage/listing"
@@ -53,9 +54,9 @@ func (server *Server) selfServer() *listing.Server {
 // serveur, ou un disque interne (chantier 24), rangés de la même façon.
 type libraryRoots struct {
 	Roms, Cores, Bios, Patches, Params string
-	// Status — le dossier des statuts des jeux (chantier 30), toujours celui
-	// de ce serveur ; vide : les jeux partent sans leurs signalements.
-	Status string
+	// Status — les statuts des jeux (chantier 30), toujours ceux de ce
+	// serveur ; sans Backend : les jeux partent sans leurs signalements.
+	Status gamestatus.Store
 }
 
 // selfRoots — les sections du dossier de ce serveur. `params/` et `patches/`
@@ -63,7 +64,7 @@ type libraryRoots struct {
 func (server *Server) selfRoots() libraryRoots {
 	return libraryRoots{
 		Roms: server.retroRomsRoot(), Cores: server.retroCoresRoot(), Bios: server.retroBiosRoot(),
-		Patches: patchesRoot(), Params: paramsRoot, Status: server.statusStore().Dir,
+		Patches: patchesRoot(), Params: paramsRoot, Status: server.statusStore(),
 	}
 }
 
@@ -81,8 +82,8 @@ func romItems(roots libraryRoots, consoleID string) []listing.Item {
 		return nil // une console illisible n'emporte pas les autres
 	}
 	var reports map[string][]gamestatus.Report
-	if roots.Status != "" {
-		console, err := gamestatus.Store{Dir: roots.Status}.Load(consoleID)
+	if roots.Status.Backend != nil {
+		console, err := roots.Status.Load(consoleID)
 		if err != nil {
 			slog.Warn("game status unreadable", "console", consoleID, "error", err)
 		}
@@ -200,6 +201,7 @@ func (server *Server) rebuildSelf(sections ...string) error {
 }
 
 func (server *Server) rebuildSelfLocked(sections ...string) error {
+	defer server.rememberSelfListing()
 	now := time.Now()
 	if len(sections) == 0 || !listing.Scanned(listingCacheDir, listing.SelfKey) {
 		built := listing.New(listing.SelfSource, server.federationHostname())
@@ -276,9 +278,11 @@ func (server *Server) selfSectionAll(section string) map[string][]listing.Item {
 // startSelfListing — au démarrage : le listing s'il manque, sinon seulement
 // son en-tête (la version a pu changer, la machine aussi — et sa date avance
 // alors, pour qu'un ami le voie). En fond : un premier parcours d'une grande
-// bibliothèque ne retient pas le démarrage.
+// bibliothèque ne retient pas le démarrage. Puis la date que rend la question
+// d'un ami, tenue en mémoire dès lors (listing_freshness.go).
 func (server *Server) startSelfListing() {
 	go func() {
+		defer server.startListingFreshness()
 		if !listing.Scanned(listingCacheDir, listing.SelfKey) {
 			started := time.Now()
 			server.ensureSelf()
@@ -301,7 +305,7 @@ func (server *Server) handleSelfListing(w http.ResponseWriter, r *http.Request) 
 	server.ensureSelf()
 	header, err := listing.LoadHeader(listingCacheDir, listing.SelfKey)
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "the listing of this server is not built yet")
+		writeErrorCode(w, http.StatusServiceUnavailable, "games_not_ready", "the listing of this server is not built yet")
 
 		return
 	}
@@ -316,7 +320,7 @@ func (server *Server) handleSelfRescan(w http.ResponseWriter, r *http.Request) {
 	var sections []string
 	if section := r.URL.Query().Get("section"); section != "" {
 		if !listing.IsSection(section) {
-			writeError(w, http.StatusBadRequest, "unknown section: "+section)
+			writeErrorCode(w, http.StatusBadRequest, "bad_request", "unknown section: "+section)
 
 			return
 		}
@@ -324,7 +328,7 @@ func (server *Server) handleSelfRescan(w http.ResponseWriter, r *http.Request) {
 	}
 	started := time.Now()
 	if err := server.rebuildSelf(sections...); err != nil {
-		writeError(w, http.StatusInternalServerError, "the listing could not be rebuilt: "+err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "rescan_failed", "the listing could not be rebuilt: "+err.Error())
 
 		return
 	}
@@ -343,6 +347,10 @@ func (server *Server) refreshing(section func(*http.Request) string, next http.H
 		next(recorder, r)
 		if recorder.status < http.StatusMultipleChoices {
 			if name := section(r); listing.IsSection(name) {
+				// L'ÉTAPE « Ajout à la bibliothèque » d'un téléchargement suivi : sa ligne reste jusqu'à ce que le jeu soit
+				// dans la liste (le porteur, 2026-11-17 : « La ligne du téléchargement doit rester jusqu'à que celui ci soit
+				// dans la bibliothèque »).
+				facade.ReportPhase(r.Context(), "library", -1, 0)
 				server.refreshSelf(name)
 			}
 		}

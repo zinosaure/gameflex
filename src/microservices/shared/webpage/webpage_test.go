@@ -31,7 +31,12 @@ func TestHandler(t *testing.T) {
 		"bundle.js":                          "bundle",
 		"service-worker.js":                  "worker",
 		"122.45943f554fd7242a675e.bundle.js": "chunk",
+		"images/icon-192.png":                "icon",
+		"fonts/bootstrap-icons.woff2":        "font",
 	} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(root, name)), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -55,7 +60,23 @@ func TestHandler(t *testing.T) {
 		{path: "/index.html", status: 301, cache: "no-cache"},
 		{path: "/api/v1/users/12", status: 404, body: "no such route: /api/v1/users/12", contentType: "application/json"},
 		{path: "/internal/sessions/x/mirror", status: 404, body: "no such route", contentType: "application/json"},
+		// Le dossier des téléchargements, absent de toute copie de la page, reste
+		// un dossier de fichiers : jamais de HTML sous un nom en `.apk`.
 		{path: "/downloads/gameflex.apk", status: 404},
+		{path: "/downloads/shadps4-aarch64.zip", status: 404},
+		{path: "/images/icon-192.png", status: 200, body: "icon"},
+		{path: "/images/absente.png", status: 404},
+		{path: "/fonts/absente.woff2", status: 404},
+		// À la racine, un fichier : un morceau d'une version d'avant, le manifeste.
+		{path: "/9999.0123456789abcdef0123.bundle.js", status: 404},
+		{path: "/manifest.json", status: 404},
+		// LES ADRESSES DE L'APPLICATION QUI PORTENT UN POINT (#701) : le jeu d'une
+		// console, le chemin d'un journal — la page, comme au serveur de dev.
+		{path: "/retrogaming/nes/games/Zelda%20(USA).zip", status: 200, body: "<html>page</html>", cache: "no-cache"},
+		{path: "/retrogaming/nes/games/Zelda.zip", status: 200, body: "<html>page</html>"},
+		{path: "/streamex/ps5/games/CUSA12345.pkg", status: 200, body: "<html>page</html>"},
+		{path: "/settings/logs/kernel/kernel.log", status: 200, body: "<html>page</html>"},
+		{path: "/settings/consoles/nes", status: 200, body: "<html>page</html>"},
 		// Un chemin qui remonte hors de la page est refusé avant toute lecture.
 		{path: "/../../etc/passwd", status: 400},
 	}

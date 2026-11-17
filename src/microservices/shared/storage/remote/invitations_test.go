@@ -2,12 +2,15 @@ package remote
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/jpeg"
 	"image/png"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -66,5 +69,79 @@ func TestInvitationQRRoundTrip(t *testing.T) {
 	}
 	if _, err := InvitationPNG("https://example.com/pas-une-invitation", 320); !errors.Is(err, ErrNotInvitation) {
 		t.Fatalf("autre chose qu'une invitation dessinée : %v", err)
+	}
+}
+
+// LE LIEN D'UN COMPTE (chantier 55) : le QR le dessine, mais il n'est pas une
+// invitation de serveur — ParseInvitation le refuse, et relu dans une image il
+// n'est pas pris pour l'une d'elles.
+func TestAMemberLinkIsDrawnButNeverRedeemed(t *testing.T) {
+	link := "http://192.168.1.50:11200/join/AbCdEfGhIjKlMnOpQrSt_-"
+	if !IsMemberLink(link) || IsMemberLink("https://example.com/join/court") || IsMemberLink("https://example.com/invite/AbCdEfGhIjKlMnOpQrSt_-") {
+		t.Fatal("IsMemberLink se trompe")
+	}
+	if _, _, err := ParseInvitation(link); !errors.Is(err, ErrNotInvitation) {
+		t.Fatalf("le lien d'un compte pris pour une invitation : %v", err)
+	}
+	encoded, err := InvitationPNG(link, 320)
+	if err != nil {
+		t.Fatalf("le QR du lien d'un compte : %v", err)
+	}
+	if _, err := ReadInvitation(bytes.NewReader(encoded)); !errors.Is(err, ErrNotInvitation) {
+		t.Fatalf("le QR d'un lien de compte relu comme une invitation : %v", err)
+	}
+}
+
+// LE CODE D'APPAIRAGE (chantier 60) : six chiffres, espaces retirés ; une adresse
+// tapée sans schéma reçoit http:// au réseau local, https:// ailleurs.
+func TestPairingCodeAndTypedLink(t *testing.T) {
+	for text, want := range map[string]string{"482913": "482913", " 482 913 ": "482913", "000042": "000042"} {
+		if code, err := PairingCode(text); err != nil || code != want {
+			t.Errorf("%q → %q %v", text, code, err)
+		}
+	}
+	for _, text := range []string{"", "48291", "4829134", "48291a", "AbCdEfGhIjKlMnOpQrSt_-"} {
+		if _, err := PairingCode(text); !errors.Is(err, ErrNotPairingCode) {
+			t.Errorf("%q accepté (%v)", text, err)
+		}
+	}
+
+	for text, want := range map[string]string{
+		"192.168.1.10:11200":            "http://192.168.1.10:11200",
+		"gamebox.local:10200/":          "http://gamebox.local:10200",
+		"gamebox:10200":                 "http://gamebox:10200",
+		"10.20.0.2:10200":               "http://10.20.0.2:10200",
+		"gameflex.example.com":          "https://gameflex.example.com",
+		"https://gameflex.example.com/": "https://gameflex.example.com",
+		"http://203.0.113.4:10200":      "http://203.0.113.4:10200",
+	} {
+		if link, err := NormalizeLink(text); err != nil || link != want {
+			t.Errorf("%q → %q %v, attendu %q", text, link, err, want)
+		}
+	}
+	if _, err := NormalizeLink("  "); !errors.Is(err, ErrNoLink) {
+		t.Errorf("adresse vide : %v", err)
+	}
+}
+
+// UN SERVEUR HORS DU MODE DÉCOUVERTE RÉPOND 423 : c'est `pairingClosed`, que la
+// page traduit ; notre nom part avec le code.
+func TestRedeemSaysPairingClosed(t *testing.T) {
+	var sent map[string]string
+	peer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&sent)
+		w.WriteHeader(http.StatusLocked)
+	}))
+	defer peer.Close()
+	distant, _ := New(peer.URL, "")
+	_, err := distant.Redeem("482913", InvitationFederation, "Gamebox")
+	if !errors.Is(err, ErrPairingClosed) || sent["from"] != "Gamebox" || sent["code"] != "482913" {
+		t.Fatalf("%v, envoyé %v", err, sent)
+	}
+	if status, code, ok := RefusalCode(err); !ok || code != "pairingClosed" || status != http.StatusBadRequest {
+		t.Fatalf("RefusalCode : %d %q %v", status, code, ok)
+	}
+	if _, code, _ := RefusalCode(ErrNotPairingCode); code != "notPairingCode" {
+		t.Fatalf("RefusalCode d'un code mal formé : %q", code)
 	}
 }

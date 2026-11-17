@@ -412,3 +412,47 @@ func TestASecondLaunchIsRefusedWhileTheFirstRuns(t *testing.T) {
 		t.Fatal("le lancement fini a laissé le compte marqué « en cours »")
 	}
 }
+
+// UN TÉLÉCHARGEMENT EST L'AFFAIRE D'UN ADMINISTRATEUR, DIT À LA DEMANDE : un jeu de la file peut attendre des heures,
+// et le refus d'un membre ne doit pas attendre son tour (avant la file, la commande rendait 202 et le refus arrivait
+// plus tard, sur le sujet du téléchargement). La liste des téléchargements d'un compte se lit sur `downloads`.
+func TestADownloadIsRefusedToAMemberAtOnceAndTheListIsServed(t *testing.T) {
+	_, httpServer := facadeTestServer(t)
+	member, _, err := facadeTestDial(t, httpServer, testToken(t, auth.Claims{Username: "marc", RoleLevel: 2}))
+	if err != nil {
+		t.Fatalf("poignée de main : %v", err)
+	}
+	defer member.Close()
+	facadeTestSend(t, member, map[string]any{"type": "download", "id": "m1", "data": map[string]any{
+		"route": "server", "server": "7", "section": "roms", "key": "roms/nes/x", "body": map[string]any{"consoleId": "nes"},
+	}})
+	if reply := facadeTestNext(t, member, func(push facadeTestPush) bool { return push.Type == "reply" && push.ID == "m1" }); reply.Status != http.StatusForbidden {
+		t.Fatalf("un membre : statut %d (%s)", reply.Status, reply.Data)
+	}
+
+	admin, _, err := facadeTestDial(t, httpServer, facadeTestToken(t, "root"))
+	if err != nil {
+		t.Fatalf("poignée de main : %v", err)
+	}
+	defer admin.Close()
+	facadeTestSend(t, admin, map[string]any{"type": "subscribe", "id": "s1", "data": map[string]any{"topic": "downloads"}})
+	listed := facadeTestNext(t, admin, func(push facadeTestPush) bool { return push.Topic == "downloads" })
+	if strings.TrimSpace(string(listed.Data)) != "[]" {
+		t.Fatalf("la liste d'un compte sans téléchargement : %s", listed.Data)
+	}
+}
+
+// UN JEU PREND LA FILE (le porteur, 2026-11-16) ; un émulateur, un BIOS, un correctif partent tout de suite.
+func TestOnlyAGameTakesTheQueue(t *testing.T) {
+	for _, entry := range []struct {
+		route, section string
+		queued         bool
+	}{
+		{"server", "roms", true}, {"disk", "roms", true},
+		{"server", "bios", false}, {"server", "patches", false}, {"disk", "cores", false}, {"cores", "", false},
+	} {
+		if got := takesTheQueue(entry.route, entry.section); got != entry.queued {
+			t.Errorf("%s/%s : %v, attendu %v", entry.route, entry.section, got, entry.queued)
+		}
+	}
+}

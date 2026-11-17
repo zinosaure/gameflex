@@ -76,6 +76,11 @@ func TestResetImposesTheEnvPassword(t *testing.T) {
 	if !auth.VerifyPassword("le-nouveau", rootHash(t, db)) {
 		t.Fatal("le mot de passe de la variable n'ouvre pas le compte")
 	}
+	// Qui avait l'ancien perd aussi ses sessions (chantier 55).
+	var generation int
+	if err := db.QueryRow(`SELECT session_generation FROM users WHERE role_level = 0`).Scan(&generation); err != nil || generation != 1 {
+		t.Fatalf("génération des sessions de root après la remise : %d (%v), attendu 1", generation, err)
+	}
 	if err := resetRootPassword(db, config.Config{RootUsername: "root", RootPassword: ""}); err == nil {
 		t.Fatal("une remise sans valeur doit être refusée")
 	}

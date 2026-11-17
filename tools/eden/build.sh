@@ -3,7 +3,7 @@
 # patchs (0001-…), sous émulation — et le livre en AppDir archivé, que
 # src/mobileapp/tools/assemble-appimage.sh prend tel quel.
 #
-#   tools/eden/build.sh    → src/webapp/src/public/downloads/eden-<commit>-gameflex-aarch64.AppDir.tar.gz
+#   tools/eden/build.sh    → src/microservices/edge/src/public/downloads/eden-<commit>-gameflex-aarch64.AppDir.tar.gz
 #
 # LA MÊME CONSTRUCTION QUE L'ÉDITEUR, à nos patchs près. Sa CI (dépôt
 # mirror/Workflow de git.eden-emu.dev) bâtit l'AppImage aarch64 dans l'image
@@ -22,12 +22,12 @@
 # recompile que ce qui a changé.
 set -euo pipefail
 
-COMMIT=de7e6e01d43e8cf2ec193d74fa053b0d7949955f
-NIGHTLY=https://nightly.eden-emu.dev/v1792353251.de7e6e01d4/Eden-Linux-de7e6e01d4-aarch64-clang-pgo.AppImage
+COMMIT=d85bad89248fcae68f812d7e1c937436261404cb
+NIGHTLY=https://nightly.eden-emu.dev/v1794878467.d85bad8924/Eden-Linux-d85bad8924-aarch64-clang-pgo.AppImage
 JOBS=${JOBS:-$(( $(nproc) > 4 ? $(nproc) - 2 : 2 ))}
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
-DL="$ROOT/src/webapp/src/public/downloads"
+DL="$ROOT/src/microservices/edge/src/public/downloads"
 OUT="eden-${COMMIT:0:10}-gameflex-aarch64.AppDir.tar.gz"
 
 docker volume create eden-arm64 > /dev/null
@@ -78,8 +78,11 @@ docker run --rm -e JOBS="$JOBS" -e COMMIT="$COMMIT" -e NIGHTLY="$NIGHTLY" -e OUT
             git remote add origin https://git.eden-emu.dev/eden-emu/eden.git
             git fetch -q --depth 1 origin $COMMIT && git checkout -q FETCH_HEAD
         fi
-        cd /root/eden && git reset -q --hard $COMMIT && git clean -qfdx -e build -e eden.profdata
-        for p in /patches/0*.patch; do git apply \"\$p\" && echo \"== \$(basename \"\$p\")\"; done
+        # Une nocturne neuve n est pas dans la source déjà là : la chercher avant de s y placer. Sans cela, le
+        # reset échouait, la source restait l ancienne, patchée, et la construction repartait sur elle.
+        cd /root/eden && { git cat-file -e $COMMIT^{commit} 2>/dev/null || git fetch -q --depth 1 origin $COMMIT; }
+        git reset -q --hard $COMMIT && git clean -qfdx -e build -e eden.profdata
+        for p in /patches/0*.patch; do git apply \"\$p\" || { echo \"✗ \$(basename \"\$p\") ne s applique plus\" >&2; exit 1; }; echo \"== \$(basename \"\$p\")\"; done
         [ -s eden.profdata ] || curl -fsSL -o eden.profdata https://github.com/Eden-CI/PGO/releases/latest/download/eden.profdata"
 
     FLAGS="-march=armv8-a -mtune=generic -O3 -pipe -fprofile-use=/root/eden/eden.profdata -Wno-backend-plugin -Wno-profile-instr-unprofiled -Wno-profile-instr-out-of-date"

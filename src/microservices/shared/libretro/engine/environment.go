@@ -122,6 +122,14 @@ func (e *Engine) environment(cmd uint32, data unsafe.Pointer) bool {
 	case 31: // GET_SAVE_DIRECTORY
 		*(*unsafe.Pointer)(data) = libretro.GetSaveDir()
 		return true
+	case 32: // SET_SYSTEM_AV_INFO — la cadence d'un jeu PAL que le cœur n'apprend qu'en le lançant (timing.go)
+		if data == nil {
+			return false
+		}
+		announced := libretro.SystemAVInfoAt(data)
+		e.setAspect(announced.Geometry, "SET_SYSTEM_AV_INFO")
+		e.noteTiming(announced.Timing)
+		return true
 	case 35: // SET_CONTROLLER_INFO — le cœur dit quelles manettes il sait faire
 		for _, controller := range libretro.ListControllerTypes(data) {
 			log.Printf("[engine] manette proposée par le cœur : %q (id=%d)", controller.Description, controller.ID)

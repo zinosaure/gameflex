@@ -57,7 +57,7 @@ files of that version.
 
 ## The Android app
 
-The app updates itself: on its home screen, **Update** › **Check for an update**. See [GameFlex on Android](android.md).
+The app updates itself: on its home screen, **About** › **Update** › **Check for an update**. It also checks on its own when it opens; an orange exclamation mark at the end of the **Update** line means a newer version is available. See [GameFlex on Android](android.md).
 
 ## If something goes wrong
 

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"gameflex/logfile"
 	"gameflex/sessionstatus"
 )
 
@@ -14,8 +15,8 @@ import (
 // La règle de la page est « l'hôte DÉCLARE, l'interface obéit »
 // (webapp, libs/capabilities.js). Le téléphone servait déjà sa déclaration ;
 // le serveur ne déclarait rien, la page gardait ses défauts, et montrait
-// l'interrupteur Chromecast et l'écran TURN alors qu'aucun des deux n'est
-// livré (#105 relevé le 2026-09-14, D5 ; route ajoutée le 2026-09-16).
+// l'interrupteur Chromecast alors qu'il n'est pas livré (#105 relevé le
+// 2026-09-14, D5 ; route ajoutée le 2026-09-16).
 //
 // Sans l'enveloppe {success, data} de writeJSON : la page lit `capabilities`
 // à la racine, comme chez le téléphone. Sans jeton : la page la lit avant la
@@ -60,18 +61,32 @@ func (server *Server) capabilities() map[string]any {
 		"appDownload": true,
 		// UN BANC D'ESSAI (GAMEFLEX_STAGING) : la page l'écrit à côté du nom.
 		"staging": server.config.Staging,
+		// LE NOM DE CE SERVEUR, celui que voient ses serveurs fédérés et la
+		// découverte du réseau local (chantier 60) : la fenêtre d'un code
+		// d'appairage le montre, pour qu'on vérifie le serveur qu'on vise.
+		"serverName": server.federationHostname(),
 		// LE STATUT DES JEUX SE RÈGLE ICI (chantier 30), comme sur le
 		// téléphone depuis #471.
 		"gameStatus": true,
+		// LES IMAGES DES JEUX (chantier 49) : ce serveur va les chercher chez
+		// IGDB et SteamGridDB, avec les comptes que l'administrateur saisit
+		// dans Réglages.
+		"metadataServices": true,
+		// CE QUI S'ÉCRIT DANS SES JOURNAUX SE RÈGLE DE LA PAGE
+		// (log_settings.go). Le téléphone le déclare aussi, pour le seul
+		// journal de son kernel.
+		"logSettings": true,
+		// LES SIGNALEMENTS S'ÉCRIVENT-ILS (Réglages › Journaux, log_settings.go) ?
+		// Lu à chaque demande : éteints, l'écran d'erreur d'un lancement ne
+		// propose plus « Signaler l'erreur ». Le téléphone ne le déclare pas :
+		// les siens s'écrivent toujours, la page le prend vrai par défaut.
+		"reports": logfile.Current().Reports,
 		// LE MIROIR (GAMEFLEX_MIRROR_URL, chantier 29) : un lien externe, que
 		// les écrans des émulateurs, des firmwares, des correctifs et des
 		// paramètres montrent. Vide : ils ne proposent rien.
 		"mirrorUrl": server.config.MirrorURL,
-		// PAS LIVRÉS dans la 0.3.0 : le Chromecast (#124), TURN (#117) et le
-		// bouton « Test » des manettes (#138).
-		"castToTv":    false,
-		"turnConfig":  false,
-		"gamepadTest": false,
+		// PAS LIVRÉ : le Chromecast (#124).
+		"castToTv": false,
 		// LES NOTIFICATIONS PUSH, REMISES (le porteur, 2026-10-15 : « push.js
 		// : il faut le remettre »). L'écran s'abonne pour de bon, et la clé
 		// VAPID du service d'identité survit à ses redémarrages.

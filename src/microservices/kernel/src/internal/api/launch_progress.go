@@ -65,10 +65,12 @@ const launchWaitingRooms = 64
 // renseignement qui n'a de sens que pour cette étape (le nom d'un cœur, une
 // géométrie), et Error la remplace quand l'étape a échoué.
 type launchStep struct {
-	Type      string `json:"type"`
-	Step      string `json:"step"`
-	Detail    string `json:"detail,omitempty"`
-	Error     string `json:"error,omitempty"`
+	Type   string `json:"type"`
+	Step   string `json:"step"`
+	Detail string `json:"detail,omitempty"`
+	Error  string `json:"error,omitempty"`
+	// ErrorCode — le code de l'échec, que la page traduit (chantier 59, P5) ; Error n'est que son message.
+	ErrorCode string `json:"errorCode,omitempty"`
 	SessionID string `json:"sessionId,omitempty"`
 	At        int64  `json:"at"`
 }
@@ -246,7 +248,7 @@ func (progress *launchProgress) publish(id, step, detail string) {
 }
 
 // fail annonce l'étape qui a échoué, et termine le lancement.
-func (progress *launchProgress) fail(id, step, reason string) {
+func (progress *launchProgress) fail(id, step, code, reason string) {
 	if id == "" {
 		return
 	}
@@ -254,7 +256,7 @@ func (progress *launchProgress) fail(id, step, reason string) {
 	progress.mu.Lock()
 	defer progress.mu.Unlock()
 
-	progress.send(id, launchStep{Type: "failed", Step: step, Error: reason})
+	progress.send(id, launchStep{Type: "failed", Step: step, Error: reason, ErrorCode: code})
 	progress.closeRoom(id)
 }
 
@@ -316,6 +318,7 @@ func (progress *launchProgress) settle(id string, status int, answer []byte) {
 	}
 
 	var body struct {
+		ErrorCode    string `json:"errorCode"`
 		ErrorMessage string `json:"errorMessage"`
 		Error        string `json:"error"`
 	}
@@ -337,7 +340,7 @@ func (progress *launchProgress) settle(id string, status int, answer []byte) {
 		reason = body.Error
 	}
 
-	progress.send(id, launchStep{Type: "failed", Step: step, Error: reason})
+	progress.send(id, launchStep{Type: "failed", Step: step, Error: reason, ErrorCode: codeOr(body.ErrorCode, "session_failed")})
 	progress.closeRoom(id)
 }
 

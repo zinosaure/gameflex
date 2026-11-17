@@ -28,6 +28,11 @@ type exception struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Detail      any    `json:"detail"`
+	// Code — le code du refus, que la page traduit (chantier 59, P5) ; Detail, en anglais, ne sert qu'aux journaux.
+	Code string `json:"code,omitempty"`
+	// Codes — un refus que la page traduit, une raison par code (le mot de
+	// passe d'une personne, chantier 55) ; Detail, en anglais, reste le repli.
+	Codes []string `json:"codes,omitempty"`
 }
 
 type pagination struct {
@@ -68,9 +73,11 @@ func respondItems(w http.ResponseWriter, statusCode int, items any, page paginat
 	})
 }
 
-// respondError mirrors HTTPException handling: name = HTTP status name,
-// description = its standard text, detail = the message the UI reads.
-func respondError(w http.ResponseWriter, statusCode int, detail string) {
+// respondErrorCode mirrors HTTPException handling: name = HTTP status name,
+// description = its standard text, code = what the page translates
+// (`kernelErrors.<code>`, chantier 59, P5), detail = the English message, for
+// the logs only. Every refusal carries a code: respondError is gone.
+func respondErrorCode(w http.ResponseWriter, statusCode int, code, detail string) {
 	name := strings.ToUpper(strings.ReplaceAll(http.StatusText(statusCode), " ", "_"))
 	if name == "" {
 		name = "INTERNAL_SERVER_ERROR"
@@ -82,6 +89,22 @@ func respondError(w http.ResponseWriter, statusCode int, detail string) {
 			Name:        name,
 			Description: http.StatusText(statusCode),
 			Detail:      detail,
+			Code:        code,
+		},
+	})
+}
+
+// respondPasswordRefused — 422, le mot de passe choisi ne suit pas la règle
+// (auth.PasswordRefusals) : chaque ligne manquée par son code.
+func respondPasswordRefused(w http.ResponseWriter, codes []string) {
+	writeJSON(w, http.StatusUnprocessableEntity, envelope{
+		At: nowStamp(), Code: http.StatusUnprocessableEntity, State: "failed",
+		Reference: "exception",
+		Exception: &exception{
+			Name:        "WEAK_PASSWORD",
+			Description: http.StatusText(http.StatusUnprocessableEntity),
+			Detail:      "The password must be 8 to 20 characters long, with an uppercase letter, a lowercase letter, a digit and a special character.",
+			Codes:       codes,
 		},
 	})
 }

@@ -16,5 +16,10 @@ import (
 func Refuse(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "errorMessage": message})
+	// Un code que la page traduit (chantier 59, P5) : 401, la session n'est plus valable ; 403, ce compte n'en a pas le droit.
+	code := "forbidden"
+	if status == http.StatusUnauthorized {
+		code = "auth_required"
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "errorCode": code, "errorMessage": message})
 }

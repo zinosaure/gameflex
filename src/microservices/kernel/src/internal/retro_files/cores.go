@@ -47,6 +47,11 @@ type CoreEntry struct {
 	// elle que les téléphones de ce serveur viennent prendre.
 	AndroidInstalled bool  `json:"androidInstalled,omitempty"`
 	AndroidSizeBytes int64 `json:"androidSizeBytes,omitempty"`
+	// Version — installé, ce qu'il est (chantier 53, #670) : la date du
+	// fichier d'un cœur, la part libre du nom d'un émulateur de console
+	// récente. Le kernel la pose (handleRetroCores) ; le listing ne la porte
+	// pas.
+	Version string `json:"version,omitempty"`
 }
 
 // CoreFileName — le nom de fichier d'un core libretro.

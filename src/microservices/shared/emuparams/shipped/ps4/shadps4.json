@@ -1,10 +1,10 @@
 {
   "enabled": true,
   "name": "PlayStation 4",
-  "description": "Settings of shadPS4, the PlayStation 4 emulator, followed by those of Box64, the translator that runs it on phones and other ARM devices. A server runs shadPS4 directly and ignores the Box64 settings.",
+  "description": "Settings of shadPS4, the PlayStation 4 emulator, then those of Box64, which only apply on phones and other ARM devices.",
   "translations": {
     "fr": {
-      "description": "Les réglages de shadPS4, l'émulateur de la PlayStation 4, puis ceux de Box64, le traducteur qui le fait tourner sur les téléphones et les autres appareils ARM. Un serveur lance shadPS4 directement et ignore les réglages de Box64."
+      "description": "Les réglages de shadPS4, l'émulateur de la PlayStation 4, puis ceux de Box64, qui ne servent que sur les téléphones et autres appareils ARM."
     }
   },
   "system": "shadPS4",
@@ -13,7 +13,7 @@
     "sound": {
       "type": "select",
       "label": "Sound",
-      "description": "Plays the game's sound, or nothing. When off, the emulator still decodes the audio but plays none of it, which is slightly lighter.",
+      "description": "Plays the game's sound, or none; off is only slightly lighter, as the emulator still decodes it.",
       "config": "Environment > SDL_AUDIO_DRIVER",
       "value": "auto",
       "options": {
@@ -23,7 +23,7 @@
       "translations": {
         "fr": {
           "label": "Son",
-          "description": "Joue le son du jeu, ou rien. Coupé, l'émulateur décode toujours le son mais n'en joue rien, ce qui est un peu plus léger.",
+          "description": "Joue le son du jeu, ou rien ; coupé n'est qu'un peu plus léger, car l'émulateur le décode toujours.",
           "options": {
             "auto": "Activé",
             "dummy": "Coupé"
@@ -34,20 +34,20 @@
     "pipelineCache": {
       "type": "switch",
       "label": "Pipeline cache",
-      "description": "Keeps the graphics pipelines each game compiles and reuses them at the next start instead of compiling them again: a shorter start, and fewer stutters the first time a scene appears. A game still compiles everything the first time it runs.",
+      "description": "Keeps the graphics pipelines each game compiles, for a shorter start and fewer first-time stutters from the next start on.",
       "config": "Vulkan > pipeline_cache_enabled",
       "value": true,
       "translations": {
         "fr": {
           "label": "Cache des pipelines",
-          "description": "Garde les pipelines graphiques compilés par chaque jeu et les réutilise au démarrage suivant au lieu de les compiler de nouveau : un démarrage plus court, et moins de saccades la première fois qu'une scène apparaît. Un jeu compile tout de même l'ensemble la première fois."
+          "description": "Garde les pipelines graphiques compilés par chaque jeu, pour un démarrage plus court et moins de saccades dès le démarrage suivant."
         }
       }
     },
     "renderHeight": {
       "type": "select",
       "label": "Render height (Unreal Engine)",
-      "description": "The height at which an Unreal Engine game draws its 3D scene, written to its saved configuration. The engine then scales the image up to its output, keeping menus and text sharp. Lower is faster and softer. Games made with other engines are not affected. Applied when the game starts.",
+      "description": "The height at which an Unreal Engine game draws its 3D scene, menus and text staying sharp; lower is faster and softer.",
       "config": "Environment > GAMEFLEX_UE_RENDER_HEIGHT",
       "value": "0",
       "options": {
@@ -59,7 +59,7 @@
       "translations": {
         "fr": {
           "label": "Hauteur de rendu (Unreal Engine)",
-          "description": "La hauteur à laquelle un jeu Unreal Engine dessine sa scène 3D, écrite dans sa configuration enregistrée. Le moteur agrandit ensuite l'image jusqu'à sa sortie, en gardant les menus et le texte nets. Plus bas, c'est plus rapide et moins net. Les jeux faits avec d'autres moteurs ne sont pas concernés. Appliqué au démarrage du jeu.",
+          "description": "La hauteur à laquelle un jeu Unreal Engine dessine sa scène 3D, menus et texte restant nets ; plus bas, c'est plus rapide et moins net.",
           "options": {
             "0": "Celle du jeu",
             "360": "360p (le plus rapide)"
@@ -70,7 +70,7 @@
     "readbacksMode": {
       "type": "select",
       "label": "GPU readbacks",
-      "description": "Whether the processor can read what the graphics processor has computed. Off is the fastest and suits most games; a game that needs it shows a black or broken picture without it, and its patch can turn it on. Precise is the slowest.",
+      "description": "Lets the processor read what the graphics processor computed; Off is the fastest and suits most games, Precise is the slowest.",
       "config": "GPU > readbacks_mode",
       "value": "0",
       "options": {
@@ -81,7 +81,7 @@
       "translations": {
         "fr": {
           "label": "Relectures du GPU",
-          "description": "Si le processeur peut relire ce que le processeur graphique a calculé. Désactivé est le plus rapide et convient à la plupart des jeux ; un jeu qui en a besoin affiche sans elles une image noire ou abîmée, et son correctif peut les activer. Précis est le plus lent.",
+          "description": "Permet au processeur de relire les calculs du processeur graphique ; Désactivées, le plus rapide, convient à la plupart des jeux, Précises est le plus lent.",
           "options": {
             "0": "Désactivées",
             "1": "Souples",
@@ -93,7 +93,7 @@
     "turnipDebug": {
       "type": "select",
       "label": "Adreno driver workaround (Turnip)",
-      "description": "Debug options of Turnip, the graphics driver of Adreno devices, which change how the driver renders to work around its bugs. Try one when a game's log ends with “Device lost”. They have no effect on other graphics processors.",
+      "description": "Debug options of Turnip, the Adreno graphics driver, that work around its rendering bugs; no effect with other drivers.",
       "config": "Environment > TU_DEBUG",
       "value": "auto",
       "options": {
@@ -110,7 +110,7 @@
       "translations": {
         "fr": {
           "label": "Contournement du pilote Adreno (Turnip)",
-          "description": "Des options de débogage de Turnip, le pilote graphique des appareils Adreno, qui changent sa façon de dessiner pour contourner ses défauts. Essayez-en une quand le journal d'un jeu se termine par « Device lost ». Elles n'ont aucun effet sur les autres processeurs graphiques.",
+          "description": "Des options de débogage de Turnip, le pilote graphique d'Adreno, qui contournent ses défauts de dessin ; sans effet avec les autres pilotes.",
           "options": {
             "auto": "Aucun",
             "sysmem": "sysmem — jamais de rendu en tuiles",
@@ -128,20 +128,20 @@
     "dynarec": {
       "type": "switch",
       "label": "Translator (DynaRec)",
-      "description": "Box64 translates the game's x86-64 code into ARM code. When off, it interprets the code instead: many times slower, but exact. Useful to tell a translation fault from a fault in the game itself.",
+      "description": "Translates the game's x86-64 code into ARM code; when off, Box64 interprets it instead: many times slower, but exact.",
       "config": "Environment > BOX64_DYNAREC",
       "value": true,
       "translations": {
         "fr": {
           "label": "Traducteur (DynaRec)",
-          "description": "Box64 traduit le code x86-64 du jeu en code ARM. Désactivé, il interprète le code à la place : bien plus lent, mais exact. Utile pour distinguer une erreur de traduction d'une erreur du jeu lui-même."
+          "description": "Traduit le code x86-64 du jeu en code ARM ; désactivé, Box64 l'interprète à la place : bien plus lent, mais exact."
         }
       }
     },
     "cpuType": {
       "type": "select",
       "label": "Processor shown to the game",
-      "description": "The processor Box64 reports to the emulator and the game. The PlayStation 4 has an AMD processor: reporting one avoids the instruction rewriting the emulator otherwise performs on every game, which makes games start much faster.",
+      "description": "The processor Box64 reports to the emulator and the game; AMD, as on the console, makes games start much faster.",
       "config": "Environment > BOX64_CPUTYPE",
       "value": "1",
       "options": {
@@ -151,7 +151,7 @@
       "translations": {
         "fr": {
           "label": "Processeur annoncé au jeu",
-          "description": "Le processeur que Box64 annonce à l'émulateur et au jeu. La PlayStation 4 a un processeur AMD : l'annoncer évite la réécriture d'instructions que l'émulateur ferait sinon sur chaque jeu, et les jeux démarrent bien plus vite.",
+          "description": "Le processeur que Box64 annonce à l'émulateur et au jeu ; AMD, comme sur la console, fait démarrer les jeux bien plus vite.",
           "options": {
             "0": "Intel (valeur par défaut de Box64)",
             "1": "AMD, comme la console"
@@ -162,20 +162,20 @@
     "trustShared": {
       "type": "switch",
       "label": "Game code in shared memory",
-      "description": "The emulator loads the game, its code included, into shared memory. By default Box64 checks every piece of that code each time it runs it, because it cannot see changes made through another view of the memory. When on, it protects that code like ordinary memory and checks it only after a change, which is much faster. PlayStation 4 games do not modify their own code.",
+      "description": "Protects the game's code in shared memory like ordinary memory, checked only after a change instead of at every run: much faster.",
       "config": "Environment > BOX64_DYNAREC_TRUSTSHARED",
       "value": true,
       "translations": {
         "fr": {
           "label": "Code du jeu en mémoire partagée",
-          "description": "L'émulateur charge le jeu, code compris, en mémoire partagée. Par défaut, Box64 vérifie chaque morceau de ce code à chaque exécution, car il ne voit pas les modifications faites par une autre vue de cette mémoire. Activé, il protège ce code comme de la mémoire ordinaire et ne le vérifie qu'après une modification, ce qui est bien plus rapide. Les jeux PlayStation 4 ne modifient pas leur propre code."
+          "description": "Protège le code du jeu en mémoire partagée comme de la mémoire ordinaire, vérifié après une modification et non à chaque exécution : bien plus rapide."
         }
       }
     },
     "strongMemory": {
       "type": "select",
       "label": "Memory ordering",
-      "description": "How strictly the translator keeps the x86 memory ordering, which ARM processors relax. Stricter is slower; “Strong” usually fixes a program whose threads misbehave.",
+      "description": "How strictly the translator keeps the x86 memory ordering; stricter is slower, and “Strong” usually fixes threads that misbehave.",
       "config": "Environment > BOX64_DYNAREC_STRONGMEM",
       "value": "0",
       "options": {
@@ -187,7 +187,7 @@
       "translations": {
         "fr": {
           "label": "Ordre des accès mémoire",
-          "description": "Avec quelle rigueur le traducteur respecte l'ordre des accès mémoire du x86, que les processeurs ARM assouplissent. Plus strict, c'est plus lent ; « Fort » corrige en général un programme dont les fils se comportent mal.",
+          "description": "La rigueur avec laquelle le traducteur garde l'ordre des accès mémoire du x86 ; plus strict est plus lent, « Fort » corrige en général des fils déréglés.",
           "options": {
             "0": "Natif (le plus rapide)",
             "1": "Léger",
@@ -200,7 +200,7 @@
     "safeFlags": {
       "type": "select",
       "label": "Flags safety",
-      "description": "How carefully the translator keeps the x86 processor flags across calls and returns. Safer is slightly slower. This emulator needs “Safest”: with less, some games compare memory wrongly and stop at their start.",
+      "description": "How carefully the translator keeps the x86 flags across calls and returns; this emulator needs “Safest”, or some games stop at their start.",
       "config": "Environment > BOX64_DYNAREC_SAFEFLAGS",
       "value": "2",
       "options": {
@@ -211,7 +211,7 @@
       "translations": {
         "fr": {
           "label": "Sûreté des drapeaux",
-          "description": "Avec quel soin le traducteur conserve les drapeaux du processeur x86 lors des appels et des retours. Plus sûr, c'est un peu plus lent. Cet émulateur a besoin de « Le plus sûr » : sinon, certains jeux comparent mal leur mémoire et s'arrêtent au démarrage.",
+          "description": "Le soin avec lequel le traducteur garde les drapeaux x86 aux appels et retours ; cet émulateur demande « Le plus sûr », sinon des jeux s'arrêtent au départ.",
           "options": {
             "0": "Le plus rapide",
             "1": "Valeur par défaut de Box64",
@@ -223,7 +223,7 @@
     "bigBlock": {
       "type": "select",
       "label": "Block size",
-      "description": "How much code the translator handles in one block. Larger blocks are faster; smaller ones follow the x86 code more closely.",
+      "description": "How much code the translator handles in one block; larger is faster, smaller follows the x86 code more closely.",
       "config": "Environment > BOX64_DYNAREC_BIGBLOCK",
       "value": "2",
       "options": {
@@ -235,7 +235,7 @@
       "translations": {
         "fr": {
           "label": "Taille des blocs",
-          "description": "La quantité de code que le traducteur traite en un bloc. Des blocs plus grands sont plus rapides ; des blocs plus petits suivent le code x86 de plus près.",
+          "description": "La quantité de code que le traducteur traite en un bloc ; plus grand est plus rapide, plus petit suit le code x86 de plus près.",
           "options": {
             "0": "La plus petite",
             "1": "Petite",
@@ -248,7 +248,7 @@
     "callRet": {
       "type": "select",
       "label": "Call/return optimisation",
-      "description": "Changes how the translator handles x86 call and return instructions. Off is the safest, and games start noticeably faster with it off.",
+      "description": "Changes how the translator handles x86 calls and returns; Off is the safest, and games start noticeably faster with it.",
       "config": "Environment > BOX64_DYNAREC_CALLRET",
       "value": "0",
       "options": {
@@ -260,7 +260,7 @@
       "translations": {
         "fr": {
           "label": "Optimisation des appels et retours",
-          "description": "Change la façon dont le traducteur gère les instructions d'appel et de retour du x86. Désactivée est le plus sûr, et les jeux démarrent nettement plus vite ainsi.",
+          "description": "Change la façon dont le traducteur gère les appels et retours du x86 ; Désactivée est le plus sûr, et les jeux démarrent nettement plus vite ainsi.",
           "options": {
             "0": "Désactivée",
             "1": "De base",
@@ -273,13 +273,13 @@
     "fastNaN": {
       "type": "switch",
       "label": "Fast NaN",
-      "description": "Skips the exact handling of NaN (not-a-number) values in floating-point maths. Faster; turn it off if a game shows wrong values or graphical glitches.",
+      "description": "Skips the exact handling of NaN (not-a-number) values: faster, but turn it off if a game shows wrong values or glitches.",
       "config": "Environment > BOX64_DYNAREC_FASTNAN",
       "value": true,
       "translations": {
         "fr": {
           "label": "NaN rapides",
-          "description": "Ignore le traitement exact des valeurs NaN (« pas un nombre ») dans les calculs à virgule flottante. Plus rapide ; désactivez-le si un jeu affiche des valeurs fausses ou des défauts graphiques."
+          "description": "Ignore le traitement exact des valeurs NaN (« pas un nombre ») : plus rapide, mais désactivez-le si un jeu affiche des valeurs fausses ou des défauts."
         }
       }
     },
@@ -309,7 +309,7 @@
     "x87Double": {
       "type": "select",
       "label": "x87 precision",
-      "description": "The precision of the x87 floating-point unit, used by older code. Native is the fastest.",
+      "description": "The precision of the x87 floating-point unit, used by older code; Native is the fastest.",
       "config": "Environment > BOX64_DYNAREC_X87DOUBLE",
       "value": "0",
       "options": {
@@ -320,7 +320,7 @@
       "translations": {
         "fr": {
           "label": "Précision x87",
-          "description": "La précision de l'unité de calcul à virgule flottante x87, utilisée par du code ancien. Natif est le plus rapide.",
+          "description": "La précision de l'unité de calcul à virgule flottante x87, utilisée par du code ancien ; Natif est le plus rapide.",
           "options": {
             "0": "Natif (le plus rapide)",
             "1": "Double",
@@ -332,39 +332,39 @@
     "alignedAtomics": {
       "type": "switch",
       "label": "Aligned atomics",
-      "description": "Assumes that atomic operations are aligned in memory. Faster, but a program that does not align them can crash. Off by default.",
+      "description": "Assumes atomic operations are aligned in memory: faster, but a program that does not align them can crash.",
       "config": "Environment > BOX64_DYNAREC_ALIGNED_ATOMICS",
       "value": false,
       "translations": {
         "fr": {
           "label": "Opérations atomiques alignées",
-          "description": "Suppose que les opérations atomiques sont alignées en mémoire. Plus rapide, mais un programme qui ne les aligne pas peut planter. Désactivé par défaut."
+          "description": "Suppose les opérations atomiques alignées en mémoire : plus rapide, mais un programme qui ne les aligne pas peut planter."
         }
       }
     },
     "nativeFlags": {
       "type": "switch",
       "label": "Native flags",
-      "description": "Computes the x86 flags with the ARM processor's own. Faster; when off, slower but exact.",
+      "description": "Computes the x86 flags with the ARM processor's own: faster; when off, slower but exact.",
       "config": "Environment > BOX64_DYNAREC_NATIVEFLAGS",
       "value": true,
       "translations": {
         "fr": {
           "label": "Drapeaux natifs",
-          "description": "Calcule les drapeaux x86 avec ceux du processeur ARM. Plus rapide ; désactivé, plus lent mais exact."
+          "description": "Calcule les drapeaux x86 avec ceux du processeur ARM : plus rapide ; désactivé, plus lent mais exact."
         }
       }
     },
     "selfTest": {
       "type": "switch",
       "label": "Translator self-test",
-      "description": "Also runs every instruction through the interpreter and reports the first difference. Extremely slow: for diagnosing problems only.",
+      "description": "Also runs every instruction through the interpreter and reports the first difference: extremely slow, for diagnosis only.",
       "config": "Environment > BOX64_DYNAREC_TEST",
       "value": false,
       "translations": {
         "fr": {
           "label": "Autotest du traducteur",
-          "description": "Fait aussi passer chaque instruction par l'interpréteur et signale la première différence. Extrêmement lent : uniquement pour diagnostiquer un problème."
+          "description": "Fait aussi passer chaque instruction par l'interpréteur et signale la première différence : extrêmement lent, pour un diagnostic seulement."
         }
       }
     },

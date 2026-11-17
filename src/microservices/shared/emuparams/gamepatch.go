@@ -10,8 +10,8 @@ package emuparams
 // fédération, le miroir. Rien ici ne parcourt de liste : un lancement lit le seul
 // fichier de son jeu. Sans lui, le jeu suit la fiche de l'émulateur et son moteur.
 //
-// L'identifiant (CUSA…, PPSA…), chaque lanceur le lit au jeu
-// (storage.GameTitleID) : un nom de dossier change d'un joueur à l'autre.
+// L'identifiant (CUSA…, PPSA…, 0100D1B006744000 pour la Switch), chaque lanceur le
+// lit au jeu (storage.GameTitleID) : un nom de dossier change d'un joueur à l'autre.
 
 import (
 	"encoding/json"
@@ -26,8 +26,9 @@ import (
 // gamePatchFile — le fichier d'un correctif qui porte des réglages.
 const gamePatchFile = "settings.json"
 
-// gamePattern — la forme d'un identifiant : il devient un nom de dossier.
-var gamePattern = regexp.MustCompile(`^[A-Z]{4}[0-9]{5}$`)
+// gamePattern — la forme d'un identifiant : il devient un nom de dossier. Celui
+// d'un jeu PlayStation, ou les 16 chiffres hexadécimaux d'un titre Switch.
+var gamePattern = regexp.MustCompile(`^(?:[A-Z]{4}[0-9]{5}|[0-9A-F]{16})$`)
 
 func validGame(game string) bool { return gamePattern.MatchString(game) }
 

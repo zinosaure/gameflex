@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect, useId } from "react";
 import * as bs from "react-bootstrap";
+import { useTranslation } from "react-i18next";
 
 
 function uuidv4() {
@@ -596,6 +597,12 @@ Form.Password.StrengthEvaluation = function ({ name, following, context, accepta
 };
 
 Form.Calendar = function ({ name, context, minDate = null, maxDate = null, isRange = false, selectedDates = [null, null], children = null }) {
+    // LA LANGUE DE L'APPLICATION (i18next), jamais celle du navigateur : les mois, les jours de la semaine et la date
+    // choisie la suivent — la webapp n'utilise pas la langue du navigateur comme signal (i18n/index.js), le launcher
+    // a son propre choix. Sans jour choisi : « Aucun jour choisi » (form.noDate, une clé du launcher), là où
+    // s'écrivait « ??? ».
+    const { t, i18n } = useTranslation();
+    const locale = i18n.language || 'en';
     let ruleset = Ruleset.fallback();
 
     if (context?.rulesets?.[name]) {
@@ -626,8 +633,11 @@ Form.Calendar = function ({ name, context, minDate = null, maxDate = null, isRan
         maxDate = new Date();
     }
 
-    const months = Array.from({ length: 12 }, (_, i) => new Date(0, i).toLocaleString(navigator.language, { month: 'long' }));
-    const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2021, 0, i + 3).toLocaleString(navigator.language, { weekday: 'narrow' }));
+    const months = Array.from({ length: 12 }, (_, i) => new Date(0, i).toLocaleString(locale, { month: 'long' }));
+    const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2021, 0, i + 3).toLocaleString(locale, { weekday: 'narrow' }));
+    // La majuscule à la phrase, pas à chaque mot (« Mardi 3 novembre 2026 ») : `text-transform: capitalize` écrivait
+    // « Novembre » en français.
+    const capitalized = (text) => text.charAt(0).toUpperCase() + text.slice(1);
     const formatDate = (yyyy, mm, dd) => `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
     const dateOf = (yyyy, mm, week, weekday) => {
         const firstDayOfMonth = new Date(yyyy, mm - 1, 1).getDay();
@@ -848,7 +858,6 @@ Form.Calendar = function ({ name, context, minDate = null, maxDate = null, isRan
                     style={{
                         display: 'block',
                         color: 'var(--bs-secondary-color)',
-                        textTransform: 'capitalize',
                         cursor: context?.values?.[name] ? 'pointer' : 'default',
                     }}
                     onClick={() => {
@@ -864,7 +873,7 @@ Form.Calendar = function ({ name, context, minDate = null, maxDate = null, isRan
                     }}
                 >
                     <i className="bi bi-calendar me-2"></i>
-                    <b>{context?.values?.[name] ? new Date(context.values[name]).toLocaleDateString(navigator.language, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '???'}</b>
+                    <b>{context?.values?.[name] ? capitalized(new Date(context.values[name]).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })) : t('form.noDate')}</b>
                 </span>
                 <span
                     style={{

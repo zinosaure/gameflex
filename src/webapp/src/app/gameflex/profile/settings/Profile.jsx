@@ -51,7 +51,6 @@ export default function Profile({ context, user, token, t }) {
     // "Nothing changed" is a plain comparison, not a ruleset: an untouched
     // field isn't INVALID, and marking it so put a red border and an error
     // tooltip on your own perfectly good name every time the page loaded.
-    // Same approach as admin/TurnConfig.jsx and admin/Storage.jsx.
     const isReplaced = values.display_name !== (user?.display_name || "");
 
     return (

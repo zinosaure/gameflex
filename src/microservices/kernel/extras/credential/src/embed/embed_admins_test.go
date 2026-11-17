@@ -64,11 +64,15 @@ func TestTheOwnerIsTheAdministratorRootCreates(t *testing.T) {
 	if name, role, _ := service.Owner(); name != "root" || role != auth.RoleRoot {
 		t.Fatalf("propriétaire = %s (%d), attendu root avant tout administrateur", name, role)
 	}
+	// La page « Compte root » : root, aucun administrateur, aucun joueur.
+	if rootName, admins, players, err := service.Accounts(); err != nil || rootName != "root" || admins != 0 || players != 0 {
+		t.Fatalf("comptes = %s %d %d (%v), attendu root 0 0", rootName, admins, players, err)
+	}
 
 	// Root crée le compte administrateur : le propriétaire, désormais.
 	root := login(t, service, "root", "mot-de-passe-du-porteur")
 	if created := call(t, service, http.MethodPost, "/api/v1/users", root, map[string]any{
-		"username": "gino", "password": "un-mot-de-passe-long", "role_level": auth.RoleAdmin,
+		"username": "gino", "role_level": auth.RoleAdmin,
 	}); created.Code != http.StatusCreated {
 		t.Fatalf("créer l'administrateur = %d %s", created.Code, created.Body.String())
 	}
@@ -79,12 +83,21 @@ func TestTheOwnerIsTheAdministratorRootCreates(t *testing.T) {
 	// Un second administrateur reste possible, comme sur un serveur ; le
 	// propriétaire reste le premier.
 	if second := call(t, service, http.MethodPost, "/api/v1/users", root, map[string]any{
-		"username": "lea", "password": "un-mot-de-passe-long", "role_level": auth.RoleAdmin,
+		"username": "lea", "role_level": auth.RoleAdmin,
 	}); second.Code != http.StatusCreated {
 		t.Fatalf("créer un second administrateur = %d %s", second.Code, second.Body.String())
 	}
 	if name, _, _ := service.Owner(); name != "gino" {
 		t.Fatalf("propriétaire = %s après un second administrateur, attendu gino", name)
+	}
+	// Un joueur ; root ne compte ni parmi les administrateurs ni parmi les joueurs.
+	if player := call(t, service, http.MethodPost, "/api/v1/users", root, map[string]any{
+		"username": "max", "role_level": auth.RoleUser,
+	}); player.Code != http.StatusCreated {
+		t.Fatalf("créer un joueur = %d %s", player.Code, player.Body.String())
+	}
+	if _, admins, players, err := service.Accounts(); err != nil || admins != 2 || players != 1 {
+		t.Fatalf("comptes = %d administrateurs, %d joueurs (%v), attendu 2 et 1", admins, players, err)
 	}
 
 	// Rouvrir l'annuaire ne rétrograde personne.

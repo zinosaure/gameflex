@@ -412,12 +412,21 @@ class RemoteplayInputService {
 		this.suspended = suspended;
 	}
 
+	// LE CANAL D'ABORD, LE SOCKET EN REPLI (#710, 2026-11-14). Le DataChannel du
+	// gateway porte l'entrée ; quand il n'est pas (encore, ou plus) ouvert,
+	// `sendMessage` rend false — et l'entrée se perdait ici sans un mot, le
+	// WebSocket ouvert à côté. C'est la leçon de streamex du 2026-09-07, écrite
+	// dans GatewayWebRTC.jsx et jamais appliquée ici. Le socket passe par la
+	// même garde que le canal au serveur (la file v4, ensureInputControl) : le
+	// repli ne donne la manette à personne d'autre.
+	//
+	// Ce fichier est un des 37 qu'edge lit dans la webapp : il passe tel quel
+	// dans son arbre à la bascule (chantier 56, P5).
 	_sendController(message) {
 		if (this.suspended) {
 			return;
 		}
-		if (this.gatewayInputSender) {
-			this.gatewayInputSender.send(message);
+		if (this.gatewayInputSender && this.gatewayInputSender.send(message) === true) {
 			return;
 		}
 		if (!this.isSocketOpen() || !this.sessionId) return;

@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"gameflex/kernel/internal/retro_files"
+	"gameflex/storage"
 	"gameflex/storage/listing"
 )
 
@@ -119,7 +120,7 @@ func TestLesJeuxDUnPairSeListentConsoleParConsole(t *testing.T) {
 
 	list := func(serverID, query string) (int, []retro_files.RomEntry) {
 		response := httptest.NewRecorder()
-		server.servePeerRoms(response, serverID, "nes", query)
+		server.servePeerRoms(context.Background(), response, serverID, "nes", query)
 		var payload struct {
 			Data []retro_files.RomEntry `json:"data"`
 		}
@@ -162,7 +163,7 @@ func TestUnRefusSeDitAutrementQuUnPairEteint(t *testing.T) {
 	server.peerCopies.Every = time.Nanosecond
 
 	response := httptest.NewRecorder()
-	server.servePeerRoms(response, "3", "nes", "")
+	server.servePeerRoms(context.Background(), response, "3", "nes", "")
 	if response.Code != http.StatusForbidden {
 		t.Errorf("un pair qui refuse = %d, attendu 403", response.Code)
 	}
@@ -176,14 +177,14 @@ func TestUnRefusSeDitAutrementQuUnPairEteint(t *testing.T) {
 		t.Fatalf("l'icône, une fois l'accès accordé = %d %s", rescan.Code, rescan.Body.String())
 	}
 	response = httptest.NewRecorder()
-	server.servePeerRoms(response, "3", "nes", "")
+	server.servePeerRoms(context.Background(), response, "3", "nes", "")
 	if response.Code != http.StatusOK {
 		t.Errorf("le même pair, une fois l'accès accordé = %d, attendu 200", response.Code)
 	}
 
 	peer.Close()
 	response = httptest.NewRecorder()
-	server.servePeerRoms(response, "3", "nes", "")
+	server.servePeerRoms(context.Background(), response, "3", "nes", "")
 	if response.Code != http.StatusBadGateway {
 		t.Errorf("un pair éteint = %d, attendu 502", response.Code)
 	}
@@ -301,6 +302,22 @@ func TestLesEcransDUnAmiLisentSaCopie(t *testing.T) {
 		known.Data[0].Listing.UpdatedAt.IsZero() {
 		t.Fatalf("serveurs connus = %+v", known.Data)
 	}
+
+	// SES JEUX PAR CONSOLE, tels que sa copie les compte (2026-11-15) : la
+	// bibliothèque d'une console réunit ceux d'ici et les siens, et son bouton
+	// « Bibliothèque (N) » les compte sans lire leurs listes. Lu en brut : une
+	// structure typée ne verrait pas qu'un champ manque.
+	var counted struct {
+		Data []struct {
+			Listing struct {
+				Consoles map[string]int `json:"consoles"`
+			} `json:"listing"`
+		} `json:"data"`
+	}
+	read("/servers", &counted)
+	if len(counted.Data) != 1 || counted.Data[0].Listing.Consoles["ps1"] != 1 || len(counted.Data[0].Listing.Consoles) != 1 {
+		t.Fatalf("jeux de l'ami par console = %+v", counted.Data)
+	}
 }
 
 // UN JEU FÉDÉRÉ SE TÉLÉCHARGE PAR LE KERNEL (chantier 14). Le ticket s'émet
@@ -394,5 +411,69 @@ func TestLeListingSeSertAvecCeQueLeJetonOuvre(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &updated); err != nil ||
 		!updated.Data.UpdatedAt.Equal(served.Data.Header.UpdatedAt) || len(updated.Data.Scopes) != 2 {
 		t.Fatalf("date = %d %s", response.Code, response.Body.String())
+	}
+}
+
+// UN JEU D'UN PAIR QUI EST DÉJÀ ICI LE DIT (chantier 53, #674) : le même
+// identifiant que celui de la bibliothèque ; les autres non.
+func TestAPeerGameAlreadyHereIsMarked(t *testing.T) {
+	zelda := storage.RomID("nes", "Zelda.nes")
+	peer := newFakePeer(t, "ami", map[string][]listing.Item{
+		"nes": {{ID: zelda, Name: "Zelda", Files: []string{"Zelda.nes"}}, {ID: "uuid-m", Name: "Metroid"}},
+	}, nil)
+	defer peer.Close()
+	server := serverWithPeer(t, peer)
+	local, _ := listingServer(t, "roms/nes/Zelda.nes")
+	server.storageRoot = local.storageRoot
+
+	response := httptest.NewRecorder()
+	server.servePeerRoms(context.Background(), response, "3", "nes", "")
+	var listed struct {
+		Data []retro_files.RomEntry `json:"data"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &listed); err != nil || len(listed.Data) != 2 {
+		t.Fatalf("liste : %d %s", response.Code, response.Body.String())
+	}
+	for _, rom := range listed.Data {
+		if want := rom.Title == "Zelda"; rom.Here != want {
+			t.Errorf("%s : déjà ici = %v, attendu %v", rom.Title, rom.Here, want)
+		}
+	}
+}
+
+// LES DISQUES D'UN JEU D'UN AMI SONT UN JEU AUSSI (chantier 57, `#716`) : la
+// liste d'un serveur fédéré les groupe comme celle d'ici, par leurs noms.
+func TestAPeerListingGroupsItsDiscs(t *testing.T) {
+	peer := newFakePeer(t, "ami", map[string][]listing.Item{"ps1": {
+		{ID: "uuid-2", Name: "Final Fantasy IX [F] [Disc2of4][SLES-12966]"},
+		{ID: "uuid-1", Name: "Final Fantasy IX [F] [Disc1of4][SLES-02966]"},
+		{ID: "uuid-4", Name: "Final Fantasy IX [F] [Disc4of4][SLES-32966]"},
+		{ID: "uuid-3", Name: "Final Fantasy IX [F] [Disc3of4][SLES-22966]"},
+		{ID: "uuid-t", Name: "Tekken 3 [E] [SCES-01237]"},
+	}}, nil)
+	server := serverWithPeer(t, peer)
+
+	response := httptest.NewRecorder()
+	server.servePeerRoms(context.Background(), response, "3", "ps1", "")
+	var payload struct {
+		Data []map[string]any `json:"data"`
+	}
+	_ = json.NewDecoder(response.Body).Decode(&payload)
+	if response.Code != http.StatusOK || len(payload.Data) != 5 {
+		t.Fatalf("liste = %d, %v", response.Code, payload.Data)
+	}
+
+	for _, rom := range payload.Data {
+		if rom["reference"] == "srv3:uuid-t" {
+			if rom["discGroup"] != nil || rom["series"] != "Tekken" {
+				t.Errorf("Tekken 3 : %v", rom)
+			}
+
+			continue
+		}
+		disc := float64(rom["reference"].(string)[len("srv3:uuid-")] - '0')
+		if rom["discGroup"] != "Final Fantasy IX [F]" || rom["disc"] != disc || rom["discCount"] != float64(4) || rom["series"] != "Final Fantasy" {
+			t.Errorf("FF IX, disque %v : %v", disc, rom)
+		}
 	}
 }

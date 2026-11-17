@@ -41,7 +41,7 @@ l'appareil *a fortiori*, GPU et vitesse exceptés.
 
 ## Ce qui n'est PAS versionné, et d'où ça vient
 
-Des binaires étrangers, sous leurs propres licences, servis à l'appareil par la webapp (son
+Des binaires étrangers, sous leurs propres licences, servis à l'appareil par edge (son
 dossier `downloads/`) ou posés dans `jniLibs/` (git-ignoré) :
 
 - **`jniLibs/<abi>/libglibcloader.so`** — le chargeur glibc de Debian forky (`ld-linux-aarch64.so.1`

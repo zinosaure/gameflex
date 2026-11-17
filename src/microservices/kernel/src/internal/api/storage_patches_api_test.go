@@ -69,6 +69,10 @@ func lendingPeer(t *testing.T) *httptest.Server {
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": served})
 		case "/api/v1/federation/listing/updated":
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"updatedAt": at}})
+		case "/api/v1/federation/params/ps3/rpcs3":
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
+				"name": "rpcs3", "system": "PS3", "values": map[string]any{"spuBlockSize": "Mega"},
+			}})
 		case "/api/v1/federation/params/ps3/rpcs3/presets/hd-perso":
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
 				"name": "HD perso", "system": "PS3", "values": map[string]any{"spuBlockSize": "Giga", "inconnu": 1},
@@ -189,9 +193,11 @@ func TestLeCorrectifDUnAmiSeRapatrie(t *testing.T) {
 	}
 }
 
-// LES PARAMÈTRES PRÊTÉS (chantier 15) : un préréglage perso d'ici se prête ;
-// celui d'un ami s'importe sous `<serveur>-<préréglage>`, une fois.
-func TestUnReglageSePreteEtSImporteSousLeNomDuServeur(t *testing.T) {
+// LES PARAMÈTRES PRÊTÉS (chantier 15, puis chantier 53) : un préréglage perso
+// d'ici se prête ; ce qu'un ami prête se lit d'ici AVEC SES VALEURS, passées par
+// les paramètres d'ici — un préréglage de plus pour le formulaire, qui n'écrit
+// rien —, et ne s'importe plus.
+func TestUnReglagePreteSeLitAvecSesValeursEtNeSImportePlus(t *testing.T) {
 	server, _ := listingServer(t)
 	rpcs3 := emuparams.Ref{ConsoleID: "ps3", Emulator: "rpcs3"}
 	if _, err := paramsStore().Save(rpcs3, "PlayStation 3", nil, map[string]any{"spuBlockSize": "Giga"}, "Mon réglage", nil); err != nil {
@@ -220,26 +226,55 @@ func TestUnReglageSePreteEtSImporteSousLeNomDuServeur(t *testing.T) {
 	borrowing := chi.NewRouter()
 	borrowing.Post("/servers/{id}/storage/{section}", borrower.handleRemoteStorageImport)
 	borrowing.Get("/servers/{id}/storage/params", borrower.handleRemoteStorageParams)
-	importing := func() *httptest.ResponseRecorder {
+	read := func(query string) []lentPreset {
+		t.Helper()
 		response := httptest.NewRecorder()
-		borrowing.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/servers/3/storage/params",
-			strings.NewReader(`{"consoleId":"ps3","emulator":"rpcs3","preset":"hd-perso"}`)))
+		borrowing.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/servers/3/storage/params"+query, nil))
+		var answer struct {
+			Data struct {
+				Consoles []struct {
+					ConsoleID string       `json:"consoleId"`
+					Items     []lentPreset `json:"items"`
+				} `json:"consoles"`
+			} `json:"data"`
+		}
+		if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &answer) != nil {
+			t.Fatalf("ce qu'il prête = %d %s", response.Code, response.Body.String())
+		}
+		items := []lentPreset{}
+		for _, section := range answer.Data.Consoles {
+			items = append(items, section.Items...)
+		}
 
-		return response
+		return items
 	}
 
-	response := importing()
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"preset":"ami-hd-perso"`) ||
-		!strings.Contains(response.Body.String(), `"inconnu"`) {
-		t.Fatalf("importé = %d %s", response.Code, response.Body.String())
+	items := read("?console=ps3&emulator=rpcs3")
+	if len(items) != 2 {
+		t.Fatalf("ses deux prêts (ses valeurs, son préréglage) = %+v", items)
 	}
-	if again := importing(); again.Code != http.StatusConflict {
-		t.Fatalf("une seconde fois = %d, attendu 409", again.Code)
+	values, preset := items[0], items[1]
+	if values.Preset != "" || values.Name != "rpcs3" || values.Values["spuBlockSize"] != "Mega" || values.Error != "" {
+		t.Fatalf("ses valeurs = %+v", values)
 	}
-	offers := httptest.NewRecorder()
-	borrowing.ServeHTTP(offers, httptest.NewRequest(http.MethodGet, "/servers/3/storage/params", nil))
-	if !strings.Contains(offers.Body.String(), `"as":"ami-hd-perso","installed":true`) ||
-		!strings.Contains(offers.Body.String(), `"as":"ami","installed":false`) {
-		t.Fatalf("ce qu'il prête, vu d'ici = %s", offers.Body.String())
+	if preset.Preset != "hd-perso" || preset.Name != "HD perso" || preset.Values["spuBlockSize"] != "Giga" ||
+		len(preset.Values) != 1 || len(preset.Ignored) != 1 || preset.Ignored[0] != "inconnu" {
+		t.Fatalf("son préréglage, passé par les paramètres d'ici = %+v", preset)
+	}
+	if others := read("?console=ps3&emulator=autre"); len(others) != 0 {
+		t.Fatalf("un autre émulateur = %+v, attendu rien", others)
+	}
+	if all := read(""); len(all) != 2 {
+		t.Fatalf("sans filtre = %+v", all)
+	}
+	if written, _ := filepath.Glob(filepath.Join(paramsRoot, "params", "ps3", "presets", "ami*")); len(written) != 0 {
+		t.Fatalf("lire ce qu'il prête a écrit %v", written)
+	}
+
+	response := httptest.NewRecorder()
+	borrowing.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/servers/3/storage/params",
+		strings.NewReader(`{"consoleId":"ps3","emulator":"rpcs3","preset":"hd-perso"}`)))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("importer ses paramètres = %d %s, attendu 400", response.Code, response.Body.String())
 	}
 }

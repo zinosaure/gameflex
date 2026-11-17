@@ -142,9 +142,27 @@ var (
 	open   = map[*Conn]struct{}{}
 )
 
-// Close ferme les connexions que `match` désigne, par leur nom et le jeton de
-// leur poignée de main. Rend leur nombre.
-func Close(match func(username, token string) bool) int {
+// POURQUOI UNE CONNEXION SE FERME, dit à la page par le code de sa trame de
+// fermeture (chantier 55). Sans trame, elle voyait une 1006, comme une coupure du
+// réseau, et se reconnectait — ou se déconnectait à son prochain appel au kernel,
+// pas tout de suite.
+const (
+	// SessionEnded — 1008 : la session est finie (un compte supprimé,
+	// réinitialisé, ses sessions coupées, un jeton de compte retiré). La page
+	// vérifie son jeton (/auth/me) : refusé, elle revient à la connexion ; neuf
+	// (l'appareil qui a coupé les autres), elle se reconnecte.
+	SessionEnded = websocket.ClosePolicyViolation
+	// Reconnect — 1000 : une fermeture ordinaire ; la page se reconnecte (un
+	// administrateur rétrogradé revient avec son nouveau rang).
+	Reconnect = websocket.CloseNormalClosure
+)
+
+// Close ferme, avec ce code (SessionEnded, Reconnect), les connexions que `match`
+// désigne par leur nom et le jeton de leur poignée de main. Rend leur nombre.
+//
+// La trame part par WriteControl, que gorilla permet à côté de l'écrivain
+// unique de la connexion (writeLoop).
+func Close(code int, match func(username, token string) bool) int {
 	openMu.Lock()
 	victims := []*Conn{}
 	for conn := range open {
@@ -155,6 +173,7 @@ func Close(match func(username, token string) bool) int {
 	openMu.Unlock()
 
 	for _, conn := range victims {
+		_ = conn.socket.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(code, ""), time.Now().Add(writeWait))
 		conn.cancel()
 		conn.socket.Close()
 	}
@@ -302,7 +321,7 @@ func (conn *Conn) dispatch(request Request) {
 	default:
 		command, known := conn.router.Commands[request.Type]
 		if !known {
-			conn.Reply(request.ID, http.StatusBadRequest, ErrorBody("unknown message type: "+request.Type))
+			conn.Reply(request.ID, http.StatusBadRequest, ErrorBody("not_served", "unknown message type: "+request.Type))
 
 			return
 		}
@@ -314,14 +333,14 @@ func (conn *Conn) dispatch(request Request) {
 func (conn *Conn) subscribe(request Request) {
 	var wanted Subscription
 	if json.Unmarshal(request.Data, &wanted) != nil || wanted.Topic == "" {
-		conn.Reply(request.ID, http.StatusBadRequest, ErrorBody("missing topic"))
+		conn.Reply(request.ID, http.StatusBadRequest, ErrorBody("bad_request", "missing topic"))
 
 		return
 	}
 
 	run, status, reason := conn.router.Topic(conn, wanted)
 	if run == nil {
-		conn.Reply(request.ID, status, ErrorBody(reason))
+		conn.Reply(request.ID, status, ErrorBody("forbidden", reason))
 
 		return
 	}
@@ -445,9 +464,16 @@ func Pace(milliseconds int) time.Duration {
 // créée — elle naît quand même, apparaît dans « Mes sessions », et s'éteint
 // seule si personne ne la reprend.
 func Call(conn *Conn, handler http.Handler, method, path string, body []byte, values map[string]string) (int, []byte) {
-	request, err := http.NewRequestWithContext(context.WithoutCancel(conn.ctx), method, path, bytes.NewReader(body))
+	return CallContext(context.WithoutCancel(conn.ctx), conn, handler, method, path, body, values)
+}
+
+// CallContext — Call, sur un contexte que l'appelant fournit : un geste qui
+// porte ses propres valeurs (le téléchargement suivi du kernel, chantier 53),
+// ou qui doit survivre à la connexion.
+func CallContext(ctx context.Context, conn *Conn, handler http.Handler, method, path string, body []byte, values map[string]string) (int, []byte) {
+	request, err := http.NewRequestWithContext(ctx, method, path, bytes.NewReader(body))
 	if err != nil {
-		return http.StatusInternalServerError, ErrorBody("invalid command")
+		return http.StatusInternalServerError, ErrorBody("bad_request", "invalid command")
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Authorization", "Bearer "+conn.token)
@@ -485,9 +511,10 @@ func (recorder *recorder) Write(data []byte) (int, error) {
 	return recorder.body.Write(data)
 }
 
-// ErrorBody — l'enveloppe d'erreur des deux kernels.
-func ErrorBody(message string) []byte {
-	encoded, _ := json.Marshal(map[string]any{"success": false, "errorMessage": message})
+// ErrorBody — l'enveloppe d'erreur des deux kernels : un code que la page traduit, et le message, pour les journaux
+// (chantier 59, P5).
+func ErrorBody(code, message string) []byte {
+	encoded, _ := json.Marshal(map[string]any{"success": false, "errorCode": code, "errorMessage": message})
 
 	return encoded
 }

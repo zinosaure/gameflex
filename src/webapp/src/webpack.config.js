@@ -193,8 +193,8 @@ export default (env = {}) => ({
         // serveurs amis, ressources distantes), credential (comptes,
         // préférences, présence, et les registres qui détiennent des secrets),
         // storage, la passerelle gatewaywebrtc, et remoteplay-bin (consoles
-        // PlayStation, compte PSN, configuration TURN — le flux d'une partie
-        // remote play, lui, est au kernel).
+        // PlayStation, compte PSN — le flux d'une partie remote play, lui,
+        // est au kernel).
         proxy: !env.WEBPACK_SERVE ? [] : (() => {
             const SERVICES = JSON.parse(fs.readFileSync(path.join(DIRNAME, 'api-domains.json'), 'utf8'));
             const contexts = SERVICES.flatMap((service) => service.domains.map((domain) => `/api/v1/${domain}`));
@@ -229,22 +229,6 @@ export default (env = {}) => ({
                     // côté Go : bon pour reconnaître, jamais pour autoriser.
                     xfwd: Boolean(service.forwardClientAddress),
                 };
-                if (service.service === 'remoteplay') {
-                    // The admin TURN page's credentials are stored encrypted
-                    // under PASSPHRASE_SALT, and both reading and saving them
-                    // require presenting it. Attaching it HERE, in the proxy,
-                    // is the whole point: this runs in the container, so the
-                    // secret never reaches the browser and never gets built
-                    // into the bundle — the page just makes ordinary requests
-                    // and the passphrase is added on the way through. Scoped
-                    // to /api/v1/turn-config only (nothing else needs it), and
-                    // silently skipped when unset, which the service handles.
-                    entry.onProxyReq = (proxyReq, req) => {
-                        if (process.env.PASSPHRASE_SALT && req.url.indexOf('/api/v1/turn-config') === 0) {
-                            proxyReq.setHeader('X-Turn-Passphrase', process.env.PASSPHRASE_SALT);
-                        }
-                    };
-                }
                 return entry;
             });
         })(),
@@ -624,11 +608,6 @@ export default (env = {}) => ({
             // de page comme dans l'application.
             'process.env.BUILD_STAMP': webpack.DefinePlugin.runtimeValue(
                 () => JSON.stringify(buildInfo().builtAt), true),
-            // Chromecast receiver App ID (see docker-compose.yaml's
-            // gameflex-webapp service / credentials.sh) — the env var is
-            // GAMEFLEX_GOOGLECAST_APPLICATION_ID; cast.js's RECEIVER_APP_ID
-            // reads it at build time through this define.
-            'process.env.GOOGLECAST_APPLICATION_ID': JSON.stringify(process.env.GAMEFLEX_GOOGLECAST_APPLICATION_ID || ''),
         }),
     ],
 });

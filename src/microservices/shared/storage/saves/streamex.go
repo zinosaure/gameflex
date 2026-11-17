@@ -77,8 +77,10 @@ var layouts = map[string]layout{
 	},
 	// LE NOM DU JEU EST LE « MAINTITLE » DE SES SAUVEGARDES (installs.SFOString).
 	// Sauf les données communes d'un jeu, qui s'intitulent « System Saved Data »
-	// (`ff7remakecommon` de *FF7 Remake*) : ce n'est pas un nom de jeu. Sans
-	// autre sauvegarde, le jeu reste nommé par son CUSA.
+	// (`ff7remakecommon` de *FF7 Remake*), et le libellé générique « Saved Data »
+	// (CUSA07010 et CUSA13632 du porteur, 2026-11-16) : ce ne sont pas des noms
+	// de jeu. Sans autre sauvegarde, le jeu reste nommé par son CUSA — ou par
+	// son jeu de la bibliothèque (metadata.NameSaves).
 	"ps4": {
 		parents: []string{"data/home/*/savedata"},
 		idOf:    plainID,
@@ -86,7 +88,7 @@ var layouts = map[string]layout{
 			entries, _ := os.ReadDir(dir)
 			for _, entry := range entries {
 				title := installs.SFOString(filepath.Join(dir, entry.Name(), "sce_sys", "param.sfo"), "MAINTITLE")
-				if title != "" && !strings.EqualFold(title, "System Saved Data") {
+				if title != "" && !strings.EqualFold(title, "System Saved Data") && !strings.EqualFold(title, "Saved Data") {
 					return title
 				}
 			}
@@ -140,11 +142,16 @@ func Supported(console string) bool {
 	return found
 }
 
-// Game — la sauvegarde d'un jeu, dans un rangement.
+// Game — la sauvegarde d'un jeu, dans un rangement. `Title` : ce que la
+// sauvegarde dit de son jeu, puis, nommée par la bibliothèque
+// (metadata.NameSaves), le titre de son jeu ; `Reference` et `Disk` disent
+// alors quel jeu, et sur quel disque interne ("" : la bibliothèque).
 type Game struct {
 	Console   string    `json:"console"`
 	ID        string    `json:"id"`
 	Title     string    `json:"title,omitempty"`
+	Reference string    `json:"reference,omitempty"`
+	Disk      string    `json:"disk,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	SizeBytes int64     `json:"sizeBytes"`
 }
@@ -186,12 +193,30 @@ func roots(dir, console string) map[string][]string {
 	return found
 }
 
-// Has — ce rangement a-t-il une sauvegarde de ce jeu ?
+// Has — ce rangement a-t-il une sauvegarde de ce jeu ? Un dossier sans aucun
+// fichier n'en est pas une (Games).
 func Has(tree, console, id string) bool {
-	return Supported(console) && len(roots(consoleDir(tree, console), console)[id]) > 0
+	if !Supported(console) {
+		return false
+	}
+	dir := consoleDir(tree, console)
+	for _, relative := range roots(dir, console)[id] {
+		if _, latest := measure(filepath.Join(dir, filepath.FromSlash(relative))); !latest.IsZero() {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Games — les jeux qui ont une sauvegarde, console par console.
+//
+// UN DOSSIER SANS AUCUN FICHIER N'EST PAS UNE SAUVEGARDE (le porteur,
+// 2026-11-15 : « Oui on ignore les sauvegardes vide pour le moment ») : une
+// partie arrêtée avant que le jeu écrive quoi que ce soit laisse son dossier
+// vide, qui disait « Continuer » sur la fiche et une date du 1er janvier de
+// l'an 1 dans l'engrenage. Il reste sur le disque ; l'émulateur s'en sert dès
+// qu'il écrit.
 func Games(tree string) []Game {
 	games := []Game{}
 	for _, console := range Consoles() {
@@ -208,6 +233,9 @@ func Games(tree string) []Game {
 				if game.Title == "" && layouts[console].title != nil {
 					game.Title = layouts[console].title(full)
 				}
+			}
+			if game.UpdatedAt.IsZero() {
+				continue
 			}
 			games = append(games, game)
 		}
@@ -502,7 +530,7 @@ func SwitchProfile(tree string) string {
 }
 
 // Backup — la sauvegarde d'un jeu du principal, copiée dans `local` (à la
-// place de la précédente du même jeu).
+// place de la précédente du même jeu, et sans sa note : notes.go).
 func Backup(savesRoot, username, console, id string) error {
 	if !Supported(console) {
 		return fmt.Errorf("unsupported console %q", console)
@@ -521,8 +549,11 @@ func Backup(savesRoot, username, console, id string) error {
 		return err
 	}
 	defer os.RemoveAll(staging)
+	if err := replaceGame(to, staging, console, id); err != nil {
+		return err
+	}
 
-	return replaceGame(to, staging, console, id)
+	return ForgetNote(local, NoteItem{Kind: KindStreamex, Console: console, ID: id})
 }
 
 // Restore — la sauvegarde d'un jeu d'une copie remise dans le principal, à la
@@ -566,7 +597,7 @@ func Restore(savesRoot, username, source, console, id string) error {
 	return replaceGame(to, staging, console, id)
 }
 
-// Remove — la sauvegarde d'un jeu, effacée d'un rangement.
+// Remove — la sauvegarde d'un jeu, effacée d'un rangement, avec sa note.
 func Remove(tree, console, id string) error {
 	if !Supported(console) {
 		return fmt.Errorf("unsupported console %q", console)
@@ -578,7 +609,7 @@ func Remove(tree, console, id string) error {
 		}
 	}
 
-	return nil
+	return ForgetNote(tree, NoteItem{Kind: KindStreamex, Console: console, ID: id})
 }
 
 // Size — ce que pèse la sauvegarde d'un jeu dans un rangement (la place qu'il

@@ -119,6 +119,30 @@ func TestAGamePatchIsLookedForInTheLibraryThenOnTheDisks(t *testing.T) {
 	}
 }
 
+// UN JEU SWITCH A SON CORRECTIF AUSSI, sous l'identifiant lu dans son paquet : la
+// Switch n'a pas de moteur reconnu, et son correctif passe quand même par-dessus la
+// fiche d'Eden.
+func TestASwitchGameHasItsPatchToo(t *testing.T) {
+	store := Store{Root: t.TempDir()}
+	eden := Ref{ConsoleID: "switch", Emulator: "eden"}
+	const game = "0100D1B006744000"
+	writeGamePatch(t, filepath.Join(store.Root, "patches"), "switch", game, "Eden", map[string]any{"gpuAccuracy": "0"})
+
+	settings := store.SettingsFor(eden, "", game)
+	if settings.Game != game || settings.GameError != "" {
+		t.Fatalf("Crash Bandicoot : %+v", settings)
+	}
+	if got := valueAt(settings, "Renderer > gpu_accuracy"); got != "0" {
+		t.Fatalf("Renderer > gpu_accuracy = %q, attendu celui du correctif, 0", got)
+	}
+	if got := store.SettingsFor(eden, "", "0100A5B00BDC6000"); got.Game != "" || valueAt(got, "Renderer > gpu_accuracy") != "" {
+		t.Fatalf("un autre jeu : %+v", got)
+	}
+	if got := store.SettingsFor(eden, "unity", game); got.Engine != "" || got.EngineError != "" {
+		t.Fatalf("un moteur sur la Switch : %+v", got)
+	}
+}
+
 // UN CORRECTIF ILLISIBLE SE DIT, ET LA PARTIE PART : les valeurs de la fiche et du
 // moteur restent. Celui d'un autre émulateur ne le concerne pas ; un dossier de
 // correctif sans réglages non plus. Un identifiant hors forme n'est même pas cherché.

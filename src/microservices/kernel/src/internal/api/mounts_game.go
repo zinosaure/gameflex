@@ -145,7 +145,7 @@ func writeGameFile(
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return 0, err
 	}
-	adoptParentOwner(filepath.Dir(target))
+	storage.AdoptParentOwner(filepath.Dir(target))
 
 	body, err := open()
 	if err != nil {
@@ -185,7 +185,7 @@ func writeGameFile(
 
 		return 0, err
 	}
-	adoptParentOwner(target)
+	storage.AdoptParentOwner(target)
 
 	return written, nil
 }

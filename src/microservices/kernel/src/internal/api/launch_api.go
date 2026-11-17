@@ -33,7 +33,7 @@ const maxLaunchBodyBytes = 64 << 10
 func (server *Server) handleUnifiedLaunch(w http.ResponseWriter, r *http.Request) {
 	raw, err := io.ReadAll(io.LimitReader(r.Body, maxLaunchBodyBytes))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid request body")
 
 		return
 	}
@@ -47,7 +47,7 @@ func (server *Server) handleUnifiedLaunch(w http.ResponseWriter, r *http.Request
 		ConsoleIDSnake string `json:"console_id"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid request body")
 
 		return
 	}
@@ -62,7 +62,7 @@ func (server *Server) handleUnifiedLaunch(w http.ResponseWriter, r *http.Request
 	// lui : `{"consoleId":"nes","console_id":"psx"}` faisait vérifier nes et
 	// lancer psx (revue de sécurité, 2026-10-28).
 	if envelope.ConsoleID != "" && envelope.ConsoleIDSnake != "" && envelope.ConsoleID != envelope.ConsoleIDSnake {
-		writeError(w, http.StatusBadRequest, "consoleId and console_id name two different consoles")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "consoleId and console_id name two different consoles")
 
 		return
 	}
@@ -88,6 +88,6 @@ func (server *Server) handleUnifiedLaunch(w http.ResponseWriter, r *http.Request
 		// `launch_remoteplay.go`, qui explique pourquoi il faut deux appels.
 		server.handleRemoteplayThroughDoor(w, r, raw)
 	default:
-		writeError(w, http.StatusBadRequest, "unknown platform: "+envelope.Platform)
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "unknown platform: "+envelope.Platform)
 	}
 }

@@ -8,10 +8,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 
+	"gameflex/emuparams"
 	"gameflex/kernel/internal/docker"
 	"gameflex/storage/listing"
 )
@@ -161,6 +163,48 @@ func TestImportingFromADiskCopiesIntoTheFolderAndNeverOverwrites(t *testing.T) {
 	}
 	if _, err := os.Stat(pack + ".part"); !os.IsNotExist(err) {
 		t.Fatalf("un brouillon .part est resté : %v", err)
+	}
+}
+
+// CE QU'UN DISQUE PRÊTE DE SES PARAMÈTRES SE LIT AVEC SES VALEURS (chantier 53,
+// après la P7) : ses valeurs choisies et son préréglage perso, deux préréglages de
+// plus pour le formulaire d'ici. Il ne s'importe plus (400), et le lire n'écrit
+// rien dans le dossier.
+func TestADiskLendsItsParamsWithTheirValuesAndNoLongerImportsThem(t *testing.T) {
+	server, _ := listingServer(t)
+	disk := diskWith(t, "ssd", nil)
+	rpcs3 := emuparams.Ref{ConsoleID: "ps3", Emulator: "rpcs3"}
+	if _, err := (emuparams.Store{Root: disk.Dir}).Save(rpcs3, "PlayStation 3", nil, map[string]any{"spuBlockSize": "Giga"}, "Disque HD", nil); err != nil {
+		t.Fatal(err)
+	}
+	withDisks(server, disk)
+	router := diskStorageRouter(server)
+
+	listed := call(router, http.MethodGet, "/disks/ssd/storage/params?console=ps3&emulator=rpcs3", nil)
+	var answer struct {
+		Data struct {
+			Consoles []struct {
+				ConsoleID string       `json:"consoleId"`
+				Items     []lentPreset `json:"items"`
+			} `json:"consoles"`
+		} `json:"data"`
+	}
+	if listed.Code != http.StatusOK || json.Unmarshal(listed.Body.Bytes(), &answer) != nil || len(answer.Data.Consoles) != 1 {
+		t.Fatalf("ce que le disque prête = %d %s", listed.Code, listed.Body.String())
+	}
+	items := answer.Data.Consoles[0].Items
+	if len(items) != 2 || items[0].Preset != "" || items[0].Values["spuBlockSize"] != "Giga" ||
+		items[1].Preset != "disque-hd" || items[1].Name != "Disque HD" || items[1].Values["spuBlockSize"] != "Giga" {
+		t.Fatalf("ses deux prêts, avec leurs valeurs = %+v", items)
+	}
+	if other := call(router, http.MethodGet, "/disks/ssd/storage/params?console=ps3&emulator=autre", nil); strings.Contains(other.Body.String(), `"items"`) {
+		t.Fatalf("un autre émulateur = %s, attendu rien", other.Body.String())
+	}
+	if code := call(router, http.MethodPost, "/disks/ssd/storage/params", map[string]string{"consoleId": "ps3", "emulator": "rpcs3"}).Code; code != http.StatusBadRequest {
+		t.Fatalf("importer ses paramètres répond %d, attendu 400", code)
+	}
+	if written, _ := filepath.Glob(filepath.Join(paramsRoot, "params", "ps3", "presets", "ssd*")); len(written) != 0 {
+		t.Fatalf("lire ce qu'il prête a écrit %v", written)
 	}
 }
 

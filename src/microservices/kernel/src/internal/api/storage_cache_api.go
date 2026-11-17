@@ -42,7 +42,7 @@ type cacheConsole struct {
 func (server *Server) handleStorageCache(w http.ResponseWriter, r *http.Request) {
 	listed, err := installs.List(server.storageRoot)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "storage_failed", err.Error())
 
 		return
 	}
@@ -79,22 +79,22 @@ func (server *Server) handleStorageCacheDelete(w http.ResponseWriter, r *http.Re
 	consoleID := strings.TrimSpace(r.URL.Query().Get("consoleId"))
 	name := strings.TrimSpace(r.URL.Query().Get("name"))
 	if consoleID == "" || name == "" {
-		writeError(w, http.StatusBadRequest, "consoleId et name sont requis")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "consoleId et name sont requis")
 
 		return
 	}
 	if server.runningConsoles()[consoleID] {
-		writeError(w, http.StatusConflict, "une partie de cette console est en cours : elle lit ce cache")
+		writeErrorCode(w, http.StatusConflict, "game_running", "une partie de cette console est en cours : elle lit ce cache")
 
 		return
 	}
 	if err := installs.Remove(server.storageRoot, consoleID, name); err != nil {
 		if errors.Is(err, installs.ErrUnknown) {
-			writeError(w, http.StatusNotFound, "entrée inconnue dans le cache")
+			writeErrorCode(w, http.StatusNotFound, "not_found", "entrée inconnue dans le cache")
 
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "storage_failed", err.Error())
 
 		return
 	}

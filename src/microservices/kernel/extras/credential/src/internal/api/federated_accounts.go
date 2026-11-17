@@ -81,7 +81,7 @@ func federatedAccountOf(w http.ResponseWriter, username, rawServer string) (stri
 	username = strings.TrimSpace(username)
 	serverID, err := strconv.ParseInt(strings.TrimSpace(rawServer), 10, 64)
 	if username == "" || err != nil {
-		respondError(w, http.StatusBadRequest, "A member and a server are required.")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "A member and a server are required.")
 
 		return "", 0, false
 	}
@@ -101,11 +101,11 @@ func (server *Server) handleInternalFederatedAccount(w http.ResponseWriter, r *h
 	}
 	token, err := server.FederatedAccountToken(username, serverID)
 	if errors.Is(err, ErrNoFederatedAccount) {
-		respondError(w, http.StatusNotFound, "No token for this server.")
+		respondErrorCode(w, http.StatusNotFound, "no_token_here", "No token for this server.")
 		return
 	}
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	respondItem(w, http.StatusOK, map[string]string{"token": token})
@@ -131,16 +131,16 @@ func (server *Server) handleInternalSetFederatedAccount(w http.ResponseWriter, r
 	}
 	token := strings.TrimSpace(body.Token)
 	if token == "" {
-		respondError(w, http.StatusBadRequest, "A token is required.")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "A token is required.")
 		return
 	}
 	err := server.SetFederatedAccountToken(username, serverID, token)
 	if errors.Is(err, ErrNoFederatedAccount) {
-		respondError(w, http.StatusNotFound, "Unknown member or server.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "Unknown member or server.")
 		return
 	}
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -158,11 +158,11 @@ func (server *Server) handleInternalForgetFederatedAccount(w http.ResponseWriter
 	}
 	err := server.ForgetFederatedAccountToken(username, serverID)
 	if errors.Is(err, ErrNoFederatedAccount) {
-		respondError(w, http.StatusNotFound, "No token for this server.")
+		respondErrorCode(w, http.StatusNotFound, "no_token_here", "No token for this server.")
 		return
 	}
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -88,7 +88,7 @@ func (server *Server) handleListRemoteMounts(w http.ResponseWriter, r *http.Requ
 		`SELECT id, name, kind, base_url, folder, username, created_at FROM remote_mounts ORDER BY name`,
 	)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	defer rows.Close()
@@ -100,7 +100,7 @@ func (server *Server) handleListRemoteMounts(w http.ResponseWriter, r *http.Requ
 		if err := rows.Scan(
 			&item.ID, &item.Name, &item.Kind, &item.BaseURL, &item.Folder, &item.Username, &createdAt,
 		); err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		item.CreatedAt = isoDatetime(createdAt)
@@ -213,7 +213,7 @@ func (server *Server) handleAddRemoteMount(w http.ResponseWriter, r *http.Reques
 	sealed, err := secretbox.Seal(server.config.JWTSecret, password)
 	if err != nil {
 		slog.Error("mount: cannot seal its credential", "error", err)
-		respondError(w, http.StatusInternalServerError, "This server cannot store passwords: its secret is not set.")
+		respondErrorCode(w, http.StatusInternalServerError, "secret_missing", "This server cannot store passwords: its secret is not set.")
 		return
 	}
 	result, err := server.db.Exec(
@@ -226,10 +226,10 @@ func (server *Server) handleAddRemoteMount(w http.ResponseWriter, r *http.Reques
 		// virtuel de chaque jeu, et deux montages homonymes en cacheraient
 		// un silencieusement.
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
-			respondError(w, http.StatusConflict, "A mount already uses this name.")
+			respondErrorCode(w, http.StatusConflict, "name_taken", "A mount already uses this name.")
 			return
 		}
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	id, _ := result.LastInsertId()
@@ -305,13 +305,13 @@ func (server *Server) handleCheckRemoteMount(w http.ResponseWriter, r *http.Requ
 		)
 		var sealed string
 		if err := row.Scan(&name, &kindOf, &base, &folder, &username, &sealed); err != nil {
-			respondError(w, http.StatusNotFound, "Mount not found.")
+			respondErrorCode(w, http.StatusNotFound, "not_found", "Mount not found.")
 
 			return
 		}
 		opened, err := secretbox.Open(server.config.JWTSecret, sealed)
 		if err != nil {
-			respondError(w, http.StatusConflict, "This share's password cannot be read: "+err.Error()+". Delete the share and add it again.")
+			respondErrorCode(w, http.StatusConflict, "share_failed", "This share's password cannot be read: "+err.Error()+". Delete the share and add it again.")
 
 			return
 		}
@@ -414,17 +414,17 @@ func probeFailure(kind, folder string, err error) string {
 func (server *Server) handleRemoveRemoteMount(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid id.")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "Invalid id.")
 		return
 	}
 
 	result, err := server.db.Exec(`DELETE FROM remote_mounts WHERE id = ?`, id)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {
-		respondError(w, http.StatusNotFound, "Mount not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "Mount not found.")
 		return
 	}
 
@@ -447,7 +447,7 @@ func (server *Server) handleInternalRemoteMounts(w http.ResponseWriter, r *http.
 		`SELECT id, name, kind, base_url, folder, username, password FROM remote_mounts ORDER BY name`,
 	)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	defer rows.Close()
@@ -465,7 +465,7 @@ func (server *Server) handleInternalRemoteMounts(w http.ResponseWriter, r *http.
 			&item.ID, &item.Name, &item.Kind, &item.BaseURL, &item.Folder,
 			&item.Username, &sealed,
 		); err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		// Un identifiant illisible (le secret a changé) : le partage part

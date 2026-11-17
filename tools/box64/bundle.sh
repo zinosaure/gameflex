@@ -14,7 +14,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 BOX=$(readlink -f "${1:?la sortie de tools/box64/build.sh (box64, x64lib, COMMIT)}")
 SHAD=$(readlink -f "${2:?le binaire x86_64 : shadps4 (tools/shadps4/build.sh) ou kyty_emulator (tools/kyty/build.sh)}")
-DL=${3:-$ROOT/src/webapp/src/public/downloads}
+DL=${3:-$ROOT/src/microservices/edge/src/public/downloads}
 CONTAINER=${SHADPS4_BUILD_CONTAINER:-gameflex-shadps4-build}   # un trixie x86_64 : ses bibliothèques
 CONSOLES="$ROOT/src/microservices/runtimes/streamex/consoles"
 # L'INVITÉ SE RECONNAÎT AU BINAIRE : le bundle porte son nom (<invité>-aarch64.zip,

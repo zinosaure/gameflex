@@ -1,10 +1,10 @@
 {
   "name": "Default",
-  "description": "Box64's own values, except four: the safest flags, which some games need to start; the call/return shortcut off, which makes games start faster; an AMD processor shown to the game, as on the console; and the game's code in shared memory protected instead of checked every time it runs.",
+  "description": "Box64's own values except four: the safest flags, call/return optimisation off, an AMD processor and protected shared code.",
   "translations": {
     "fr": {
       "name": "Par défaut",
-      "description": "Les valeurs de Box64, sauf quatre : les drapeaux les plus sûrs, dont certains jeux ont besoin pour démarrer ; l'optimisation des appels et retours désactivée, qui fait démarrer les jeux plus vite ; un processeur AMD annoncé au jeu, comme sur la console ; et le code du jeu en mémoire partagée protégé au lieu d'être vérifié à chaque exécution."
+      "description": "Les valeurs de Box64, sauf quatre : drapeaux les plus sûrs, appels et retours sans optimisation, processeur AMD et code partagé protégé."
     }
   },
   "override": false,

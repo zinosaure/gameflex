@@ -8,8 +8,63 @@ import (
 	"strings"
 	"time"
 
+	"gameflex/consoles"
 	"gameflex/kernel/internal/auth"
 )
+
+// remoteplayStream — LE FLUX QUE L'UTILISATEUR A CHOISI pour cette console, dans
+// son engrenage (le porteur, 2026-11-16 : « le flux des Remote Play, même en
+// fédération, se règle dans la fiche de la console côté front. C'est
+// l'utilisateur qui choisit. »). Il arrive avec le lancement, dans les champs
+// et le vocabulaire de celui d'un jeu (`resolution`, `fps`, `bitrate` en kbps) ;
+// il remplace le réglage que le runtime gardait sur la ligne de la console
+// (`devices.config_json`), posé par un administrateur pour tout le monde.
+//
+// Une définition ou une cadence absente prend le défaut de toutes les consoles,
+// 540p à 30 (le porteur, 2026-11-16) ; un débit absent — la page n'a pas pu
+// mesurer le réseau pour son « Auto » — reste zéro, et le runtime prend celui
+// de la définition, un point de départ.
+type remoteplayStream struct {
+	Resolution string `json:"resolution,omitempty"`
+	FPS        int    `json:"fps,omitempty"`
+	Bitrate    int    `json:"bitrate,omitempty"`
+}
+
+// normalizeRemoteplayStream — REVALIDÉ ICI, comme le flux d'un jeu
+// (`manager.normalizeLaunchSettings`), avec la même table et les mêmes bornes
+// que les deux kernels (`consoles.StreamResolution`, `StreamFPS`,
+// `StreamBitrate`) : une définition hors de l'échelle — « 480p », qu'une PS5
+// refuse — ou absente devient 540p, une cadence hors bornes 30, un débit hors
+// bornes part vide. La définition reste un libellé : sa traduction en pixels
+// est celle de la console, et le runtime la tient (`streamSettingsOf`).
+func normalizeRemoteplayStream(stream remoteplayStream) remoteplayStream {
+	stream.Resolution = consoles.StreamResolution(stream.Resolution)
+	stream.FPS = consoles.StreamFPS(stream.FPS)
+	stream.Bitrate = consoles.StreamBitrate(stream.Bitrate)
+
+	return stream
+}
+
+// remoteplayDoorBody — ce que la page envoie pour lancer une console : son
+// `hostId`, et le flux choisi.
+type remoteplayDoorBody struct {
+	HostID   string `json:"hostId"`
+	Username string `json:"username"`
+	remoteplayStream
+}
+
+// askRemoteplayHandshake — la poignée de main Takion sur le conteneur que la
+// porte vient de créer, AVEC LE FLUX DE CE LANCEMENT : c'est lui que le runtime
+// envoie à la partie (`/session/start`), puis la partie à la console. Il n'en
+// sort jamais qu'un flux revalidé.
+func (server *Server) askRemoteplayHandshake(deviceID string, port int, username string, stream remoteplayStream) error {
+	return server.askRemoteplayControl("/internal/remoteplay/handshake", map[string]any{
+		"deviceId": deviceID,
+		"port":     port,
+		"username": username,
+		"stream":   normalizeRemoteplayStream(stream),
+	}, nil)
+}
 
 // remoteplayControlClient — le plan interne vers le service remote-play.
 //
@@ -113,12 +168,9 @@ func (server *Server) askRemoteplayControl(path string, payload any, out any) er
 // appelait et la direction qu'elle servait — est supprimée de bout en bout,
 // une fois la bascule éprouvée sur une vraie PS5.
 func (server *Server) handleRemoteplayThroughDoor(w http.ResponseWriter, r *http.Request, raw []byte) {
-	var body struct {
-		HostID   string `json:"hostId"`
-		Username string `json:"username"`
-	}
+	var body remoteplayDoorBody
 	if err := json.Unmarshal(raw, &body); err != nil || body.HostID == "" {
-		writeError(w, http.StatusBadRequest, "hostId is required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "hostId is required")
 
 		return
 	}
@@ -137,7 +189,7 @@ func (server *Server) handleRemoteplayThroughDoor(w http.ResponseWriter, r *http
 	}
 	if err := server.askRemoteplayControl("/internal/remoteplay/devices/resolve",
 		map[string]string{"hostId": body.HostID}, &device); err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeErrorCode(w, http.StatusBadGateway, "rp_failed", err.Error())
 
 		return
 	}
@@ -166,18 +218,15 @@ func (server *Server) handleRemoteplayThroughDoor(w http.ResponseWriter, r *http
 	// REPRISE : la session tournait déjà. Refaire la poignée de main
 	// relancerait Takion sous une partie en cours — le contrat que l'ancien
 	// chemin respectait déjà en sautant son `startChildSession` quand le kernel
-	// répondait « existing ».
+	// répondait « existing ». Le flux demandé n'y change rien : la partie garde
+	// celui de son lancement.
 	if result.Existing {
 		writeJSON(w, http.StatusOK, map[string]any{"sessionId": result.SessionID, "existing": true})
 
 		return
 	}
 
-	if err := server.askRemoteplayControl("/internal/remoteplay/handshake", map[string]any{
-		"deviceId": device.DeviceID,
-		"port":     result.Port,
-		"username": username,
-	}, nil); err != nil {
+	if err := server.askRemoteplayHandshake(device.DeviceID, result.Port, username, body.remoteplayStream); err != nil {
 		// LE CONTENEUR MEURT AVEC LA POIGNÉE DE MAIN RATÉE.
 		//
 		// On vient de le créer, et la console n'a pas répondu : le laisser
@@ -194,7 +243,7 @@ func (server *Server) handleRemoteplayThroughDoor(w http.ResponseWriter, r *http
 		server.manager.StopRemoteplay(r.Context(), result.SessionID)
 		// Le conteneur tourne mais la console n'a pas répondu : on le dit, et
 		// on ne prétend pas que la partie a commencé.
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeErrorCode(w, http.StatusBadGateway, "rp_failed", err.Error())
 
 		return
 	}

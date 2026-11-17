@@ -1,6 +1,8 @@
+diff --git a/src/core/memory.cpp b/src/core/memory.cpp
+index 74ca244..8479463 100644
 --- a/src/core/memory.cpp
 +++ b/src/core/memory.cpp
-@@ -56,7 +56,7 @@
+@@ -56,7 +56,7 @@ struct Memory::Impl {
              current_page_table->fastmem_arena = nullptr;
          }
  
@@ -9,7 +11,7 @@
          heap_tracker.emplace(system.DeviceMemory().buffer);
          host_buffer = std::addressof(*heap_tracker);
  #else
-@@ -769,7 +769,7 @@
+@@ -773,7 +773,7 @@ struct Memory::Impl {
      std::array<Common::ScratchBuffer<u32>, Core::Hardware::NUM_CPU_CORES> scratch_buffers{};
      std::span<Core::GPUDirtyMemoryManager> gpu_dirty_managers;
      std::mutex sys_core_guard;
@@ -18,16 +20,16 @@
      std::optional<Common::HeapTracker> heap_tracker;
      Common::HeapTracker* host_buffer{};
  #else
-@@ -977,7 +977,7 @@
-         impl->InvalidateGPUMemory(ptr, size);
-     }
- 
+@@ -977,7 +977,7 @@ NCEAccessFaultAction Memory::InvalidateNCE(Common::ProcessAddress vaddr, size_t
+             mapped = false;
+         },
+         [&] { rasterizer = true; });
 -#ifdef __ANDROID__
 +#if defined(__ANDROID__) || defined(HAS_NCE)
      if (!rasterizer && mapped) {
          impl->host_buffer->DeferredMapSeparateHeap(GetInteger(vaddr));
      }
-@@ -987,7 +987,7 @@
+@@ -992,7 +992,7 @@ NCEAccessFaultAction Memory::InvalidateNCE(Common::ProcessAddress vaddr, size_t
  }
  
  bool Memory::InvalidateSeparateHeap(void* fault_address) {

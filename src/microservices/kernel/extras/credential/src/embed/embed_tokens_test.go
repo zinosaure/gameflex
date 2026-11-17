@@ -37,7 +37,7 @@ func TestTheDeviceJudgesAccountTokensLikeAServer(t *testing.T) {
 
 	root := login(t, service, "root", "mot-de-passe-du-porteur")
 	created := call(t, service, http.MethodPost, "/api/v1/users", root, map[string]any{
-		"username": "marc", "password": "mot-de-passe-de-marc", "display_name": "Marc", "role_level": 1,
+		"username": "marc", "display_name": "Marc", "role_level": 1,
 	})
 	if created.Code != http.StatusCreated {
 		t.Fatalf("création : %d %s", created.Code, created.Body.String())
@@ -131,7 +131,7 @@ func TestTheDeviceKeepsAMembersTokenForAFriend(t *testing.T) {
 
 	// Le membre supprimé emporte les siens.
 	created := call(t, service, http.MethodPost, "/api/v1/users", root, map[string]any{
-		"username": "marc", "password": "mot-de-passe-de-marc", "display_name": "Marc", "role_level": 2,
+		"username": "marc", "display_name": "Marc", "role_level": 2,
 	})
 	if created.Code != http.StatusCreated {
 		t.Fatalf("création : %d %s", created.Code, created.Body.String())

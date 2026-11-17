@@ -26,16 +26,6 @@ const (
 	// idle stop used to implement separately.
 	unifiedIdleTimeout = 5 * time.Minute
 	idleWatchdogTick   = 1 * time.Minute
-	// sweepBudget — ce qu'on accorde au balayage d'UNE session avant de passer
-	// à la suivante.
-	//
-	// Dix secondes, soit le double du délai de `docker.statusClient` (5 s) : de
-	// quoi laisser l'appel HTTP aller au bout de sa propre garde, plus une
-	// marge pour l'aller-retour Docker qui le précède. Au-delà, ce n'est plus
-	// une session lente, c'est une session qui ne répondra pas — et le tic doit
-	// continuer sans elle. C'est précisément ce qui manquait le 2026-09-19 :
-	// une session bloquée emportait les 60 s du tic, puis tous les suivants.
-	sweepBudget = 10 * time.Second
 )
 
 // idleWatchdog is the single idle shutdown loop.
@@ -60,26 +50,10 @@ func (server *Server) idleWatchdog() {
 				// L'ordre d'arrêt vient du child — il décide de sa propre fin
 				// et sortir EST le signal. Le seul cas où le kernel agit sans
 				// ordre est celui où il n'y a plus personne pour en donner :
-				// le conteneur est mort. Et ça, Docker le sait avec
-				// certitude — inutile de le deviner en chronométrant un
-				// silence, ce qu'une première version de cette garde faisait
-				// (et qui revenait à tuer de sa propre initiative un child
-				// bien vivant dont le rapport avait pris du retard).
+				// le conteneur est mort. Et ça, Docker le DIT, à l'instant
+				// (manager.containerExited, #751) : ce tic ne le lui demande
+				// plus. Il ne reste ici que la question au child qui s'est tu.
 				//
-				// Ces balayages sont idempotents et n'agissent QUE si le
-				// conteneur a disparu ; sinon ils se contentent de rafraîchir
-				// ce que Docker dit — le domaine du kernel.
-				// BORNÉ, parce que c'est ICI que tout s'est arrêté le
-				// 2026-09-19. `sweepContainer` mène à `Status*`, et l'appel
-				// n'avait alors aucune fin : la ligne suivante — la
-				// VÉRIFICATION que le kernel doit faire quand un child se tait —
-				// n'a jamais été atteinte, 18 heures durant. Le client HTTP est
-				// désormais borné lui aussi (`docker.statusClient`) ; cette
-				// échéance est la seconde garde, celle qui couvre un appel
-				// Docker qui traînerait.
-				sweepCtx, cancelSweep := context.WithTimeout(context.Background(), sweepBudget)
-				server.sweepContainer(sweepCtx, session)
-				cancelSweep()
 				// Le conteneur vit toujours mais le child s'est tu ? On lui
 				// DEMANDE, au lieu de deviner (voir askChild).
 				server.askChildIfSilent(session)
@@ -142,18 +116,6 @@ func (server *Server) stopSessionByPlatform(ctx context.Context, sessionID, plat
 	server.mirrors.Drop(sessionID)
 
 	return stopped
-}
-
-// sweepContainer demande à Docker si le conteneur d'une session pilotée existe
-// encore, et laisse le balayage de la plateforme en tirer les conséquences.
-// Aucune décision ici : on relaie une constatation.
-func (server *Server) sweepContainer(ctx context.Context, session registry.Session) {
-	switch session.Platform {
-	case "retrogaming":
-		server.manager.SweepRetro(ctx, session.ID)
-	case "remoteplay":
-		server.manager.SweepRemoteplay(ctx, session.ID)
-	}
 }
 
 // childV4URL — l'adresse d'une route de l'enfant, sur le port de SON

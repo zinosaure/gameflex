@@ -21,9 +21,9 @@ import Download from "./settings/Download.jsx";
 // library sections
 import SavedStates from "./settings/library/SavedStates.jsx";
 
-// admin-only sections (Members, Storage, DeviceStorage, TurnServer, Federation, Servers) are imported in Settings.jsx itself, not here, to avoid loading them for non-admins.
+// admin-only sections (Members, Storage, DeviceStorage, Federation, Servers) are imported in Settings.jsx itself, not here, to avoid loading them for non-admins.
 import Members from "./settings/admin/Members.jsx";
-import TurnServer from "./settings/admin/TurnServer.jsx";
+import MetadataServices from "./settings/admin/MetadataServices.jsx";
 import ROMs from "./settings/admin/ROMs.jsx";
 import StorageCores from "./settings/admin/storage/Cores.jsx";
 import StorageBios from "./settings/admin/storage/Bios.jsx";
@@ -264,9 +264,9 @@ export default function Settings() {
                                 });
                             }}
                         />
-                        {/* Fédérer CE serveur (émettre des jetons) et régler son
-                        TURN sont des gestes d'administrateur de serveur. Un
-                        téléphone se fédère dans l'autre sens — il AJOUTE des
+                        {/* Fédérer CE serveur (émettre des jetons) est un geste
+                        d'administrateur de serveur. Un téléphone se fédère
+                        dans l'autre sens — il AJOUTE des
                         serveurs, ce que « Ressources distantes » fait juste
                         au-dessus — et sa signalisation passe par son propre
                         gateway. */}
@@ -300,8 +300,8 @@ export default function Settings() {
                                 distantes » en enregistrait un. Deux entrées pour
                                 les deux bouts d'un même échange, chacune portant
                                 un encadré dont le seul rôle était de désigner
-                                l'autre. Réunies en onglets Serveurs/Jetons, sur la
-                                forme de « Serveur TURN ». Le stockage distant
+                                l'autre. Réunies en onglets Serveurs/Jetons. Le
+                                stockage distant
                                 (WebDAV, kDrive) reste, lui, dans « Ressources
                                 distantes » : c'est une autre API et un autre
                                 sujet. */}
@@ -321,29 +321,21 @@ export default function Settings() {
                                         });
                                     }}
                                 />
-                                {/* `turnConfig` EN PLUS de `serverAdmin`, et il a
-                                fallu l'ajouter le 2026-09-14 : le téléphone passe
-                                `serverAdmin` à vrai ce jour-là (son porteur est
-                                administrateur chez lui, et c'est cette garde qui
-                                ouvre la fédération), mais il ne sert AUCUNE route
-                                d'administration TURN. Sans cette seconde garde il
-                                héritait d'une entrée qui ouvre un panneau et
-                                affiche aussitôt « loadFailed ».
-                                L'hôte s'exclut lui-même, par sa propre
-                                déclaration : `"turnConfig": false`, avec la raison
-                                écrite à côté dans mobilekernel.go. */}
-                                {can("turnConfig") && (
+                                {/* Les comptes des services de métadonnées
+                                (chantier 49) : seul un serveur va les chercher —
+                                le téléphone ne déclare pas `metadataServices`. */}
+                                {can("metadataServices") && (
                                     <ListElement
-                                        icon="fa fa-tower-broadcast"
-                                        label={t("settings.turnTitle")}
-                                        helpText={t("settings.turnHelp")}
+                                        icon="bi bi-images"
+                                        label={t("settings.metadataTitle")}
+                                        helpText={t("settings.metadataHelp")}
                                         onClick={() => {
                                             context.offcanvas.open(
                                                 <OffCanvas
-                                                    icon="fa fa-tower-broadcast"
-                                                    label={t("settings.turnTitle")}
-                                                    helpText={t("settings.turnHelp")}>
-                                                    <TurnServer context={context} user={user} token={token} t={t} />
+                                                    icon="bi bi-images"
+                                                    label={t("settings.metadataTitle")}
+                                                    helpText={t("settings.metadataHelp")}>
+                                                    <MetadataServices context={context} token={token} t={t} />
                                                 </OffCanvas>, {
                                                 size: 600,
                                             });

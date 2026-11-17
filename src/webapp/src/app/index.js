@@ -28,7 +28,7 @@ import Login from "./gameflex/profile/auth/Login.jsx";
 import InvitePage from "./gameflex/profile/auth/InvitePage.jsx";
 import { can, loadHostCapabilities } from "./gameflex/libs/capabilities.js";
 import { applyScreenOrientation } from "./gameflex/libs/screenOrientation.js";
-import { deviceCancelDownload, preloadLocalLibrary } from "./gameflex/libs/localLibrary.js";
+import { deviceCancelDownload } from "./gameflex/libs/localLibrary.js";
 import {
 	LoadingScreen,
 	OffCanvas,
@@ -52,9 +52,6 @@ import {
 	useSessionPool,
 	hasOpenSlot,
 } from "./gameflex/libs/SessionPool.js";
-import {
-	buildStreamingUrl,
-} from "./gameflex/libs/sessionLinks.js";
 
 // Shared base — only the "Retro Gaming" menu section's console list is
 // dynamic (filtered by which consoles actually have ROMs, see
@@ -150,40 +147,8 @@ function buildMenuItems(consoles, t, grants) {
 					})
 					.filter(Boolean)
 					.sort(byName),
-				// Full-screen streaming/watch page — not offcanvas-eligible
-				// (video + virtual controller need the whole viewport).
-				// Unified across all 3 platforms AND both play/watch — one
-				// single route (gameflex/Streaming.jsx), no separate /watch:
-				// whether you land as owner/player/spectator is decided
-				// server-side from session.me.role (see Streaming.jsx's own
-				// doc), never from a query param. Session state itself
-				// (platform/consoleId/reference/title) comes entirely from
-				// ?sessionId=, looked up via libs/SessionPool.js.
-				{
-					hidden: true,
-					template: false,
-					label: t("menu.streaming"),
-					path: {
-						to: `/streaming`,
-						component: "gameflex.Streaming",
-					},
-					children: [],
-				},
-				// Full-page keytest preview (Profile → Gamepad → Positioning →
-				// "Test") — a real route, not the offcanvas: the stream must
-				// survive a reload and the offcanvas's own close fought the
-				// Escape blocking of the keytest pad. Spawns/reuses the
-				// user's keytest session (KeytestLive.jsx, P2 §5).
-				{
-					hidden: true,
-					template: false,
-					label: t("menu.keytest"),
-					path: {
-						to: `/keytest/:preset`,
-						component: "gameflex.profile.settings.gamepad.KeytestLive",
-					},
-					children: [],
-				},
+				// PLUS DE PAGE DE JEU ICI (chantier 52, P8, décision du porteur du 2026-11-13) : elle vit
+				// dans le launcher (/play). Le test des touches est retiré (le porteur, 2026-11-13).
 			],
 		},
 		{
@@ -250,10 +215,8 @@ function buildMenuItems(consoles, t, grants) {
 		// plus qu'à une absence. Les sections sans enfants (path.to null) sont
 		// des en-têtes : les garder vides ne dit rien à personne.
 		//
-		// Rien de VISIBLE, plus exactement : « Retro gaming » porte des
-		// routes cachées (la page de jeu, le test des touches), et un
-		// téléphone sans jeu rétro montrait son titre au-dessus du vide
-		// (relevé le 2026-10-11).
+		// Rien de VISIBLE, plus exactement : un téléphone sans jeu rétro
+		// montrait son titre au-dessus du vide (relevé le 2026-10-11).
 	].filter((item) => item.path?.to !== null || (item.children || []).some((child) => !child.hidden));
 }
 
@@ -279,16 +242,13 @@ function buildMenuItems(consoles, t, grants) {
 // being visible to someone already browsing that exact console's page.
 function NotificationBell() {
 	const { t } = useTranslation();
-	const navigate = useNavigate();
 	const presence = usePresence();
 	const invites = presence?.invites || [];
 	const sessions = useSessionPool();
+	// Une invitation et une partie en cours s'ouvrent dans le launcher (chantier 52, P8) : la cloche les
+	// annonce ; toucher une invitation la retire.
 	const handleInviteClick = (invite) => {
 		presence.dismissInvite(invite.id);
-		navigate(buildStreamingUrl({ sessionId: invite.sessionId }));
-	};
-	const handleSessionClick = (session) => {
-		navigate(buildStreamingUrl({ sessionId: session.id }));
 	};
 	// LE TÉLÉCHARGEMENT EST UNE NOTIFICATION, pas un bandeau.
 	//
@@ -379,7 +339,6 @@ function NotificationBell() {
 						<ListElement
 							key={`session-${session.id}`}
 							icon={hasOpenSlot(session) ? "bi bi-controller" : "bi bi-eye"}
-							onClick={() => handleSessionClick(session)}
 							label={t("notifications.sessionLive", { title: session.title })}
 							helpText={`${session.ownerDisplayName} · ${session.consoleId?.toUpperCase()}`}
 						/>
@@ -400,23 +359,6 @@ function AppShell() {
 	const consolesLoaded = useConsolesLoaded();
 	const location = useLocation();
 	const navigate = useNavigate();
-
-	// Public spectate — watching a running session is protected only by the
-	// session id itself (the cast receiver / TV route): no login required,
-	// taking control still is. The old check read ?role=spectate, a query
-	// param that no longer exists anywhere (role now comes from
-	// session.me.role server-side) — which silently gated EVERY anonymous
-	// visitor behind the Login page (regression reported 2026-08-23).
-	//
-	// Le lien d'invitation d'un téléphone (`guest=1&host=…`) compte AUSSI :
-	// la règle ne regardait que `sessionId`, si bien qu'un lien partagé
-	// depuis une partie du téléphone tombait sur la page de connexion — chez
-	// quelqu'un qui n'a aucun compte à y présenter (signalé le 2026-09-02).
-	const isPublicSpectate = location.pathname === "/streaming" && (() => {
-		const params = new URLSearchParams(location.search);
-
-		return params.has("sessionId") || (params.get("guest") === "1" && params.has("host"));
-	})();
 
 	// Every physical gamepad gets a default mapping per virtual controller
 	// as soon as it connects (create-only — see gameflex/hooks/use-auto-map-gamepads.js).
@@ -463,9 +405,8 @@ function AppShell() {
 	// Full app gate — no invitation, no access, consistent with the
 	// "invitation only, admin/root creates accounts" requirement (see
 	// python/src/app/users/routes.py: no /api/auth/register route).
-	// The one exception is the spectate route (see isPublicSpectate above):
-	// it renders the shell with no account chrome.
-	if (!isAuthenticated && !isPublicSpectate) {
+	// (L'exception du spectateur anonyme est partie avec la page de jeu, chantier 52 P8.)
+	if (!isAuthenticated) {
 		return <Login />;
 	}
 
@@ -605,10 +546,6 @@ loadHostCapabilities().finally(() => {
 	// ne puissent pas se contredire — la page fait foi. Hors de
 	// l'application, rien n'est demandé (voir libs/screenOrientation.js).
 	applyScreenOrientation();
-
-	// La bibliothèque du téléphone arrive du kernel (HTTP) — chargée avant
-	// le premier rendu, comme les capacités.
-	preloadLocalLibrary();
 
 	createRoot(document.getElementById("root")).render(<App />);
 });

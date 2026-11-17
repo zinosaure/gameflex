@@ -2,6 +2,8 @@ package api
 
 import (
 	"bytes"
+	"context"
+	"encoding/binary"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +14,7 @@ import (
 
 	"gameflex/kernel/internal/auth"
 	"gameflex/kernel/internal/config"
+	"gameflex/kernel/internal/docker"
 	"gameflex/storage/saves"
 )
 
@@ -143,6 +146,88 @@ func TestStreamexSavesTravelIntoCopiesOnly(t *testing.T) {
 	}
 }
 
+// streamexSaveFile — un fichier de sauvegarde d'une console récente, `relative`
+// sous `streamex/<console>/` d'un rangement.
+func streamexSaveFile(t *testing.T, tree, console, relative, content string) {
+	t.Helper()
+	path := filepath.Join(tree, "streamex", console, filepath.FromSlash(relative))
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// ticketNSP — un paquet Switch qui ne porte que le ticket de son jeu
+// (`<rightsid>.tik`) : son identifiant se lit sans les clés de la console.
+func ticketNSP(titleID string) []byte {
+	name := titleID + "0000000000000000.tik"
+	header := make([]byte, 0x10+0x18)
+	copy(header, "PFS0")
+	binary.LittleEndian.PutUint32(header[4:], 1)
+	binary.LittleEndian.PutUint32(header[8:], uint32(len(name)+1))
+
+	return append(append(header, name...), 0)
+}
+
+// UNE SAUVEGARDE PORTE LE NOM DE SON JEU (le porteur, 2026-11-16 : « Oui il
+// faut les nom des jeux et la console dans mes sauvegardes ») : celui du jeu de
+// la bibliothèque — ou d'un disque interne — dont l'identifiant de titre est le
+// sien ; sinon le titre qu'elle se donne ; sinon rien, et la page montre son
+// identifiant.
+func TestStreamexSavesCarryTheirGameTitle(t *testing.T) {
+	server, root := savesTestServer(t)
+	disk := t.TempDir()
+	server.internalDisks = func(context.Context) []docker.InternalDisk {
+		return []docker.InternalDisk{{Name: "Gamebox", Dir: disk, Present: true}}
+	}
+	router := server.savesRouter()
+	token := testToken(t, auth.Claims{Username: "claude"})
+
+	astro := filepath.Join(root, "roms", "ps5", "Astro Bot", "sce_sys", "param.json")
+	os.MkdirAll(filepath.Dir(astro), 0o755)
+	os.WriteFile(astro, []byte(`{"titleId":"PPSA12345"}`), 0o644)
+	finalFantasy := filepath.Join(disk, "roms", "switch", "Final Fantasy", "FINAL FANTASY I[01000EA014150000].nsp")
+	os.MkdirAll(filepath.Dir(finalFantasy), 0o755)
+	os.WriteFile(finalFantasy, ticketNSP("01000EA014150000"), 0o644)
+
+	tree := filepath.Join(root, "saves", "claude")
+	streamexSaveFile(t, tree, "ps5", "savedata/PPSA12345/sdimg_SAVEDATA00", "astro")
+	streamexSaveFile(t, tree, "ps5", "savedata/PPSA99999/sdimg_SAVEDATA00", "un jeu absent")
+	streamexSaveFile(t, tree, "switch", "nand/user/save/0000000000000000/CB4433B032A5AC306FD0DCCA511C514B/01000EA014150000/save.dat", "ff1")
+	streamexSaveFile(t, tree, "wiiu", "mlc01/usr/save/00050000/10101e00/meta/meta.xml", `<shortname_en type="string">New SUPER MARIO BROS. U</shortname_en>`)
+
+	answer := savesRequest(t, router, http.MethodGet, "/streamex", token, nil)
+	var listed struct {
+		Data struct {
+			Games []struct {
+				Console   string `json:"console"`
+				ID        string `json:"id"`
+				Title     string `json:"title"`
+				Reference string `json:"reference"`
+				Disk      string `json:"disk"`
+			} `json:"games"`
+		} `json:"data"`
+	}
+	if answer.Code != http.StatusOK || json.Unmarshal(answer.Body.Bytes(), &listed) != nil {
+		t.Fatalf("liste : %d %s", answer.Code, answer.Body)
+	}
+	found := map[string]string{}
+	for _, game := range listed.Data.Games {
+		found[game.Console+"/"+game.ID] = game.Title + "|" + game.Disk + "|" + map[bool]string{true: "jeu", false: "-"}[game.Reference != ""]
+	}
+	want := map[string]string{
+		"ps5/PPSA12345":           "Astro Bot||jeu",
+		"ps5/PPSA99999":           "||-",
+		"switch/01000EA014150000": "Final Fantasy|Gamebox|jeu",
+		"wiiu/10101e00":           "New SUPER MARIO BROS. U||-",
+	}
+	for key, expected := range want {
+		if found[key] != expected {
+			t.Errorf("%s : %q, attendu %q", key, found[key], expected)
+		}
+	}
+}
+
 // LE RÉTRO, PAR SES ROUTES DE TOUJOURS : l'envoi d'un emplacement va dans une
 // copie avec le titre du jeu, et la restauration le remet dans le principal.
 func TestStateUploadsLandInACopyAndRestore(t *testing.T) {
@@ -187,5 +272,57 @@ func TestStateUploadsLandInACopyAndRestore(t *testing.T) {
 	}
 	if fileText(t, filepath.Join(root, "saves", "gino", "sources", "local", "states", "nes", "metroid-ref_slot1.state")) != "state" {
 		t.Fatal("le backup n'est pas dans local")
+	}
+}
+
+// UN BACKUP EMPORTE SA NOTE (saves/notes.go) : écrite avec lui, relue,
+// corrigée, vidée ; jugée avant le geste ; jamais depuis une session venue
+// d'un autre serveur.
+func TestABackupCarriesItsNote(t *testing.T) {
+	server, root := savesTestServer(t)
+	router := server.savesRouter()
+	here := testToken(t, auth.Claims{Username: "gino"})
+	fromPeer := testToken(t, auth.Claims{Username: "gino", Fed: "1"})
+	kh3Save(t, filepath.Join(root, "saves", "gino"), "kh3")
+	body := func(fields map[string]any) []byte {
+		raw, _ := json.Marshal(fields)
+
+		return raw
+	}
+
+	tooLong := body(map[string]any{"console": "ps4", "ids": []string{"CUSA07010"}, "note": strings.Repeat("x", saves.MaxNoteRunes+1)})
+	if answer := savesRequest(t, router, http.MethodPost, "/streamex/backup", here, tooLong); answer.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("note trop longue : %d", answer.Code)
+	}
+	if _, err := os.Stat(filepath.Join(root, "saves", "gino", "sources", "local")); !os.IsNotExist(err) {
+		t.Fatal("la note refusée, le backup s'est fait quand même")
+	}
+	backup := body(map[string]any{"console": "ps4", "ids": []string{"CUSA07010"}, "note": "avant la mise à jour"})
+	if answer := savesRequest(t, router, http.MethodPost, "/streamex/backup", here, backup); answer.Code != http.StatusOK || strings.Contains(answer.Body.String(), "error") {
+		t.Fatalf("backup : %d %s", answer.Code, answer.Body)
+	}
+	if listed := savesRequest(t, router, http.MethodGet, "/notes", here, nil).Body.String(); !strings.Contains(listed, `"note":"avant la mise à jour"`) ||
+		!strings.Contains(listed, `"account":"gino"`) || !strings.Contains(listed, `"id":"CUSA07010"`) {
+		t.Fatalf("liste : %s", listed)
+	}
+
+	edit := body(map[string]any{"kind": "streamex", "console": "ps4", "id": "CUSA07010", "note": "avant le DLC"})
+	if answer := savesRequest(t, router, http.MethodPut, "/notes", fromPeer, edit); answer.Code != http.StatusForbidden {
+		t.Fatalf("depuis un autre serveur : %d", answer.Code)
+	}
+	if answer := savesRequest(t, router, http.MethodPut, "/notes", here, edit); answer.Code != http.StatusOK || !strings.Contains(answer.Body.String(), `"note":"avant le DLC"`) {
+		t.Fatalf("corrigée : %d %s", answer.Code, answer.Body)
+	}
+	absent := body(map[string]any{"kind": "states", "console": "nes", "reference": "ici", "slot": 1, "note": "x"})
+	if answer := savesRequest(t, router, http.MethodPut, "/notes", here, absent); answer.Code != http.StatusNotFound {
+		t.Fatalf("sans backup : %d", answer.Code)
+	}
+	unknown := body(map[string]any{"kind": "states", "console": "atari2600x", "reference": "ici", "slot": 1, "note": "x"})
+	if answer := savesRequest(t, router, http.MethodPut, "/notes", here, unknown); answer.Code != http.StatusBadRequest {
+		t.Fatalf("console inconnue : %d", answer.Code)
+	}
+	cleared := body(map[string]any{"kind": "streamex", "console": "ps4", "id": "CUSA07010", "note": " "})
+	if answer := savesRequest(t, router, http.MethodPut, "/notes", here, cleared); answer.Code != http.StatusOK || !strings.Contains(answer.Body.String(), `"item":null`) {
+		t.Fatalf("vidée : %d %s", answer.Code, answer.Body)
 	}
 }

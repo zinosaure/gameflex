@@ -25,8 +25,8 @@ set -euo pipefail
 
 FORK=https://github.com/zinosaure/KytyPS5.git
 # La révision construite de chaque branche ; à avancer avec la fourche (README.md).
-FORK_REV=06197cdc832e6edf6177efa32b5106df686fd833
-FORK_REV_PHONE=cfe3a0047b6e3d30773c19cf8b995b1c17e67bff
+FORK_REV=31dcca8753ccac211ebc159b77c09346bf108462
+FORK_REV_PHONE=5497652698a42d5d5a9c74b83ce642fd28176591
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)

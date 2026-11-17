@@ -1,6 +1,7 @@
 package gatewayclient
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"sync"
@@ -101,11 +102,11 @@ func TestTheGatewayAsksForAKeyframe(t *testing.T) {
 	defer gateway.stop()
 
 	reasons := make(chan string, 2)
-	orders := make(chan bool, 2)
+	orders := make(chan string, 2)
 	client, err := Dial("http://"+gateway.address, "partie", "test", "", MediaInfo{},
 		Handlers{
-			OnKeyframe: func(reason, quality string) { reasons <- reason + "/" + quality },
-			OnSD:       func(on bool) { orders <- on },
+			OnKeyframe: func(reason string, index int) { reasons <- fmt.Sprintf("%s/%d", reason, index) },
+			OnTier:     func(index int, on bool) { orders <- fmt.Sprintf("%d/%v", index, on) },
 		})
 	if err != nil {
 		t.Fatal(err)
@@ -116,18 +117,19 @@ func TestTheGatewayAsksForAKeyframe(t *testing.T) {
 	gateway.mu.Lock()
 	conn := gateway.conns[len(gateway.conns)-1]
 	gateway.mu.Unlock()
-	// Sans qualité : celle du flux principal. Puis celle du second (chantier
-	// 31), et l'ordre de l'encoder.
+	// Sans indice : le flux de l'hôte. Puis le second palier (chantier 58),
+	// un palier qui n'existe pas (ignoré), et l'ordre d'encoder le premier.
 	for _, message := range []map[string]any{
 		{"type": "keyframe", "reason": "browser"},
-		{"type": "keyframe", "reason": "switch", "quality": "sd"},
-		{"type": "sd", "on": true},
+		{"type": "keyframe", "reason": "switch", "index": 2},
+		{"type": "tier", "index": 3, "on": true},
+		{"type": "tier", "index": 1, "on": true},
 	} {
 		if err := conn.WriteJSON(message); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, want := range []string{"browser/hd", "switch/sd"} {
+	for _, want := range []string{"browser/0", "switch/2"} {
 		select {
 		case reason := <-reasons:
 			if reason != want {
@@ -138,11 +140,11 @@ func TestTheGatewayAsksForAKeyframe(t *testing.T) {
 		}
 	}
 	select {
-	case on := <-orders:
-		if !on {
-			t.Fatal("OnSD(false) pour un ordre d'allumer")
+	case order := <-orders:
+		if order != "1/true" {
+			t.Fatalf("ordre %q, attendu 1/true (le palier 3 n'existe pas)", order)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("OnSD n'a jamais été appelé")
+		t.Fatal("OnTier n'a jamais été appelé")
 	}
 }

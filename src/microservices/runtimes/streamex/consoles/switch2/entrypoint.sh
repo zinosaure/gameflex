@@ -188,6 +188,15 @@ awk -v v="$RES_SETUP" '
 ' "$LICHII_INI" > "$LICHII_INI.tmp" && mv "$LICHII_INI.tmp" "$LICHII_INI"
 echo "[entry] lichii resolution_setup → ${RES_SETUP} (stream ${RES_W}x${RES_H})"
 
+# LA FENÊTRE « WHAT'S NEW » (depuis build-160) : elle s'ouvrirait par-dessus le jeu, et personne n'est là pour la
+# fermer. Coupée à chaque lancement, comme la résolution : qt-config.ini n'est semé qu'une fois par compte.
+awk '
+  /^show_whats_new(\\default)?=/ { next }
+  { print }
+  /^\[UI\]$/ { print "show_whats_new\\default=false"; print "show_whats_new=false"; done = 1 }
+  END { if (!done) { print ""; print "[UI]"; print "show_whats_new\\default=false"; print "show_whats_new=false" } }
+' "$LICHII_INI" > "$LICHII_INI.tmp" && mv "$LICHII_INI.tmp" "$LICHII_INI"
+
 # ── Decryption keys: bios/switch2/, the console's own folder ──
 # Les clés de la Switch 2 (prod.keys, title.keys) se rangent dans bios/switch2/,
 # comme celles de la Switch dans bios/switch/ : un seul chemin par console.

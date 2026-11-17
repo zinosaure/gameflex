@@ -197,8 +197,10 @@ func TestGamesListsEachGameOnce(t *testing.T) {
 
 // UNE SAUVEGARDE PS4 NOMME SON JEU PAR « MAINTITLE » : des CUSA seuls ne
 // disent rien (le porteur, 2026-10-30). Les données communes d'un jeu
-// (« System Saved Data », celles de *FF7 Remake*) ne le nomment pas : on prend
-// une autre sauvegarde, et sans autre, le jeu reste nommé par son CUSA.
+// (« System Saved Data », celles de *FF7 Remake*) ne le nomment pas, ni le
+// libellé générique « Saved Data » (deux jeux des sauvegardes du porteur,
+// 2026-11-16) : on prend une autre sauvegarde, et sans autre, le jeu reste
+// nommé par son CUSA.
 func TestPS4SavesAreNamedByTheirMainTitle(t *testing.T) {
 	tree := t.TempDir()
 	ps4 := filepath.Join(tree, "streamex", "ps4", "data", "home", "1000", "savedata")
@@ -206,12 +208,14 @@ func TestPS4SavesAreNamedByTheirMainTitle(t *testing.T) {
 	write(t, filepath.Join(ps4, "CUSA07187", "ff7remakecommon", "sce_sys", "param.sfo"), sfoKey("MAINTITLE", "System Saved Data"), monday)
 	write(t, filepath.Join(ps4, "CUSA07188", "ff7remakecommon", "sce_sys", "param.sfo"), sfoKey("MAINTITLE", "System Saved Data"), monday)
 	write(t, filepath.Join(ps4, "CUSA07188", "ff7remakesave", "sce_sys", "param.sfo"), sfoKey("MAINTITLE", "FINAL FANTASY VII REMAKE"), monday)
+	write(t, filepath.Join(ps4, "CUSA13632", "SAVEDATA00", "sce_sys", "param.sfo"), sfoKey("MAINTITLE", "Saved Data"), monday)
 
 	games := Games(tree)
 	for id, want := range map[string]string{
 		"CUSA12025": "KINGDOM HEARTS III",
 		"CUSA07187": "",
 		"CUSA07188": "FINAL FANTASY VII REMAKE",
+		"CUSA13632": "",
 	} {
 		if game := find(games, "ps4", id); game == nil || game.Title != want {
 			t.Errorf("%s : %+v, attendu « %s »", id, game, want)
@@ -417,3 +421,25 @@ func TestRestoreSlotKeepsABackup(t *testing.T) {
 		t.Fatal("titre perdu")
 	}
 }
+
+// UN DOSSIER DE SAUVEGARDE VIDE N'EST PAS UNE SAUVEGARDE (le porteur,
+// 2026-11-15) : ni listé, ni téléchargeable ; un fichier dedans, et il l'est.
+func TestAnEmptySaveFolderIsNoSave(t *testing.T) {
+	tree := t.TempDir()
+	game := filepath.Join(consoleDir(tree, "switch"), "nand/user/save/0000000000000000/CB4433B032A5AC306FD0DCCA511C514B/0100D1B006744000")
+	if err := os.MkdirAll(filepath.Join(game, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if len(Games(tree)) != 0 || Has(tree, "switch", "0100D1B006744000") {
+		t.Fatalf("un dossier vide compte : %+v", Games(tree))
+	}
+
+	if err := os.WriteFile(filepath.Join(game, "sub", "save.bin"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	games := Games(tree)
+	if len(games) != 1 || games[0].ID != "0100D1B006744000" || games[0].UpdatedAt.IsZero() || !Has(tree, "switch", "0100D1B006744000") {
+		t.Fatalf("avec un fichier : %+v", games)
+	}
+}
+

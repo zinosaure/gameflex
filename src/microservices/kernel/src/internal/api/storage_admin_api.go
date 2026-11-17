@@ -29,6 +29,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"gameflex/facade"
 	"gameflex/storage/listing"
 	"io"
 	"log/slog"
@@ -45,6 +46,7 @@ import (
 	"gameflex/kernel/internal/auth"
 	"gameflex/kernel/internal/retro_files"
 	"gameflex/logfile"
+	"gameflex/storage"
 )
 
 // maxReportBytes — un signalement décrit un écran d'étapes, pas un fichier.
@@ -222,9 +224,43 @@ type storeItem struct {
 	// version éprouvée avec l'image installée (docker.RequiredEmulator) ? La
 	// liste informe, elle ne bloque pas. Absent pour le reste.
 	Tested *bool `json:"tested,omitempty"`
-	// InUse — c'est lui qu'une partie prendrait : le dernier déposé parmi les
-	// versions que l'image reconnaît.
+	// InUse — c'est lui qu'une partie prendrait : la version en service
+	// (console_defaults.go), sinon le dernier déposé parmi les versions que
+	// l'image reconnaît.
 	InUse bool `json:"inUse,omitempty"`
+	// Version — installé, ce qu'il est (chantier 53, #670) : pour le fichier
+	// d'un émulateur de console récente, la part de son nom que l'image laisse
+	// libre (`*` de son motif) ; pour un cœur libretro, la date de son fichier
+	// — la même « version » que le statut d'un jeu retient (emulatorVersion).
+	Version string `json:"version,omitempty"`
+	// Choose — ce que la ligne règle dans le défaut de sa console (chantier 54,
+	// P2, #682) : « core » (un cœur rétro), « emulatorFile » (une version d'un
+	// émulateur de bureau du serveur ; `tested` dit si l'image la reconnaît, et
+	// la page grise le geste sinon), « bios » (un BIOS rétro). Absent quand elle
+	// ne règle rien — un paquet du téléphone, un BIOS Streamex. Le téléphone écrit le même
+	// champ : la page le lit au lieu de le déduire de la méthode de la console.
+	Choose string `json:"choose,omitempty"`
+}
+
+// markChoices — `choose` sur les lignes d'ici (pas sur celles servies à un
+// pair, qui ne règle rien chez nous).
+func markChoices(sections []consoleSection, section string) {
+	for index := range sections {
+		streamex := consoles.MethodOf(sections[index].ConsoleID) == consoles.MethodStreamex
+		for item := range sections[index].Items {
+			row := &sections[index].Items[item]
+			switch {
+			case section == listing.Bios:
+				if !streamex {
+					row.Choose = "bios"
+				}
+			case row.Package == "server":
+				row.Choose = "emulatorFile"
+			case row.Package == "" && !streamex:
+				row.Choose = "core"
+			}
+		}
+	}
 }
 
 // coresSections — les cores de CETTE machine, console par console.
@@ -241,6 +277,7 @@ func (server *Server) coresSections(ctx context.Context) []consoleSection {
 		return server.requiredEmulatorItems(ctx, consoleID, listed)
 	})
 	server.markEmulatorFiles(ctx, sections)
+	server.markCoreVersions(sections)
 
 	return sections
 }
@@ -307,7 +344,9 @@ func coresSectionsWith(present map[string][]listing.Item, more func(consoleID st
 
 // handleStorageCores — GET /api/v1/retrogaming/storage/cores.
 func (server *Server) handleStorageCores(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"consoles": server.coresSections(r.Context())})
+	sections := server.coresSections(r.Context())
+	markChoices(sections, listing.Cores)
+	writeJSON(w, http.StatusOK, map[string]any{"consoles": sections})
 }
 
 // handleStorageCoreDownload — POST /api/v1/retrogaming/storage/cores {consoleId, core}.
@@ -322,7 +361,7 @@ func (server *Server) handleStorageCoreDownload(w http.ResponseWriter, r *http.R
 		Core      string `json:"core"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "corps illisible")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "corps illisible")
 
 		return
 	}
@@ -338,8 +377,7 @@ func (server *Server) handleStorageCoreDownload(w http.ResponseWriter, r *http.R
 	// Le core est vérifié CONTRE LE REGISTRE, pas contre son allure : c'est
 	// ce nom qui devient un chemin sur le disque et un segment d'URL.
 	if !coreBelongsTo(body.ConsoleID, body.Core) {
-		writeError(w, http.StatusBadRequest,
-			fmt.Sprintf("le core « %s » n'est pas déclaré pour %s", body.Core, body.ConsoleID))
+		writeErrorCode(w, http.StatusBadRequest, "emulator_unknown", fmt.Sprintf("le core « %s » n'est pas déclaré pour %s", body.Core, body.ConsoleID))
 
 		return
 	}
@@ -370,9 +408,8 @@ func (server *Server) handleStorageCoreDownload(w http.ResponseWriter, r *http.R
 	// un serveur qui a la version Linux sans la version Android descend
 	// celle qui manque, et rien d'autre.
 	if linuxErr == nil && androidErr == nil {
-		writeError(w, http.StatusConflict,
-			"ce cœur existe déjà : le supprimer d'abord pour en reprendre une version — "+
-				"« le dernier » du buildbot n'est pas toujours celui qui marche")
+		writeErrorCode(w, http.StatusConflict, "already_installed", "ce cœur existe déjà : le supprimer d'abord pour en reprendre une version — "+
+			"« le dernier » du buildbot n'est pas toujours celui qui marche")
 
 		return
 	}
@@ -391,11 +428,11 @@ func (server *Server) handleStorageCoreDownload(w http.ResponseWriter, r *http.R
 			// version le cœur exige et laquelle la machine fournit, au lieu
 			// d'un « échec ».
 			if errors.Is(err, errCoreIncompatible) {
-				writeError(w, http.StatusPreconditionFailed, err.Error())
+				writeErrorCode(w, http.StatusPreconditionFailed, "storage_failed", err.Error())
 
 				return
 			}
-			writeError(w, http.StatusBadGateway, err.Error())
+			writeErrorCode(w, http.StatusBadGateway, "storage_failed", err.Error())
 
 			return
 		}
@@ -409,11 +446,11 @@ func (server *Server) handleStorageCoreDownload(w http.ResponseWriter, r *http.R
 		androidWritten, err := downloadAndroidCore(r.Context(), coreAndroidBuildbotURL(body.Core), androidTarget)
 		switch {
 		case err != nil && linuxErr == nil && errors.Is(err, errCoreIncompatible):
-			writeError(w, http.StatusPreconditionFailed, "version Android : "+err.Error())
+			writeErrorCode(w, http.StatusPreconditionFailed, "download_failed", "version Android : "+err.Error())
 
 			return
 		case err != nil && linuxErr == nil:
-			writeError(w, http.StatusBadGateway, "version Android : "+err.Error())
+			writeErrorCode(w, http.StatusBadGateway, "download_failed", "version Android : "+err.Error())
 
 			return
 		case err != nil:
@@ -454,8 +491,7 @@ func (server *Server) handleStorageCoreDelete(w http.ResponseWriter, r *http.Req
 	}
 
 	if !coreBelongsTo(consoleID, core) {
-		writeError(w, http.StatusBadRequest,
-			fmt.Sprintf("le core « %s » n'est pas déclaré pour %s", core, consoleID))
+		writeErrorCode(w, http.StatusBadRequest, "emulator_unknown", fmt.Sprintf("le core « %s » n'est pas déclaré pour %s", core, consoleID))
 
 		return
 	}
@@ -470,14 +506,14 @@ func (server *Server) handleStorageCoreDelete(w http.ResponseWriter, r *http.Req
 			continue
 		}
 		if err := os.Remove(target); err != nil {
-			writeError(w, http.StatusInternalServerError, "suppression impossible : "+err.Error())
+			writeErrorCode(w, http.StatusInternalServerError, "delete_failed", "suppression impossible : "+err.Error())
 
 			return
 		}
 		removed = true
 	}
 	if !removed {
-		writeError(w, http.StatusNotFound, "ce fichier n'est pas installé ici")
+		writeErrorCode(w, http.StatusNotFound, "not_found", "ce fichier n'est pas installé ici")
 
 		return
 	}
@@ -495,8 +531,7 @@ func (server *Server) handleStorageBiosDelete(w http.ResponseWriter, r *http.Req
 	name := strings.TrimSpace(r.URL.Query().Get("name"))
 
 	if !biosBelongsTo(consoleID, name) {
-		writeError(w, http.StatusBadRequest,
-			fmt.Sprintf("le BIOS « %s » n'est pas attendu par %s", name, consoleID))
+		writeErrorCode(w, http.StatusBadRequest, "bios_unknown", fmt.Sprintf("le BIOS « %s » n'est pas attendu par %s", name, consoleID))
 
 		return
 	}
@@ -513,12 +548,12 @@ func (server *Server) handleStorageBiosDelete(w http.ResponseWriter, r *http.Req
 // Ici il ne reste qu'à distinguer « il n'était pas là » de « je n'ai pas pu ».
 func (server *Server) removeLibraryFile(w http.ResponseWriter, target string, answer map[string]any) {
 	if _, err := os.Stat(target); err != nil {
-		writeError(w, http.StatusNotFound, "ce fichier n'est pas installé ici")
+		writeErrorCode(w, http.StatusNotFound, "not_found", "ce fichier n'est pas installé ici")
 
 		return
 	}
 	if err := os.Remove(target); err != nil {
-		writeError(w, http.StatusInternalServerError, "suppression impossible : "+err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "delete_failed", "suppression impossible : "+err.Error())
 
 		return
 	}
@@ -562,7 +597,7 @@ func downloadCoreFor(ctx context.Context, url, target, platform string, verify f
 	}
 	// Le dossier de console aussi : c'est lui qui devenait `root:root` et que
 	// la personne ne pouvait plus gérer (#146).
-	adoptParentOwner(filepath.Dir(target))
+	storage.AdoptParentOwner(filepath.Dir(target))
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -591,7 +626,7 @@ func downloadCoreFor(ctx context.Context, url, target, platform string, verify f
 	defer os.Remove(archive.Name())
 	defer archive.Close()
 
-	size, err := io.Copy(archive, response.Body)
+	size, err := io.Copy(facade.ProgressWriter(ctx, archive, response.ContentLength), response.Body)
 	if err != nil {
 		return 0, fmt.Errorf("téléchargement interrompu : %w", err)
 	}
@@ -677,7 +712,7 @@ func extractCore(entry *zip.File, target string, verify func(string) error) (int
 		return 0, err
 	}
 	// Le fichier est à la personne, pas au noyau qui l'a descendu (#146).
-	adoptParentOwner(target)
+	storage.AdoptParentOwner(target)
 
 	return written, nil
 }
@@ -693,7 +728,9 @@ func extractCore(entry *zip.File, target string, verify func(string) error) (int
 // et c'est déjà ce qui manquait — un BIOS absent se manifestait jusqu'ici par
 // un émulateur qui refuse de démarrer, sans dire lequel il cherchait.
 func (server *Server) handleStorageBios(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"consoles": server.biosSections()})
+	sections := server.biosSections()
+	markChoices(sections, listing.Bios)
+	writeJSON(w, http.StatusOK, map[string]any{"consoles": sections})
 }
 
 // biosSections — même extraction que coresSections, et pour la même raison :
@@ -746,7 +783,7 @@ func (server *Server) logsRoot() string {
 func (server *Server) handleStorageLogs(w http.ResponseWriter, r *http.Request) {
 	entries, err := logfile.List(server.logsRoot())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "storage_failed", err.Error())
 
 		return
 	}
@@ -822,28 +859,36 @@ func (server *Server) handleStorageLogReport(w http.ResponseWriter, r *http.Requ
 		Detail  map[string]any   `json:"detail"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, maxReportBytes)).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "unreadable report: "+err.Error())
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "unreadable report: "+err.Error())
 
 		return
 	}
 	if !server.reports.allow(auth.Username(r.Context()), time.Now()) {
-		writeError(w, http.StatusTooManyRequests, "too many reports: try again later")
+		writeErrorCode(w, http.StatusTooManyRequests, "reports_throttled", "too many reports: try again later")
 
 		return
 	}
 
 	file, err := logfile.Reports(server.logsRoot())
+	// ÉTEINTS dans Réglages › Journaux : le dire, plutôt qu'un « envoyé » qui
+	// ne serait écrit nulle part (la page ne montre plus le bouton, mais une
+	// page ouverte avant le changement peut encore l'envoyer).
+	if errors.Is(err, logfile.ErrReportsOff) {
+		writeErrorCode(w, http.StatusConflict, "storage_failed", err.Error())
+
+		return
+	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "storage_failed", err.Error())
 
 		return
 	}
 	// NE PAS RÉPONDRE « ENREGISTRÉ » QUAND RIEN NE L'EST. `logfile.open` rend
-	// (nil, nil) quand l'écriture est éteinte — un succès muet ici ferait
-	// croire à un signalement envoyé, et c'est précisément le genre de mensonge
-	// qu'un écran d'erreur ne doit pas produire.
+	// (nil, nil) sans dossier où écrire — un succès muet ici ferait croire à un
+	// signalement envoyé, et c'est précisément le genre de mensonge qu'un écran
+	// d'erreur ne doit pas produire.
 	if file == nil {
-		writeError(w, http.StatusServiceUnavailable, "file logs are disabled on this machine")
+		writeErrorCode(w, http.StatusServiceUnavailable, "logs_failed", "this machine has no folder for its logs")
 
 		return
 	}
@@ -858,13 +903,13 @@ func (server *Server) handleStorageLogReport(w http.ResponseWriter, r *http.Requ
 		"detail":   body.Detail,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "storage_failed", err.Error())
 
 		return
 	}
 
 	if _, err := file.Write(append(encoded, '\n')); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "storage_failed", err.Error())
 
 		return
 	}
@@ -878,11 +923,11 @@ func (server *Server) handleStorageLogReport(w http.ResponseWriter, r *http.Requ
 func writeLogError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, logfile.ErrOutsideRoot):
-		writeError(w, http.StatusBadRequest, "chemin hors du dossier des journaux")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "chemin hors du dossier des journaux")
 	case os.IsNotExist(err):
-		writeError(w, http.StatusNotFound, "journal introuvable")
+		writeErrorCode(w, http.StatusNotFound, "not_found", "journal introuvable")
 	default:
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "storage_failed", err.Error())
 	}
 }
 
@@ -912,7 +957,7 @@ func (server *Server) handleStorageSaves(w http.ResponseWriter, r *http.Request)
 	root := server.retroSavesRoot()
 	entries, err := os.ReadDir(root)
 	if err != nil && !os.IsNotExist(err) {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "storage_failed", err.Error())
 
 		return
 	}
@@ -949,10 +994,17 @@ func (server *Server) handleStorageSaves(w http.ResponseWriter, r *http.Request)
 //
 // Le nom vient d'une requête HTTP, et il sert ici à choisir un dossier à
 // EMPORTER puis à SUPPRIMER. « ../databases » y passerait sans cette garde.
+//
+// Et une racine VIDE n'est pas une racine : le chemin deviendrait relatif au
+// dossier courant du processus, et c'est là qu'on effacerait (la garde du
+// téléphone, la même).
 func (server *Server) saveUserDir(username string) (string, error) {
 	if username == "" || username != filepath.Base(username) ||
 		username == "." || username == ".." || strings.ContainsAny(username, `/\`) {
 		return "", errors.New("nom de compte invalide")
+	}
+	if strings.TrimSpace(server.storageRoot) == "" {
+		return "", errors.New("aucun dossier de sauvegardes")
 	}
 
 	return filepath.Join(server.retroSavesRoot(), username), nil
@@ -966,12 +1018,12 @@ func (server *Server) handleStorageSavesArchive(w http.ResponseWriter, r *http.R
 	username := r.URL.Query().Get("user")
 	dir, err := server.saveUserDir(username)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeErrorCode(w, http.StatusBadRequest, "storage_failed", err.Error())
 
 		return
 	}
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
-		writeError(w, http.StatusNotFound, "ce compte n'a pas de sauvegardes")
+		writeErrorCode(w, http.StatusNotFound, "save_not_found", "ce compte n'a pas de sauvegardes")
 
 		return
 	}
@@ -1011,7 +1063,7 @@ func (server *Server) handleStorageSavesDelete(w http.ResponseWriter, r *http.Re
 	user := r.URL.Query().Get("user")
 	dir, err := server.saveUserDir(user)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeErrorCode(w, http.StatusBadRequest, "storage_failed", err.Error())
 
 		return
 	}
@@ -1023,10 +1075,21 @@ func (server *Server) handleStorageSavesDelete(w http.ResponseWriter, r *http.Re
 	// Déjà en cours : on le dit sans relancer. Un second clic sur une
 	// suppression qui travaille ne doit pas lancer un second effacement du
 	// même dossier.
-	if !server.savesDeletions.start(user) {
+	if !server.deleteSavesInBackground(user, dir) {
 		writeJSON(w, http.StatusOK, map[string]any{"started": true, "alreadyRunning": true})
 
 		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]any{"started": true})
+}
+
+// deleteSavesInBackground — le dossier de sauvegardes de ce compte s'efface en
+// fond (savesDeletionTracker). Faux s'il s'efface déjà : rien n'est relancé.
+// Réglages s'en sert, et la suppression d'un compte (eraseSavesOf).
+func (server *Server) deleteSavesInBackground(user, dir string) bool {
+	if !server.savesDeletions.start(user) {
+		return false
 	}
 
 	go func() {
@@ -1044,7 +1107,7 @@ func (server *Server) handleStorageSavesDelete(w http.ResponseWriter, r *http.Re
 		slog.Info("saves deleted", "user", user)
 	}()
 
-	writeJSON(w, http.StatusAccepted, map[string]any{"started": true})
+	return true
 }
 
 // adminOnly — ce qui touche à la MACHINE ne se fait pas depuis n'importe quel
@@ -1061,7 +1124,7 @@ func (server *Server) handleStorageSavesDelete(w http.ResponseWriter, r *http.Re
 func localOnly(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if auth.Federated(r.Context()) {
-			writeError(w, http.StatusForbidden, "a session opened from another server only plays here")
+			writeErrorCode(w, http.StatusForbidden, "federated_session_play_only", "a session opened from another server only plays here")
 
 			return
 		}
@@ -1072,7 +1135,7 @@ func localOnly(next http.HandlerFunc) http.HandlerFunc {
 func adminOnly(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !auth.IsAdmin(r.Context()) {
-			writeError(w, http.StatusForbidden, "admin access required")
+			writeErrorCode(w, http.StatusForbidden, "admin_only", "admin access required")
 
 			return
 		}

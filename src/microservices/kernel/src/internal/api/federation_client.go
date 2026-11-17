@@ -45,17 +45,17 @@ func (server *Server) handleFederationCheck(w http.ResponseWriter, r *http.Reque
 		Token string `json:"token"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid body")
 		return
 	}
 
 	distant, err := remote.New(body.Link, body.Token)
 	if errors.Is(err, remote.ErrNoLink) {
-		writeError(w, http.StatusBadRequest, "a link is required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "a link is required")
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeErrorCode(w, http.StatusBadRequest, "peer_failed", err.Error())
 		return
 	}
 
@@ -64,7 +64,7 @@ func (server *Server) handleFederationCheck(w http.ResponseWriter, r *http.Reque
 		// 400 et pas 401 : ce n'est pas NOTRE authentification qui échoue,
 		// c'est le jeton saisi qui est refusé là-bas. Un 401 ferait croire
 		// au navigateur que sa propre session a expiré.
-		writeError(w, http.StatusBadRequest, "this server refused the token")
+		writeErrorCode(w, http.StatusBadRequest, "token_refused", "this server refused the token")
 		return
 	}
 	if err != nil {
@@ -74,10 +74,10 @@ func (server *Server) handleFederationCheck(w http.ResponseWriter, r *http.Reque
 		// tout ce qu'elle peut corriger : l'adresse, ou la machine d'en face.
 		var transport *url.Error
 		if errors.As(err, &transport) {
-			writeError(w, http.StatusBadGateway, "this address did not answer")
+			writeErrorCode(w, http.StatusBadGateway, "peer_unreachable", "this address did not answer")
 			return
 		}
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeErrorCode(w, http.StatusBadGateway, "peer_failed", err.Error())
 		return
 	}
 
@@ -111,7 +111,7 @@ func (server *Server) handleServerSession(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "cannot read your token: "+err.Error())
+		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "cannot read your token: "+err.Error())
 
 		return
 	}
@@ -131,8 +131,8 @@ func (server *Server) handleServerSession(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, session)
 }
 
-// handleSetServerAccount — PUT /api/v1/servers/{id}/account {token} ou
-// {invitation} (chantiers 20 et 33) : le jeton du compte de l'appelant chez ce serveur, collé UNE
+// handleSetServerAccount — PUT /api/v1/servers/{id}/account {token},
+// {invitation} ou {code} (chantiers 20, 33 et 60) : le jeton du compte de l'appelant chez ce serveur, collé UNE
 // fois. Il s'essaie d'abord là-bas — un jeton refusé ne se garde pas, et le dit
 // tout de suite —, puis se garde avec le compte d'ici (« avec mon compte », le
 // porteur : sur tous ses appareils). La session que l'essai a ouverte sert à
@@ -148,18 +148,31 @@ func (server *Server) handleSetServerAccount(w http.ResponseWriter, r *http.Requ
 	var body struct {
 		Token      string `json:"token"`
 		Invitation string `json:"invitation"`
+		Code       string `json:"code"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil ||
-		(strings.TrimSpace(body.Token) == "" && strings.TrimSpace(body.Invitation) == "") {
-		writeError(w, http.StatusBadRequest, "a token or an invitation is required")
+		(strings.TrimSpace(body.Token) == "" && strings.TrimSpace(body.Invitation) == "" && strings.TrimSpace(body.Code) == "") {
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "a token, an invitation or a code is required")
 
 		return
 	}
 	token := strings.TrimSpace(body.Token)
-	// OU L'INVITATION DE CE COMPTE (chantier 33) : échangée chez lui contre le
-	// jeton, qui ne passe ainsi jamais par une messagerie.
-	if invitation := strings.TrimSpace(body.Invitation); invitation != "" {
-		redeemed, err := remote.RedeemAccount(entry.Link, invitation)
+	// OU L'INVITATION DE CE COMPTE (chantier 33), OU SON CODE D'APPAIRAGE
+	// (chantier 60) : échangés chez lui contre le jeton, qui ne passe ainsi
+	// jamais par une messagerie. L'adresse est celle de la fiche.
+	if invitation, typed := strings.TrimSpace(body.Invitation), strings.TrimSpace(body.Code); invitation != "" || typed != "" {
+		var (
+			redeemed string
+			err      error
+		)
+		if typed != "" {
+			var code string
+			if code, err = remote.PairingCode(typed); err == nil {
+				redeemed, err = remote.RedeemAccountCode(entry.Link, code, server.federationHostname())
+			}
+		} else {
+			redeemed, err = remote.RedeemAccount(entry.Link, invitation, server.federationHostname())
+		}
 		if invitationRefusal(w, err) {
 			return
 		}
@@ -173,7 +186,7 @@ func (server *Server) handleSetServerAccount(w http.ResponseWriter, r *http.Requ
 
 	client, err := remote.New(entry.Link, token)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeErrorCode(w, http.StatusBadRequest, "peer_failed", err.Error())
 
 		return
 	}
@@ -193,7 +206,7 @@ func (server *Server) handleSetServerAccount(w http.ResponseWriter, r *http.Requ
 	if err := server.storeFederatedAccount(http.MethodPut, map[string]any{
 		"username": member, "server": entry.ID, "token": token,
 	}); err != nil {
-		writeError(w, http.StatusServiceUnavailable, "cannot keep your token: "+err.Error())
+		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "cannot keep your token: "+err.Error())
 
 		return
 	}
@@ -219,7 +232,7 @@ func (server *Server) handleForgetServerAccount(w http.ResponseWriter, r *http.R
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "cannot forget your token: "+err.Error())
+		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "cannot forget your token: "+err.Error())
 
 		return
 	}

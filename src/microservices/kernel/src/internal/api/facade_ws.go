@@ -13,12 +13,28 @@ package api
 //     demandé (`every`) ;
 //   - `launch/<launchId>` — les étapes d'un lancement, l'histoire d'abord ;
 //   - `mount/<id>` — le résumé d'une ressource distante, à chaque début et
-//     chaque fin de parcours.
+//     chaque fin de parcours ;
+//   - `download/<id>` — l'état d'un téléchargement en tâche de fond, le
+//     dernier d'abord (gameflex/facade, downloads.go), pour le compte qui l'a
+//     lancé ;
+//   - `downloads` — les téléchargements de ce compte qui tournent ou attendent
+//     dans la file, leur rang et leur progression, à chaque changement ;
+//   - `pairing` — les modes découverte et les codes d'appairage (chantier 60,
+//     pairing.go) : le mode compte et les codes de cette connexion, le mode
+//     serveur et les codes `federation` en plus pour un administrateur ;
+//   - `discovery` — les serveurs du réseau local en mode découverte : la
+//     recherche ne vit que tant qu'une page y est abonnée (lan_discovery.go).
 //
 // Commandes :
 //
 //   - `launch` — le corps de l'ancien `POST /api/v1/launch` ;
-//   - `session.stop` {platform, sessionId} — réservé au propriétaire.
+//   - `session.stop` {platform, sessionId} — réservé au propriétaire ;
+//   - `download` {route, …} — un téléchargement en tâche de fond
+//     (facadeDownload), réservé aux administrateurs ; un jeu prend la file ;
+//   - `download.cancel` {downloadId} — l'arrêter, ou le retirer de la file,
+//     par le compte qui l'a lancé ;
+//   - `discovery.search` — reposer la question du réseau local, une fois : le
+//     geste « Chercher de nouveau ».
 //
 // Rejoindre, demander ou céder la manette n'en font pas partie : c'est au
 // child qui tient la session d'en décider, et la page le lui dit sur son
@@ -29,12 +45,16 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
+	"gameflex/consoles"
 	"gameflex/facade"
 	"gameflex/kernel/internal/auth"
 	"gameflex/storage/listing"
@@ -51,14 +71,14 @@ func (server *Server) handleFacadeWebSocket(w http.ResponseWriter, r *http.Reque
 
 	claims, err := auth.ParseToken(server.config.JWTSecret, token)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid or missing token")
+		writeErrorCode(w, http.StatusUnauthorized, "auth_required", "invalid or missing token")
 
 		return
 	}
 	// Le compte doit exister encore (chantier 20) : un compte retiré n'ouvre
 	// plus de canal, même avec un jeton qui n'a pas expiré.
 	if _, admitted := auth.Admit(claims); !admitted {
-		writeError(w, http.StatusUnauthorized, "this account no longer has access")
+		writeErrorCode(w, http.StatusUnauthorized, "account_no_access", "this account no longer has access")
 
 		return
 	}
@@ -71,8 +91,11 @@ func (server *Server) handleFacadeWebSocket(w http.ResponseWriter, r *http.Reque
 	facade.Serve(socket, claims.Username, token, facade.Router{
 		Topic: server.facadeTopic,
 		Commands: map[string]func(*facade.Conn, facade.Request){
-			"launch":       server.facadeLaunch,
-			"session.stop": server.facadeStop,
+			"launch":           server.facadeLaunch,
+			"session.stop":     server.facadeStop,
+			"download":         server.facadeDownload,
+			"download.cancel":  server.facadeDownloadCancel,
+			"discovery.search": server.facadeDiscoverySearch,
 		},
 	})
 }
@@ -91,6 +114,22 @@ func (server *Server) facadeTopic(conn *facade.Conn, wanted facade.Subscription)
 			facade.PushOnChange(ctx, conn, facade.Push{Type: "sessions", Topic: "sessions"}, signals, func() any {
 				return server.enrichSessions(server.pool.List(), facadeViewer{username: conn.Username()})
 			})
+		}, 0, ""
+
+	// LES PARTIES D'UN PAIR (`#747`, federation_sessions.go) et L'ÉTAT DE SES CONSOLES (`#750`, federation_devices.go) :
+	// tant que la page y est abonnée, le socket du pair, ouvert avec notre jeton chez lui, qui ne sort pas d'ici.
+	case strings.HasPrefix(wanted.Topic, "servers/"):
+		peer, kind, found := server.peerFromTopic(wanted.Topic)
+		if !found {
+			return nil, http.StatusNotFound, "server not found"
+		}
+		follow := facade.FollowPeerSessions
+		if kind == "devices" {
+			follow = facade.FollowPeerDevices
+		}
+
+		return func(ctx context.Context) {
+			follow(ctx, conn, wanted.Topic, peer.Link, peer.Token)
 		}, 0, ""
 
 	case strings.HasPrefix(wanted.Topic, "status/"):
@@ -131,6 +170,85 @@ func (server *Server) facadeTopic(conn *facade.Conn, wanted facade.Subscription)
 
 				return listing.Summary(listingCacheDir, key, scanning, failure)
 			})
+		}, 0, ""
+
+	case strings.HasPrefix(wanted.Topic, "metadata-orphans/"):
+		// LES EMPREINTES DES JEUX D'UNE CONSOLE SONT-ELLES LUES ? (#751) La page des métadonnées sans jeu reçoit un
+		// 503 `games_not_ready` tant qu'elles ne le sont pas ; elle relisait sa liste toutes les quatre secondes. Elle
+		// s'abonne ici : `{ready}` repart à la fin de chaque lecture, et seulement s'il a changé. Un administrateur
+		// seulement, comme la liste.
+		consoleID := strings.TrimPrefix(wanted.Topic, "metadata-orphans/")
+		if !consoles.Exists(consoleID) {
+			return nil, http.StatusBadRequest, "unknown console"
+		}
+		if status, _ := facade.Call(conn, auth.Middleware(server.config.JWTSecret, adminOnly(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		})), http.MethodGet, "/", nil, nil); status != http.StatusNoContent {
+			return nil, status, "administrators only"
+		}
+
+		return func(ctx context.Context) {
+			wake, stop := watchGameKeys()
+			defer stop()
+
+			facade.PushOnChange(ctx, conn, facade.Push{Type: "metadata-orphans", Topic: wanted.Topic}, wake, func() any {
+				_, _, ready := server.accessibleGameKeys(ctx, consoleID)
+
+				return map[string]bool{"ready": ready}
+			})
+		}, 0, ""
+
+	case wanted.Topic == "pairing":
+		admin := server.connAdmin(conn)
+
+		return func(ctx context.Context) {
+			server.pairing.Follow(ctx, conn, admin)
+		}, 0, ""
+
+	case wanted.Topic == "discovery":
+		return func(ctx context.Context) {
+			server.discovery.Follow(ctx, conn)
+		}, 0, ""
+
+	case wanted.Topic == "downloads":
+		// LA FILE ET CE QUI TOURNE, pour ce compte (le porteur, 2026-11-16, 2.4) :
+		// la page qu'on rouvre la relit, et chaque départ, étape, fin ou rang la
+		// repousse.
+		return func(ctx context.Context) {
+			wake, stop := server.downloads.Watch()
+			defer stop()
+
+			facade.PushOnChange(ctx, conn, facade.Push{Type: "downloads", Topic: "downloads"}, wake, func() any {
+				return server.downloads.List(conn.Username())
+			})
+		}, 0, ""
+
+	case strings.HasPrefix(wanted.Topic, "download/"):
+		downloadID := strings.TrimPrefix(wanted.Topic, "download/")
+		steps, last, unsubscribe, known := server.downloads.Subscribe(downloadID, conn.Username())
+		if !known {
+			unsubscribe()
+
+			return nil, http.StatusNotFound, "unknown download"
+		}
+
+		return func(ctx context.Context) {
+			defer unsubscribe()
+			frame := facade.Push{Type: "download", Topic: wanted.Topic}
+			frame.Data = last
+			conn.Send(frame)
+			for {
+				select {
+				case step, open := <-steps:
+					if !open {
+						return
+					}
+					frame.Data = step
+					conn.Send(frame)
+				case <-ctx.Done():
+					return
+				}
+			}
 		}, 0, ""
 
 	case strings.HasPrefix(wanted.Topic, "launch/"):
@@ -207,7 +325,7 @@ func (server *Server) statusReader(platform, sessionID string) func() (any, bool
 func (server *Server) facadeLaunch(conn *facade.Conn, request facade.Request) {
 	var body map[string]any
 	if json.Unmarshal(request.Data, &body) != nil || body == nil {
-		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("invalid request body"))
+		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "invalid request body"))
 
 		return
 	}
@@ -221,7 +339,7 @@ func (server *Server) facadeLaunch(conn *facade.Conn, request facade.Request) {
 	// refusés.
 	if username := conn.Username(); username != "" {
 		if _, busy := server.launching.LoadOrStore(username, struct{}{}); busy {
-			conn.Reply(request.ID, http.StatusConflict, facade.ErrorBody("a launch is already in progress for this account"))
+			conn.Reply(request.ID, http.StatusConflict, facade.ErrorBody("launch_in_progress", "a launch is already in progress for this account"))
 
 			return
 		}
@@ -233,7 +351,7 @@ func (server *Server) facadeLaunch(conn *facade.Conn, request facade.Request) {
 	body["launchId"] = launchID
 	raw, err := json.Marshal(body)
 	if err != nil {
-		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("invalid request body"))
+		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "invalid request body"))
 
 		return
 	}
@@ -275,7 +393,7 @@ func (server *Server) facadeStop(conn *facade.Conn, request facade.Request) {
 		SessionID string `json:"sessionId"`
 	}
 	if json.Unmarshal(request.Data, &target) != nil || target.SessionID == "" {
-		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("missing session id"))
+		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "missing session id"))
 
 		return
 	}
@@ -287,7 +405,7 @@ func (server *Server) facadeStop(conn *facade.Conn, request facade.Request) {
 	}
 	handler, known := handlers[target.Platform]
 	if !known {
-		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("unknown platform: "+target.Platform))
+		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "unknown platform: "+target.Platform))
 
 		return
 	}
@@ -309,4 +427,148 @@ func newLaunchID() string {
 	}
 
 	return hex.EncodeToString(raw)
+}
+
+// facadeDownload — `{type:"download", id, data:{route, …, body, total, label,
+// key, source}}` : un téléchargement en tâche de fond (gameflex/facade,
+// downloads.go). Le kernel frappe son identifiant et le rend AUSSITÔT
+// (`{downloadId}`) ; le geste tourne ensuite, détaché de la connexion, et son
+// état passe sur `download/<id>` et dans la liste `downloads`. Les gestes sont
+// ceux des POST d'autrefois — partis depuis, la commande est la seule porte
+// (chantier 53) —, avec leurs gardes (administrateur, liste à rafraîchir) :
+//
+//   - `cores` {body} — un cœur chez libretro, ou un émulateur chez son éditeur
+//     (handleStorageCoreDownload) ;
+//   - `server` {server, section, body} — un cœur, un BIOS, un correctif ou un
+//     jeu pris chez un serveur fédéré (handleRemoteStorageImport) ;
+//   - `disk` {disk, section, body} — la même chose depuis un disque interne
+//     (handleDiskStorageImport).
+//
+// UN JEU PREND LA FILE (le porteur, 2026-11-16 : « c'est possible de mettre les
+// jeux à télécharger en queue ? ») : la section `roms`, d'un serveur fédéré ou
+// d'un disque, attend que le jeu d'avant ait fini. Le reste part tout de suite :
+// un émulateur, un BIOS ou un correctif ne patientent pas derrière un jeu de
+// plusieurs dizaines de Go. La même chose (`key`) ne se demande pas deux fois
+// tant qu'elle attend ou tourne (409).
+//
+// `total` : la taille que la liste annonçait, quand la réponse ne la dira pas
+// (un dossier de plusieurs fichiers) ; `label`, `key`, `source` : ce que la
+// liste `downloads` en montre (son titre, ce qu'on télécharge, d'où), pour la
+// page qui revient après avoir été fermée.
+func (server *Server) facadeDownload(conn *facade.Conn, request facade.Request) {
+	var command struct {
+		Route   string          `json:"route"`
+		Server  string          `json:"server"`
+		Disk    string          `json:"disk"`
+		Section string          `json:"section"`
+		Body    json.RawMessage `json:"body"`
+		Total   int64           `json:"total"`
+		Label   string          `json:"label"`
+		Key     string          `json:"key"`
+		Source  string          `json:"source"`
+	}
+	if json.Unmarshal(request.Data, &command) != nil || len(command.Body) == 0 {
+		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "invalid request body"))
+
+		return
+	}
+
+	var (
+		handler http.HandlerFunc
+		path    string
+		values  = map[string]string{}
+		chiArgs = map[string]string{}
+	)
+	switch command.Route {
+	case "cores":
+		path = "/api/v1/retrogaming/storage/cores"
+		handler = adminOnly(server.refreshing(sectionNamed(listing.Cores), server.handleStorageCoreDownload))
+	case "server":
+		if command.Server == "" || command.Section == "" {
+			conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "server and section are required"))
+
+			return
+		}
+		path = "/api/v1/servers/" + command.Server + "/storage/" + command.Section
+		values["id"], values["section"] = command.Server, command.Section
+		handler = adminOnly(server.refreshing(
+			func(r *http.Request) string { return r.PathValue("section") }, server.handleRemoteStorageImport))
+	case "disk":
+		if command.Disk == "" || command.Section == "" {
+			conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "disk and section are required"))
+
+			return
+		}
+		path = "/api/v1/retrogaming/disks/" + command.Disk + "/storage/" + command.Section
+		chiArgs["name"], chiArgs["section"] = command.Disk, command.Section
+		handler = adminOnly(server.refreshing(
+			func(r *http.Request) string { return chi.URLParam(r, "section") }, server.handleDiskStorageImport))
+	default:
+		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "route must be cores, server or disk"))
+
+		return
+	}
+
+	// L'ADMINISTRATEUR SE VÉRIFIE À LA DEMANDE, pas seulement quand le geste
+	// part : un jeu de la file peut attendre des heures, et un refus doit se
+	// dire tout de suite. La même garde que le geste (adminOnly), rejouée à vide.
+	if status, answer := facade.Call(conn, auth.Middleware(server.config.JWTSecret, adminOnly(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})), http.MethodPost, path, nil, nil); status != http.StatusNoContent {
+		conn.Reply(request.ID, status, answer)
+
+		return
+	}
+
+	downloadID, err := server.downloads.Start(facade.DownloadJob{
+		Owner: conn.Username(), Label: command.Label, Key: command.Key, Source: command.Source, Total: command.Total,
+		Queued: takesTheQueue(command.Route, command.Section),
+		Run: func(ctx context.Context) (int, []byte) {
+			if len(chiArgs) > 0 {
+				route := chi.NewRouteContext()
+				for key, value := range chiArgs {
+					route.URLParams.Add(key, value)
+				}
+				ctx = context.WithValue(ctx, chi.RouteCtxKey, route)
+			}
+
+			return facade.CallContext(ctx, conn, auth.Middleware(server.config.JWTSecret, handler),
+				http.MethodPost, path, command.Body, values)
+		},
+	})
+	if errors.Is(err, facade.ErrDownloadPending) {
+		conn.Reply(request.ID, http.StatusConflict, facade.ErrorBody("download_failed", err.Error()))
+
+		return
+	}
+	conn.Reply(request.ID, http.StatusAccepted, facade.OKBody(map[string]string{"downloadId": downloadID}))
+}
+
+// takesTheQueue — un jeu (la section `roms`, d'un serveur fédéré ou d'un disque)
+// attend son tour ; le reste part tout de suite.
+func takesTheQueue(route, section string) bool {
+	return section == listing.Roms && (route == "server" || route == "disk")
+}
+
+// facadeDownloadCancel — `{type:"download.cancel", id, data:{downloadId}}` :
+// arrêter un téléchargement en cours (le porteur, 2026-11-14 : « 3. A »), ou
+// retirer un jeu de la file (2026-11-16). Seul le compte qui l'a lancé le fait ;
+// le salon finit en `failed`, « cancelled », et le fichier partiel est retiré
+// par le geste lui-même.
+func (server *Server) facadeDownloadCancel(conn *facade.Conn, request facade.Request) {
+	var target struct {
+		DownloadID string `json:"downloadId"`
+	}
+	if json.Unmarshal(request.Data, &target) != nil || target.DownloadID == "" {
+		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "missing download id"))
+
+		return
+	}
+	if !server.downloads.Cancel(target.DownloadID, conn.Username()) {
+		conn.Reply(request.ID, http.StatusNotFound, facade.ErrorBody("not_found", "no running download of yours with this id"))
+
+		return
+	}
+	answer, _ := json.Marshal(map[string]any{"success": true, "data": map[string]string{"downloadId": target.DownloadID}})
+	conn.Reply(request.ID, http.StatusOK, answer)
 }

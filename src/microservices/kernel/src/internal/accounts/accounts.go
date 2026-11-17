@@ -42,6 +42,13 @@ type Account struct {
 	RoleLevel int        `json:"role_level"`
 	Consoles  []string   `json:"consoles"`
 	Token     TokenState `json:"token"`
+	// SessionGeneration — la génération de ses sessions (chantier 55) : un jeton
+	// d'une génération plus ancienne ne vaut plus.
+	SessionGeneration int `json:"session_generation"`
+	// GamesGeneration — la génération de ses parties : quand elle avance (une
+	// réinitialisation, « Déconnecter tous les appareils »), ses parties en
+	// cours finissent.
+	GamesGeneration int `json:"games_generation"`
 }
 
 // TokenState — le jeton de fédération du compte : sa génération (régénéré, elle
@@ -67,11 +74,29 @@ type Change struct {
 	// raccourci : les sessions ouvertes avec lui depuis un autre serveur
 	// tombent.
 	TokenRetired []string
+	// Revoked — les comptes dont la génération des sessions a avancé (chantier
+	// 55) : les canaux d'une génération plus ancienne tombent, celui d'un jeton
+	// neuf reste. Son nom → la nouvelle génération.
+	Revoked map[string]int
+	// GamesEnded — les comptes dont la génération des parties a avancé : TOUTES
+	// leurs sessions sont coupées — un administrateur les a réinitialisés, ou ils
+	// ont choisi « Déconnecter tous les appareils » —, et leurs parties finissent
+	// aussi, comme celles d'un compte supprimé (« Oui, toutes les sessions » ;
+	// « Oui », le porteur, 2026-11-14).
+	GamesEnded []string
+	// Erased — les comptes supprimés dont les sauvegardes partent (le porteur,
+	// 2026-11-14 : « Supprimer ») : ceux que le service d'identité DIT supprimés
+	// (`deleted`) et que cette liste retire — à la première liste, tous ceux
+	// qu'il nomme et qui n'existent plus, le kernel ne les ayant pas vus partir
+	// s'il redémarrait. Jamais un nom qui manque seul : une base vide ou
+	// remplacée retirerait tous les comptes d'un coup.
+	Erased []string
 }
 
 // Empty — rien à couper.
 func (change Change) Empty() bool {
-	return len(change.Deleted) == 0 && len(change.Demoted) == 0 && len(change.TokenRetired) == 0
+	return len(change.Deleted) == 0 && len(change.Demoted) == 0 && len(change.TokenRetired) == 0 && len(change.Revoked) == 0 &&
+		len(change.GamesEnded) == 0 && len(change.Erased) == 0
 }
 
 // Store — la copie des comptes.
@@ -83,6 +108,11 @@ type Store struct {
 
 	// OnChange — appelé après chaque liste qui retire quelque chose.
 	OnChange func(Change)
+	// OnPairing — appelé à chaque trame `pairing` (chantier 60) : les modes
+	// découverte et les codes d'appairage, qui passent sur le même canal.
+	// `first` vaut vrai pour la première d'une connexion : le kernel rejoue
+	// alors l'annonce du serveur, qu'un service relancé a pu perdre.
+	OnPairing func(frame []byte, first bool)
 }
 
 // New — une copie vide : tout jeton valide passe jusqu'à la première liste.
@@ -98,9 +128,11 @@ func (store *Store) Ready() bool {
 	return store.ready
 }
 
-// Replace — une nouvelle liste. Rend ce qu'elle retire par rapport à la
-// précédente (rien pour la première), et prévient OnChange.
-func (store *Store) Replace(list []Account) Change {
+// Replace — une nouvelle liste, et les comptes que le service d'identité dit
+// supprimés depuis peu. Rend ce qu'elle retire par rapport à la précédente (pour
+// la première, seulement les sauvegardes des comptes supprimés), et prévient
+// OnChange.
+func (store *Store) Replace(list []Account, deleted ...string) Change {
 	next := make(map[string]Account, len(list))
 	for _, account := range list {
 		next[account.Username] = account
@@ -127,7 +159,24 @@ func (store *Store) Replace(list []Account) Change {
 					after.Token.ExpiresAt.Before(before.Token.ExpiresAt) {
 					change.TokenRetired = append(change.TokenRetired, name)
 				}
+				if after.SessionGeneration > before.SessionGeneration {
+					if change.Revoked == nil {
+						change.Revoked = map[string]int{}
+					}
+					change.Revoked[name] = after.SessionGeneration
+				}
+				if after.GamesGeneration > before.GamesGeneration {
+					change.GamesEnded = append(change.GamesEnded, name)
+				}
 			}
+		}
+	}
+	for _, name := range deleted {
+		if _, exists := next[name]; exists {
+			continue
+		}
+		if _, was := previous[name]; was || !wasReady {
+			change.Erased = append(change.Erased, name)
 		}
 	}
 	if !change.Empty() && store.OnChange != nil {
@@ -149,7 +198,12 @@ func (store *Store) Replace(list []Account) Change {
 // rétrogradation mord tout de suite), et une session ouverte par jeton suit
 // son jeton — jamais administrateur. Le service d'identité met `sub` dans
 // tout jeton qu'il signe.
-func (store *Store) Admit(username, subject, fed string, claimedRole int) (int, bool) {
+//
+// `generation` est celle des sessions que porte le jeton (chantier 55) : plus
+// ancienne que celle du compte, la session a été coupée. Plus récente, elle
+// passe : seul le service d'identité signe, et le jeton neuf d'un appareil qui
+// vient de couper les autres peut arriver ici avant la liste qui le dit.
+func (store *Store) Admit(username, subject, fed string, generation, claimedRole int) (int, bool) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 
@@ -161,6 +215,9 @@ func (store *Store) Admit(username, subject, fed string, claimedRole int) (int, 
 		return 0, false
 	}
 	if subject != "" && subject != strconv.FormatInt(account.ID, 10) {
+		return 0, false
+	}
+	if generation < account.SessionGeneration {
 		return 0, false
 	}
 	if fed != "" {
@@ -230,26 +287,40 @@ func (store *Store) follow(ctx context.Context, url, secret string) bool {
 		conn.Close()
 	}()
 
-	received := false
+	received, pairingSeen := false, false
 	for {
-		var message struct {
-			Type     string    `json:"type"`
-			Accounts []Account `json:"accounts"`
-		}
-		if err := conn.ReadJSON(&message); err != nil {
+		_, raw, err := conn.ReadMessage()
+		if err != nil {
 			if ctx.Err() == nil {
 				slog.Warn("accounts: identity channel closed", "error", err)
 			}
 
 			return received
 		}
+		var message struct {
+			Type     string    `json:"type"`
+			Accounts []Account `json:"accounts"`
+			Deleted  []string  `json:"deleted"`
+		}
+		if json.Unmarshal(raw, &message) != nil {
+			continue
+		}
+		if message.Type == "pairing" {
+			if store.OnPairing != nil {
+				store.OnPairing(raw, !pairingSeen)
+			}
+			pairingSeen = true
+
+			continue
+		}
 		if message.Type != "accounts" {
 			continue
 		}
-		change := store.Replace(message.Accounts)
+		change := store.Replace(message.Accounts, message.Deleted...)
 		received = true
 		if !change.Empty() {
-			slog.Info("accounts: cut", "deleted", change.Deleted, "demoted", change.Demoted, "token_retired", change.TokenRetired)
+			slog.Info("accounts: cut", "deleted", change.Deleted, "demoted", change.Demoted, "token_retired", change.TokenRetired,
+				"revoked", change.Revoked, "games_ended", change.GamesEnded, "erased", change.Erased)
 		}
 	}
 }

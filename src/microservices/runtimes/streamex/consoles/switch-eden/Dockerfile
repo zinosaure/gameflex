@@ -37,13 +37,13 @@ LABEL gameflex.prune=keep
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Eden, sa nocturne officielle du 2026-10-18 (chantier 25) : la première qui lit
-# les modules ZBIC des jeux du firmware 22 (EA Sports FC 27, #433). L'étiquette
+# Eden, sa nocturne officielle du 2026-11-17 (la première, du 2026-10-18, chantier 25, lisait
+# déjà les modules ZBIC des jeux du firmware 22 : EA Sports FC 27, #433). L'étiquette
 # l'épingle ; https://nightly.eden-emu.dev/latest/release.json dit la dernière.
 # Le nom du fichier tel qu'il est rangé dans la bibliothèque, cores/switch/.
 # Même valeur que emulator_file switch-eden (consoles/emulators.sh) : ce build le
 # PREND là, et nulle part ailleurs (#145).
-ARG EDEN_FILE=Eden-Linux-de7e6e01d4-amd64-clang-pgo.AppImage
+ARG EDEN_FILE=Eden-Linux-d85bad8924-amd64-clang-pgo.AppImage
 
 # MESA VIENT DE trixie-backports (26.1.2), comme pour la PS3.
 #
@@ -93,7 +93,7 @@ RUN groupadd -f pulse-access && usermod -aG pulse-access root && usermod -aG pul
 # L'AppImage d'Eden (uruntime, DwarFS) s'extrait dans `AppDir`, et
 # `squashfs-root` n'en est qu'un lien : le déballage prend l'arbre réel.
 # Son fichier se range sous la Switch, à côté de celui de Citron.
-ARG EDEN_URL=https://nightly.eden-emu.dev/v1792353251.de7e6e01d4/Eden-Linux-de7e6e01d4-amd64-clang-pgo.AppImage
+ARG EDEN_URL=https://nightly.eden-emu.dev/v1794878467.d85bad8924/Eden-Linux-d85bad8924-amd64-clang-pgo.AppImage
 # Les versions éprouvées avec cette image (emulator_tested) : la liste informe,
 # elle ne bloque pas — toute version que reconnaît le motif se lance.
 ARG EDEN_TESTED="${EDEN_FILE}"

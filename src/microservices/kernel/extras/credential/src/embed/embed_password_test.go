@@ -118,8 +118,16 @@ func TestRevokeLeavesAFreshInstallAlone(t *testing.T) {
 // appels donnent deux valeurs différentes, non vides, dont aucune n'est la
 // constante publiée — et la dernière ouvre réellement le compte.
 func TestResetRootPasswordIsRandom(t *testing.T) {
-	db := freshDB(t)
-	service := &Service{DB: db}
+	service, err := New(Options{DBPath: filepath.Join(t.TempDir(), "identity.db"), JWTSecret: "secret-de-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { service.DB.Close() })
+	db := service.DB
+	before, err := service.TokenForOwner()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	first, err := service.ResetRootPassword()
 	if err != nil {
@@ -143,5 +151,9 @@ func TestResetRootPasswordIsRandom(t *testing.T) {
 	}
 	if !auth.VerifyPassword(second, rootHash(t, db)) {
 		t.Fatal("le mot de passe rendu n'ouvre pas le compte root")
+	}
+	// Qui avait l'ancien mot de passe perd aussi ses sessions (chantier 55).
+	if _, err := service.RoleOf(before); err == nil {
+		t.Fatal("un jeton de root d'avant la remise vaut encore")
 	}
 }

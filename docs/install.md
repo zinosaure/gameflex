@@ -98,13 +98,17 @@ docker compose pull
 
 The names are `ps3`, `ps4`, `ps5`, `switch`, `switch2`, `wiiu`, `xbox`, `xbox360`, and `ports` for the
 PC Ports ([Consoles](consoles.md#pc-ports)). The images hold no
-emulator: once signed in, download each console's emulator from **Settings › Emulators** (see
-[Organize your library](library.md#3-get-the-emulators)). Retro consoles need no extra image; their cores also come from **Settings › Emulators**.
+emulator: once signed in, download each console's emulator from **Settings › Consoles** (see
+[Organize your library](library.md#3-get-the-emulators)). Retro consoles need no extra image; their cores also come from **Settings › Consoles**.
 
 ### 6. Sign in
 
 Open `http://<GAMEFLEX_PUBLIC_HOST>:10200` in a browser, for example `http://192.168.1.50:10200`,
 and sign in as `root` with your password.
+
+To open GameFlex on another device of your network, a phone or a tablet, **Settings › Invite**
+shows its address and a QR code to scan with the device's camera. Each person signs in with their
+own account: create it in **Settings › Members**.
 
 ## What you should see
 
@@ -141,14 +145,15 @@ All settings live in `.env`.
 | `GAMEFLEX_ROOT_PASSWORD` | yes | | The administrator's password. GameFlex does not start without it (`launch.sh` can make one up). It only creates the administrator account, at the first start: change the password afterwards in GameFlex (**Settings › Profile**). Lost it? `./launch.sh reset-password` sets it back to this one. |
 | `GAMEFLEX_SECRET` | yes | | The secret the services share to sign sessions; it also encrypts the passwords of network shares. Changing it signs everyone out, and those passwords must be entered again. |
 | `GAMEFLEX_VERSION` | no | `latest` | The version of the images, such as `0.3.0`. |
-| `GAMEFLEX_PORT` | no | `10200` | The port of the web page. |
+| `GAMEFLEX_PORT` | no | `10200` | The port of the web page, also announced on the local network while discovery mode is on. |
+| `GAMEFLEX_SERVER_NAME` | no | its address | The name of this server, that federated servers and the local network discovery show. |
 | `GAMEFLEX_ICE_INTERFACE` | no | every physical interface | The network interfaces the video may use, such as `eth0`, separated by commas. Empty, Docker bridges and VPN tunnels (`wg0`, `tun0`) are skipped. |
 | `GAMEFLEX_ROOT_USERNAME` | no | `root` | The administrator's user name. |
 | `GAMEFLEX_MAX_PLAYERS` | no | `4` | Virtual controllers created for a recent console's game, never fewer than the console's own player count. How many play is set per console (see [Consoles](consoles.md)). |
 | `GAMEFLEX_CONSOLE_LIMITS` | no | one of each | How many games of each recent console can run at once, as `console:number` pairs. |
 | `GAMEFLEX_GPU` | no | the first one | The graphics card games run on, when the machine has several (a chip in the processor and a card added over OCuLink, for example): its PCI address, such as `0000:03:00.0`. `ls /dev/dri/by-path` lists them, and the kernel log says at start-up which one games use. |
 | `GAMEFLEX_MIRROR_URL` | no | | A mirror for emulators and BIOS files. When set, the settings screens show a link to it. It must be a full `http://` or `https://` address, or GameFlex does not start. |
-| `GAMEFLEX_STAGING` | no | | `1` marks a test server: GameFlex writes *staging* next to its name, and **Settings › Download the GameFlex app** gives the APK this server builds (in `/downloads`) instead of the GitHub Release. Leave empty for a normal server. |
+| `GAMEFLEX_STAGING` | no | | `1` marks a test server: GameFlex writes *staging* next to its name, and **Settings › Android app** gives the APK this server builds (in `/downloads`) instead of the GitHub Release. Leave empty for a normal server. |
 | `COMPOSE_PROFILES` | no | none | The recent consoles whose images you want, separated by commas: `ps3`, `ps4`, `ps5`, `switch`, `switch2`, `wiiu`, `xbox`, `xbox360`, `ports`. Add `wireguard` for the optional VPN (see [Play away from home](remote-access.md)). |
 | `GAMEFLEX_NAME` | no | `gameflex` | The name of the containers (`gameflex-kernel`…). Change it only to run a second GameFlex on the same computer, which then also needs other ports: `GAMEFLEX_PORT`, and the fixed ports in `docker-compose.yml`. |
 
@@ -233,6 +238,15 @@ services:
             # it opens a launch's stream there, the intro the game page shows
             # while the game starts.
             - GAMEFLEX_GATEWAY_CONTROL_URL=http://${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}:10202
+            # The web port: in discovery mode, the gateway announces
+            # http://<GAMEFLEX_PUBLIC_HOST>:<GAMEFLEX_PORT> on the local network.
+            - GAMEFLEX_PORT=${GAMEFLEX_PORT:-10200}
+            # The version, that the listing and the discovery announcement tell
+            # the other servers.
+            - GAMEFLEX_VERSION=${GAMEFLEX_VERSION:-latest}
+            # The name of this server, that federated servers and the local
+            # network discovery show. Empty: its address.
+            - GAMEFLEX_SERVER_NAME=${GAMEFLEX_SERVER_NAME:-}
             - GAMEFLEX_REMOTEPLAY_CONTROL_URL=http://${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}:10205
             - GAMEFLEX_PORT_RANGE=9001-9100
             - GAMEFLEX_MAX_PLAYERS=${GAMEFLEX_MAX_PLAYERS:-4}
@@ -455,6 +469,10 @@ GAMEFLEX_VERSION=latest
 
 # The port of the web page.
 GAMEFLEX_PORT=10200
+
+# The name of this server, that federated servers and the local network
+# discovery show. Empty: its address.
+GAMEFLEX_SERVER_NAME=
 
 # The network interfaces the video may use, such as eth0 or enp5s0, separated by
 # commas. Empty: every physical interface (Docker bridges and VPN tunnels such as

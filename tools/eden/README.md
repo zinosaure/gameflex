@@ -19,7 +19,6 @@ application Android.
 | Fichier | Rôle |
 |---|---|
 | `0001-heap-tracker-on-linux-arm64.patch` | le `HeapTracker` partout où Eden a l'exécution native (`HAS_NCE` : arm64 sous Android **ou** Linux) — quatre lignes de `src/core/memory.cpp` |
-| `0002-assembler-guard-for-new-kernel-headers.patch` | les en-têtes du noyau récents (linux-api-headers 7.3) testent `__ASSEMBLER__` et non plus `__ASSEMBLY__` : sans lui, `asm-generic/signal.h` redéfinit `sigset_t` (`src/core/arm/nce/arm_nce_asm_definitions.h`) |
 | `0003-frame-rate-in-the-window-title.patch` | la cadence d'Eden (« FPS: … \| Speed: …% \| Frame: … ms ») ajoutée au titre de sa fenêtre à chaque mise à jour de sa barre d'état (500 ms) : le téléphone lit les titres (`sessionstatus.TitleFPS`), et son relevé échantillonne l'écran à 30 par seconde (`#439`) |
 | `build.sh` | construit Eden aarch64 au commit de la nocturne, avec les patchs, et le livre en AppDir archivé |
 
@@ -36,7 +35,7 @@ d'*Hogwarts Legacy* restent. Retiré, et l'invité revient à 0001-0003 (`eden-�
 
 ```bash
 tools/eden/build.sh
-# → src/webapp/src/public/downloads/eden-<commit>-gameflex-aarch64.AppDir.tar.gz
+# → src/microservices/edge/src/public/downloads/eden-<commit>-gameflex-aarch64.AppDir.tar.gz
 ```
 
 La construction reprend celle de l'éditeur (sa CI : `mirror/Workflow` sur git.eden-emu.dev) :
@@ -73,6 +72,15 @@ Pacman, sous proot, demande deux réglages que le script pose dans `pacman.conf`
 2. Si un patch ne s'applique plus, le refaire sur la nouvelle source (`git diff > 000N-….patch`).
 3. Avant de garder le patch 0001, vérifier que l'éditeur n'a pas lui-même étendu le
    `HeapTracker` à Linux.
+
+## État (2026-11-17)
+
+La nocturne `d85bad8924` (`eden-d85bad8924-gameflex-r1`, avec RPCS3 et Lichii du même jour) : le patch 0001 refait
+sur sa source (les quatre mêmes `#ifdef __ANDROID__` de `src/core/memory.cpp`), le 0003 tel quel, et le 0002 retiré —
+l'éditeur pose lui-même `__ASSEMBLER__` autour des deux inclusions du noyau (`arm_nce_asm_definitions.h`). Le
+`HeapTracker` reste réservé à Android chez l'éditeur : le 0001 garde sa raison. `build.sh` cherche désormais une
+nocturne neuve dans la source déjà là, et s'arrête si un patch ne s'applique plus (il construisait l'ancienne source
+sans le dire).
 
 ## État (2026-10-23)
 

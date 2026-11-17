@@ -5,12 +5,18 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/gorilla/websocket"
+
 	"gameflex/kernel/internal/accounts"
 	"gameflex/kernel/internal/auth"
+	"gameflex/kernel/internal/registry"
 )
 
 // accountsTestStore — la copie des comptes, branchée comme au démarrage, avec
@@ -112,5 +118,116 @@ func TestALaunchCannotNameTwoConsoles(t *testing.T) {
 	server.handleUnifiedLaunch(recorder, request)
 	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "two different consoles") {
 		t.Fatalf("deux consoles dans un lancement : %d %s, attendu le refus de la porte", recorder.Code, recorder.Body.String())
+	}
+}
+
+// closeCode — le code de la trame qui ferme cette page, 0 si elle reste ouverte.
+func closeCode(t *testing.T, page *websocket.Conn) int {
+	t.Helper()
+	page.SetReadDeadline(time.Now().Add(2 * time.Second))
+	for {
+		_, _, err := page.ReadMessage()
+		if err == nil {
+			continue
+		}
+		var timeout net.Error
+		if errors.As(err, &timeout) && timeout.Timeout() {
+			return 0
+		}
+		var closed *websocket.CloseError
+		if errors.As(err, &closed) {
+			return closed.Code
+		}
+
+		return -1
+	}
+}
+
+// DES SESSIONS COUPÉES (chantier 55) : deux canaux du même compte, l'ancien (sa
+// génération d'avant) se ferme en 1008, le neuf reste ; un administrateur
+// rétrogradé est fermé sans 1008, pour revenir avec son rang.
+func TestCutSessionsCloseTheOlderChannelsIn1008(t *testing.T) {
+	server, httpServer := facadeTestServer(t)
+	store := accountsTestStore(t, server,
+		accounts.Account{ID: 2, Username: "marc", RoleLevel: accounts.RoleUser, Consoles: []string{"*"}},
+		accounts.Account{ID: 1, Username: "admin", RoleLevel: accounts.RoleAdmin, Consoles: []string{"*"}})
+	dial := func(claims auth.Claims) *websocket.Conn {
+		t.Helper()
+		page, _, err := facadeTestDial(t, httpServer, testToken(t, claims))
+		if err != nil {
+			t.Fatalf("%s (génération %d) : %v", claims.Username, claims.Gen, err)
+		}
+		t.Cleanup(func() { page.Close() })
+
+		return page
+	}
+	older := dial(auth.Claims{Username: "marc", Gen: 0, RegisteredClaims: jwt.RegisteredClaims{Subject: "2"}})
+	newer := dial(auth.Claims{Username: "marc", Gen: 1, RegisteredClaims: jwt.RegisteredClaims{Subject: "2"}})
+	administrator := dial(auth.Claims{Username: "admin", RoleLevel: 1, RegisteredClaims: jwt.RegisteredClaims{Subject: "1"}})
+	time.Sleep(100 * time.Millisecond)
+
+	store.Replace([]accounts.Account{
+		{ID: 2, Username: "marc", RoleLevel: accounts.RoleUser, Consoles: []string{"*"}, SessionGeneration: 1},
+		{ID: 1, Username: "admin", RoleLevel: accounts.RoleUser, Consoles: []string{"*"}},
+	})
+	if code := closeCode(t, older); code != websocket.ClosePolicyViolation {
+		t.Fatalf("le canal d'avant : %d, attendu 1008", code)
+	}
+	if code := closeCode(t, newer); code != 0 {
+		t.Fatalf("le canal du jeton neuf s'est fermé : %d", code)
+	}
+	if code := closeCode(t, administrator); code != websocket.CloseNormalClosure {
+		t.Fatalf("le rétrogradé : %d, attendu une fermeture ordinaire (1000)", code)
+	}
+	if _, response, err := facadeTestDial(t, httpServer, testToken(t, auth.Claims{Username: "marc", Gen: 0, RegisteredClaims: jwt.RegisteredClaims{Subject: "2"}})); err == nil || response == nil || response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("un jeton d'avant rouvre un canal : %v", err)
+	}
+}
+
+// UN COMPTE SUPPRIMÉ PERD SES SAUVEGARDES, ET LUI SEUL (le porteur, 2026-11-14 :
+// « Supprimer ») : son dossier saves/<compte>/ part en entier quand le service
+// d'identité le nomme supprimé ; celui d'un compte qui manque sans être nommé
+// (une base vide ou remplacée) reste, comme celui des autres comptes et les
+// dossiers communs (`.bios-companions`).
+func TestADeletedAccountLosesItsSavesAndOnlyIts(t *testing.T) {
+	root := t.TempDir()
+	server := &Server{storageRoot: root, pool: registry.NewPool(), mirrors: registry.NewMirrors()}
+	saves := func(parts ...string) string { return filepath.Join(append([]string{root, "saves"}, parts...)...) }
+	for _, file := range [][]string{
+		{"lea", "sram", "nes", "jeu.srm"},
+		{"lea", "streamex", "switch", "nand", "save.bin"},
+		{"lea", "sources", "local", "states", "nes", "jeu_slot1.state"},
+		{"marc", "sram", "nes", "jeu.srm"},
+		{"gino", "states", "snes", "jeu_slot0.state"},
+		{".bios-companions", "ps1", "scph.bin"},
+	} {
+		path := saves(file...)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := accountsTestStore(t, server,
+		accounts.Account{ID: 1, Username: "gino", RoleLevel: accounts.RoleAdmin},
+		accounts.Account{ID: 2, Username: "marc", RoleLevel: accounts.RoleUser},
+		accounts.Account{ID: 3, Username: "lea", RoleLevel: accounts.RoleUser})
+
+	// lea supprimée et nommée ; marc absent, sans être nommé.
+	store.Replace([]accounts.Account{{ID: 1, Username: "gino", RoleLevel: accounts.RoleAdmin}}, "lea")
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if _, err := os.Stat(saves("lea")); errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("les sauvegardes de lea sont restées")
+		}
+	}
+	time.Sleep(100 * time.Millisecond) // un effacement lancé à tort aurait fini
+	for _, kept := range [][]string{{"marc", "sram", "nes", "jeu.srm"}, {"gino", "states", "snes", "jeu_slot0.state"}, {".bios-companions", "ps1", "scph.bin"}} {
+		if _, err := os.Stat(saves(kept...)); err != nil {
+			t.Fatalf("%s touché : %v", filepath.Join(kept...), err)
+		}
 	}
 }

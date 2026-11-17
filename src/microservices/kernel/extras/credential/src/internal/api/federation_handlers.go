@@ -71,18 +71,34 @@ const ScopeCatalog = "catalog"
 // demande un COMPTE chez celui qui la tient, jamais ce jeton.
 const ScopeDevices = "devices"
 
+// ScopeMetadataProviders — PARTAGER MES FOURNISSEURS DE MÉTADONNÉES (chantier
+// 57, `#719` ; le porteur, 2026-11-15 : « En plus de partager les jeux et
+// consoles on propose de partager les fournisseurs metadata. Comme ça si je
+// partage à moi-même il n'y a pas de risques d'abus de quota »). Avec elle, la
+// recherche des fiches de ce serveur interroge aussi ses comptes (IGDB,
+// SteamGridDB) pour le porteur du jeton, pour un titre qu'il n'a pas ; ses
+// clés ne sortent jamais. Sans elle, il ne prête que les fiches de ses jeux.
+// Coupée par défaut, et séparée pour la même raison que ScopeDevices : aucun
+// jeton déjà distribué ne s'élargit sans qu'on le décide.
+const ScopeMetadataProviders = "metadata-providers"
+
 // grantableScopes — ce qu'un administrateur peut accorder. Une portée
 // inconnue est REFUSÉE plutôt qu'ignorée : un jeton créé avec une faute de
 // frappe ouvrirait moins que ce que son créateur croit, et rien ne le lui
 // dirait avant que l'autre ne se plaigne.
 var grantableScopes = map[string]bool{
-	ScopeCatalog: true,
-	ScopeDevices: true,
+	ScopeCatalog:           true,
+	ScopeDevices:           true,
+	ScopeMetadataProviders: true,
 }
 
 // parseScopes — la liste demandée, nettoyée, dédoublonnée et remise dans un
-// ordre stable. Vide veut dire ScopeCatalog : c'était la seule portée qui
-// existait, et les appelants qui ne demandent rien demandent celle-là.
+// ordre stable. LE CATALOGUE EST TOUJOURS ACCORDÉ (le porteur, 2026-11-16 :
+// « par défaut les jeux sont toujours autorisé ») : un accès délivré ouvre
+// toujours les jeux ; les consoles et les fournisseurs de métadonnées s'y
+// ajoutent ou non. Cela remplace « les consoles se demandent seules » (un
+// jeton `devices` sans le catalogue n'existe plus). Vide veut donc dire
+// ScopeCatalog, comme avant.
 func parseScopes(asked []string) (string, error) {
 	granted := []string{}
 	seen := map[string]bool{}
@@ -101,8 +117,8 @@ func parseScopes(asked []string) (string, error) {
 		}
 	}
 
-	if len(granted) == 0 {
-		return ScopeCatalog, nil
+	if !seen[ScopeCatalog] {
+		granted = append(granted, ScopeCatalog)
 	}
 	sort.Strings(granted)
 
@@ -165,7 +181,7 @@ func (server *Server) handleCreateFederationToken(w http.ResponseWriter, r *http
 		label, scopes, hashToken(secret), secret[:tokenPrefixLength], now(), principal.ID,
 	)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	id, _ := result.LastInsertId()
@@ -186,7 +202,7 @@ func (server *Server) handleListFederationTokens(w http.ResponseWriter, r *http.
 		`SELECT id, label, scopes, prefix, created_at, last_used_at FROM federation_tokens ORDER BY id DESC`,
 	)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	defer rows.Close()
@@ -196,7 +212,7 @@ func (server *Server) handleListFederationTokens(w http.ResponseWriter, r *http.
 		var item federationTokenResponse
 		var createdAt, lastUsedAt sql.NullString
 		if err := rows.Scan(&item.ID, &item.Label, &item.Scopes, &item.Prefix, &createdAt, &lastUsedAt); err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		item.CreatedAt = isoDatetime(createdAt)
@@ -240,11 +256,11 @@ func (server *Server) handleUpdateFederationToken(w http.ResponseWriter, r *http
 		`UPDATE federation_tokens SET scopes = ? WHERE id = ?`, scopes, r.PathValue("id"),
 	)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {
-		respondError(w, http.StatusNotFound, "Token not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "Token not found.")
 		return
 	}
 
@@ -257,11 +273,11 @@ func (server *Server) handleUpdateFederationToken(w http.ResponseWriter, r *http
 func (server *Server) handleRevokeFederationToken(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	result, err := server.db.Exec(`DELETE FROM federation_tokens WHERE id = ?`, r.PathValue("id"))
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {
-		respondError(w, http.StatusNotFound, "Token not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "Token not found.")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -281,12 +297,12 @@ func (server *Server) handleRevokeFederationToken(w http.ResponseWriter, r *http
 // automatique.
 func (server *Server) internalCaller(w http.ResponseWriter, r *http.Request) bool {
 	if server.config.InternalSecret == "" {
-		respondError(w, http.StatusServiceUnavailable, "Internal secret not configured.")
+		respondErrorCode(w, http.StatusServiceUnavailable, "server_failed", "Internal secret not configured.")
 
 		return false
 	}
 	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Internal-Secret")), []byte(server.config.InternalSecret)) != 1 {
-		respondError(w, http.StatusUnauthorized, "Invalid internal secret.")
+		respondErrorCode(w, http.StatusUnauthorized, "server_failed", "Invalid internal secret.")
 
 		return false
 	}
@@ -311,19 +327,37 @@ func (server *Server) handleVerifyFederationToken(w http.ResponseWriter, r *http
 		return
 	}
 
+	item, err := server.verifyFederationToken(body.Token)
+	if errors.Is(err, ErrCatalogTokenRefused) {
+		respondErrorCode(w, http.StatusUnauthorized, "auth_required", "Invalid token.")
+		return
+	}
+	if err != nil {
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
+		return
+	}
+
+	respondItem(w, http.StatusOK, item)
+}
+
+// ErrCatalogTokenRefused — ce jeton de catalogue n'existe pas, ou plus (révoqué).
+var ErrCatalogTokenRefused = errors.New("catalog token refused")
+
+// verifyFederationToken — l'identité derrière un jeton de catalogue, ou ErrCatalogTokenRefused. UNE SEULE RÈGLE pour
+// les deux hôtes : la route interne la sert au kernel du serveur, le téléphone l'appelle en process (credential/embed),
+// lui qui n'a pas de secret interne. Elle touche last_used_at : le kernel n'a pas à savoir qu'on tient ce compteur.
+func (server *Server) verifyFederationToken(token string) (federationTokenResponse, error) {
 	var item federationTokenResponse
 	var createdAt, lastUsedAt sql.NullString
 	err := server.db.QueryRow(
 		`SELECT id, label, scopes, prefix, created_at, last_used_at FROM federation_tokens WHERE token_hash = ?`,
-		hashToken(body.Token),
+		hashToken(token),
 	).Scan(&item.ID, &item.Label, &item.Scopes, &item.Prefix, &createdAt, &lastUsedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		respondError(w, http.StatusUnauthorized, "Invalid token.")
-		return
+	if errors.Is(err, sql.ErrNoRows) || token == "" {
+		return federationTokenResponse{}, ErrCatalogTokenRefused
 	}
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
-		return
+		return federationTokenResponse{}, err
 	}
 
 	// Best-effort : savoir qu'un jeton sert encore est utile, mais ça ne
@@ -332,7 +366,16 @@ func (server *Server) handleVerifyFederationToken(w http.ResponseWriter, r *http
 
 	item.CreatedAt = isoDatetime(createdAt)
 	item.LastUsedAt = isoDatetime(lastUsedAt)
-	respondItem(w, http.StatusOK, item)
+
+	return item, nil
+}
+
+// VerifyCatalogToken — le nom et les portées derrière un jeton de catalogue (verifyFederationToken), pour un hôte qui
+// embarque ce service (le téléphone).
+func (server *Server) VerifyCatalogToken(token string) (label, scopes string, err error) {
+	item, err := server.verifyFederationToken(token)
+
+	return item.Label, item.Scopes, err
 }
 
 // ── L'autre sens : les serveurs auxquels NOUS avons accès ────────────────
@@ -393,10 +436,10 @@ func (server *Server) handleAddFederationServer(w http.ResponseWriter, r *http.R
 		// L'unicité porte sur le lien : ajouter deux fois le même serveur
 		// donnerait deux fois ses jeux dans la liste.
 		if strings.Contains(strings.ToLower(err.Error()), "unique") {
-			respondError(w, http.StatusConflict, "This server is already in the list.")
+			respondErrorCode(w, http.StatusConflict, "alreadyRegistered", "This server is already in the list.")
 			return
 		}
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	id, _ := result.LastInsertId()
@@ -433,13 +476,13 @@ func (server *Server) handleListFederationServers(w http.ResponseWriter, r *http
 	rows, err := server.db.Query(
 		`SELECT id, link, token, hostname, identity, created_at FROM federation_servers ORDER BY id`)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 
 	items, err := server.scanServers(rows, false)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	respondItems(w, http.StatusOK, items, newPagination(len(items), 1, allItems))
@@ -449,11 +492,11 @@ func (server *Server) handleListFederationServers(w http.ResponseWriter, r *http
 func (server *Server) handleRemoveFederationServer(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	result, err := server.db.Exec(`DELETE FROM federation_servers WHERE id = ?`, r.PathValue("id"))
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {
-		respondError(w, http.StatusNotFound, "Server not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "Server not found.")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -471,13 +514,13 @@ func (server *Server) handleInternalFederationServers(w http.ResponseWriter, r *
 	rows, err := server.db.Query(
 		`SELECT id, link, token, hostname, identity, created_at FROM federation_servers ORDER BY id`)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 
 	items, err := server.scanServers(rows, true)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	respondItems(w, http.StatusOK, items, newPagination(len(items), 1, allItems))

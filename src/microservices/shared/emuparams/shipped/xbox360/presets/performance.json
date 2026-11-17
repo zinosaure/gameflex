@@ -1,10 +1,10 @@
 {
   "name": "Performance",
-  "description": "The most frames per second on a modest graphics processor: fake occlusion queries, no readback, framebuffers. Some games may display wrongly.",
+  "description": "The most frames per second on a modest graphics processor; some games may display wrongly.",
   "translations": {
     "fr": {
       "name": "Performance",
-      "description": "Le plus d'images par seconde sur un processeur graphique modeste : requêtes d'occlusion simulées, sans relecture, framebuffers. Certains jeux peuvent mal s'afficher."
+      "description": "Le plus d'images par seconde sur un processeur graphique modeste ; certains jeux peuvent mal s'afficher."
     }
   },
   "override": false,

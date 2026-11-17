@@ -1,0 +1,77 @@
+// LE THÈME DU LAUNCHER, PAR LES VARIABLES DE BOOTSTRAP (5.3.8, la version de la webapp).
+//
+// La règle d'or du porteur (2026-11-12) : « il faut toujours suivre Bootstrap. Rester
+// avec Bootstrap partout. On crée notre propre CSS seulement là où Bootstrap ne fournit
+// pas. » Bootstrap est donc compilé ici depuis ses sources SCSS, ses variables réglées
+// AVANT l'import — jamais ses classes surchargées après. Le thème est sombre seulement
+// (`data-bs-theme="dark"` sur <html>, public/index.html) ; l'indigo de GameFlex est la
+// couleur primaire ; boutons et champs ont un même arrondi de 6 px. Ce qui reste propre au
+// launcher (la page qui défile, la bande, le jeton de la lumière…) est dans launcher.css.
+
+// Les couleurs : l'indigo de GameFlex, le fond et le texte du launcher.
+$primary: #4c5df2;
+$body-bg-dark: #07080b;
+$body-color-dark: #f3f5f9;
+$body-secondary-color-dark: rgba(243, 245, 249, .76);
+$body-tertiary-color-dark: rgba(243, 245, 249, .52);
+$body-secondary-bg-dark: #12151c;
+$body-tertiary-bg-dark: #0e1117;
+$border-color-dark: rgba(255, 255, 255, .09);
+$border-color-translucent-dark: rgba(255, 255, 255, .12);
+$link-color-dark: #8f9dff;
+$link-hover-color-dark: #b4beff;
+
+// La police du launcher.
+$font-family-sans-serif: Roboto, "Noto Sans", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+
+// LES BOUTONS ET LES CHAMPS, UN SEUL ARRONDI : 6 px (le porteur, 2026-11-13 : d'abord « les boutons et les
+// form-control doivent avoir le même border-radius de 3px », puis « arrondis un peu plus les boutons et les
+// form control ») — l'arrondi par défaut de Bootstrap (.375rem), le même à chaque taille. Il remplace la
+// pilule des boutons, partout — Jouer, Bibliothèque, les puces des choix, les tuiles. Les champs :
+// form-control, form-select (qui le reprend), les groupes de champs. La case à cocher garde 4 px, à
+// l'échelle de sa petite taille ; l'interrupteur garde sa forme ronde. Un bouton qui ne porte qu'une icône
+// reste un rond (`rounded-circle`, libs/ui.js) ; un badge reste une pastille.
+$btn-border-radius: 6px;
+$btn-border-radius-sm: 6px;
+$btn-border-radius-lg: 6px;
+$input-border-radius: 6px;
+$input-border-radius-sm: 6px;
+$input-border-radius-lg: 6px;
+$form-check-input-border-radius: 4px;
+$btn-font-weight: 700;
+
+// LA LUMIÈRE (le focus) : l'anneau de Bootstrap, à l'indigo du launcher. Le jeton de la manette
+// (launcher.css, `.is-focus`) s'exprime avec ces mêmes variables.
+$focus-ring-color: rgba(76, 93, 242, .42);
+$focus-ring-width: .2rem;
+
+// Les onglets (nav-underline) : le texte du thème, pas la couleur des liens ; l'onglet actif en clair.
+$nav-link-color: var(--bs-secondary-color);
+$nav-link-hover-color: var(--bs-emphasis-color);
+$nav-underline-link-active-color: var(--bs-emphasis-color);
+
+// Les marges négatives (mx-n*), pour aligner un élément sur un bord sans CSS à soi.
+$enable-negative-margins: true;
+
+// LES LISTES (list-group) prennent le fond de ce qui les contient — la page, un panneau, une carte —
+// au lieu de poser des bandes noires dans un panneau gris (le porteur : « les backgrounds noirs des
+// liens font moche dans les panels »). Survol, appui et entrée active sans remplissage : l'entrée
+// active n'a que son trait du bas indigo (launcher.css), comme l'entrée en lumière.
+$list-group-bg: transparent;
+// Le survol ET le focus (`.list-group-item-action:hover, :focus`) lisent `$list-group-hover-bg` —
+// pas `$list-group-action-hover-bg`, qui n'existe pas chez Bootstrap et laissait le gris de
+// `tertiary-bg` sous l'entrée touchée (le porteur, 2026-11-13, sur son téléphone).
+$list-group-hover-bg: transparent;
+$list-group-action-active-bg: transparent;
+$list-group-active-bg: transparent;
+$list-group-active-border-color: $primary;
+
+// Les panneaux latéraux : 400 px par défaut, la moitié de l'écran en paysage (launcher.css).
+$offcanvas-bg-color: #0e1117;
+
+// LES TIRETS D'UN CARROUSEL (En direct : les parties des autres, la vitrine) : clairs, comme Bootstrap les dessine en
+// thème clair. Son thème sombre les passe au noir, pensés pour être posés sur une image claire : sous les cartes, sur le
+// fond sombre du launcher, ils ne se voyaient plus.
+$carousel-indicator-active-bg-dark: #fff;
+
+@import "bootstrap/scss/bootstrap";

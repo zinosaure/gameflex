@@ -8,10 +8,10 @@
   running.
 - **A service's log:** `./launch.sh logs kernel` (or `edge`, `credential`, `gateway`,
   `remoteplay`).
-- **A game's log:** **Settings › Logs**, one log per game, by day.
-- **The connection:** in a game, the menu's **Show connection statistics** gives the frame rate,
-  the bitrate and the machine's load; **Show the compact view** keeps the main ones on screen, in
-  small type.
+- **A game's log:** **Settings › Logs › Show logs**, one log per game, by day.
+- **The connection:** in a game, the menu's **On-screen stats**: **Statistics** gives the frame
+  rate, the bitrate and the machine's load; **Compact view** keeps the main ones on screen, in small
+  type.
 
 ## Common problems
 
@@ -21,8 +21,8 @@
 | A game does not appear in the library | [Organize your library](library.md#if-something-is-missing) |
 | A console says its firmware is required, or a game shows a black screen | [Consoles](consoles.md) (the files each console needs), then the game's log |
 | A console says it is not installed | Download its image: `./launch.sh consoles <name>` ([Install GameFlex](install.md)) |
-| **Play** stays greyed out | The console's emulator is missing: **Settings › Emulators** ([Organize your library](library.md)) |
-| The game stays on *Connecting to the stream* | At home: a firewall blocks UDP 9201–9300. Away: [Play away from home](remote-access.md) |
+| **Play** stays greyed out | The console's emulator is missing: **Settings › Consoles** ([Organize your library](library.md)) |
+| The game stays on *Waiting for the picture…* | At home: a firewall blocks UDP 9201–9300. Away: [Play away from home](remote-access.md) |
 | The controller does nothing, or buttons are swapped | [Controllers and playing together](controllers.md#if-something-goes-wrong) |
 | A recent console has no controller | Load the `uinput` module ([Install GameFlex](install.md)) |
 | A friend's server refuses access | [Federation](federation.md#if-something-goes-wrong) |

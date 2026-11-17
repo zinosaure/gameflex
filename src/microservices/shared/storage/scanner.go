@@ -12,10 +12,9 @@ import (
 type Game struct {
 	// Console est l'identifiant du registre partagé ("ps1", "gba"…).
 	Console string
-	// Title est le nom du fichier sans son extension — pas une métadonnée,
-	// juste ce que l'utilisateur a écrit en rangeant ses jeux. C'est
-	// délibéré : personne n'a besoin d'une jaquette pour reconnaître un jeu
-	// qu'il a copié lui-même.
+	// Title est le nom du fichier sans son extension, ce que l'utilisateur a
+	// écrit en rangeant ses jeux. Les métadonnées (titre localisé, images)
+	// viendront du chantier 49 (#659), à côté, dans metadata/<console>/<gameid>/.
 	Title string
 	// Path est le chemin virtuel complet, source comprise.
 	Path string

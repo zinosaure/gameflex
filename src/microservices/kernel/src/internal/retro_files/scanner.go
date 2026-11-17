@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"gameflex/metadata"
 	"gameflex/storage"
 	"gameflex/storage/gamestatus"
 )
@@ -67,6 +68,9 @@ type RomEntry struct {
 	Identity string `json:"identity,omitempty"`
 	// ServerID désigne l'entrée du registre d'où il vient.
 	ServerID int64 `json:"serverId,omitempty"`
+	// Here — un jeu d'un serveur fédéré qui est DÉJÀ ICI, par son identifiant
+	// (la bibliothèque ou un disque interne ; chantier 53, #674).
+	Here bool `json:"here,omitempty"`
 	// MountID désigne le PARTAGE MONTÉ d'où il vient — le pendant de
 	// ServerID pour une ressource distante (SMB, WebDAV, kDrive).
 	//
@@ -94,6 +98,11 @@ type RomEntry struct {
 	// Engine — le moteur du jeu (storage.GameEngine, chantier 36), absent
 	// s'il n'est pas reconnu.
 	Engine string `json:"engine,omitempty"`
+
+	// Les disques et la série (chantier 49, pour le launcher), posés par la
+	// liste d'après les noms seulement (api/rom_groups.go). La règle et ses
+	// champs sont partagés avec le téléphone : gameflex/metadata (chantier 57).
+	metadata.RomGroups
 }
 
 func IsHidden(name string) bool {

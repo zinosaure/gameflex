@@ -39,6 +39,10 @@ type Claims struct {
 	// serveur (chantier 20) : la génération de ce jeton. Vide, une connexion
 	// ordinaire.
 	Fed string `json:"fed,omitempty"`
+	// Gen — la génération des sessions du compte quand le jeton a été signé
+	// (chantier 55) : une génération plus ancienne que celle de la liste des
+	// comptes ne passe plus la porte. Absente, 0.
+	Gen int `json:"gen,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -51,11 +55,14 @@ type Claims struct {
 //
 // `subject` est l'identifiant du compte que le jeton nomme (`sub`) : un compte
 // supprimé puis recréé sous le même nom n'hérite pas des jetons de l'ancien
-// (revue de sécurité du kernel, #601).
-var gate func(username, subject, fed string, claimedRole int) (int, bool)
+// (revue de sécurité du kernel, #601). `generation` est la génération des
+// sessions que porte le jeton (`gen`, chantier 55) : un compte qui a coupé ses
+// sessions — réinitialisé, un nouveau mot de passe, « déconnecter les autres
+// appareils » — ne laisse plus passer celles d'avant.
+var gate func(username, subject, fed string, generation, claimedRole int) (int, bool)
 
 // SetGate — la porte, posée au démarrage par le serveur.
-func SetGate(admit func(username, subject, fed string, claimedRole int) (int, bool)) {
+func SetGate(admit func(username, subject, fed string, generation, claimedRole int) (int, bool)) {
 	gate = admit
 }
 
@@ -64,7 +71,7 @@ func Admit(claims Claims) (Claims, bool) {
 	if gate == nil {
 		return claims, true
 	}
-	role, ok := gate(claims.Username, claims.Subject, claims.Fed, claims.RoleLevel)
+	role, ok := gate(claims.Username, claims.Subject, claims.Fed, claims.Gen, claims.RoleLevel)
 	if !ok {
 		return Claims{}, false
 	}
@@ -189,5 +196,5 @@ func Username(ctx context.Context) string {
 func writeUnauthorized(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
-	_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "errorMessage": "invalid or missing token"})
+	_ = json.NewEncoder(w).Encode(map[string]any{"success": false, "errorCode": "auth_required", "errorMessage": "invalid or missing token"})
 }

@@ -15,8 +15,8 @@ import (
 	"gameflex/kernel/internal/manager"
 	"gameflex/kernel/internal/registry"
 	"gameflex/logfile"
+	"gameflex/storage"
 	"github.com/docker/docker/client"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -41,12 +41,13 @@ func main() {
 	// EN PLUS de la sortie standard, jamais à la place : elle reste ce qu'on
 	// lit pendant qu'on développe, et un journal qui déplace ce qu'on avait
 	// l'habitude de trouver est un journal qu'on cesse de lire.
-	output := io.Writer(os.Stdout)
-	if file, err := logfile.Service(config.StorageDir, "kernel"); err == nil && file != nil {
-		defer file.Close()
-		output = io.MultiWriter(os.Stdout, file)
-	}
-	slog.SetDefault(slog.New(slog.NewJSONHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	//
+	// CE QUE LE FICHIER REÇOIT EST UN RÉGLAGE (Stockage › Journaux, le
+	// porteur, 2026-11-14) : le journal ou non, ses niveaux, les requêtes à
+	// part. Lu ici, avant tout le reste, et changé ensuite au vol par sa
+	// route (api/log_settings.go). La sortie standard ne le suit pas.
+	slog.SetDefault(slog.New(logfile.ServiceHandler(os.Stdout, config.StorageDir, "kernel")))
+	logfile.Apply(api.LoadLogSettings(config.StorageDir))
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -59,6 +60,12 @@ func main() {
 		slog.Error("storage folder", "error", err)
 		os.Exit(1)
 	}
+
+	// LES CLÉS DE LA CONSOLE, LÀ OÙ L'ÉMULATEUR LES PREND : `bios/` du dossier
+	// du serveur, que chaque partie reçoit (même pour un jeu d'un disque). Un
+	// jeu Switch y fait lire son identifiant dans son paquet
+	// (storage.GameTitleID) — ses sauvegardes, ses réglages, ses métadonnées.
+	storage.UseBiosRoot(func() string { return filepath.Join(config.StorageDir, "bios") })
 
 	// The streamex core no longer embeds console buttons — write our own pad
 	// profiles (host-side) so each session container can mount its own.
@@ -100,6 +107,7 @@ func main() {
 	sessionCatalogs := map[string]*catalog.Catalog{
 		// keytest n'est pas une console : pas de jeux sur le disque, un
 		// catalogue synthétique. Elle reste donc déclarée à la main.
+		// Banc d'essai interne, plus visible du joueur depuis le 2026-11-13.
 		"keytest": catalog.NewKeyTest(),
 	}
 	for _, console := range consoles.List() {

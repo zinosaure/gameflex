@@ -227,6 +227,10 @@ func Remove(root, relative string) error {
 	if err := os.Remove(full); err != nil {
 		return err
 	}
+	// LE JOURNAL QUI S'ÉCRIT ENCORE renaît à sa ligne suivante : le kernel du
+	// jour, une partie en cours. Sans ça, ils continuaient d'écrire dans le
+	// fichier supprimé, que plus rien ne montre (switchedFile).
+	generation.Add(1)
 	// Best-effort : os.Remove refuse un dossier non vide, ce qui est
 	// exactement la garde qu'on veut.
 	parent := filepath.Dir(full)

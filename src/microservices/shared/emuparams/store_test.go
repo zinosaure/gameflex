@@ -596,6 +596,22 @@ func TestImportNeverOverwritesAndKeepsWhatFits(t *testing.T) {
 	}
 }
 
+// CE QU'UN AUTRE PRÊTE, PRIS COMME UN PRÉRÉGLAGE (chantier 53) : les valeurs que
+// les paramètres d'ici acceptent, les autres dites — et rien d'écrit.
+func TestFitKeepsWhatFitsAndWritesNothing(t *testing.T) {
+	store := Store{Root: t.TempDir()}
+	values, ignored := store.Fit(rpcs3, map[string]any{"spuBlockSize": "Giga", "inconnu": 3, "frameLimit": "nimporte-quoi"})
+	if len(values) != 1 || values["spuBlockSize"] != "Giga" || strings.Join(ignored, ",") != "frameLimit,inconnu" {
+		t.Fatalf("pris = %v, écartés = %v", values, ignored)
+	}
+	if none, _ := store.Fit(rpcs3, map[string]any{"inconnu": 1}); none == nil || len(none) != 0 {
+		t.Fatalf("rien qui aille = %#v, attendu une liste vide", none)
+	}
+	if entries, _ := os.ReadDir(store.Root); len(entries) != 0 {
+		t.Fatalf("Fit a écrit %v", entries)
+	}
+}
+
 // UN PRÊT, VU D'ICI : sous quel nom il entrerait, et s'il y est déjà.
 func TestOfferSaysWhereALoanWouldLand(t *testing.T) {
 	store := Store{Root: t.TempDir()}

@@ -1,10 +1,10 @@
 {
   "name": "Performance",
-  "description": "The most frames per second: 50 % rendering, no anti-aliasing, RPCS3's fastest settings. Some games may display wrongly.",
+  "description": "The most frames per second: 50 % rendering, no anti-aliasing, RPCS3's fastest settings; some games may display wrongly.",
   "translations": {
     "fr": {
       "name": "Performance",
-      "description": "Le plus d'images par seconde : rendu à 50 %, sans anticrénelage, les réglages les plus rapides de RPCS3. Certains jeux peuvent mal s'afficher."
+      "description": "Le plus d'images par seconde : rendu à 50 %, sans anticrénelage, les réglages les plus rapides de RPCS3 ; certains jeux peuvent mal s'afficher."
     }
   },
   "override": false,

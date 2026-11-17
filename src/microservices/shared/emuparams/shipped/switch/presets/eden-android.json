@@ -1,10 +1,10 @@
 {
   "name": "Android",
-  "description": "Eden's own values for Android devices: low GPU accuracy, no reactive flushing, asynchronous presentation, dynamic state off, handheld mode. A starting point for a phone.",
+  "description": "Eden's own values for Android devices: a starting point for a phone.",
   "translations": {
     "fr": {
       "name": "Android",
-      "description": "Les valeurs d'Eden pour les appareils Android : précision du GPU basse, sans vidage réactif, présentation asynchrone, état dynamique désactivé, mode portable. Un point de départ pour un téléphone."
+      "description": "Les valeurs d'Eden pour les appareils Android : un point de départ pour un téléphone."
     }
   },
   "override": false,

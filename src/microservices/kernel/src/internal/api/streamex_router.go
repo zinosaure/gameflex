@@ -28,7 +28,7 @@ func (server *Server) serveStreamexChild(w http.ResponseWriter, r *http.Request)
 	segments := strings.SplitN(strings.TrimPrefix(r.URL.Path, "/"), "/", 2)
 	sessionID := segments[0]
 	if sessionID == "" {
-		writeError(w, http.StatusBadRequest, "session id is required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "session id is required")
 		return
 	}
 
@@ -59,7 +59,7 @@ func (server *Server) serveStreamexChild(w http.ResponseWriter, r *http.Request)
 
 	record, ok := server.manager.LookupStreamex(sessionID)
 	if !ok {
-		writeError(w, http.StatusNotFound, "no active session for this id")
+		writeErrorCode(w, http.StatusNotFound, "session_not_found", "no active session for this id")
 		return
 	}
 

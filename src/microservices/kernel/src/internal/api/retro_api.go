@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gameflex/facade"
 	"gameflex/kernel/internal/auth"
 	"time"
 
@@ -64,7 +65,7 @@ func (server *Server) handleRetroConsoles(w http.ResponseWriter, r *http.Request
 	server.ensureSelf()
 	header, err := listing.LoadHeader(listingCacheDir, listing.SelfKey)
 	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "the listing of this server is not built yet")
+		writeErrorCode(w, http.StatusServiceUnavailable, "games_not_ready", "the listing of this server is not built yet")
 
 		return
 	}
@@ -96,7 +97,7 @@ func (server *Server) handleRetroRoms(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 
 	if peer := r.URL.Query().Get("server"); peer != "" {
-		server.servePeerRoms(w, peer, consoleID, query)
+		server.servePeerRoms(r.Context(), w, peer, consoleID, query)
 
 		return
 	}
@@ -128,6 +129,7 @@ func (server *Server) handleRetroRoms(w http.ResponseWriter, r *http.Request) {
 			Status: statusView(consoleID, statuses, item.ID), Engine: item.Engine,
 		})
 	}
+	annotateRoms(consoleID, roms)
 
 	writeJSON(w, http.StatusOK, roms)
 }
@@ -153,9 +155,15 @@ func (server *Server) handleRetroBios(w http.ResponseWriter, r *http.Request) {
 // sur le disque.
 func (server *Server) handleRetroCores(w http.ResponseWriter, r *http.Request) {
 	consoleID := chi.URLParam(r, "consoleId")
-	writeJSON(w, http.StatusOK, append(
+	entries := append(
 		coreEntriesFrom(consoleID, server.selfItems(listing.Cores, consoleID)),
-		server.streamexCoreEntries(r.Context(), consoleID)...))
+		server.streamexCoreEntries(r.Context(), consoleID)...)
+	for index := range entries {
+		if entries[index].Installed {
+			entries[index].Version = server.emulatorVersion(r.Context(), consoleID, entries[index].Name)
+		}
+	}
+	writeJSON(w, http.StatusOK, entries)
 }
 
 // streamexCoreEntries — LES ÉMULATEURS EN CONTENEUR de cette console, pour la
@@ -241,11 +249,11 @@ func (server *Server) handleRetroLibrary(w http.ResponseWriter, r *http.Request)
 	case "cores":
 		entries, err = retro_files.ListCoreTree(server.retroCoresRoot())
 	default:
-		writeError(w, http.StatusBadRequest, "unknown section")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "unknown section")
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "failed to read section: "+err.Error())
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "failed to read section: "+err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, entries)
@@ -289,11 +297,11 @@ func (server *Server) serveRomFile(w http.ResponseWriter, r *http.Request, conso
 	// les deux comme une seule, et télécharge un jeu là où il est.
 	path, isDir, _, err := server.findRom(r.Context(), consoleID, ref)
 	if errors.Is(err, os.ErrNotExist) {
-		writeError(w, http.StatusNotFound, "rom not found")
+		writeErrorCode(w, http.StatusNotFound, "game_not_found", "rom not found")
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid rom reference: "+err.Error())
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid rom reference: "+err.Error())
 		return
 	}
 
@@ -349,12 +357,12 @@ func (server *Server) handleRetroDeleteRom(w http.ResponseWriter, r *http.Reques
 
 	path, _, err := retro_files.ResolveCatalogRom(romsRoot, consoleID, reference)
 	if errors.Is(err, os.ErrNotExist) {
-		writeError(w, http.StatusNotFound, "rom not found")
+		writeErrorCode(w, http.StatusNotFound, "game_not_found", "rom not found")
 
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid rom reference: "+err.Error())
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid rom reference: "+err.Error())
 
 		return
 	}
@@ -364,15 +372,29 @@ func (server *Server) handleRetroDeleteRom(w http.ResponseWriter, r *http.Reques
 	if consoleID == "ps4" {
 		stems = pkgStems(path)
 	}
-	if err := os.RemoveAll(path); err != nil {
-		writeError(w, http.StatusInternalServerError, "suppression impossible : "+err.Error())
+	// EN TÂCHE SUIVIE (le porteur, 2026-11-17 : « La suppression des gros jeux c'est long. Il faudra le mettre dans
+	// notifications avec la progression ») : un gros jeu PS4 mettait des minutes à partir, la page attendait sans rien
+	// dire. La suppression part comme un téléchargement (`Kind: remove`, facade.RemoveTree) ; la réponse donne son
+	// identifiant tout de suite (202), sa progression se lit au sujet `download/<id>` et dans la liste `downloads`.
+	label := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	removeID, err := server.downloads.Start(facade.DownloadJob{
+		Owner: auth.Username(r.Context()), Label: label, Key: "remove:" + romsRoot + ":" + consoleID + ":" + reference, Kind: "remove",
+		Run: func(ctx context.Context) (int, []byte) {
+			if err := facade.RemoveTree(ctx, path); err != nil {
+				return http.StatusInternalServerError, facade.ErrorBody("delete_failed", "suppression impossible : "+err.Error())
+			}
+			server.forgetUnpacked(ctx, stems)
+
+			return http.StatusOK, facade.OKBody(map[string]any{"consoleId": consoleID, "reference": reference, "removed": true})
+		},
+	})
+	if errors.Is(err, facade.ErrDownloadPending) {
+		writeErrorCode(w, http.StatusConflict, "delete_pending", "this game is already being removed")
 
 		return
 	}
-	server.forgetUnpacked(r.Context(), stems)
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"consoleId": consoleID, "reference": reference, "removed": true,
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"consoleId": consoleID, "reference": reference, "downloadId": removeID,
 	})
 }
 
@@ -441,7 +463,7 @@ func (server *Server) forgetUnpacked(ctx context.Context, stems []string) {
 // fichier.
 func serveDirectoryAsZip(w http.ResponseWriter, r *http.Request, path, name string) {
 	if _, err := os.ReadDir(path); err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to read folder: "+err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "storage_failed", "failed to read folder: "+err.Error())
 		return
 	}
 
@@ -483,7 +505,7 @@ func (server *Server) handleRetroScreenshot(w http.ResponseWriter, r *http.Reque
 	// From the token, never the query string — see retroRouter's own doc.
 	username := auth.Username(r.Context())
 	if consoleID == "" || reference == "" || username == "" {
-		writeError(w, http.StatusBadRequest, "consoleId and reference are required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "consoleId and reference are required")
 		return
 	}
 	root, owner, ok := server.saveTree(w, r)
@@ -496,11 +518,11 @@ func (server *Server) handleRetroScreenshot(w http.ResponseWriter, r *http.Reque
 	}
 	path, err := retro_files.StateFilePath(root, owner, consoleID, reference, slot, ".png")
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid path")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid path")
 		return
 	}
 	if _, err := os.Stat(path); err != nil {
-		writeError(w, http.StatusNotFound, "no screenshot found")
+		writeErrorCode(w, http.StatusNotFound, "no_image", "no screenshot found")
 		return
 	}
 	http.ServeFile(w, r, path)
@@ -525,7 +547,7 @@ func (server *Server) handleRetroSaveFile(w http.ResponseWriter, r *http.Request
 	// Du jeton, jamais de la requête — voir la doc de retroRouter.
 	username := auth.Username(r.Context())
 	if consoleID == "" || reference == "" || username == "" {
-		writeError(w, http.StatusBadRequest, "consoleId and reference are required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "consoleId and reference are required")
 		return
 	}
 	root, owner, ok := server.saveTree(w, r)
@@ -534,16 +556,16 @@ func (server *Server) handleRetroSaveFile(w http.ResponseWriter, r *http.Request
 	}
 	slot, err := strconv.Atoi(r.URL.Query().Get("slot"))
 	if err != nil || slot < 0 || slot >= retro_files.MaxSaveSlots() {
-		writeError(w, http.StatusBadRequest, "slot is required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "slot is required")
 		return
 	}
 	path, err := retro_files.StateFilePath(root, owner, consoleID, reference, slot, ".state")
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid path")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid path")
 		return
 	}
 	if _, err := os.Stat(path); err != nil {
-		writeError(w, http.StatusNotFound, "no save in this slot")
+		writeErrorCode(w, http.StatusNotFound, "save_not_found", "no save in this slot")
 		return
 	}
 
@@ -578,28 +600,28 @@ func (server *Server) handleRetroSaveFileUpload(w http.ResponseWriter, r *http.R
 	reference := r.URL.Query().Get("reference")
 	username := auth.Username(r.Context())
 	if consoleID == "" || reference == "" || username == "" {
-		writeError(w, http.StatusBadRequest, "consoleId and reference are required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "consoleId and reference are required")
 		return
 	}
 	slot, err := strconv.Atoi(r.URL.Query().Get("slot"))
 	if err != nil || slot < 0 || slot >= retro_files.MaxSaveSlots() {
-		writeError(w, http.StatusBadRequest, "slot is required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "slot is required")
 		return
 	}
 	// LA DATE DE L'ORIGINAL, quand on copie (storage.ParseSaveTimestamp, #395).
 	saved, err := storage.ParseSaveTimestamp(r.URL.Query().Get("timestamp"))
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeErrorCode(w, http.StatusBadRequest, "storage_failed", err.Error())
 		return
 	}
 	source := saves.SourceName(r.URL.Query().Get("source"))
 	if source == "" {
-		writeError(w, http.StatusBadRequest, "source is required: an upload only writes into a copy")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "source is required: an upload only writes into a copy")
 		return
 	}
 	root, owner, err := saves.TreeParts(server.retroSavesRoot(), username, source)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid save source")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid save source")
 		return
 	}
 	ext := ".state"
@@ -608,11 +630,11 @@ func (server *Server) handleRetroSaveFileUpload(w http.ResponseWriter, r *http.R
 	}
 	path, err := retro_files.StateFilePath(root, owner, consoleID, reference, slot, ext)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid path")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid path")
 		return
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		writeError(w, http.StatusInternalServerError, "cannot create the save directory")
+		writeErrorCode(w, http.StatusInternalServerError, "saves_failed", "cannot create the save directory")
 		return
 	}
 
@@ -623,7 +645,7 @@ func (server *Server) handleRetroSaveFileUpload(w http.ResponseWriter, r *http.R
 	temporary := path + ".part"
 	file, err := os.Create(temporary)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "cannot write the save")
+		writeErrorCode(w, http.StatusInternalServerError, "saves_failed", "cannot write the save")
 		return
 	}
 	written, copyErr := io.Copy(file, http.MaxBytesReader(w, r.Body, maxSaveStateBytes))
@@ -631,22 +653,22 @@ func (server *Server) handleRetroSaveFileUpload(w http.ResponseWriter, r *http.R
 	var tooLarge *http.MaxBytesError
 	if errors.As(copyErr, &tooLarge) {
 		_ = os.Remove(temporary)
-		writeError(w, http.StatusRequestEntityTooLarge, "the save is too large")
+		writeErrorCode(w, http.StatusRequestEntityTooLarge, "save_too_large", "the save is too large")
 		return
 	}
 	if copyErr != nil || closeErr != nil {
 		_ = os.Remove(temporary)
-		writeError(w, http.StatusInternalServerError, "cannot write the save")
+		writeErrorCode(w, http.StatusInternalServerError, "saves_failed", "cannot write the save")
 		return
 	}
 	if written == 0 {
 		_ = os.Remove(temporary)
-		writeError(w, http.StatusBadRequest, "the save is empty")
+		writeErrorCode(w, http.StatusBadRequest, "save_empty", "the save is empty")
 		return
 	}
 	if err := os.Rename(temporary, path); err != nil {
 		_ = os.Remove(temporary)
-		writeError(w, http.StatusInternalServerError, "cannot write the save")
+		writeErrorCode(w, http.StatusInternalServerError, "saves_failed", "cannot write the save")
 		return
 	}
 
@@ -666,7 +688,7 @@ func (server *Server) handleRetroSaveSlots(w http.ResponseWriter, r *http.Reques
 	reference := r.URL.Query().Get("reference")
 	username := auth.Username(r.Context())
 	if consoleID == "" || reference == "" || username == "" {
-		writeError(w, http.StatusBadRequest, "consoleId and reference are required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "consoleId and reference are required")
 		return
 	}
 	root, owner, ok := server.saveTree(w, r)
@@ -706,7 +728,7 @@ type retroSaveSlotInfo struct {
 func (server *Server) handleRetroUserSaves(w http.ResponseWriter, r *http.Request) {
 	username := auth.Username(r.Context())
 	if username == "" {
-		writeError(w, http.StatusUnauthorized, "authentication required")
+		writeErrorCode(w, http.StatusUnauthorized, "auth_required", "authentication required")
 		return
 	}
 	root, owner, ok := server.saveTree(w, r)
@@ -719,7 +741,7 @@ func (server *Server) handleRetroUserSaves(w http.ResponseWriter, r *http.Reques
 	}
 	entries, err := retro_files.ListUserSaveStates(server.retroRomsRoot(), root, owner, diskRoots...)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to list saves: %v", err))
+		writeErrorCode(w, http.StatusInternalServerError, "saves_failed", fmt.Sprintf("failed to list saves: %v", err))
 		return
 	}
 	// UNE COPIE VENUE D'AILLEURS porte parfois un jeu qu'ici n'a pas : son
@@ -743,7 +765,7 @@ func (server *Server) handleRetroDeleteSave(w http.ResponseWriter, r *http.Reque
 	reference := r.URL.Query().Get("reference")
 	username := auth.Username(r.Context())
 	if consoleID == "" || reference == "" || username == "" {
-		writeError(w, http.StatusBadRequest, "consoleId and reference are required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "consoleId and reference are required")
 		return
 	}
 	root, owner, ok := server.saveTree(w, r)
@@ -752,11 +774,11 @@ func (server *Server) handleRetroDeleteSave(w http.ResponseWriter, r *http.Reque
 	}
 	slot, err := strconv.Atoi(r.URL.Query().Get("slot"))
 	if err != nil || slot < 0 || slot >= retro_files.MaxSaveSlots() {
-		writeError(w, http.StatusBadRequest, "invalid slot")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid slot")
 		return
 	}
 	if err := retro_files.RemoveSaveFiles(root, owner, consoleID, reference, slot); err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to delete: %v", err))
+		writeErrorCode(w, http.StatusInternalServerError, "delete_failed", fmt.Sprintf("failed to delete: %v", err))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -768,7 +790,7 @@ func (server *Server) handleRetroDeleteGameSaves(w http.ResponseWriter, r *http.
 	reference := r.URL.Query().Get("reference")
 	username := auth.Username(r.Context())
 	if consoleID == "" || reference == "" || username == "" {
-		writeError(w, http.StatusBadRequest, "consoleId and reference are required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "consoleId and reference are required")
 		return
 	}
 	root, owner, ok := server.saveTree(w, r)
@@ -777,7 +799,7 @@ func (server *Server) handleRetroDeleteGameSaves(w http.ResponseWriter, r *http.
 	}
 	for i := 0; i < retro_files.MaxSaveSlots(); i++ {
 		if err := retro_files.RemoveSaveFiles(root, owner, consoleID, reference, i); err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Sprintf("failed to delete: %v", err))
+			writeErrorCode(w, http.StatusInternalServerError, "delete_failed", fmt.Sprintf("failed to delete: %v", err))
 			return
 		}
 	}
@@ -822,6 +844,9 @@ func (server *Server) retroRouter() http.Handler {
 	// `/stream/ws`.
 	router.Get("/downloads/{ticket}", server.handleRetroDownloadByTicket)
 	router.Head("/downloads/{ticket}", server.handleRetroDownloadByTicket)
+	// L'archive des métadonnées d'un jeu, par la même mécanique et ses propres tickets (metadata_archive.go).
+	router.Get("/downloads/metadata/{ticket}", server.handleMetadataArchiveByTicket)
+	router.Head("/downloads/metadata/{ticket}", server.handleMetadataArchiveByTicket)
 
 	// Group, not Use: chi panics if middleware is declared after a route on
 	// the same mux, and /stream/ws above has to stay outside it.
@@ -831,17 +856,32 @@ func (server *Server) retroRouter() http.Handler {
 		})
 
 		guarded.Get("/consoles", server.handleRetroConsoles)
+		// L'image d'une console (console_images.go, chantier 49) : la lire est
+		// ouvert à tous, la remplacer est un geste d'administration.
+		guarded.Get("/consoles/{consoleId}/image", server.handleConsoleImage)
+		guarded.Get("/consoles/{consoleId}/image/source", server.handleConsoleImageSource)
+		guarded.Put("/consoles/{consoleId}/image", adminOnly(server.handleConsoleImageUpload))
+		guarded.Delete("/consoles/{consoleId}/image", adminOnly(server.handleConsoleImageDelete))
+		// Le fond de son écran : les images de metadata/<console>/background/.
+		// Huit emplacements, chacun rempli d'une image choisie chez un
+		// fournisseur (chantier 53, P9 : remarques d et e du porteur).
+		guarded.Get("/consoles/{consoleId}/backgrounds", server.handleConsoleBackgrounds)
+		guarded.Get("/consoles/{consoleId}/backgrounds/search", adminOnly(server.handleConsoleBackgroundSearch))
+		guarded.Get("/consoles/{consoleId}/backgrounds/{name}", server.handleConsoleBackground)
+		guarded.Post("/consoles/{consoleId}/backgrounds/reset", adminOnly(server.handleConsoleBackgroundsReset))
+		guarded.Put("/consoles/{consoleId}/backgrounds/slots/{slot}", adminOnly(server.handleConsoleBackgroundSet))
+		guarded.Post("/consoles/{consoleId}/backgrounds/slots/{slot}/reset", adminOnly(server.handleConsoleBackgroundSlotReset))
 		// LES RESSOURCES INTERNES (chantier 23) : les autres disques de jeux
 		// de cette machine. Les lister est ouvert à tous (le sélecteur de la
 		// page des jeux) ; les relire est un geste d'administration.
 		guarded.Get("/disks", server.handleInternalDisks)
 		guarded.Post("/disks/{name}/rescan", adminOnly(server.handleInternalDiskRescan))
 		// Ce qu'un disque apporte d'autre que des jeux (chantier 24) — ses
-		// cœurs, BIOS, paramètres et correctifs —, et l'importer dans le
-		// dossier : les mêmes gestes que pour un ami (`/servers/{id}/storage`).
+		// cœurs, BIOS, paramètres et correctifs. L'importer dans le dossier
+		// est la commande `download` (facadeDownload, route `disk`), qui
+		// rejoue handleDiskStorageImport ; le POST d'avant est parti
+		// (chantier 53).
 		guarded.Get("/disks/{name}/storage/{section}", adminOnly(server.handleDiskStorage))
-		guarded.Post("/disks/{name}/storage/{section}", adminOnly(server.refreshing(
-			func(r *http.Request) string { return chi.URLParam(r, "section") }, server.handleDiskStorageImport)))
 		// LE LANCEMENT EST PARTI SUR LA PORTE UNIQUE (`POST /api/v1/launch`,
 		// #195). `handleRetroLaunch` vit toujours : c'est l'aiguillage qui
 		// l'appelle désormais. Le GET ci-dessous RESTE — même chemin, autre
@@ -855,23 +895,37 @@ func (server *Server) retroRouter() http.Handler {
 		guarded.Post("/{consoleId}/roms/{ref}/status", adminOnly(server.handleReportGame))
 		guarded.Get("/{consoleId}/status", adminOnly(server.handleGetConsoleStatus))
 		guarded.Post("/{consoleId}/status", adminOnly(server.handleConsoleStatus))
+		// LE DÉFAUT D'UNE CONSOLE (console_defaults.go, chantier 53) :
+		// l'émulateur en service et le BIOS par défaut. Le lire est ouvert à
+		// tous (la fiche part de lui) ; le changer est un geste
+		// d'administration.
+		guarded.Get("/{consoleId}/defaults", server.handleGetConsoleDefaults)
+		guarded.Put("/{consoleId}/defaults", adminOnly(server.handlePutConsoleDefaults))
 		guarded.Get("/{consoleId}/bios", server.handleRetroBios)
 		guarded.Get("/{consoleId}/cores", server.handleRetroCores)
 		guarded.Get("/library/bios-dirs", server.handleRetroBiosDirs)
 		// Gestion du stockage (storage_admin_api.go) — ce que la machine
 		// contient et ce qui lui manque.
 		guarded.Get("/storage/cores", adminOnly(server.handleStorageCores))
-		guarded.Post("/storage/cores", adminOnly(server.refreshing(sectionNamed(listing.Cores), server.handleStorageCoreDownload)))
+		// Télécharger un cœur ou un émulateur : la commande `download`
+		// (facadeDownload, route `cores`), qui rejoue
+		// handleStorageCoreDownload ; le POST d'avant est parti (chantier 53).
 		// Supprimer un cœur ou un BIOS (#146) : sans ces deux routes, revenir
 		// à une version qui marche demandait un accès shell — et le refus
 		// d'écraser (#143) donnait une consigne que rien ne savait suivre.
 		guarded.Delete("/storage/cores", adminOnly(server.refreshing(sectionNamed(listing.Cores), server.handleStorageCoreDelete)))
 		guarded.Get("/storage/bios", adminOnly(server.handleStorageBios))
+		// Qui l'a, demandé à chaque source (storage_availability.go, chantier 53).
+		guarded.Get("/storage/availability", adminOnly(server.handleStorageAvailability))
 		guarded.Delete("/storage/bios", adminOnly(server.refreshing(sectionNamed(listing.Bios), server.handleStorageBiosDelete)))
 		guarded.Get("/storage/logs", adminOnly(server.handleStorageLogs))
 		guarded.Get("/storage/logs/tail", adminOnly(server.handleStorageLogTail))
 		guarded.Get("/storage/logs/file", adminOnly(server.handleStorageLogFile))
 		guarded.Delete("/storage/logs", adminOnly(server.handleStorageLogDelete))
+		// CE QUI S'ÉCRIT (log_settings.go) : le journal du kernel, ses niveaux,
+		// les requêtes, les journaux des parties.
+		guarded.Get("/storage/logs/settings", adminOnly(server.handleGetLogSettings))
+		guarded.Put("/storage/logs/settings", adminOnly(server.handlePutLogSettings))
 		// SIGNALER, ce n'est pas LIRE (#191). Les quatre routes ci-dessus sont
 		// réservées aux administrateurs parce qu'elles exposent les journaux de
 		// tout le monde ; celle-ci n'ajoute qu'une ligne sur ce qui vient
@@ -906,9 +960,32 @@ func (server *Server) retroRouter() http.Handler {
 		// C'est la seule moitié du mécanisme qui exige un compte — la
 		// consommation se fait sans en-tête, par nécessité de plateforme.
 		guarded.Post("/{consoleId}/roms/{ref}/ticket", server.handleRetroMintDownloadTicket)
+		// Le ticket de l'archive de ses métadonnées, d'ici ou d'un pair (metadata_archive.go ; le Catalogue).
+		guarded.Post("/{consoleId}/roms/{ref}/metadata/ticket", server.handleMintMetadataArchiveTicket)
+		// Les images d'un jeu (game_images.go, chantier 49).
+		guarded.Get("/{consoleId}/roms/{ref}/images/{kind}", server.handleGameImage)
+		// Le texte de sa fiche (game_metadata.go, chantier 49).
+		guarded.Get("/{consoleId}/roms/{ref}/metadata", server.handleGameMetadata)
+		// Ses gestes d'administration (game_metadata.go, chantier 49 §7).
+		guarded.Put("/{consoleId}/roms/{ref}/metadata/manual", adminOnly(server.handleGameMetadataManual))
+		guarded.Put("/{consoleId}/roms/{ref}/metadata/manual/images/{kind}", adminOnly(server.handleGameMetadataManualImage))
+		guarded.Get("/{consoleId}/roms/{ref}/metadata/images/search", adminOnly(server.handleGameImageSearch))
+		// Le correctif d'un jeu, et qui l'a (storage_patches_api.go, chantier 53).
+		guarded.Get("/{consoleId}/roms/{ref}/patch", adminOnly(server.handleGamePatch))
+		guarded.Get("/{consoleId}/roms/{ref}/metadata/candidates", adminOnly(server.handleGameMetadataCandidates))
+		guarded.Post("/{consoleId}/roms/{ref}/metadata/fetch", adminOnly(server.handleGameMetadataFetch))
+		// La fiche d'un jeu fédéré, copiée dans mes métadonnées sans le jeu (federation_metadata.go ; 2026-11-16).
+		guarded.Post("/{consoleId}/roms/{ref}/metadata/copy", adminOnly(server.handleFederatedSheetCopy))
+		guarded.Delete("/{consoleId}/roms/{ref}/metadata", adminOnly(server.handleGameMetadataDrop))
+		// Les métadonnées sans jeu d'une console (metadata_orphans.go, chantier 53).
+		guarded.Get("/{consoleId}/metadata/orphans", adminOnly(server.handleMetadataOrphans))
+		guarded.Get("/{consoleId}/metadata/orphans/{gameId}/cover", adminOnly(server.handleMetadataOrphanCover))
+		guarded.Delete("/{consoleId}/metadata/orphans/{gameId}", adminOnly(server.handleMetadataOrphanDelete))
 		guarded.Get("/savestate/screenshot", server.handleRetroScreenshot)
 		guarded.Get("/savestate/slots", server.handleRetroSaveSlots)
 		guarded.Get("/savestate/user", server.handleRetroUserSaves)
+		// La SRAM d'un jeu, pour ce compte : elle existe, et de quand (game_saves.go, #660).
+		guarded.Get("/savestate/sram", server.handleRetroSaveRAM)
 		guarded.Delete("/savestate", server.handleRetroDeleteSave)
 		guarded.Delete("/savestate/game", server.handleRetroDeleteGameSaves)
 		// LE FICHIER, dans les deux sens — ce que la synchronisation d'une

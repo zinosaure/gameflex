@@ -5,7 +5,7 @@
 #   glibc-<arch>.zip        libc.so.6 (Debian forky, glibc 2.43), les témoins
 #                           (witness, witness-mt), le client X (draw-xcb) et
 #                           la fermeture de libxcb — posé dans les téléchargements
-#                           de la webapp, choisi par ABI (Xserver.glibcZipPath) ;
+#                           d'edge, choisi par ABI (Xserver.glibcZipPath) ;
 #   libglibcloader.so       le chargeur (ld-linux-*), posé dans jniLibs/<abi>/ —
 #                           le seul endroit d'où l'application peut l'exécuter.
 #
@@ -59,7 +59,7 @@ if [ "${1:-}" != "--inner" ]; then
     OUT=$(mktemp -d)
     docker run --rm -e RUNTIME_IMAGE="$RUNTIME_IMAGE" -v "${HERE}":/src:ro -v "${OUT}":/out "$RUNTIME_IMAGE" \
         bash /src/tools/assemble-glibc.sh --inner "$arch"
-    DL="${HERE}/../webapp/src/public/downloads"
+    DL="${HERE}/../microservices/edge/src/public/downloads"
     JNI="${HERE}/app/src/main/jniLibs/${abi}"
     mkdir -p "${DL}" "${JNI}"
     cp "${OUT}/glibc-${arch}.zip" "${DL}/glibc-${arch}.zip"

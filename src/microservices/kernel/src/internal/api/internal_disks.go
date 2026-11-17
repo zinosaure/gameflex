@@ -55,14 +55,19 @@ func (server *Server) disks(ctx context.Context) []docker.InternalDisk {
 	return server.manager.InternalDisks(ctx)
 }
 
-// presentDisks — les disques internes qui portent des jeux, dans l'ordre.
+// presentDisks — les disques internes qui portent des jeux, dans l'ordre. Un
+// disque apparu ou parti depuis la dernière fois fait avancer la date du
+// listing (listing_freshness.go) : c'est ici que le kernel le voit.
 func (server *Server) presentDisks(ctx context.Context) []docker.InternalDisk {
 	present := []docker.InternalDisk{}
+	dirs := map[string]string{}
 	for _, disk := range server.disks(ctx) {
 		if disk.Present {
 			present = append(present, disk)
+			dirs[disk.Name] = disk.Dir
 		}
 	}
+	server.freshness.Disks(dirs)
 
 	return present
 }
@@ -101,9 +106,9 @@ func (server *Server) diskNamed(w http.ResponseWriter, r *http.Request, name str
 		}
 	}
 	if declared {
-		writeError(w, http.StatusServiceUnavailable, "the internal disk "+name+" is not there: it has no roms folder")
+		writeErrorCode(w, http.StatusServiceUnavailable, "disk_absent", "the internal disk "+name+" is not there: it has no roms folder")
 	} else {
-		writeError(w, http.StatusNotFound, "no internal disk named "+name)
+		writeErrorCode(w, http.StatusNotFound, "not_found", "no internal disk named "+name)
 	}
 
 	return docker.InternalDisk{}, false
@@ -142,19 +147,23 @@ func (server *Server) handleInternalDisks(w http.ResponseWriter, r *http.Request
 }
 
 // handleInternalDiskRescan — POST /api/v1/retrogaming/disks/{name}/rescan :
-// relire un disque en entier. Le catalogue se relit déjà de lui-même quand un
-// dossier change ; ce bouton sert à ce qu'il ne voit pas (un fichier réécrit
-// sur place).
+// relire un disque en entier. Le catalogue se relit déjà de lui-même quand une
+// liste voit un dossier changer ; ce bouton sert à ce qu'il ne voit pas (un
+// fichier réécrit sur place), et à ce qu'un ami voie ce qu'on a déposé à la
+// main (la date du listing ne relit plus le disque, journal 629).
 func (server *Server) handleInternalDiskRescan(w http.ResponseWriter, r *http.Request) {
 	disk, ok := server.diskNamed(w, r, chi.URLParam(r, "name"))
 	if !ok {
 		return
 	}
 	if err := retro_files.RescanCatalog(disk.RomsDir()); err != nil {
-		writeError(w, http.StatusInternalServerError, "rescan failed: "+err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "rescan_failed", "rescan failed: "+err.Error())
 
 		return
 	}
+	// Ses autres sections aussi : c'est par ce bouton qu'un BIOS déposé à la
+	// main sur le disque se voit chez un ami.
+	server.readDisks(disk)
 
 	writeJSON(w, http.StatusOK, map[string]any{"name": disk.Name, "rescanned": true})
 }
@@ -168,7 +177,7 @@ func (server *Server) serveDiskRoms(w http.ResponseWriter, r *http.Request, name
 	}
 	roms, err := retro_files.ListCatalog(disk.RomsDir(), consoleID, query)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "storage_failed", err.Error())
 
 		return
 	}
@@ -182,6 +191,7 @@ func (server *Server) serveDiskRoms(w http.ResponseWriter, r *http.Request, name
 		}
 		roms[index].Status = statusView(consoleID, statuses, roms[index].Reference)
 	}
+	annotateRoms(consoleID, roms)
 
 	writeJSON(w, http.StatusOK, roms)
 }
@@ -384,22 +394,4 @@ func (server *Server) libraryRootsInOrder(ctx context.Context) []libraryRoots {
 	}
 
 	return roots
-}
-
-// disksUpdatedAt — la date la plus récente entre `at` et les disques internes
-// (le catalogue de leurs jeux, et leurs autres sections) : ce que l'ami
-// compare pour savoir s'il doit recopier.
-func (server *Server) disksUpdatedAt(ctx context.Context, at time.Time) time.Time {
-	for _, disk := range server.presentDisks(ctx) {
-		if scanned := retro_files.CatalogScannedAt(disk.RomsDir()); scanned.After(at) {
-			at = scanned
-		}
-		for _, name := range diskOnlySections {
-			if changed := sectionChangedAt(disk.Section(name)); changed.After(at) {
-				at = changed
-			}
-		}
-	}
-
-	return at
 }

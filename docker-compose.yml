@@ -48,6 +48,15 @@ services:
             # it opens a launch's stream there, the intro the game page shows
             # while the game starts.
             - GAMEFLEX_GATEWAY_CONTROL_URL=http://${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}:10202
+            # The web port: in discovery mode, the gateway announces
+            # http://<GAMEFLEX_PUBLIC_HOST>:<GAMEFLEX_PORT> on the local network.
+            - GAMEFLEX_PORT=${GAMEFLEX_PORT:-10200}
+            # The version, that the listing and the discovery announcement tell
+            # the other servers.
+            - GAMEFLEX_VERSION=${GAMEFLEX_VERSION:-latest}
+            # The name of this server, that federated servers and the local
+            # network discovery show. Empty: its address.
+            - GAMEFLEX_SERVER_NAME=${GAMEFLEX_SERVER_NAME:-}
             - GAMEFLEX_REMOTEPLAY_CONTROL_URL=http://${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}:10205
             - GAMEFLEX_PORT_RANGE=9001-9100
             - GAMEFLEX_MAX_PLAYERS=${GAMEFLEX_MAX_PLAYERS:-4}

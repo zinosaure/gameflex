@@ -58,7 +58,7 @@ type remoteplayLaunchResult struct {
 // ferait une enveloppe d'erreur réinventée ici.
 func (server *Server) launchRemoteplay(w http.ResponseWriter, r *http.Request, body remoteplayLaunchBody) (remoteplayLaunchResult, bool) {
 	if body.HostID == "" || body.HostType == "" {
-		writeError(w, http.StatusBadRequest, "hostId and hostType are required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "hostId and hostType are required")
 
 		return remoteplayLaunchResult{}, false
 	}
@@ -99,12 +99,12 @@ func (server *Server) launchRemoteplay(w http.ResponseWriter, r *http.Request, b
 	if err != nil {
 		switch {
 		case errors.Is(err, manager.ErrInvalidUsername):
-			writeError(w, http.StatusBadRequest, "invalid username")
+			writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid username")
 		case errors.Is(err, manager.ErrDeviceLimitReached):
-			writeError(w, http.StatusConflict, err.Error())
+			writeErrorCode(w, http.StatusConflict, "rp_failed", err.Error())
 		default:
 			slog.Error("remoteplay launch failed", "error", err, "username", body.Username, "host_id", body.HostID)
-			writeError(w, http.StatusInternalServerError, "session could not be started")
+			writeErrorCode(w, http.StatusInternalServerError, "session_failed", "session could not be started")
 		}
 
 		return remoteplayLaunchResult{}, false
@@ -136,7 +136,7 @@ func (server *Server) launchRemoteplay(w http.ResponseWriter, r *http.Request, b
 func (server *Server) handleInternalRemoteplayLookup(w http.ResponseWriter, r *http.Request) {
 	record, ok := server.manager.LookupRemoteplay(r.PathValue("id"))
 	if !ok {
-		writeError(w, http.StatusNotFound, "session not found")
+		writeErrorCode(w, http.StatusNotFound, "session_not_found", "session not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, record)

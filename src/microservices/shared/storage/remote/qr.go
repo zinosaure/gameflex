@@ -33,8 +33,12 @@ var ErrNoQR = errors.New("aucun QR lisible dans cette image")
 // InvitationPNG — le lien d'une invitation en QR : une image PNG carrée de
 // `size` pixels, sa marge comprise. Correction « M » : une capture un peu
 // compressée par une messagerie se relit encore.
+//
+// Le lien d'un compte aussi (`/join/<code>`, chantier 55, IsMemberLink) :
+// l'administrateur l'envoie au membre en QR, comme une invitation. Rien
+// d'autre : le kernel ne dessine pas n'importe quelle adresse.
 func InvitationPNG(link string, size int) ([]byte, error) {
-	if _, _, err := ParseInvitation(link); err != nil {
+	if _, _, err := ParseInvitation(link); err != nil && !IsMemberLink(link) {
 		return nil, err
 	}
 	matrix, err := qrcode.NewQRCodeWriter().Encode(link, gozxing.BarcodeFormat_QR_CODE, size, size,

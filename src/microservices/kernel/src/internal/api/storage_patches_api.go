@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"gameflex/storage"
 	"gameflex/storage/listing"
 	"gameflex/storage/remote"
 )
@@ -58,17 +59,17 @@ func (server *Server) handleStoragePatchDelete(w http.ResponseWriter, r *http.Re
 	consoleID, name := r.URL.Query().Get("consoleId"), r.URL.Query().Get("name")
 	path, ok := patchPath(consoleID, name)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid patch")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid patch")
 
 		return
 	}
 	if _, err := os.Stat(path); err != nil {
-		writeError(w, http.StatusNotFound, "patch not found")
+		writeErrorCode(w, http.StatusNotFound, "not_found", "patch not found")
 
 		return
 	}
 	if err := os.RemoveAll(path); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "storage_failed", err.Error())
 
 		return
 	}
@@ -82,7 +83,7 @@ func (server *Server) handleStoragePatchDelete(w http.ResponseWriter, r *http.Re
 func (server *Server) handleFederationPatch(w http.ResponseWriter, r *http.Request) {
 	consoleID, name := chi.URLParam(r, "consoleId"), chi.URLParam(r, "name")
 	if _, ok := patchPath(consoleID, name); !ok {
-		writeError(w, http.StatusBadRequest, "invalid patch")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid patch")
 
 		return
 	}
@@ -96,7 +97,7 @@ func (server *Server) handleFederationPatch(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	if err != nil {
-		writeError(w, http.StatusNotFound, "patch not found")
+		writeErrorCode(w, http.StatusNotFound, "not_found", "patch not found")
 
 		return
 	}
@@ -127,13 +128,13 @@ func (server *Server) importPeerPatch(w http.ResponseWriter, r *http.Request) {
 		Name      string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "corps illisible")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "corps illisible")
 
 		return
 	}
 	target, ok := patchPath(body.ConsoleID, body.Name)
 	if !ok {
-		writeError(w, http.StatusBadRequest, "invalid patch")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid patch")
 
 		return
 	}
@@ -145,7 +146,7 @@ func (server *Server) importPeerPatch(w http.ResponseWriter, r *http.Request) {
 	items, err := server.copies().Items(peerOf(entry), listing.Patches, body.ConsoleID)
 	if err != nil {
 		refused := remote.Refusal(err)
-		writeError(w, refused.Status, refused.Message)
+		writeErrorCode(w, refused.Status, codeOr(refused.Code, "storage_failed"), refused.Message)
 
 		return
 	}
@@ -156,20 +157,19 @@ func (server *Server) importPeerPatch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if announced == nil {
-		writeError(w, http.StatusNotFound, "this server does not announce this patch")
+		writeErrorCode(w, http.StatusNotFound, "not_lent", "this server does not announce this patch")
 
 		return
 	}
 	if _, err := os.Stat(target); err == nil {
-		writeError(w, http.StatusConflict,
-			"ce correctif existe déjà : le supprimer d'abord pour en reprendre une version")
+		writeErrorCode(w, http.StatusConflict, "already_installed", "ce correctif existe déjà : le supprimer d'abord pour en reprendre une version")
 
 		return
 	}
 
 	client, err := remote.New(entry.Link, entry.Token)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "this address did not answer")
+		writeErrorCode(w, http.StatusBadGateway, "peer_unreachable", "this address did not answer")
 
 		return
 	}
@@ -177,7 +177,7 @@ func (server *Server) importPeerPatch(w http.ResponseWriter, r *http.Request) {
 	if announced.Dir {
 		policy = zipExpand
 	}
-	written, err := importIntoLibrary(func() (io.ReadCloser, error) {
+	written, err := importIntoLibrary(r.Context(), func() (io.ReadCloser, error) {
 		reader, err := client.OpenPatch(body.ConsoleID, body.Name)
 		if errors.Is(err, remote.ErrNotLent) {
 			return nil, errors.New("ce serveur ne prête plus ce correctif")
@@ -186,7 +186,7 @@ func (server *Server) importPeerPatch(w http.ResponseWriter, r *http.Request) {
 		return reader, err
 	}, target, policy)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeErrorCode(w, http.StatusBadGateway, "storage_failed", err.Error())
 
 		return
 	}
@@ -195,4 +195,86 @@ func (server *Server) importPeerPatch(w http.ResponseWriter, r *http.Request) {
 		"section": "patches", "consoleId": body.ConsoleID, "name": body.Name,
 		"sizeBytes": written, "source": entry.Hostname,
 	})
+}
+
+// LE CORRECTIF D'UN JEU (chantier 53, P6, #675) : la page d'un jeu montre le
+// sien comme un émulateur — installé ici, sinon « Le récupérer » chez chaque
+// source qui l'a. Il n'y avait qu'une liste globale, que la page filtrait
+// elle-même par l'identifiant du jeu.
+//
+//	GET /api/v1/retrogaming/{consoleId}/roms/{ref}/patch
+//
+// Le correctif d'un jeu porte le nom de son identifiant (`patches/<console>/<id>/`,
+// le même que ses réglages par jeu). Ses sources : chaque disque interne, puis
+// chaque serveur fédéré, lu dans la copie de son listing — un pair qui la
+// refuse ou ne répond pas le dit, au lieu d'une liste vide. Il n'y a pas de
+// source officielle.
+type gamePatchSource struct {
+	Source    string `json:"source"` // "disk" | "server"
+	Disk      string `json:"disk,omitempty"`
+	ServerID  int64  `json:"serverId,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Available bool   `json:"available"`
+	SizeBytes int64  `json:"sizeBytes,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+}
+
+type gamePatchView struct {
+	GameID    string            `json:"gameId"`
+	Folder    string            `json:"folder,omitempty"`
+	Installed *remote.PatchItem `json:"installed"`
+	Sources   []gamePatchSource `json:"sources"`
+}
+
+func (server *Server) handleGamePatch(w http.ResponseWriter, r *http.Request) {
+	consoleID, _, gamePath, _, ok := server.metadataGame(w, r)
+	if !ok {
+		return
+	}
+	view := gamePatchView{GameID: storage.GameTitleID(gamePath), Sources: []gamePatchSource{}}
+	if view.GameID == "" || !remote.PatchName(view.GameID) {
+		view.GameID = ""
+		writeJSON(w, http.StatusOK, view)
+
+		return
+	}
+	view.Folder = "patches/" + consoleID + "/" + view.GameID + "/"
+
+	for _, item := range server.selfSectionAll(listing.Patches)[consoleID] {
+		if item.Name == view.GameID {
+			files := item.Files
+			if files == nil {
+				files = []string{}
+			}
+			view.Installed = &remote.PatchItem{Name: item.Name, SizeBytes: item.Size, Dir: item.Dir, Files: files, Installed: true}
+		}
+	}
+
+	for _, disk := range server.presentDisks(r.Context()) {
+		source := gamePatchSource{Source: "disk", Disk: disk.Name}
+		if info, err := os.Stat(filepath.Join(disk.Section(listing.Patches), consoleID, view.GameID)); err == nil {
+			source.Available = true
+			if !info.IsDir() {
+				source.SizeBytes = info.Size()
+			}
+		}
+		view.Sources = append(view.Sources, source)
+	}
+
+	peers, _ := server.registeredServers()
+	for _, entry := range peers {
+		source := gamePatchSource{Source: "server", ServerID: entry.ID, Name: entry.Hostname}
+		items, err := server.copies().Items(peerOf(entry), listing.Patches, consoleID)
+		if err != nil {
+			source.Reason = remote.Refusal(err).Message
+		}
+		for _, item := range items {
+			if item.Name == view.GameID {
+				source.Available, source.SizeBytes = true, item.Size
+			}
+		}
+		view.Sources = append(view.Sources, source)
+	}
+
+	writeJSON(w, http.StatusOK, view)
 }

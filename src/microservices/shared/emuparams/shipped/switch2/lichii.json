@@ -1,10 +1,10 @@
 {
   "enabled": true,
   "name": "Nintendo Switch 2",
-  "description": "Settings of Lichii, a Nintendo Switch 2 emulator derived from Eglantine and Eden, applied when a game starts. Very experimental: few games run yet.",
+  "description": "Settings of Lichii, a Nintendo Switch 2 emulator, applied when a game starts; very experimental, few games run yet.",
   "translations": {
     "fr": {
-      "description": "Les réglages de Lichii, un émulateur de la Nintendo Switch 2 dérivé d'Eglantine et d'Eden, appliqués au démarrage d'un jeu. Très expérimental : peu de jeux tournent pour l'instant."
+      "description": "Les réglages de Lichii, un émulateur de la Nintendo Switch 2, appliqués au démarrage d'un jeu ; très expérimental, peu de jeux tournent pour l'instant."
     }
   },
   "system": "Lichii",
@@ -15,7 +15,7 @@
     "resolution": {
       "type": "select",
       "label": "Render resolution",
-      "description": "The size the emulator draws at, as a multiple of the console's own picture. “Follow the stream” draws at the resolution chosen for the game: 540p gives 0.5×, 720p gives 0.75×.",
+      "description": "The size the emulator draws at, as a multiple of the console's picture; “Follow the stream” matches the resolution chosen for the game.",
       "config": "Renderer > resolution_setup",
       "value": "auto",
       "options": {
@@ -30,7 +30,7 @@
       "translations": {
         "fr": {
           "label": "Résolution de rendu",
-          "description": "La taille à laquelle l'émulateur dessine, en multiple de l'image de la console. « Suivre le flux » dessine à la résolution choisie pour la partie : 540p donne 0,5×, 720p donne 0,75×.",
+          "description": "La taille à laquelle l'émulateur dessine, en multiple de l'image de la console ; « Suivre le flux » suit la résolution choisie pour la partie.",
           "options": {
             "auto": "Suivre le flux",
             "1": "0,5× — 540p sur le socle",
@@ -64,20 +64,20 @@
     "asyncShaders": {
       "type": "switch",
       "label": "Asynchronous shaders",
-      "description": "Shaders are built in the background instead of pausing the game. A few frames may miss an effect while one is being built.",
+      "description": "Builds shaders in the background instead of pausing the game; a few frames may miss an effect meanwhile.",
       "config": "Renderer > use_asynchronous_shaders",
       "value": false,
       "translations": {
         "fr": {
           "label": "Shaders asynchrones",
-          "description": "Les shaders sont préparés en arrière-plan au lieu de mettre le jeu en pause. Quelques images peuvent manquer un effet pendant qu'un shader se prépare."
+          "description": "Prépare les shaders en arrière-plan au lieu de mettre le jeu en pause ; quelques images peuvent manquer un effet pendant ce temps."
         }
       }
     },
     "gpuAccuracy": {
       "type": "select",
       "label": "GPU accuracy",
-      "description": "Low is the fastest and may show glitches; High fixes some games and costs more.",
+      "description": "How exactly the graphics processor is emulated; Low is the fastest and may show glitches, High fixes some games and costs more.",
       "config": "Renderer > gpu_accuracy",
       "value": "1",
       "options": {
@@ -87,7 +87,7 @@
       "translations": {
         "fr": {
           "label": "Précision du GPU",
-          "description": "Basse est la plus rapide et peut montrer des défauts ; Haute corrige certains jeux et coûte davantage.",
+          "description": "L'exactitude de l'émulation du processeur graphique ; Basse est la plus rapide et peut montrer des défauts, Haute corrige certains jeux et coûte davantage.",
           "options": {
             "0": "Basse",
             "1": "Haute"
@@ -98,7 +98,7 @@
     "cpuAccuracy": {
       "type": "select",
       "label": "CPU accuracy",
-      "description": "Unsafe skips some checks for speed; Accurate and Paranoid fix rare games and cost more.",
+      "description": "How exactly the processor is emulated; Unsafe skips checks for speed, Accurate and Paranoid fix rare games and cost more.",
       "config": "Cpu > cpu_accuracy",
       "value": "0",
       "options": {
@@ -110,7 +110,7 @@
       "translations": {
         "fr": {
           "label": "Précision du processeur",
-          "description": "Non sûre saute certaines vérifications pour aller plus vite ; Précise et Paranoïaque corrigent de rares jeux et coûtent davantage.",
+          "description": "L'exactitude de l'émulation du processeur ; Non sûre saute des vérifications, Précise et Paranoïaque corrigent de rares jeux et coûtent davantage.",
           "options": {
             "0": "Auto",
             "1": "Précise",
@@ -148,13 +148,13 @@
     "multiCore": {
       "type": "switch",
       "label": "Multi-core CPU emulation",
-      "description": "Runs the console's processor cores on separate threads. Turn it off only for a game that misbehaves with it.",
+      "description": "Runs the console's processor cores on separate threads; turn it off only for a game that misbehaves with it.",
       "config": "Core > use_multi_core",
       "value": true,
       "translations": {
         "fr": {
           "label": "Émulation multicœur du processeur",
-          "description": "Les cœurs du processeur de la console tournent sur des fils séparés. Ne la désactivez que pour un jeu qui se comporte mal avec."
+          "description": "Fait tourner les cœurs du processeur de la console sur des fils séparés ; ne la désactivez que pour un jeu qui se comporte mal avec."
         }
       }
     },
@@ -182,7 +182,7 @@
     "scalingFilter": {
       "type": "select",
       "label": "Scaling filter",
-      "description": "How the picture is resized to the screen. FSR sharpens an upscaled picture and costs a little.",
+      "description": "How the picture is resized to the screen; FSR sharpens an upscaled picture and costs a little.",
       "config": "Renderer > scaling_filter",
       "value": "1",
       "options": {
@@ -194,7 +194,7 @@
       "translations": {
         "fr": {
           "label": "Filtre de mise à l'échelle",
-          "description": "La façon dont l'image est redimensionnée à l'écran. FSR affine une image agrandie et coûte un peu.",
+          "description": "La façon dont l'image est redimensionnée à l'écran ; FSR affine une image agrandie et coûte un peu.",
           "options": {
             "0": "Plus proche voisin",
             "1": "Bilinéaire",
@@ -207,7 +207,7 @@
     "videoDecoding": {
       "type": "select",
       "label": "Video decoding",
-      "description": "How in-game videos are decoded. Off skips them, which helps a game that freezes on a video.",
+      "description": "How in-game videos are decoded; Off skips them, which helps a game that freezes on a video.",
       "config": "Renderer > nvdec_emulation",
       "value": "1",
       "options": {
@@ -218,7 +218,7 @@
       "translations": {
         "fr": {
           "label": "Décodage des vidéos",
-          "description": "La façon dont les vidéos du jeu sont décodées. Désactivé les saute, ce qui aide un jeu qui se fige sur une vidéo.",
+          "description": "La façon dont les vidéos du jeu sont décodées ; Désactivé les saute, ce qui aide un jeu qui se fige sur une vidéo.",
           "options": {
             "0": "Désactivé",
             "1": "Processeur",
@@ -230,13 +230,13 @@
     "reactiveFlushing": {
       "type": "switch",
       "label": "Reactive flushing",
-      "description": "Keeps what some games read back from the picture correct. Off is faster, and a few games show wrong shadows or lighting.",
+      "description": "Keeps correct what some games read back from the picture; off is faster, and a few games show wrong shadows or lighting.",
       "config": "Renderer > use_reactive_flushing",
       "value": true,
       "translations": {
         "fr": {
           "label": "Vidage réactif",
-          "description": "Garde justes les données que certains jeux relisent dans l'image. Désactivé, c'est plus rapide, et quelques jeux montrent des ombres ou un éclairage faux."
+          "description": "Garde justes les données que certains jeux relisent dans l'image ; désactivé, c'est plus rapide, et quelques jeux ont des ombres ou un éclairage faux."
         }
       }
     },
@@ -256,7 +256,7 @@
     "dynamicState": {
       "type": "select",
       "label": "Extended dynamic state",
-      "description": "How much of the drawing state is left to the graphics driver instead of being built into each pipeline: the higher, the fewer pipelines to compile. Some drivers handle it badly.",
+      "description": "How much drawing state is left to the graphics driver instead of each pipeline: higher means fewer pipelines to compile, but some drivers handle it badly.",
       "config": "Renderer > dyna_state",
       "value": "2",
       "options": {
@@ -268,7 +268,7 @@
       "translations": {
         "fr": {
           "label": "État dynamique étendu",
-          "description": "La part de l'état de dessin laissée au pilote graphique au lieu d'être intégrée à chaque pipeline : plus il y en a, moins il y a de pipelines à compiler. Certains pilotes le gèrent mal.",
+          "description": "La part de l'état de dessin laissée au pilote graphique plutôt qu'à chaque pipeline : plus haut, moins de pipelines à compiler, mais des pilotes le gèrent mal.",
           "options": {
             "0": "Désactivé",
             "1": "Niveau 1",
@@ -294,7 +294,7 @@
     "meshShaders": {
       "type": "select",
       "label": "Mesh shaders",
-      "description": "Switch 2 games draw their geometry with mesh shaders. The compute fallback, the default, has the emulator draw them itself: often as fast, and it spares the graphics driver. Native hands them to the graphics driver, which some drivers handle badly.",
+      "description": "Who draws Switch 2 mesh shaders: the emulator itself (compute fallback, the default) or the graphics driver, which some handle badly.",
       "config": "Environment > EDEN_NX2_FORCE_MESH_FALLBACK",
       "value": "1",
       "options": {
@@ -304,7 +304,7 @@
       "translations": {
         "fr": {
           "label": "Mesh shaders",
-          "description": "Les jeux de la Switch 2 dessinent leur géométrie avec des mesh shaders. Avec le repli en calcul, le réglage par défaut, l'émulateur les dessine lui-même : souvent aussi vite, et le pilote graphique est ménagé. Natifs, le pilote graphique les exécute, et certains pilotes les gèrent mal.",
+          "description": "Qui dessine les mesh shaders de la Switch 2 : l'émulateur lui-même (repli en calcul, par défaut) ou le pilote graphique, que certains gèrent mal.",
           "options": {
             "auto": "Natifs",
             "1": "Repli en calcul"
@@ -315,7 +315,7 @@
     "nativeExecution": {
       "type": "select",
       "label": "Native execution (ARM devices)",
-      "description": "On ARM devices, runs the game's code directly on the processor, on all the Switch 2's cores: fast. The recompiler is the fallback: one core and no fast memory access, safe but slow. Ignored on other processors.",
+      "description": "On ARM devices, runs the game's code directly, on all the Switch 2's cores; the recompiler fallback is safe but slow.",
       "config": "Environment > GAMEFLEX_EDEN_NATIVE",
       "value": "auto",
       "options": {
@@ -325,7 +325,7 @@
       "translations": {
         "fr": {
           "label": "Exécution native (appareils ARM)",
-          "description": "Sur un appareil ARM, exécute le code du jeu directement sur le processeur, sur tous les cœurs de la Switch 2 : rapide. Le recompilateur est la solution de repli : un seul cœur et pas d'accès mémoire rapide, sûr mais lent. Ignoré sur les autres processeurs.",
+          "description": "Sur un appareil ARM, exécute le code du jeu directement, sur tous les cœurs de la Switch 2 ; le recompilateur de repli est sûr mais lent.",
           "options": {
             "auto": "Natif, tous les cœurs",
             "0": "Recompilateur, un cœur, sans accès mémoire rapide (sûr, lent)"
@@ -355,7 +355,7 @@
     "turnipDebug": {
       "type": "select",
       "label": "Adreno driver workaround (Turnip)",
-      "description": "Debug options of Turnip, the graphics driver of Adreno devices, which change how the driver renders to work around its bugs. They have no effect on other graphics processors.",
+      "description": "Debug options of Turnip, the Adreno graphics driver, that work around its rendering bugs; no effect with other drivers.",
       "config": "Environment > TU_DEBUG",
       "value": "auto",
       "options": {
@@ -369,7 +369,7 @@
       "translations": {
         "fr": {
           "label": "Contournement du pilote Adreno (Turnip)",
-          "description": "Des options de débogage de Turnip, le pilote graphique des appareils Adreno, qui changent sa façon de dessiner pour contourner ses défauts. Elles n'ont aucun effet sur les autres processeurs graphiques.",
+          "description": "Des options de débogage de Turnip, le pilote graphique d'Adreno, qui contournent ses défauts de dessin ; sans effet avec les autres pilotes.",
           "options": {
             "auto": "Aucun",
             "flushall": "flushall — vider les caches du GPU après chaque dessin (plus lent)",
@@ -384,7 +384,7 @@
     "ir3Debug": {
       "type": "select",
       "label": "Adreno shader compiler (Turnip)",
-      "description": "A debug option of ir3, the shader compiler of Turnip. “nopreamble” works around a known geometry bug of some emulators on Turnip. It has no effect on other graphics processors.",
+      "description": "A debug option of ir3, Turnip's shader compiler, that works around a known geometry bug; no effect with other drivers.",
       "config": "Environment > IR3_SHADER_DEBUG",
       "value": "auto",
       "options": {
@@ -394,7 +394,7 @@
       "translations": {
         "fr": {
           "label": "Compilateur de shaders Adreno (Turnip)",
-          "description": "Une option de débogage d'ir3, le compilateur de shaders de Turnip. « nopreamble » contourne un défaut de géométrie connu de certains émulateurs sur Turnip. Elle n'a aucun effet sur les autres processeurs graphiques.",
+          "description": "Une option de débogage d'ir3, le compilateur de shaders de Turnip, qui contourne un défaut de géométrie connu ; sans effet avec les autres pilotes.",
           "options": {
             "auto": "Aucun",
             "nopreamble": "nopreamble — sans préambule de shader"

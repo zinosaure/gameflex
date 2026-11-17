@@ -1,10 +1,10 @@
 {
   "name": "Two SPU threads at once",
-  "description": "At most two SPU threads on sensitive stages, instead of letting RPCS3 decide: fewer processor cores in contention. A single change from “Default”, to try when a game runs too slowly: compare its frame rate with that of “Default”.",
+  "description": "“Default” with at most two SPU threads on sensitive stages, to try when a game runs too slowly.",
   "translations": {
     "fr": {
       "name": "Deux fils SPU à la fois",
-      "description": "Au plus deux fils SPU sur les étapes sensibles, au lieu de laisser RPCS3 décider : moins de cœurs du processeur en concurrence. Un seul changement par rapport à « Par défaut », à essayer quand un jeu est trop lent : comparez ses images par seconde avec celles de « Par défaut »."
+      "description": "« Par défaut » avec au plus deux fils SPU sur les étapes sensibles, à essayer quand un jeu est trop lent."
     }
   },
   "override": false,

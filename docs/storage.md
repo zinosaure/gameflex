@@ -3,26 +3,24 @@
 **Goal:** add more disks of games, read games from a network share, and keep an eye on saves, the
 cache and the logs.
 
-Everything here is in **Settings**, for administrators:
+Most of it is in **Settings**, for administrators:
 
 | Screen | What it shows |
 |---|---|
-| **Games** | The games of your library, console by console; copy games from another source. |
-| **Emulators**, **Firmware**, **Patches**, **Emulator settings** | See [Organize your library](library.md) and [Emulator settings](emulator-settings.md). |
-| **Saves** | The room each account's saves take. |
+| **Resources** | The other disks of games plugged into the server. |
+| **Consoles** | Each console's emulators, BIOS files, games and settings: see [Organize your library](library.md) and [Emulator settings](emulator-settings.md). |
+| **Members**, then a member, **Their saves** | The room an account's saves take. |
+| **Profile › My saves** | Your own saves, for every account. |
 | **Cache** | What a game's first launch installed, and its size. |
-| **Logs** | What happened, without a terminal. |
-| **Internal resources** | Your other disks of games. |
-| **Remote resources** | Network shares: Samba, WebDAV, kDrive. |
-| **Rescan all** | Refreshes the list of everything in your library, after you copy files by hand. |
+| **Logs** | What the server writes, and what happened, without a terminal. |
+| **Rescan everything** | Refreshes the list of everything in your library, after you copy files by hand. |
 
 ## More disks of games
 
 Your games don't all fit on one disk? Add others, as many as you like.
 
 1. Lay out the disk like a library: `roms/<console>/`, and if you want `bios/`, `cores/`,
-   `patches/`, `params/`. GameFlex reads it as it is, and never writes to it, except to delete a
-   game you ask it to.
+   `patches/`, `params/`.
 2. Add one volume line per disk to the `gameflex-kernel` service in `docker-compose.yml`, under
    `/mnt/<name>`:
 
@@ -35,51 +33,90 @@ Your games don't all fit on one disk? Add others, as many as you like.
    `./launch.sh update` keeps these lines when it brings a new `docker-compose.yml`.
 3. Restart: `docker compose up -d`.
 
-**What you should see:** the disk in **Settings › Internal resources**, with its number of games.
-On the games page, choose it in **Source**.
+**What you should see:** the disk in **Settings › Resources**, with its number of games. Open it
+to see its games; **Rescan the disk** finds what you added to it by hand. Its games show in the
+library of their console, next to the others.
 
-- **Its games play from the disk.** Its emulators, BIOS files, patches and settings are copied into
-  your library from their screens, with the disk as the source.
+- **Its games play from the disk,** with the emulators and BIOS files of your library. Its emulator
+  settings show as presets in your settings forms, and its games' patches can be downloaded into
+  your library from a game's **Patch** page.
+- **GameFlex writes on a disk only** to remove a game you ask it to remove, and to keep the sheets
+  and images of its games in its `metadata/` folder. For a read-only disk, turn off
+  **Settings › Metadata provider › Keep metadata on the games' disk**: they then go in your library.
 - **A game on two disks** plays from your library first, then from the disks in the order of their
   names. It keeps its saves.
+- **Your friends** see the games of your disks with the rest of your library.
 - **A disk shown as *Missing*** was unplugged, or not mounted when GameFlex started. For an external
   disk, prefer a fixed mount point (`/etc/fstab`) to the one your desktop creates when you sign in.
 
 ## Games on a network share
 
-**Settings › Remote resources › Add a server** reads games from:
+GameFlex reads a network share (Samba, NFS, WebDAV…) as one more disk: mount it on the server's
+computer first, then declare the mount point like any disk (see above).
 
-- a **Samba** share (Windows sharing, most NAS): its address, the share name, the folder, and a user
-  name and password, or anonymous access;
-- a **WebDAV** folder: its address, the folder, a user name and password;
-- **kDrive**: the drive ID, the folder, and an API token created in the Infomaniak manager.
+1. Mount the share on the computer that runs GameFlex, at a fixed place, for example with a line in
+   `/etc/fstab`. Your system's documentation, or your NAS's, explains how.
+2. Add its volume line to `gameflex-kernel`, as for a disk: `- /media/nas-games:/mnt/nas`.
+3. Restart: `docker compose up -d`.
 
-GameFlex tests the share, then reads its list of games. **A share brings games only**, and **a game
-is copied to your library before you play it**: in **Settings › Games**, choose the share as the
-**Source**, then download the game. Passwords and tokens are stored encrypted with your
-`GAMEFLEX_SECRET`: if you change it, enter them again.
+Mount it before GameFlex starts: a share mounted later shows as *Missing* until the next restart.
+If the share is read-only, turn off **Keep metadata on the games' disk** (above).
 
 ## Saves
 
-**Settings › Saves** shows, for each account, how many files its saves hold and their size.
-**Download** gives them as a zip; deleting removes every save of that account, games in progress
-included. Each player also sees their own in **My saves**.
+**Settings › Members**, then a member, **Their saves**, shows how many files that account's saves
+hold and their size. **Download** gives them as one archive; deleting removes every save of that
+account, games in progress included. Each player also sees their own in **My saves**.
+
+### My saves
+
+**Settings › Profile › My saves** starts with where your saves are:
+
+- **On this server**: *This server* — the saves your games use —, *Backups*, and a copy for each
+  federated server that sent you saves or that you downloaded from;
+- **Federated servers**: your saves on each of them, under your account there.
+
+Each save is named after its game. An emulator stores the save of a recent console's game (Switch,
+PlayStation 3, 4 and 5) under the game's title ID, such as `01000EA014150000`; GameFlex finds the
+game with that ID in your library or on an internal disk, and shows its title. When no game has it,
+the save keeps the title it gives itself, if any, and its ID last. Every line starts with its
+console, then where its game is (the disk, or *Library*).
+
+From *This server*, **Backup** sets a save aside in *Backups*, in place of the previous backup of
+that save. You can add a short **Note** to it — why you made it, before which part of the game —,
+kept in a `note.json` beside the backup with its date and your account. The note shows in the
+backups' list and on the backup's page, where **Edit the note** changes or removes it. A newer
+backup of the same save replaces the old one and its note.
+
+**Restore** puts a backup or a copy back into your saves; the saves it replaces go into *Backups*
+first. **Send to…** copies a save to a federated server, where it lands in a copy under your
+account: nothing there replaces your saves. A game only ever plays the saves of *This server*.
 
 ## Cache
 
 The first launch of some games installs data, once for every account: an unpacked PlayStation 4
 game, the PlayStation 3 firmware and game data, compiled shaders. **Settings › Cache** lists each
-entry with its size, and deletes it. Everything there is rebuilt when needed, but rebuilding takes
-time. An entry can't be deleted while a game of its console is running.
+entry with its console, its kind and its size, and removes it. Everything there is rebuilt by the
+next launch that needs it, but rebuilding takes time. An entry can't be removed while a game of its
+console is running.
 
 ## Logs
 
-**Settings › Logs** lists the server's log for each day, and one log for each game. Open one to read
-its last lines, search it, or filter it by level; **Download** gives the whole file, with tokens
-hidden. Logs can be deleted by date.
+**Settings › Logs** starts with **Writing**, what the server writes from now on:
 
-When a game fails to start, **Report error** saves what happened in `logs/reports.log`. It stays on
-your server: to send it to us, attach it to an issue (see [Troubleshooting](troubleshooting.md)).
+- **Server log**: what the server does — games launched, downloads, errors —, one file per day,
+  with the **Levels to write** (Debug, Info, Warn, Error) and, if you need them, the
+  **HTTP requests**;
+- **Game session logs**: what the emulator writes during a game, one file per game;
+- **Reports**: what players send with **Report the error** when a game fails to start, in
+  `logs/reports.log`. Turned off, the button goes away.
+
+**Show logs** lists them, one per day and one per game. Open one to read its last lines, search
+them, or filter them by level; **Download** gives the whole file. Logs can be deleted one by one,
+or all those a period filter leaves visible.
+
+A report stays on your server: to send it to us, attach it to an issue (see
+[Troubleshooting](troubleshooting.md)).
 
 The other services (`gameflex-edge`, `gameflex-credential`, `gameflex-gateway`,
 `gameflex-remoteplay`) log to Docker: `./launch.sh logs <service>`.
@@ -88,4 +125,5 @@ The other services (`gameflex-edge`, `gameflex-credential`, `gameflex-gateway`,
 
 Everything that is yours is in your library folder (`GAMEFLEX_LIBRARY`). Back up at least
 `databases/` (accounts, settings) and `saves/`; `roms/`, `bios/` and `cores/` if you can't download
-them again. `cache/` and `logs/` don't need a backup.
+them again; `metadata/` and `status/` if you corrected sheets or set statuses. `cache/` and `logs/`
+don't need a backup.

@@ -33,9 +33,10 @@ const (
 // StorageFolders — le rangement du dossier, le même que sur le téléphone
 // (mobileapp/kernel/library_tree.go), plus `cache/` (où vit aussi le premier
 // lancement d'un jeu, partagé par tous les comptes : `cache/installs/`,
-// chantier 22, #448). Le kernel les crée au démarrage : un montage dans une
-// partie exige que sa source existe.
-var StorageFolders = []string{"databases", "logs", "cache", "saves", "roms", "bios", "cores", "params", "patches"}
+// chantier 22, #448) et `metadata/` (les images des jeux, chantier 49). Le
+// kernel les crée au démarrage : un montage dans une partie exige que sa
+// source existe.
+var StorageFolders = []string{"databases", "logs", "cache", "saves", "roms", "bios", "cores", "params", "patches", "metadata"}
 
 // DiskFolders — ce qu'un disque interne apporte (chantier 24). Le reste
 // (saves, databases, logs, cache) y est ignoré : ces dossiers-là
@@ -125,6 +126,12 @@ type Config struct {
 	// sur un fond noir comme avant.
 	GatewayControlURL string
 
+	// EdgePort — le port d'edge, celui que les pages et les autres serveurs
+	// joignent (GAMEFLEX_PORT). Le mode découverte (chantier 60) annonce
+	// `http://<PublicHost>:<EdgePort>` sur le réseau local ; vide, rien n'est
+	// annoncé.
+	EdgePort string
+
 	// KernelURL — injected into spawned session containers as
 	// GAMEFLEX_KERNEL_URL. Children run with host networking, so it is a
 	// 127.0.0.1 URL on the kernel's published host port — never the bridge
@@ -209,6 +216,7 @@ func Load() (Config, error) {
 		InternalSecret:       os.Getenv("GAMEFLEX_INTERNAL_SECRET"),
 		GatewayURL:           os.Getenv("GAMEFLEX_GATEWAY_URL"),
 		GatewayControlURL:    os.Getenv("GAMEFLEX_GATEWAY_CONTROL_URL"),
+		EdgePort:             os.Getenv("GAMEFLEX_PORT"),
 		KernelURL:            getenv("GAMEFLEX_KERNEL_URL", "http://127.0.0.1:10201"),
 		Staging:              staging(os.Getenv("GAMEFLEX_STAGING")),
 		MirrorURL:            mirror,

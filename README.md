@@ -43,7 +43,7 @@ GameFlex on the phone, which plays its own games and streams them to the screens
   take it back when they are done, or give them your place for good. Someone watching can ask
   for the controller. It all works from a distance.
 - **Anyone can watch.** Send a link: friends watch your game live in their browser, without an
-  account. The home page shows the games being played right now, ready to watch or join, and
+  account. The **Live** tab shows the games being played right now, ready to watch or join, and
   members you invite get a notification.
 - **No Internet needed with the phone.** The [Android app](docs/android.md) turns a phone into the
   console: friends nearby open its address in their browser and play with you, over the same
@@ -73,10 +73,31 @@ GameFlex on the phone, which plays its own games and streams them to the screens
 
 | | |
 |---|---|
-| ![Final Fantasy VII Remake, a PlayStation 5 game, playing in the browser](docs/images/playing-ps5.png) | ![The Legend of Zelda: Ocarina of Time, on Nintendo 64, with the on-screen controller](docs/images/playing-n64.png) |
-| ![Sonic Mania Plus, a PlayStation 4 game, playing in the browser](docs/images/playing-ps4.png) | ![The home page: a game live now, ready to watch or join](docs/images/home-live.png) |
-| ![A console's library](docs/images/library.png) | ![A game's page: emulator, BIOS and Play](docs/images/game.png) |
-| ![Black Myth: Wukong on a PlayStation 5, through Remote Play, on a phone held upright](docs/images/remoteplay-ps5-portrait.jpg) | ![The same game on the same phone held sideways, the on-screen controller over the picture](docs/images/remoteplay-ps5-landscape.jpg) |
+| ![A NES game playing in the browser, with the on-screen controller](docs/images/playing-nes.png) | ![Live: your game in progress, and the games being played, ready to join or watch](docs/images/home-live.png) |
+| ![A console in the Retrogaming tab](docs/images/library.jpg) | ![A game's page: its information, its status and Play](docs/images/game.jpg) |
+| ![The game menu: save states, rewind, cheats, sharing](docs/images/game-menu.png) | ![Settings](docs/images/settings.png) |
+
+<p align="center"><img src="docs/images/phone-playing.png" alt="The same NES game on a phone, with the on-screen controller" width="260"></p>
+
+On a phone or a tablet, the same interface: the consoles, their games, and a game page ready to play.
+
+| | |
+|---|---|
+| ![The Retrogaming tab on a tablet: the PlayStation 2](docs/images/tablet-ps2.jpg) | ![The Retrogaming tab on a tablet: the PlayStation Portable](docs/images/tablet-psp.jpg) |
+| ![The Streamex tab on a tablet: the PlayStation 5](docs/images/tablet-ps5.jpg) | ![The Streamex tab on a tablet: the PlayStation 4](docs/images/tablet-ps4.jpg) |
+| ![A PlayStation 4 game page on a tablet](docs/images/tablet-ps4-ff15.jpg) | ![A PlayStation 4 game page on a tablet, with Continue](docs/images/tablet-ps4-ff7-remake.jpg) |
+| ![A PlayStation 4 game page on a tablet](docs/images/tablet-ps4-octopath.jpg) | ![A PlayStation 4 game page on a tablet](docs/images/tablet-ps4-gta5.jpg) |
+| ![The Remote Play tab on a tablet: a PlayStation 5 in rest mode](docs/images/tablet-remoteplay-ps5.jpg) | |
+
+<p align="center">
+  <img src="docs/images/phone-ps5-astro-bot.jpg" alt="A PlayStation 5 game page on a phone" width="200">
+  <img src="docs/images/phone-ps5-ff7-rebirth.jpg" alt="A PlayStation 5 game page on a phone" width="200">
+  <img src="docs/images/phone-playing-ps5.jpg" alt="A PlayStation 5 game playing on a phone, with the on-screen controller" width="200">
+</p>
+
+**Remote Play in action** — a PlayStation 5 played from a phone (13 s video):
+
+<p align="center"><a href="docs/images/remoteplay-demo.mp4"><img src="docs/images/remoteplay-demo.jpg" alt="Remote Play: a PlayStation 5 played from a phone — open the video" width="540"></a></p>
 
 ## What it can play
 
@@ -106,7 +127,7 @@ the same skeleton.
   is recommended for the recent consoles. [Install GameFlex](docs/install.md) lists what you need.
 - **It is made for your home network.** To play away from home, turn on its WireGuard VPN, or put
   GameFlex behind an HTTPS proxy ([Play away from home](docs/remote-access.md)). Without the VPN,
-  some networks block the video: GameFlex does not include a relay (TURN) server yet.
+  some networks block the video: GameFlex does not include a relay (TURN) server.
 - **The administrator password is yours.** GameFlex refuses to start without it; the setup
   script can make one up and shows it to you once.
 - **It is still in development, a personal project with no warranty.** Read the
@@ -197,8 +218,7 @@ Most of GameFlex is open source, in this repository, under the [MIT License](LIC
 
 - **the services:** the kernel that runs the sessions (`src/microservices/kernel/`), the accounts
   service (`kernel/extras/credential/`), the retro engine (`runtimes/retrogaming/`), the front
-  server (`edge/`) and the modules they share (`shared/`);
-- **the web interface** (`src/webapp/`);
+  server and the web interface (`edge/`) and the modules they share (`shared/`);
 - **the console recipes:** each recent console's Dockerfile, entry point and settings
   (`runtimes/streamex/consoles/`, `profiles/`);
 - **our emulator builds:** the patches and build scripts for shadPS4, KytyPS5, Eden and Box64
@@ -229,11 +249,11 @@ GameFlex ships none of them, but you can find them here. None of these sites is 
 and what you download from them is your responsibility.
 
 - **Retro cores:** the [libretro buildbot](https://buildbot.libretro.com/). GameFlex downloads the
-  cores it needs from there for you, from **Settings › Emulators**.
+  cores it needs from there for you, from **Settings › Consoles**.
 - **BIOS and firmware:** [RetroBIOS](https://abdess.github.io/retrobios/). Use the files from its
   RetroArch pack, under the names listed in [Consoles](docs/consoles.md).
 - **Emulators for the recent consoles:** GameFlex downloads them for you too, from each emulator's
-  publisher, in **Settings › Emulators**. Each one's website is linked from
+  publisher, in **Settings › Consoles**. Each one's website is linked from
   [Consoles](docs/consoles.md).
 - **All of the above, laid out like a GameFlex library:** the mirror below.
 

@@ -84,7 +84,7 @@ From a phone on mobile data, with Wi-Fi off and the tunnel on: the WireGuard app
 - A domain name pointing to your home's public address, such as `games.example.com`.
 - Access to your router's port forwarding settings.
 
-GameFlex does not include a relay (TURN) server yet. Most home connections work; some networks
+GameFlex does not include a relay (TURN) server. Most home connections work; some networks
 cannot reach your server directly (some mobile carriers, company networks). There, the page
 connects but the game stays on *Connecting to the stream*.
 

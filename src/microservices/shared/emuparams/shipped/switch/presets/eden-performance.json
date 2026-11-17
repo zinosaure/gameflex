@@ -1,10 +1,10 @@
 {
   "name": "Performance",
-  "description": "The most frames per second for a phone: handheld mode at 0.5×, shaders in the background, low GPU accuracy, no reactive flushing. Some games may display wrongly.",
+  "description": "The most frames per second for a phone, at the cost of accuracy: some games may display wrongly.",
   "translations": {
     "fr": {
       "name": "Performance",
-      "description": "Le plus d'images par seconde pour un téléphone : mode portable à 0,5×, shaders en arrière-plan, précision du GPU basse, sans vidage réactif. Certains jeux peuvent mal s'afficher."
+      "description": "Le plus d'images par seconde pour un téléphone, au prix de la précision : certains jeux peuvent mal s'afficher."
     }
   },
   "override": false,

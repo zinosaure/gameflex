@@ -243,7 +243,16 @@ func SFOTitle(path string) string {
 // sauvegardes ne montrait que des CUSA.
 func SFOString(path, wanted string) string {
 	data, err := os.ReadFile(path)
-	if err != nil || len(data) < 20 || !bytes.Equal(data[:4], []byte("\x00PSF")) {
+	if err != nil {
+		return ""
+	}
+
+	return SFOValue(data, wanted)
+}
+
+// SFOValue — SFOString, sur un PARAM.SFO déjà lu (celui d'une image ISO PS3).
+func SFOValue(data []byte, wanted string) string {
+	if len(data) < 20 || !bytes.Equal(data[:4], []byte("\x00PSF")) {
 		return ""
 	}
 	keys := binary.LittleEndian.Uint32(data[8:12])

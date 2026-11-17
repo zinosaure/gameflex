@@ -52,13 +52,23 @@ type Claims struct {
 	// caractères). Le kernel coupe la session quand le jeton est désactivé,
 	// expiré ou régénéré. Vide : une connexion ordinaire.
 	Fed string `json:"fed,omitempty"`
+	// Gen — LA GÉNÉRATION DES SESSIONS du compte quand le jeton a été signé
+	// (chantier 55, `users.session_generation`). Réinitialiser le mot de passe,
+	// le changer, « déconnecter les autres appareils » ou « tous les appareils »
+	// la font avancer : un jeton d'une génération plus ancienne ne vaut plus,
+	// ici (LoadToken) comme au kernel (auth.Admit). Absente, elle vaut 0 : les
+	// jetons signés avant elle valent tant que le compte n'a rien coupé.
+	Gen int `json:"gen,omitempty"`
 	jwt.RegisteredClaims
 }
 
-func CreateToken(secret string, userID int64, username string, roleLevel int) (string, error) {
+// CreateToken — le jeton d'une session ordinaire, signé à la génération des
+// sessions du compte (`generation`, la colonne de sa ligne).
+func CreateToken(secret string, userID int64, username string, roleLevel, generation int) (string, error) {
 	claims := Claims{
 		Username:  username,
 		RoleLevel: roleLevel,
+		Gen:       generation,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   fmt.Sprintf("%d", userID),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenLifetime)),
@@ -81,8 +91,11 @@ func sign(secret string, claims Claims) (string, error) {
 // d'un compte (chantier 20). Elle n'est JAMAIS administrateur, même si le compte
 // l'est : le jeton se prête au serveur de son propriétaire, et tous les membres
 // de ce serveur passent par lui. Ses consoles, elles, restent celles du compte.
-// Elle ne dure pas plus que le jeton.
-func CreateFederatedToken(secret string, userID int64, username, generation string, lifetime time.Duration) (string, error) {
+// Elle ne dure pas plus que le jeton. `generation` est celle du jeton du compte
+// (Fed) ; `sessions`, celle des sessions du compte (Gen) : réinitialisé, le
+// compte coupe aussi ces sessions-là, et le serveur de l'ami en rouvre une avec
+// le jeton, qui vaut encore.
+func CreateFederatedToken(secret string, userID int64, username, generation string, sessions int, lifetime time.Duration) (string, error) {
 	if lifetime > TokenLifetime {
 		lifetime = TokenLifetime
 	}
@@ -90,6 +103,7 @@ func CreateFederatedToken(secret string, userID int64, username, generation stri
 		Username:  username,
 		RoleLevel: RoleUser,
 		Fed:       generation,
+		Gen:       sessions,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   fmt.Sprintf("%d", userID),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(lifetime)),
@@ -151,6 +165,9 @@ type Principal struct {
 	// Federated — la session a été ouverte par le jeton du compte, depuis un
 	// autre serveur (chantier 20). Elle joue ; elle ne gère pas le compte.
 	Federated bool
+	// Generation — la génération des sessions du compte (chantier 55), celle que
+	// porte le jeton présenté.
+	Generation int
 }
 
 func (p Principal) IsAdmin() bool { return p.RoleLevel <= RoleAdmin }
@@ -187,16 +204,26 @@ func LoadToken(db *sql.DB, secret string, token string) (Principal, error) {
 		return Principal{}, ErrInvalidToken
 	}
 
+	var generation int
 	err = db.QueryRow(
-		`SELECT id, username, display_name, role_level FROM users WHERE id = ?`,
+		`SELECT id, username, display_name, role_level, session_generation FROM users WHERE id = ?`,
 		principal.ID,
-	).Scan(&principal.ID, &principal.Username, &principal.DisplayName, &principal.RoleLevel)
+	).Scan(&principal.ID, &principal.Username, &principal.DisplayName, &principal.RoleLevel, &generation)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Principal{}, ErrUserGone
 	}
 	if err != nil {
 		return Principal{}, fmt.Errorf("load user: %w", err)
 	}
+	// LES SESSIONS COUPÉES NE REVIENNENT PAS (chantier 55) : un jeton signé
+	// avant que le compte ne coupe ses sessions — sa réinitialisation, un
+	// nouveau mot de passe, « déconnecter les autres appareils » — ne vaut plus,
+	// même s'il n'a pas expiré. La page qui le tenait reçoit un 401, et revient
+	// à la connexion.
+	if claims.Gen != generation {
+		return Principal{}, ErrInvalidToken
+	}
+	principal.Generation = generation
 	// UNE SESSION OUVERTE PAR JETON SUIT SON JETON (chantier 20) : désactivé,
 	// régénéré ou échu, il ne la porte plus — et elle n'est jamais
 	// administrateur ici non plus. La page du serveur qui l'a ouverte apprend

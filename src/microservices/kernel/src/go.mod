@@ -8,6 +8,7 @@ require (
 	gameflex/emuparams v0.0.0-00010101000000-000000000000
 	gameflex/facade v0.0.0-00010101000000-000000000000
 	gameflex/logfile v0.0.0
+	gameflex/metadata v0.0.0
 	gameflex/sessionstatus v0.0.0-00010101000000-000000000000
 	gameflex/storage v0.0.0
 	github.com/docker/docker v27.3.1+incompatible
@@ -67,6 +68,9 @@ replace gameflex/sessionstatus => /shared/sessionstatus
 replace gameflex/logfile => /shared/logfile
 
 replace gameflex/storage => /shared/storage
+
+// Les images et la fiche d'un jeu (chantier 57, P1) : le paquet du kernel, partagé avec le kernel du téléphone.
+replace gameflex/metadata => /shared/metadata
 
 // Le centre de messages, partagé avec le kernel du téléphone : la page est la
 // même, le protocole doit l'être par construction.

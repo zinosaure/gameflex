@@ -39,7 +39,7 @@ func tokenServer(t *testing.T) (*Server, *sql.DB) {
 		}
 	}
 
-	return &Server{db: db, config: config.Config{InternalSecret: testInternalSecret, JWTSecret: "le-secret-des-jetons"}}, db
+	return &Server{db: db, config: config.Config{InternalSecret: testInternalSecret, JWTSecret: "le-secret-des-jetons"}, pairing: newPairing(systemClock{})}, db
 }
 
 func tokenOf(t *testing.T, db *sql.DB, userID int64) string {
@@ -286,15 +286,20 @@ func TestTheKernelReceivesTheAccounts(t *testing.T) {
 	defer conn.Close()
 	read := func() []accountEntry {
 		t.Helper()
-		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-		var message struct {
-			Accounts []accountEntry `json:"accounts"`
+		// La trame `pairing` (chantier 60) passe sur le même canal : on la saute.
+		for {
+			conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+			var message struct {
+				Type     string         `json:"type"`
+				Accounts []accountEntry `json:"accounts"`
+			}
+			if err := conn.ReadJSON(&message); err != nil {
+				t.Fatal(err)
+			}
+			if message.Type == "accounts" {
+				return message.Accounts
+			}
 		}
-		if err := conn.ReadJSON(&message); err != nil {
-			t.Fatal(err)
-		}
-
-		return message.Accounts
 	}
 	if accounts := read(); len(accounts) != 2 || accounts[1].Username != "marc" || accounts[1].Token.Generation == "" || accounts[1].Token.Enabled {
 		t.Fatalf("liste d'ouverture : %+v", accounts)
@@ -370,11 +375,36 @@ func TestATokenSessionCannotManageTheAccount(t *testing.T) {
 	if got := call(server.withUser(server.handleUpdateMe), http.MethodPatch, "/api/v1/auth/me", `{"display_name":"Pirate"}`, body.Item.AccessToken); got.Code != http.StatusForbidden {
 		t.Fatalf("le compte changé par une session de jeton : %d %s", got.Code, got.Body.String())
 	}
-	owner, err := auth.CreateToken(server.config.JWTSecret, 2, "marc", auth.RoleUser)
+	owner, err := auth.CreateToken(server.config.JWTSecret, 2, "marc", auth.RoleUser, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := call(server.withUser(server.handleMyAccountToken), http.MethodGet, "/api/v1/auth/me/token", "", owner); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), tokenOf(t, db, 2)) {
 		t.Fatalf("le propriétaire ne relit pas son jeton : %d %s", got.Code, got.Body.String())
+	}
+}
+
+// SUPPRIMER UN ADMINISTRATEUR QUI A CONFIGURÉ UN FOURNISSEUR DE MÉTADONNÉES : le
+// fournisseur perd son auteur (updated_by_id à NULL), jamais son réglage — la
+// colonne manquait à la liste des auteurs, et la clé étrangère faisait échouer
+// la suppression (un 500).
+func TestDeletingAnAdminKeepsTheMetadataProviderItConfigured(t *testing.T) {
+	server, db := tokenServer(t)
+	if _, err := db.Exec(`INSERT INTO users (username, hashed_password, display_name, role_level) VALUES ('essai-admin', 'x', 'essai-admin', ?)`, auth.RoleAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO metadata_services (service, fields, updated_at, updated_by_id) VALUES ('igdb', '{"client_id":"scelle"}', CURRENT_TIMESTAMP, 3)`); err != nil {
+		t.Fatal(err)
+	}
+	if answer := adminCall(server, server.handleDeleteUser, http.MethodDelete, "3", ""); answer.Code != http.StatusNoContent {
+		t.Fatalf("supprimer l'administrateur : %d %s", answer.Code, answer.Body.String())
+	}
+	var fields string
+	var author sql.NullInt64
+	if err := db.QueryRow(`SELECT fields, updated_by_id FROM metadata_services WHERE service = 'igdb'`).Scan(&fields, &author); err != nil {
+		t.Fatalf("le fournisseur a disparu avec le compte : %v", err)
+	}
+	if fields != `{"client_id":"scelle"}` || author.Valid {
+		t.Fatalf("fournisseur après suppression : %q, auteur %v", fields, author)
 	}
 }

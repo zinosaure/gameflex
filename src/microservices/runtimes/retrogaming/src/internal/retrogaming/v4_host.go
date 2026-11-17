@@ -29,6 +29,13 @@ func v4Enabled() bool {
 	return auth.PublicKeyFromEnv() != nil && os.Getenv("GAMEFLEX_SESSION_OWNER") != ""
 }
 
+// announceReady — le child écoute : il le dit au kernel (session.AnnounceReady, #751).
+func announceReady(sessionID string) {
+	if err := session.AnnounceReady(os.Getenv("GAMEFLEX_KERNEL_URL"), os.Getenv("GAMEFLEX_INTERNAL_SECRET"), sessionID); err != nil {
+		log.Printf("[retrogaming-child %s] ready not reported to the kernel: %v", sessionID, err)
+	}
+}
+
 func startV4Host(sessionID string) {
 	consoleID := os.Getenv("GAMEFLEX_CONSOLE_ID")
 

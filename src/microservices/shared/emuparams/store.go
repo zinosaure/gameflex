@@ -1001,6 +1001,33 @@ func (s Store) Import(ref Ref, consoleName, name string, values map[string]any) 
 		return Emulator{}, nil, ErrExists
 	}
 
+	kept, ignored := fitLocked(definition, values)
+	if len(kept.keys) == 0 {
+		return Emulator{}, ignored, &RefusedError{Reasons: []string{"none of these values fits this emulator here"}}
+	}
+
+	var out bytes.Buffer
+	encoder := json.NewEncoder(&out)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(customPreset{Name: name, Override: true, System: definition.System, Values: kept}); err != nil {
+		return Emulator{}, ignored, err
+	}
+	if err := s.writeFile(target, out.Bytes()); err != nil {
+		return Emulator{}, ignored, err
+	}
+
+	item := s.describeLocked(ref, consoleName)
+	item.SavedPreset = id
+
+	return item, ignored, nil
+}
+
+// fitLocked — des valeurs venues d'ailleurs, passées par les paramètres d'ici :
+// celles qu'ils acceptent (dans leur ordre), et les identifiants des autres —
+// un paramètre inconnu ici, ou une valeur qu'il refuse —, dits, pas jetés en
+// silence.
+func fitLocked(definition file, values map[string]any) (orderedMap[any], []string) {
 	kept := orderedMap[any]{}
 	ignored := []string{}
 	for _, paramID := range definition.Params.keys {
@@ -1022,25 +1049,26 @@ func (s Store) Import(ref Ref, consoleName, name string, values map[string]any) 
 		}
 	}
 	sort.Strings(ignored)
-	if len(kept.keys) == 0 {
-		return Emulator{}, ignored, &RefusedError{Reasons: []string{"none of these values fits this emulator here"}}
+
+	return kept, ignored
+}
+
+// Fit — ce qu'un autre serveur ou un disque prête d'un émulateur, tel que le
+// formulaire d'ici le prend : comme un préréglage (Preset), ses valeurs déjà
+// passées par les paramètres qu'elles remplissent, et celles qui ne remplissent
+// rien. Rien ne s'écrit (chantier 53 : « au lieu de copier le fichier on va
+// juste copier les données comme preset », le porteur, 2026-11-14).
+func (s Store) Fit(ref Ref, values map[string]any) (map[string]any, []string) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	definition, _, _ := s.definitionLocked(ref)
+	kept, ignored := fitLocked(definition, values)
+	if kept.values == nil {
+		return map[string]any{}, ignored
 	}
 
-	var out bytes.Buffer
-	encoder := json.NewEncoder(&out)
-	encoder.SetEscapeHTML(false)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(customPreset{Name: name, Override: true, System: definition.System, Values: kept}); err != nil {
-		return Emulator{}, ignored, err
-	}
-	if err := s.writeFile(target, out.Bytes()); err != nil {
-		return Emulator{}, ignored, err
-	}
-
-	item := s.describeLocked(ref, consoleName)
-	item.SavedPreset = id
-
-	return item, ignored, nil
+	return kept.values, ignored
 }
 
 // ImportName — le nom sous lequel ce qu'un ami prête entre ici : `<serveur>`

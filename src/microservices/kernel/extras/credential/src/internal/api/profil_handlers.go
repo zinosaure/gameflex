@@ -32,7 +32,7 @@ func (server *Server) handleListHistory(w http.ResponseWriter, r *http.Request, 
 	if err := server.db.QueryRow(
 		`SELECT COUNT(*) FROM play_history WHERE user_id = ?`, principal.ID,
 	).Scan(&count); err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 
@@ -43,7 +43,7 @@ func (server *Server) handleListHistory(w http.ResponseWriter, r *http.Request, 
 		principal.ID, itemsPerPage, (page-1)*itemsPerPage,
 	)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	defer rows.Close()
@@ -53,7 +53,7 @@ func (server *Server) handleListHistory(w http.ResponseWriter, r *http.Request, 
 		var entry historyResponse
 		var title, goSessionID, startedAt, endedAt sql.NullString
 		if err := rows.Scan(&entry.ID, &entry.UserID, &entry.ConsoleID, &entry.Reference, &title, &goSessionID, &startedAt, &endedAt); err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		entry.Title, entry.GoSessionID = text(title), text(goSessionID)
@@ -78,7 +78,7 @@ func (server *Server) handleStartHistory(w http.ResponseWriter, r *http.Request,
 		principal.ID, body.ConsoleID, body.Reference, body.Title, now(),
 	)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	id, _ := result.LastInsertId()
@@ -89,18 +89,18 @@ func (server *Server) handleStartHistory(w http.ResponseWriter, r *http.Request,
 func (server *Server) handleUpdateHistory(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "History entry not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "History entry not found.")
 		return
 	}
 
 	var ownerID int64
 	err = server.db.QueryRow(`SELECT user_id FROM play_history WHERE id = ?`, id).Scan(&ownerID)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && ownerID != principal.ID) {
-		respondError(w, http.StatusNotFound, "History entry not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "History entry not found.")
 		return
 	}
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 
@@ -114,13 +114,13 @@ func (server *Server) handleUpdateHistory(w http.ResponseWriter, r *http.Request
 
 	if body.GoSessionID != nil {
 		if _, err := server.db.Exec(`UPDATE play_history SET go_session_id = ? WHERE id = ?`, *body.GoSessionID, id); err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 	}
 	if body.EndedAt != nil {
 		if _, err := server.db.Exec(`UPDATE play_history SET ended_at = ? WHERE id = ?`, *body.EndedAt, id); err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 	}
@@ -147,7 +147,7 @@ func (server *Server) handleGetControllerMapping(w http.ResponseWriter, r *http.
 	consoleID := r.PathValue("console_id")
 	kind := r.PathValue("kind")
 	if kind != "keyboard" && kind != "gamepad" {
-		respondError(w, http.StatusBadRequest, "kind must be 'keyboard' or 'gamepad'.")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "kind must be 'keyboard' or 'gamepad'.")
 		return
 	}
 
@@ -167,7 +167,7 @@ func (server *Server) handleSaveControllerMapping(w http.ResponseWriter, r *http
 	consoleID := r.PathValue("console_id")
 	kind := r.PathValue("kind")
 	if kind != "keyboard" && kind != "gamepad" {
-		respondError(w, http.StatusBadRequest, "kind must be 'keyboard' or 'gamepad'.")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "kind must be 'keyboard' or 'gamepad'.")
 		return
 	}
 
@@ -186,7 +186,7 @@ func (server *Server) handleSaveControllerMapping(w http.ResponseWriter, r *http
 			`UPDATE controller_mappings SET `+kind+` = ?, updated_at = ? WHERE id = ?`,
 			string(body.Mapping), now(), existing.ID,
 		); err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		respondItem(w, http.StatusOK, *server.mappingRow(principal.ID, consoleID))
@@ -198,7 +198,7 @@ func (server *Server) handleSaveControllerMapping(w http.ResponseWriter, r *http
 		principal.ID, consoleID, string(body.Mapping), now(),
 	)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	id, _ := result.LastInsertId()
@@ -272,7 +272,7 @@ func (server *Server) handleListKeyMappings(w http.ResponseWriter, r *http.Reque
 		 FROM key_mappings WHERE `+where+` ORDER BY id`, args...,
 	)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	defer rows.Close()
@@ -283,7 +283,7 @@ func (server *Server) handleListKeyMappings(w http.ResponseWriter, r *http.Reque
 		var mappingJSON string
 		var updatedAt sql.NullString
 		if err := rows.Scan(&item.ID, &item.UserID, &item.PhysicalDeviceID, &item.PhysicalDeviceType, &item.ControllerName, &mappingJSON, &updatedAt); err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		item.Mapping = json.RawMessage(mappingJSON)
@@ -324,7 +324,7 @@ func (server *Server) handleSaveKeyMapping(w http.ResponseWriter, r *http.Reques
 		)
 	}
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 
@@ -341,7 +341,7 @@ func (server *Server) handleDeleteKeyMapping(w http.ResponseWriter, r *http.Requ
 	deviceID := r.URL.Query().Get("physical_device_id")
 	controllerName := r.URL.Query().Get("controller_name")
 	if deviceID == "" || controllerName == "" {
-		respondError(w, http.StatusBadRequest, "Missing physical_device_id or controller_name.")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "Missing physical_device_id or controller_name.")
 		return
 	}
 	_, _ = server.db.Exec(
@@ -381,7 +381,7 @@ func (server *Server) handleListKeyPositionings(w http.ResponseWriter, r *http.R
 		 FROM key_positionings WHERE `+where+` ORDER BY slot_index`, args...,
 	)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	defer rows.Close()
@@ -392,7 +392,7 @@ func (server *Server) handleListKeyPositionings(w http.ResponseWriter, r *http.R
 		var layoutJSON string
 		var updatedAt sql.NullString
 		if err := rows.Scan(&item.ID, &item.UserID, &item.ControllerName, &item.SlotIndex, &item.IsDefault, &layoutJSON, &item.Opacity, &updatedAt); err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		item.Layout = json.RawMessage(layoutJSON)
@@ -414,7 +414,7 @@ func (server *Server) handleSaveKeyPositioning(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if body.SlotIndex < 1 || body.SlotIndex > 5 {
-		respondError(w, http.StatusBadRequest, "slot_index must be between 1 and 5.")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "slot_index must be between 1 and 5.")
 		return
 	}
 	opacity := 1.0
@@ -428,7 +428,7 @@ func (server *Server) handleSaveKeyPositioning(w http.ResponseWriter, r *http.Re
 			`UPDATE key_positionings SET is_default = 0 WHERE user_id = ? AND controller_name = ?`,
 			principal.ID, body.ControllerName,
 		); err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 	}
@@ -453,7 +453,7 @@ func (server *Server) handleSaveKeyPositioning(w http.ResponseWriter, r *http.Re
 		)
 	}
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 
@@ -470,7 +470,7 @@ func (server *Server) handleDeleteKeyPositioning(w http.ResponseWriter, r *http.
 	controllerName := r.URL.Query().Get("controller_name")
 	slotIndex := queryInt(r, "slot_index", 0)
 	if controllerName == "" || slotIndex == 0 {
-		respondError(w, http.StatusBadRequest, "Missing controller_name or slot_index.")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "Missing controller_name or slot_index.")
 		return
 	}
 	_, _ = server.db.Exec(
@@ -504,7 +504,7 @@ func (server *Server) handleListNotificationPreferences(w http.ResponseWriter, r
 		`SELECT notification_type, enabled FROM notification_preferences WHERE user_id = ?`, principal.ID,
 	)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	defer rows.Close()
@@ -514,7 +514,7 @@ func (server *Server) handleListNotificationPreferences(w http.ResponseWriter, r
 		var notificationType string
 		var enabled bool
 		if err := rows.Scan(&notificationType, &enabled); err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		byType[notificationType] = enabled
@@ -539,7 +539,7 @@ func (server *Server) handleSaveNotificationPreference(w http.ResponseWriter, r 
 		return
 	}
 	if !contains(notificationTypes, body.NotificationType) {
-		respondError(w, http.StatusBadRequest, "Unknown notification_type.")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "Unknown notification_type.")
 		return
 	}
 
@@ -559,7 +559,7 @@ func (server *Server) handleSaveNotificationPreference(w http.ResponseWriter, r 
 			principal.ID, body.NotificationType, body.Enabled, now(),
 		)
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 	}

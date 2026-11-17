@@ -4,6 +4,8 @@ import { useSyncExternalStore } from "react";
 // feedback on virtual button presses and rumble/vibration output. Kept out
 // of the server because both describe the physical device in your hands —
 // a phone-buzz toggle means nothing on someone else's laptop.
+// The launcher (another origin on the same device) sets them too: it passes
+// its own values in the address of the page it opens (launcherHandoff.js).
 const HAPTIC_KEY = "gameflex_haptic_feedback";
 // LA CLÉ A CHANGÉ DE NOM, ET C'EST LE CORRECTIF.
 //

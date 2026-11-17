@@ -11,7 +11,7 @@ import (
 )
 
 // BaseSession holds the fields every platform's session record shares —
-// SessionID/Container/Owner/Port/StartedAt/State/PlayerCount were
+// SessionID/Container/Owner/Port/StartedAt/State were
 // redeclared identically in Session, RetroSession and RemoteplaySession
 // (confirmed byte-for-byte identical at the field level, see the plan's
 // "Refacto complet — store de session générique" doc). Embedding this
@@ -26,18 +26,13 @@ type BaseSession struct {
 	Port      int       `json:"port"`
 	StartedAt time.Time `json:"started_at"`
 	State     string    `json:"state"`
-	// PlayerCount mirrors the container's live /status players count
-	// (updated by the watchdog poll) — NOT serialized on the wire, but
-	// carried into the façade pool entry by the bridge so join buttons
-	// see real slot occupancy.
-	PlayerCount int `json:"-"`
 }
 
 // hasBase is the one method every platform's session struct implements
 // (a one-line `func (s *Session) base() *BaseSession { return &s.BaseSession }`)
 // so the generic store below can reach the shared fields without knowing
-// anything else about T. base() needs a POINTER receiver (patchPlayerCount
-// mutates the field in place through it) — Go has no way to say "T's
+// anything else about T. base() needs a POINTER receiver (stopSession
+// reaches the fields of a copy through it) — Go has no way to say "T's
 // pointer type implements this interface" with a single type parameter,
 // hence the T/PT pair below (the standard library idiom for exactly this:
 // a generic container whose element type's methods live on the pointer).
@@ -105,10 +100,21 @@ func (s *sessionStore[T, PT]) list() []T {
 	return records
 }
 
-func (s *sessionStore[T, PT]) delete(sessionID string) {
+// take removes and returns a record in one step — of two callers stopping the
+// same session at once (a stop asked from the page, and the container's exit
+// that Docker reports), only one gets it.
+func (s *sessionStore[T, PT]) take(sessionID string) (T, bool) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	record, ok := s.items[sessionID]
+	if !ok {
+		var zero T
+		return zero, false
+	}
 	delete(s.items, sessionID)
-	s.mu.Unlock()
+
+	return *record, true
 }
 
 // runningCount counts running records matching an extra platform-specific
@@ -147,34 +153,16 @@ func (s *sessionStore[T, PT]) ownedRunning(username string) []string {
 	return owned
 }
 
-// patchPlayerCount updates PlayerCount in place if it changed, reporting
-// whether a notify() is warranted — the watchdog's live-occupancy mirror,
-// same shape for streamex/retro (remoteplay does its own thing via
-// PlayerCount on RemoteplaySession, same method applies there too).
-func (s *sessionStore[T, PT]) patchPlayerCount(sessionID string, count int) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	record, ok := s.items[sessionID]
-	if !ok {
-		return false
-	}
-	b := PT(record).base()
-	if b.PlayerCount == count {
-		return false
-	}
-	b.PlayerCount = count
-	return true
-}
-
 // stopSession is the container-teardown sequence every platform's Stop*
-// duplicated verbatim: look up the record, stop its container, release its
-// ICE block, drop the record. Reports whether the session existed.
+// duplicated verbatim: take the record, stop its container, release its
+// port. Reports whether the session existed. The record goes FIRST: the
+// removal makes Docker report an exit, and containerExited must then find
+// nothing left to stop.
 func stopSession[T any, PT interface {
 	*T
 	hasBase
 }](store *sessionStore[T, PT], dockerHandler *docker.Client, ctx context.Context, sessionID, kind string) bool {
-	record, ok := store.lookup(sessionID)
+	record, ok := store.take(sessionID)
 	if !ok {
 		return false
 	}
@@ -187,7 +175,6 @@ func stopSession[T any, PT interface {
 	// reserved at adoption (#103).
 	dockerHandler.ReleasePort(b.Port)
 
-	store.delete(sessionID)
 	slog.Info(kind+" session stopped", "session_id", sessionID)
 	return true
 }

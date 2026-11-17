@@ -4,8 +4,15 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
+
+	"gameflex/facade"
+	"gameflex/kernel/internal/config"
+	"gameflex/kernel/internal/registry"
 )
 
 // LES AMIS SONT INTERROGÉS EN PARALLÈLE, ET LEUR ORDRE EST GARDÉ (#106).
@@ -64,5 +71,128 @@ func TestRemoteDevicesAsksEveryFriendAtOnce(t *testing.T) {
 		if device.Source != want[index] {
 			t.Errorf("position %d : %q, attendu %q — l'ordre a suivi l'arrivée, pas le registre", index, device.Source, want[index])
 		}
+	}
+}
+
+// fakeRemoteplay — le service remote-play d'un pair : la liste en HTTP (`my-devices`), et son canal d'état
+// (`subscribeDevices` sur le socket d'entrée), qui pousse ce qu'on lui donne. Chaque trame porte aussi une clé
+// d'appairage, qui ne doit jamais sortir du pair.
+type fakeRemoteplay struct {
+	*httptest.Server
+	push      chan string
+	secrets   chan string
+	subscribe chan struct{}
+}
+
+func newFakeRemoteplay(t *testing.T, status string) *fakeRemoteplay {
+	t.Helper()
+	service := &fakeRemoteplay{push: make(chan string, 4), secrets: make(chan string, 4), subscribe: make(chan struct{}, 4)}
+	device := func(status string) string {
+		return `{"id":"ps5","hostId":"H1","hostName":"PS5-896","hostType":"PS5","ipAddress":"192.168.1.20","status":"` + status + `","hasActiveSession":false,"registKey":"secret"}`
+	}
+	service.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/playstation/my-devices":
+			_, _ = w.Write([]byte(`{"data":[` + device(status) + `]}`))
+		case "/api/v1/remoteplay/input/ws":
+			service.secrets <- r.Header.Get("X-Internal-Secret")
+			socket, err := facade.Upgrader.Upgrade(w, r, nil)
+			if err != nil {
+				return
+			}
+			defer socket.Close()
+			var hello struct {
+				Type string `json:"type"`
+			}
+			if socket.ReadJSON(&hello) != nil || hello.Type != "subscribeDevices" {
+				return
+			}
+			service.subscribe <- struct{}{}
+			for next := range service.push {
+				if socket.WriteMessage(websocket.TextMessage, []byte(`{"type":"devices","devices":[`+device(next)+`]}`)) != nil {
+					return
+				}
+			}
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(func() {
+		close(service.push)
+		service.Close()
+	})
+
+	return service
+}
+
+// L'ÉTAT D'UNE CONSOLE PRÊTÉE ARRIVE SEUL (`#750`) — de serveur à serveur, par deux vrais routeurs : le sujet
+// `servers/3/devices` de notre canal suit le socket du pair, ouvert avec notre jeton des consoles chez lui ; la PS5 en
+// veille à l'abonnement, puis réveillée dès que son service le pousse, puis rendormie. Rien d'autre que les champs de
+// la liste ne traverse (la clé d'appairage reste chez le pair), et un jeton de catalogue seul n'ouvre pas le socket.
+func TestPeerDevicesReachOurPageThroughOurChannel(t *testing.T) {
+	service := newFakeRemoteplay(t, "standby")
+	identity := newFakeIdentity(t, map[string]string{"catalogue": "catalog", "consoles": "devices"}, nil)
+	peer := &Server{
+		config: config.Config{CredentialURL: identity.URL, InternalSecret: federationTestInternal, JWTSecret: facadeTestSecret,
+			RemoteplayControlURL: service.URL},
+		pool:    registry.NewPool(),
+		mirrors: registry.NewMirrors(),
+	}
+	surface := httptest.NewServer(http.StripPrefix("/api/v1/federation", peer.federationRouter()))
+	t.Cleanup(surface.Close)
+
+	refused, response, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(surface.URL, "http")+"/api/v1/federation/remoteplay/devices",
+		http.Header{"Authorization": []string{"Bearer catalogue"}})
+	if err == nil {
+		refused.Close()
+		t.Fatal("le jeton de catalogue a ouvert le socket des consoles")
+	}
+	if response == nil || response.StatusCode != http.StatusForbidden {
+		t.Fatalf("le jeton de catalogue : %v, attendu 403", response)
+	}
+
+	client, httpServer := facadeTestServer(t)
+	client.serverRegistry.items = []registeredServer{{ID: 3, Link: surface.URL, Token: "consoles", Hostname: "ami"}}
+	client.serverRegistry.fetchedAt = time.Now()
+	connection, _, err := facadeTestDial(t, httpServer, facadeTestToken(t, "gino"))
+	if err != nil {
+		t.Fatalf("poignée de main : %v", err)
+	}
+	defer connection.Close()
+
+	facadeTestSend(t, connection, map[string]any{"type": "subscribe", "id": "x", "data": map[string]any{"topic": "servers/9/devices"}})
+	if missing := facadeTestNext(t, connection, func(push facadeTestPush) bool { return push.ID == "x" }); missing.Status != http.StatusNotFound {
+		t.Fatalf("un serveur absent du registre : %+v", missing)
+	}
+
+	facadeTestSend(t, connection, map[string]any{"type": "subscribe", "id": "1", "data": map[string]any{"topic": "servers/3/devices"}})
+	read := func() []map[string]any {
+		push := facadeTestNext(t, connection, func(push facadeTestPush) bool { return push.Type == "devices" && push.Topic == "servers/3/devices" })
+		var list []map[string]any
+		if err := json.Unmarshal(push.Data, &list); err != nil {
+			t.Fatalf("liste illisible : %s", push.Data)
+		}
+
+		return list
+	}
+	first := read()
+	if len(first) != 1 || first[0]["id"] != "ps5" || first[0]["status"] != "standby" {
+		t.Fatalf("premier instantané : %+v", first)
+	}
+	if _, leaked := first[0]["registKey"]; leaked || len(first[0]) != 7 {
+		t.Fatalf("champs servis : %+v", first[0])
+	}
+	if secret := <-service.secrets; secret != federationTestInternal {
+		t.Fatalf("secret présenté au service : %q", secret)
+	}
+	<-service.subscribe
+
+	service.push <- "awake"
+	if awake := read(); len(awake) != 1 || awake[0]["status"] != "awake" {
+		t.Fatalf("la console réveillée : %+v", awake)
+	}
+	service.push <- "standby"
+	if asleep := read(); len(asleep) != 1 || asleep[0]["status"] != "standby" {
+		t.Fatalf("la console rendormie : %+v", asleep)
 	}
 }

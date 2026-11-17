@@ -12,20 +12,20 @@
     "vsync": {
       "type": "switch",
       "label": "Vertical sync",
-      "description": "Holds games to the console's 60 Hz. When off, some games run faster than they should.",
+      "description": "Holds games to the console's 60 Hz; when off, some games run faster than they should.",
       "config": "GPU > vsync",
       "value": true,
       "translations": {
         "fr": {
           "label": "Synchronisation verticale",
-          "description": "Tient les jeux aux 60 Hz de la console. Désactivée, certains jeux tournent plus vite qu'ils ne le devraient."
+          "description": "Tient les jeux aux 60 Hz de la console ; désactivée, certains jeux tournent plus vite qu'ils ne le devraient."
         }
       }
     },
     "readbackResolve": {
       "type": "select",
       "label": "GPU readback",
-      "description": "Lets the processor read back what the graphics chip drew. A few games need it for automatic exposure or save thumbnails; Exact waits for the graphics chip and stutters.",
+      "description": "Lets the processor read back what the graphics processor drew, which a few games need; Exact waits for it and stutters.",
       "config": "GPU > readback_resolve",
       "value": "none",
       "options": {
@@ -36,7 +36,7 @@
       "translations": {
         "fr": {
           "label": "Relecture du GPU",
-          "description": "Permet au processeur de relire ce que la puce graphique a dessiné. Quelques jeux en ont besoin pour l'exposition automatique ou les miniatures de sauvegarde ; Exacte attend la puce graphique et saccade.",
+          "description": "Permet au processeur de relire ce qu'a dessiné le processeur graphique, ce dont quelques jeux ont besoin ; Exacte l'attend et saccade.",
           "options": {
             "none": "Désactivée",
             "fast": "Rapide — une image de retard",
@@ -48,7 +48,7 @@
     "occlusionQuery": {
       "type": "select",
       "label": "Occlusion queries",
-      "description": "How the game learns what is hidden behind what: lens flares, culling, automatic exposure. Fake is the fastest and right for most games.",
+      "description": "How the game learns what is hidden behind what; Fake is the fastest and right for most games.",
       "config": "GPU > occlusion_query",
       "value": "fast",
       "options": {
@@ -59,7 +59,7 @@
       "translations": {
         "fr": {
           "label": "Requêtes d'occlusion",
-          "description": "La façon dont le jeu apprend ce qui est caché derrière quoi : reflets d'objectif, élimination des objets cachés, exposition automatique. Simulées est le plus rapide et convient à la plupart des jeux.",
+          "description": "La façon dont le jeu apprend ce qui est caché derrière quoi ; Simulées est le plus rapide et convient à la plupart des jeux.",
           "options": {
             "fake": "Simulées — le plus rapide",
             "fast": "Rapides",
@@ -71,7 +71,7 @@
     "renderTargetPath": {
       "type": "select",
       "label": "Render target path",
-      "description": "How the console's render targets are emulated. Pixel shader interlock is more exact and slower.",
+      "description": "How the console's render targets are emulated; pixel shader interlock is more exact and slower.",
       "config": "GPU > render_target_path_vulkan",
       "value": "any",
       "options": {
@@ -82,7 +82,7 @@
       "translations": {
         "fr": {
           "label": "Méthode des cibles de rendu",
-          "description": "La façon dont les cibles de rendu de la console sont émulées. L'interverrouillage des pixel shaders est plus exact et plus lent.",
+          "description": "La façon dont les cibles de rendu de la console sont émulées ; l'interverrouillage des pixel shaders est plus exact et plus lent.",
           "options": {
             "any": "Automatique",
             "fbo": "Framebuffers — rapide",
@@ -94,13 +94,13 @@
     "decalDepthFix": {
       "type": "switch",
       "label": "Decal depth fix",
-      "description": "Stops decals from flickering in games that place them a tiny depth above a surface. Costs a little graphics time.",
+      "description": "Stops decals flickering in games that place them just above a surface; costs a little graphics time.",
       "config": "GPU > depth_bias_shader_offset",
       "value": false,
       "translations": {
         "fr": {
           "label": "Correction de la profondeur des décalcomanies",
-          "description": "Empêche le clignotement des décalcomanies dans les jeux qui les placent juste au-dessus d'une surface. Coûte un peu de temps graphique."
+          "description": "Empêche les décalcomanies de clignoter dans les jeux qui les placent juste au-dessus d'une surface ; coûte un peu de temps graphique."
         }
       }
     },

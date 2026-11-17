@@ -29,8 +29,8 @@ const WEB_DEFAULTS = {
     internalDisks: "compose",
     // Y a-t-il un SERVEUR à administrer ? Le stockage, lui, se gère des deux
     // côtés — un téléphone a des dossiers comme un serveur en a. Ce drapeau
-    // ne couvre que ce qui n'existe QUE sur un serveur : le relais TURN, la
-    // configuration réseau. Distinct de `accounts` parce que ce sont deux
+    // ne couvre que ce qui n'existe QUE sur un serveur : la configuration
+    // réseau. Distinct de `accounts` parce que ce sont deux
     // absences différentes : l'une est un annuaire, l'autre une machine.
     serverAdmin: true,
     // Cet hôte peut-il OUVRIR une session ailleurs (un conteneur streamex,
@@ -143,12 +143,11 @@ const WEB_DEFAULTS = {
     appHomeLink: false,
     // Peut-on prévisualiser ICI la forme d'un autre hôte ? Sur l'appareil on
     // y est déjà.
-    // L'hôte distribue-t-il une configuration TURN ? Un serveur, oui (son
-    // relais). Un téléphone, non : sa signalisation reste sur le réseau
-    // local. Demander quand même donnait un 404 à CHAQUE négociation vidéo —
-    // sans conséquence (le repli STUN existe) mais assez bruyant pour cacher
-    // une vraie panne dans la console (2026-09-05).
-    turnConfig: true,
+    // L'hôte va-t-il chercher les images des jeux chez IGDB et SteamGridDB
+    // (chantier 49) ? Un serveur le déclare ; le téléphone non :
+    // il n'appelle aucun service externe, il prend les images chez son
+    // serveur.
+    metadataServices: false,
     // ── CE QUI N'EST PAS PRÊT ─────────────────────────────────────────
     //
     // Caché « pour l'instant » — décidé le 2026-09-15, avant la 0.3.0. Faux
@@ -160,9 +159,6 @@ const WEB_DEFAULTS = {
     // défaut, donc pour un hôte qui ne dit rien (le téléphone, dont la page
     // ne sert pas de service worker à un abonné).
     pushNotifications: false,
-    // Le bouton « Test » des manettes : il lance une session keytest, une
-    // console qui ne part pas dans la 0.3.0.
-    gamepadTest: false,
 
     platform: "web",
 };

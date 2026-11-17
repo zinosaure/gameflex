@@ -16,11 +16,6 @@ import { onNativeLibraryChanged } from "./deviceStream.js";
 import { isRemoteSource, sourceOf } from "./sources.js";
 import { apiUrl } from "./serverBase.js";
 
-/** La bibliothèque vient du kernel (HTTP) — le pont n'existe plus (C7-P3). */
-function gatewayLibrary() {
-    return can("webrtcGateway");
-}
-
 /**
  * Y a-t-il une bibliothèque locale à lire ?
  *
@@ -39,98 +34,21 @@ export function hasLocalLibrary() {
     return can("localLibrary");
 }
 
-// LES BIOS, retenus : leurs consommateurs (`localBios`…) sont
-// SYNCHRONES — le pont l'était —, donc ils se chargent une fois au démarrage
-// (index.js), puis à chaque bibliothèque relue.
+// LES BIOS DE L'APPAREIL NE SE RETIENNENT PLUS ICI (chantier 52, P8) : leur
+// cache ne servait qu'aux règles du lancement de la fiche d'un jeu
+// (`launch-mode.js`), parties avec la page de jeu de la webapp. Le launcher
+// tranche lui-même le BIOS d'une partie (ses réglages de jeu).
 //
-// LES JEUX NE SE RETIENNENT PLUS ICI (chantier 15) : la liste et la fiche
-// d'un jeu les lisent dans le listing de l'appareil (`listRoms`), comme sur le
-// serveur. `/api/v1/library/games`, qui reparcourait le disque à chaque
-// appel, est supprimée, et avec elle le scan que ce fichier gardait.
-let cachedBios = null;
-// La lecture des BIOS en cours : `rescanLocalLibrary` l'attend avant de dire
-// « relue ».
-let biosPreload = null;
-
-export function preloadLocalLibrary() {
-    if (!gatewayLibrary()) {
-        return;
-    }
-
-    biosPreload = fetch(apiUrl("/api/v1/library/bios"), { cache: "no-store" })
-        .then((response) => response.json())
-        .then((payload) => {
-            cachedBios = Array.isArray(payload) ? payload : [];
-        })
-        .catch(() => {
-            cachedBios = [];
-        });
-}
-
-// LES VOLUMES, ET CHANGER DE RACINE, ne sont plus ici : l'emplacement de la
-// bibliothèque d'un téléphone se choisit dans son application (le porteur,
-// 2026-10-15), et le kernel ne sert plus `/api/v1/library/volumes` ni
-// `/api/v1/library/root`.
-
-// LES BIOS QU'UNE CONSOLE EXIGE NE SE DÉCLARENT PLUS ICI (#162).
-//
-// Ce fichier portait deux tables — `REQUIRED_BIOS` et `OPTIONAL_BIOS` — et
-// `missingBiosFor`. L'utilisateur a tranché le 2026-09-17 : « require bios et
-// bios optional fait déjà le job. Sauf que c'est pas dans registry.go, c'est
-// ça ? » Oui. `#161` les a mises au registre (`Bios` = au moins un est requis,
-// `BiosOptional` = améliore sans exiger), d'où elles voyagent déjà jusqu'à la
-// page par `GET /api/v1/consoles`.
-//
-// LA RÈGLE VIT MAINTENANT DANS `launch-mode.js` (`missingRequiredBios`,
-// `missingOptionalBios`), avec les autres règles PURES : depuis que la
-// présence lui arrive en argument, elle ne dépend plus du cache de l'appareil
-// — et un module sans dépendances s'éprouve dans node, ce que celui-ci ne
-// permet pas. Seul `deviceBiosNames` reste ici, parce qu'il lit ce cache.
-//
-// CE QUE LA MIGRATION A CORRIGÉ, mesuré le 2026-09-18 : la table exigeait un
-// `saturn_bios.bin` que le registre ne connaissait pas (ajouté, il est sur le
-// disque) ; trois noms pour `ps2` dont DEUX n'existent nulle part — ni sur la
-// machine, ni ailleurs dans le dépôt — alors que le cœur LRPS2 veut un DOSSIER
-// et balaie ses 71 dumps ; et une clé `segacd` désignant une console absente du
-// registre ET de la bibliothèque, donc une exigence que rien ne pouvait
-// interroger. Le raisonnement qui vivait dans ces commentaires (« un
-// gba_bios.bin ne fait pas démarrer une PlayStation », le HLE silencieux de
-// `pcsx_rearmed`, la Switch qui veut `prod.keys` et non « prod.keys OU
-// title.keys ») est passé côté registre, où il décide pour les deux hôtes.
-
-/** Les noms de BIOS présents sur l'APPAREIL, pour les règles de `launch-mode.js`. */
-export function deviceBiosNames(consoleId) {
-    return localBiosNames(consoleId);
-}
+// LES JEUX NE SE RETIENNENT PLUS ICI NON PLUS (chantier 15) : la liste et la
+// fiche d'un jeu les lisent dans le listing de l'appareil (`listRoms`), comme
+// sur le serveur.
 
 /**
- * Les noms des BIOS installés — toutes consoles, ou celles d'une console.
- *
- * Retirée un temps par une passe de code mort qui ne comptait que les
- * appelants EXTERNES, alors qu'un appelant interne l'utilisait (2026-09-09).
- * Privée, donc, et non morte — c'est `deviceBiosNames` qui l'expose
- * aujourd'hui, depuis que la règle « quels BIOS réclame cette console » vit
- * dans le registre (#162) et non plus dans ce fichier.
- */
-function localBiosNames(consoleId = null) {
-    return localBios()
-        .filter((entry) => !consoleId || entry.consoleId === consoleId)
-        .map((entry) => (typeof entry === "string" ? entry : entry.name));
-}
-
-/**
- * Relire POUR DE BON : les BIOS, puis le signal « relue » — la liste et la
- * fiche d'un jeu relisent alors le listing de l'appareil, que le kernel a
- * refait AVANT d'annoncer que la bibliothèque a changé (chantier 15).
- *
- * Rend une promesse : l'appelant sait quand redessiner, au lieu de
- * redessiner trop tôt sur un cache encore vide.
+ * Le signal « relue » — la liste et la fiche d'un jeu relisent alors le
+ * listing de l'appareil, que le kernel a refait AVANT d'annoncer que la
+ * bibliothèque a changé (chantier 15).
  */
 export async function rescanLocalLibrary() {
-    preloadLocalLibrary();
-    if (biosPreload) {
-        await biosPreload.catch(() => { });
-    }
     announceReloaded();
 }
 
@@ -202,15 +120,6 @@ export { isRemoteSource, sourceOf };
 // personne au lieu d'être tranché par un classement qu'elle n'a pas demandé.
 // Le champ `variants` n'a jamais existé côté Go : il naissait ici et mourait
 // dans la fiche.
-
-/** Les BIOS présents sur l'appareil. */
-function localBios() {
-    if (gatewayLibrary()) {
-        return cachedBios || [];
-    }
-
-    return [];
-}
 
 // C8-P2 : `deviceBiosDirs`, `deviceLibrarySection` et `deviceUserSaves` ont
 // été SUPPRIMÉES — le kernel sert `/api/v1/retrogaming/library/bios-dirs`,
@@ -314,8 +223,8 @@ export function deviceRemoveGame(reference, disk = null) {
 //
 // Sans cet abonnement, un jeu importé restait invisible jusqu'au prochain
 // démarrage (signalé le 2026-08-27 sur un jeu PSP). Le kernel a déjà refait
-// le listing de l'appareil quand l'annonce arrive (chantier 15) : relire les
-// BIOS, puis dire « relue », suffit.
+// le listing de l'appareil quand l'annonce arrive (chantier 15) : dire
+// « relue » suffit.
 if (typeof window !== "undefined") {
     onNativeLibraryChanged(() => {
         rescanLocalLibrary();

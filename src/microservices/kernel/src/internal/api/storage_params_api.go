@@ -16,7 +16,7 @@ package api
 // l'écran s'ouvre.
 //
 // Ce que le kernel crée dans le dossier, il le rend au propriétaire de
-// la bibliothèque (adoptParentOwner) : il tourne en root.
+// la bibliothèque (storage.AdoptParentOwner) : il tourne en root.
 
 import (
 	"encoding/json"
@@ -29,6 +29,7 @@ import (
 	"gameflex/consoles"
 	"gameflex/emuparams"
 	"gameflex/kernel/internal/config"
+	"gameflex/storage"
 	"gameflex/storage/listing"
 	"gameflex/storage/remote"
 )
@@ -39,7 +40,7 @@ import (
 var paramsRoot = config.StorageDir
 
 func paramsStore() emuparams.Store {
-	return emuparams.Store{Root: paramsRoot, AfterWrite: adoptParentOwner}
+	return emuparams.Store{Root: paramsRoot, AfterWrite: storage.AdoptParentOwner}
 }
 
 func consoleNames() map[string]string {
@@ -74,7 +75,7 @@ func (server *Server) handleStorageParams(w http.ResponseWriter, r *http.Request
 func (server *Server) handleStorageParamsWrite(w http.ResponseWriter, r *http.Request) {
 	ref := emuparams.Ref{ConsoleID: chi.URLParam(r, "consoleId"), Emulator: chi.URLParam(r, "emulator")}
 	if !emuparams.IsShipped(ref) {
-		writeError(w, http.StatusNotFound, "pas de paramètres pour "+ref.ConsoleID+"/"+ref.Emulator)
+		writeErrorCode(w, http.StatusNotFound, "not_found", "pas de paramètres pour "+ref.ConsoleID+"/"+ref.Emulator)
 
 		return
 	}
@@ -85,7 +86,7 @@ func (server *Server) handleStorageParamsWrite(w http.ResponseWriter, r *http.Re
 		Engines []emuparams.EngineSetting `json:"engines"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "corps invalide")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "corps invalide")
 
 		return
 	}
@@ -93,9 +94,9 @@ func (server *Server) handleStorageParamsWrite(w http.ResponseWriter, r *http.Re
 	var refused *emuparams.RefusedError
 	switch {
 	case errors.As(err, &refused):
-		writeError(w, http.StatusBadRequest, refused.Error())
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", refused.Error())
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "storage_failed", err.Error())
 	default:
 		slog.Info("paramètres enregistrés", "console", ref.ConsoleID, "émulateur", ref.Emulator,
 			"activés", saved.Enabled, "préréglage", saved.SavedPreset)
@@ -109,7 +110,7 @@ func (server *Server) handleStorageParamsWrite(w http.ResponseWriter, r *http.Re
 func (server *Server) handleStorageParamsPresetDelete(w http.ResponseWriter, r *http.Request) {
 	ref := emuparams.Ref{ConsoleID: chi.URLParam(r, "consoleId"), Emulator: chi.URLParam(r, "emulator")}
 	if !emuparams.IsShipped(ref) {
-		writeError(w, http.StatusNotFound, "pas de paramètres pour "+ref.ConsoleID+"/"+ref.Emulator)
+		writeErrorCode(w, http.StatusNotFound, "not_found", "pas de paramètres pour "+ref.ConsoleID+"/"+ref.Emulator)
 
 		return
 	}
@@ -118,11 +119,11 @@ func (server *Server) handleStorageParamsPresetDelete(w http.ResponseWriter, r *
 	var refused *emuparams.RefusedError
 	switch {
 	case errors.As(err, &refused):
-		writeError(w, http.StatusBadRequest, refused.Error())
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", refused.Error())
 	case errors.Is(err, emuparams.ErrNoPreset):
-		writeError(w, http.StatusNotFound, err.Error())
+		writeErrorCode(w, http.StatusNotFound, "storage_failed", err.Error())
 	case err != nil:
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "storage_failed", err.Error())
 	default:
 		slog.Info("préréglage supprimé", "console", ref.ConsoleID, "émulateur", ref.Emulator, "préréglage", preset)
 		writeJSON(w, http.StatusOK, described)
@@ -136,7 +137,7 @@ func (server *Server) handleStorageParamsPresetDelete(w http.ResponseWriter, r *
 func (server *Server) handleFederationParams(w http.ResponseWriter, r *http.Request) {
 	ref := emuparams.Ref{ConsoleID: chi.URLParam(r, "consoleId"), Emulator: chi.URLParam(r, "emulator")}
 	if !emuparams.IsShipped(ref) {
-		writeError(w, http.StatusNotFound, "pas de paramètres pour "+ref.ConsoleID+"/"+ref.Emulator)
+		writeErrorCode(w, http.StatusNotFound, "not_found", "pas de paramètres pour "+ref.ConsoleID+"/"+ref.Emulator)
 
 		return
 	}
@@ -149,7 +150,7 @@ func (server *Server) handleFederationParams(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	if err != nil {
-		writeError(w, http.StatusNotFound, "rien de prêté ici")
+		writeErrorCode(w, http.StatusNotFound, "not_lent", "rien de prêté ici")
 
 		return
 	}
@@ -157,89 +158,105 @@ func (server *Server) handleFederationParams(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, lent)
 }
 
-// handleRemoteStorageParams — GET /api/v1/servers/{id}/storage/params : ce
-// qu'un ami prête, lu dans la copie de son listing — chaque prêt dit le
-// préréglage qu'il deviendrait ici (`<serveur>-<préréglage>`), et s'il y est
-// déjà.
-func (server *Server) handleRemoteStorageParams(w http.ResponseWriter, r *http.Request) {
-	server.serveRemoteStorage(w, r, listing.Params, func(entry registeredServer, items map[string][]listing.Item) any {
-		store := paramsStore()
+// lentPreset — ce qu'une autre source prête des paramètres d'un émulateur — un
+// serveur fédéré, un disque interne : ses valeurs choisies (`preset` vide), ou
+// un de ses préréglages perso —, tel que le formulaire d'ici le prend : un
+// préréglage de plus dans son sélecteur, ses valeurs passées par les paramètres
+// d'ici (emuparams.Fit), celles qui ne remplissent rien dites dans `ignored`.
+// Le choisir remplit les champs, et rien ne s'écrit avant « Enregistrer » (le
+// porteur, 2026-11-14 : « au lieu de copier le fichier on va juste copier les
+// données comme preset. Quand on choisit un preset venant d'un autre serveur,
+// on charge que les données de celui-ci »). `error` : la source ne l'a pas
+// rendu — `unreachable`, `denied` (notre jeton refusé), `lacks` (elle ne le
+// prête plus).
+type lentPreset struct {
+	Emulator string         `json:"emulator"`
+	Preset   string         `json:"preset,omitempty"`
+	Name     string         `json:"name"`
+	Values   map[string]any `json:"values"`
+	Ignored  []string       `json:"ignored,omitempty"`
+	Error    string         `json:"error,omitempty"`
+}
 
-		return remote.ParamsSections(items, func(consoleID, emulator, presetID, presetName string) any {
-			return store.OfferOf(entry.Hostname, consoleID, emulator, presetID, presetName)
-		})
+// paramsWanted — la section des paramètres d'une source, réduite aux
+// émulateurs réglables ici, et à la console et à l'émulateur que la page
+// demande (`?console=&emulator=`) : chaque prêt se lit chez la source, et la
+// page des paramètres d'un émulateur n'en veut que les siens.
+func paramsWanted(r *http.Request, items map[string][]listing.Item) map[string][]listing.Item {
+	consoleID, emulator := r.URL.Query().Get("console"), r.URL.Query().Get("emulator")
+	wanted := map[string][]listing.Item{}
+	for id, list := range items {
+		if consoleID != "" && id != consoleID {
+			continue
+		}
+		for _, item := range list {
+			if (emulator == "" || item.Name == emulator) && emuparams.IsShipped(emuparams.Ref{ConsoleID: id, Emulator: item.Name}) {
+				wanted[id] = append(wanted[id], item)
+			}
+		}
+	}
+
+	return wanted
+}
+
+// lentSections — chaque prêt de la section (remote.ParamsSections), ses valeurs
+// lues à la source par `lend` (rien, et la raison, quand elle ne les rend pas).
+func lentSections(items map[string][]listing.Item, lend func(ref emuparams.Ref, presetID string) (map[string]any, string)) []remote.ParamsSection {
+	store := paramsStore()
+
+	return remote.ParamsSections(items, func(consoleID, emulator, presetID, presetName string) any {
+		ref := emuparams.Ref{ConsoleID: consoleID, Emulator: emulator}
+		lent := lentPreset{Emulator: emulator, Preset: presetID, Name: presetName, Values: map[string]any{}}
+		if presetID == "" {
+			lent.Name = emulator
+		}
+		values, failure := lend(ref, presetID)
+		if failure != "" {
+			lent.Error = failure
+
+			return lent
+		}
+		lent.Values, lent.Ignored = store.Fit(ref, values)
+
+		return lent
 	})
 }
 
-// importPeerParams — POST /api/v1/servers/{id}/storage/params {consoleId,
-// emulator, preset} : ce qu'un ami prête, rangé ici en préréglage perso sous
-// `<serveur>-<préréglage>` (ou `<serveur>` pour ses valeurs) — jamais
-// par-dessus un autre, et seulement ce que les paramètres d'ici acceptent.
-func (server *Server) importPeerParams(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		ConsoleID string `json:"consoleId"`
-		Emulator  string `json:"emulator"`
-		Preset    string `json:"preset"`
-	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "corps invalide")
+// handleRemoteStorageParams — GET /api/v1/servers/{id}/storage/params
+// [?console=&emulator=] : ce qu'un ami prête (la copie de son listing le dit),
+// chaque prêt avec ses valeurs, demandées à lui (lentPreset). Un ami qui ne
+// répond pas, ou refuse notre jeton, n'est demandé qu'une fois : ses autres
+// prêts portent la même raison.
+//
+// L'IMPORT QUI COPIAIT CE PRÊT EN PRÉRÉGLAGE ICI EST PARTI (chantier 53, après
+// la P7) : le formulaire prend ses valeurs, et « Enregistrer » les écrit dans
+// le fichier d'ici — ou en préréglage d'ici, sous le nom qu'on lui donne.
+func (server *Server) handleRemoteStorageParams(w http.ResponseWriter, r *http.Request) {
+	server.serveRemoteStorage(w, r, listing.Params, func(entry registeredServer, items map[string][]listing.Item) any {
+		client, err := remote.New(entry.Link, entry.Token)
+		failed := ""
+		if err != nil {
+			failed = "unreachable"
+		}
 
-		return
-	}
-	ref := emuparams.Ref{ConsoleID: body.ConsoleID, Emulator: body.Emulator}
-	if !emuparams.IsShipped(ref) {
-		writeError(w, http.StatusNotFound, "pas de paramètres pour "+ref.ConsoleID+"/"+ref.Emulator)
+		return lentSections(paramsWanted(r, items), func(ref emuparams.Ref, presetID string) (map[string]any, string) {
+			if failed != "" {
+				return nil, failed
+			}
+			lent, err := client.Params(ref.ConsoleID, ref.Emulator, presetID)
+			switch {
+			case errors.Is(err, remote.ErrNotLent):
+				return nil, "lacks"
+			case errors.Is(err, remote.ErrDenied):
+				failed = "denied"
+			case err != nil:
+				failed = "unreachable"
+			default:
+				return lent.Values, ""
+			}
+			slog.Info("peer params: not lent", "server", entry.Hostname, "console", ref.ConsoleID, "emulator", ref.Emulator, "error", err)
 
-		return
-	}
-	entry, ok := server.registeredByID(w, r)
-	if !ok {
-		return
-	}
-	client, err := remote.New(entry.Link, entry.Token)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, "this address did not answer")
-
-		return
-	}
-	lent, err := client.Params(ref.ConsoleID, ref.Emulator, body.Preset)
-	switch {
-	case errors.Is(err, remote.ErrNotLent):
-		writeError(w, http.StatusNotFound, "ce serveur ne prête pas (ou plus) ce réglage")
-
-		return
-	case err != nil:
-		refused := remote.Refusal(err)
-		writeError(w, refused.Status, refused.Message)
-
-		return
-	}
-
-	presetName := ""
-	if body.Preset != "" {
-		presetName = lent.Name
-	}
-	imported, ignored, err := paramsStore().Import(ref, consoleNames()[ref.ConsoleID],
-		emuparams.ImportName(entry.Hostname, presetName), lent.Values)
-	answerParamsImport(w, ref, entry.Hostname, imported, ignored, err)
-}
-
-// answerParamsImport — la réponse à un import de paramètres, d'un ami ou d'un
-// disque interne (`source`) : la même pour les deux.
-func answerParamsImport(w http.ResponseWriter, ref emuparams.Ref, source string, imported emuparams.Emulator, ignored []string, err error) {
-	var refused *emuparams.RefusedError
-	switch {
-	case errors.Is(err, emuparams.ErrExists):
-		writeError(w, http.StatusConflict, "ce préréglage est déjà ici : le supprimer d'abord pour en reprendre une version")
-	case errors.As(err, &refused):
-		writeError(w, http.StatusBadRequest, refused.Error())
-	case err != nil:
-		writeError(w, http.StatusInternalServerError, err.Error())
-	default:
-		slog.Info("préréglage importé", "source", source, "console", ref.ConsoleID,
-			"émulateur", ref.Emulator, "préréglage", imported.SavedPreset, "écartés", ignored)
-		writeJSON(w, http.StatusOK, map[string]any{
-			"section": "params", "preset": imported.SavedPreset, "ignored": ignored, "source": source,
+			return nil, failed
 		})
-	}
+	})
 }

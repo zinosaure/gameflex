@@ -53,9 +53,9 @@ func CacheControl(path string) string {
 }
 
 // Handler sert webRoot : un fichier qui existe, sinon `index.html` pour une
-// adresse de navigation.
+// adresse de l'application (fileAddress).
 //
-// LE REPLI VERS LA PAGE NE VAUT QUE POUR LA NAVIGATION : `/streaming`,
+// LE REPLI VERS LA PAGE NE VAUT QUE POUR LA NAVIGATION : `/settings`,
 // `/retrogaming/nes`. Appliqué à `/api/…`, il transforme une route manquante
 // en réponse 200 qui contient du HTML — et la page, qui attendait du JSON,
 // annonce « Unexpected token '<' » sans dire de quelle requête il s'agit.
@@ -98,10 +98,7 @@ func Handler(webRoot string) http.Handler {
 		// téléchargeur enregistrait alors 668 octets de HTML sous un nom en
 		// `.apk`, et l'installation échouait sans que rien ne dise pourquoi
 		// (2026-09-10).
-		//
-		// Le repli reste entier pour les adresses de NAVIGATION, qui n'ont
-		// pas d'extension.
-		if extension := filepath.Ext(clean); extension != "" && extension != ".html" {
+		if fileAddress(webRoot, clean) {
 			http.NotFound(w, r)
 
 			return
@@ -110,6 +107,43 @@ func Handler(webRoot string) http.Handler {
 		w.Header().Set("Cache-Control", CacheControl("index.html"))
 		http.ServeFile(w, r, filepath.Join(webRoot, "index.html"))
 	})
+}
+
+// downloadsFolder — le dossier des téléchargements, que la construction retire
+// exprès de chaque copie de la page (l'APK ne s'embarque pas elle-même,
+// mobile/docker-entrypoint.sh ; l'image du frontal ne l'a jamais) : absent, il
+// reste un dossier de fichiers.
+const downloadsFolder = "downloads"
+
+// fileAddress — une adresse absente désigne-t-elle un FICHIER de la page (le
+// 404 du navigateur), ou une adresse de l'application (la page) ?
+//
+// L'EXTENSION NE SUFFIT PLUS À LE DIRE (chantier 56, #701). Elle tranchait
+// seule : tout ce qui avait un point répondait 404. Or les adresses de la page
+// portent des noms de fichiers — le jeu d'une console
+// (`/retrogaming/nes/games/Zelda (USA).zip`), le chemin d'un journal —, et le
+// serveur de développement les sert (`historyApiFallback`, `disableDotRule`) :
+// rechargée ici, la même adresse répondait 404.
+//
+// Un fichier de la page vit à sa racine (un morceau, le manifeste, une icône)
+// ou dans un de ses dossiers (`images/`, `fonts/`, `licenses/`, et
+// `downloads/` même absent). Une adresse de l'application commence par un
+// segment qui n'est ni l'un ni l'autre (`/retrogaming`, `/settings`) : elle
+// rend la page, point ou pas. Le dossier se lit à la requête : la page peut
+// changer sous le serveur (une nouvelle APK la recopie).
+//
+// Sans extension, ou en `.html`, une adresse rend toujours la page.
+func fileAddress(webRoot, clean string) bool {
+	if extension := filepath.Ext(clean); extension == "" || extension == ".html" {
+		return false
+	}
+	first, _, nested := strings.Cut(strings.TrimPrefix(clean, "/"), "/")
+	if !nested || first == downloadsFolder {
+		return true
+	}
+	info, err := os.Stat(filepath.Join(webRoot, first))
+
+	return err == nil && info.IsDir()
 }
 
 // notFound — le 404 JSON d'une route qui n'existe pas, sous la forme de toutes

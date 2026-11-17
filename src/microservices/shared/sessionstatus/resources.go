@@ -21,11 +21,17 @@ import (
 
 // Resources — ce qu'une machine offre à ses émulateurs de bureau.
 type Resources struct {
-	// GPU — son fabricant (« AMD », « Intel », « NVIDIA », « Adreno ») ; vide
-	// quand aucun GPU n'est utilisable.
+	// GPU — son nom complet quand on le connaît (« AMD Radeon 780M Graphics »,
+	// gpuName ; le porteur, 2026-11-14 : « Dans GPU tu peux mettre le nom
+	// complet comme AMD Radeon ... »), son fabricant sinon (« AMD », « Intel »,
+	// « NVIDIA », « Adreno ») ; vide quand aucun GPU n'est utilisable.
 	GPU string `json:"gpu,omitempty"`
 	// VRAMBytes — la mémoire vidéo, quand le pilote la dit (AMD).
 	VRAMBytes int64 `json:"vramBytes,omitempty"`
+	// CPU — le nom du processeur (« AMD Ryzen 7 255 », cpuName ; le porteur,
+	// 2026-11-14 : « tu peux aussi rajouter le nom du processus ? ») ; vide
+	// quand la machine ne le dit pas.
+	CPU string `json:"cpu,omitempty"`
 	// CPUThreads — les fils d'exécution du processeur.
 	CPUThreads int `json:"cpuThreads,omitempty"`
 	// MemoryBytes — la mémoire vive de la machine.
@@ -38,6 +44,7 @@ func LocalResources(gpu string, vramBytes int64) Resources {
 	return Resources{
 		GPU:         gpu,
 		VRAMBytes:   vramBytes,
+		CPU:         cpuName(cpuModel("/proc/cpuinfo")),
 		CPUThreads:  runtime.NumCPU(),
 		MemoryBytes: memTotal("/proc/meminfo"),
 	}
@@ -50,9 +57,73 @@ var drmVendors = map[string]string{"0x1002": "AMD", "0x8086": "Intel", "0x10de":
 // reçoivent (SessionGPU, `wanted` étant GAMEFLEX_GPU), lu dans le sysfs de
 // l'hôte, que le kernel voit.
 func ServerResources(wanted string) Resources {
-	gpu, _, _ := SessionGPU("/sys", wanted)
+	gpu, _, ok := SessionGPU("/sys", wanted)
+	if !ok {
+		return LocalResources("", 0)
+	}
 
-	return LocalResources(gpu.Vendor, gpu.VRAMBytes)
+	return LocalResources(gpuName(gpu, GPUs("/sys"), cpuModel("/proc/cpuinfo")), gpu.VRAMBytes)
+}
+
+// gpuName — le nom complet d'un GPU : celui que son pilote donne ; sinon, pour
+// la puce AMD intégrée, celui que Linux écrit dans le nom du processeur
+// (« AMD Ryzen 7 255 w/ Radeon 780M Graphics » → « AMD Radeon 780M Graphics »)
+// — seulement quand elle est le seul GPU AMD : à côté d'une carte AMD ajoutée
+// (en OCuLink), rien ne dit laquelle est la puce. Son fabricant à défaut. La
+// même lecture que la machine de la page Stockage (storage/listing,
+// machine.go).
+func gpuName(gpu GPU, all []GPU, cpu string) string {
+	if gpu.Name != "" {
+		if strings.HasPrefix(gpu.Name, gpu.Vendor) {
+			return gpu.Name
+		}
+
+		return gpu.Vendor + " " + gpu.Name
+	}
+	amd := 0
+	for _, other := range all {
+		if other.Vendor == "AMD" {
+			amd++
+		}
+	}
+	if _, integrated, found := strings.Cut(cpu, " w/ "); found && gpu.Vendor == "AMD" && amd == 1 {
+		return "AMD " + strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(integrated), "AMD "))
+	}
+
+	return gpu.Vendor
+}
+
+// cpuModel — le « model name » de /proc/cpuinfo, ou son « Hardware » (ce
+// qu'un téléphone écrit à la place) ; vide illisible.
+func cpuModel(path string) string {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	hardware := ""
+	for _, line := range strings.Split(string(content), "\n") {
+		key, value, found := strings.Cut(line, ":")
+		if !found {
+			continue
+		}
+		switch strings.TrimSpace(key) {
+		case "model name":
+			return strings.TrimSpace(value)
+		case "Hardware":
+			hardware = strings.TrimSpace(value)
+		}
+	}
+
+	return hardware
+}
+
+// cpuName — le nom du processeur sans la puce graphique que Linux y joint
+// (« AMD Ryzen 7 255 w/ Radeon 780M Graphics » → « AMD Ryzen 7 255 ») : elle a
+// sa ligne à elle (gpuName).
+func cpuName(model string) string {
+	name, _, _ := strings.Cut(model, " w/ ")
+
+	return strings.TrimSpace(name)
 }
 
 // memTotal — « MemTotal » de /proc/meminfo, en octets ; 0 illisible.

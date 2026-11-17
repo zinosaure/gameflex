@@ -13,11 +13,13 @@
 // fait passer à not playable. Les retrogaming ont moins de problèmes que les
 // nouveaux émulateurs (éprouvés depuis des années par la communauté). »
 //
-// CE QUI SE RANGE. Un fichier par console, `status/<console>.json` dans le
-// dossier du serveur : le statut de la console entière, et les SIGNALEMENTS
-// de ses jeux, du plus ancien au plus récent. Le statut d'un jeu se CALCULE
-// (Resolve) : il n'est écrit nulle part, pour qu'une console réglée d'un geste
-// ne coûte qu'une ligne et qu'un jeu ajouté plus tard la suive.
+// CE QUI SE RANGE, EN BASE depuis le 2026-11-17 (Backend : la base du service
+// des comptes ; les fichiers `status/<console>.json` d'avant sont abandonnés,
+// le porteur : « On part de zero pour ça ») :
+// le statut de la console entière, et les SIGNALEMENTS de ses jeux, du plus
+// ancien au plus récent. Le statut d'un jeu se CALCULE (Resolve) : il n'est
+// écrit nulle part, pour qu'une console réglée d'un geste ne coûte qu'une ligne
+// et qu'un jeu ajouté plus tard la suive.
 //
 // CE QUI VOYAGE. Le listing d'un serveur (chantier 15) porte les signalements
 // de chaque jeu, SANS les versions (Public), et le statut de chaque console
@@ -25,14 +27,10 @@
 package gamestatus
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -78,7 +76,7 @@ type Report struct {
 	At       time.Time         `json:"at"`
 }
 
-// Console — le fichier d'une console.
+// Console — une console : son statut et les signalements de ses jeux.
 type Console struct {
 	// Status — celui de la console entière ; vide : son Default.
 	Status string     `json:"status,omitempty"`
@@ -108,7 +106,7 @@ type Setting struct {
 	Default string     `json:"default"`
 }
 
-// Setting — ce fichier, sans les signalements.
+// Setting — cette console, sans les signalements.
 func (console Console) Setting(consoleID string) Setting {
 	return Setting{Status: console.Status, By: console.By, At: console.At, Default: Default(consoleID)}
 }
@@ -253,150 +251,96 @@ func sortedKeys(values map[string]string) []string {
 
 // ── Le fichier ─────────────────────────────────────────────────────────
 
-// mu — un signalement lit le fichier, ajoute, réécrit : deux en même temps
-// ne doivent pas s'écraser.
-var mu sync.Mutex
+// Backend — OÙ LES STATUTS SE RANGENT : la base du service des comptes (credential), par ses routes internes au
+// serveur et par credential/embed au téléphone (le porteur, 2026-11-17 : « Il faut que ça soit dans la base de données.
+// On ne va pas créer des fichiers pour tout les 20000 jeux »). Les règles restent ici (Store) ; le Backend range.
+type Backend interface {
+	Console(consoleID string) (Console, error)
+	AddReport(consoleID, gameID string, report Report) error
+	SetConsole(consoleID, status, by string, at time.Time) error
+	Statuses() (map[string]string, error)
+}
 
-// Store — le dossier `status/` d'une bibliothèque.
+// Store — les statuts, par leur Backend.
 type Store struct {
-	Dir string
-	// AfterWrite — appelé sur chaque fichier et dossier créé : le kernel, qui
-	// tourne en root, les rend au propriétaire de la bibliothèque.
-	AfterWrite func(path string)
+	Backend Backend
 }
 
 // ErrInvalid — un statut inconnu, une console inconnue, un jeu sans nom.
 var ErrInvalid = errors.New("gamestatus: signalement invalide")
 
-func (s Store) path(consoleID string) (string, error) {
+// ErrUnavailable — aucun Backend (le service des comptes n'est pas joignable).
+var ErrUnavailable = errors.New("gamestatus: statuts indisponibles")
+
+func checkConsole(consoleID string) error {
 	if consoleID == "" || strings.ContainsAny(consoleID, `/\`) || strings.HasPrefix(consoleID, ".") {
-		return "", fmt.Errorf("%w : console %q", ErrInvalid, consoleID)
+		return fmt.Errorf("%w : console %q", ErrInvalid, consoleID)
 	}
 
-	return filepath.Join(s.Dir, consoleID+".json"), nil
+	return nil
 }
 
-// Load — le fichier d'une console ; vide quand il n'existe pas.
+// Load — une console ; vide quand rien n'en parle.
 func (s Store) Load(consoleID string) (Console, error) {
-	mu.Lock()
-	defer mu.Unlock()
-
-	return s.load(consoleID)
-}
-
-func (s Store) load(consoleID string) (Console, error) {
-	target, err := s.path(consoleID)
-	if err != nil {
+	if err := checkConsole(consoleID); err != nil {
 		return Console{}, err
 	}
-	raw, err := os.ReadFile(target)
-	if errors.Is(err, os.ErrNotExist) {
-		return Console{}, nil
-	}
-	if err != nil {
-		return Console{}, err
-	}
-	var console Console
-	if err := json.Unmarshal(raw, &console); err != nil {
-		return Console{}, fmt.Errorf("gamestatus: %s illisible : %w", target, err)
+	if s.Backend == nil {
+		return Console{}, ErrUnavailable
 	}
 
-	return console, nil
+	return s.Backend.Console(consoleID)
 }
 
 // Add — un signalement de plus pour ce jeu.
 func (s Store) Add(consoleID, gameID string, report Report) error {
+	if err := checkConsole(consoleID); err != nil {
+		return err
+	}
 	if gameID == "" || !Valid(report.Status) {
 		return fmt.Errorf("%w : jeu %q, statut %q", ErrInvalid, gameID, report.Status)
 	}
+	if s.Backend == nil {
+		return ErrUnavailable
+	}
 	report.Note = clip(strings.TrimSpace(report.Note), MaxNote)
-	mu.Lock()
-	defer mu.Unlock()
-	console, err := s.load(consoleID)
-	if err != nil {
-		return err
-	}
-	if console.Games == nil {
-		console.Games = map[string][]Report{}
-	}
-	console.Games[gameID] = append(console.Games[gameID], report)
 
-	return s.save(consoleID, console)
+	return s.Backend.AddReport(consoleID, gameID, report)
 }
 
 // SetConsole — le statut de toute la console.
 func (s Store) SetConsole(consoleID, status, by string, at time.Time) error {
+	if err := checkConsole(consoleID); err != nil {
+		return err
+	}
 	if !Valid(status) {
 		return fmt.Errorf("%w : statut %q", ErrInvalid, status)
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	console, err := s.load(consoleID)
-	if err != nil {
-		return err
+	if s.Backend == nil {
+		return ErrUnavailable
 	}
-	stamp := at.UTC()
-	console.Status, console.By, console.At = status, by, &stamp
 
-	return s.save(consoleID, console)
+	return s.Backend.SetConsole(consoleID, status, by, at.UTC())
 }
 
-// Statuses — le statut de chaque console qui en a un : ce que l'en-tête du
-// listing publie.
+// Statuses — le statut de chaque console qui en a un : ce que l'en-tête du listing publie. Rien quand les statuts ne
+// se lisent pas : le listing se fait sans eux.
 func (s Store) Statuses() map[string]string {
-	mu.Lock()
-	defer mu.Unlock()
-	entries, err := os.ReadDir(s.Dir)
+	if s.Backend == nil {
+		return nil
+	}
+	statuses, err := s.Backend.Statuses()
 	if err != nil {
 		return nil
 	}
-	statuses := map[string]string{}
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(name, ".json") {
-			continue
-		}
-		consoleID := strings.TrimSuffix(name, ".json")
-		console, err := s.load(consoleID)
-		if err == nil && Valid(console.Status) {
-			statuses[consoleID] = console.Status
+	valid := map[string]string{}
+	for consoleID, status := range statuses {
+		if Valid(status) {
+			valid[consoleID] = status
 		}
 	}
 
-	return statuses
-}
-
-// save — à côté puis renommé : un fichier à moitié écrit perdrait tous les
-// signalements de la console.
-func (s Store) save(consoleID string, console Console) error {
-	target, err := s.path(consoleID)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(s.Dir, 0o755); err != nil {
-		return err
-	}
-	if s.AfterWrite != nil {
-		s.AfterWrite(s.Dir)
-	}
-	content, err := json.MarshalIndent(console, "", "  ")
-	if err != nil {
-		return err
-	}
-	partial := target + ".part"
-	if err := os.WriteFile(partial, content, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(partial, target); err != nil {
-		_ = os.Remove(partial)
-
-		return err
-	}
-	if s.AfterWrite != nil {
-		s.AfterWrite(target)
-	}
-
-	return nil
+	return valid
 }
 
 func clip(text string, limit int) string {

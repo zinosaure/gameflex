@@ -19,11 +19,15 @@ package api
 // deux endroits est un seul jeu, et le kernel n'écrit jamais sur un disque.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -39,9 +43,82 @@ import (
 	"gameflex/storage/listing"
 )
 
-// statusStore — le dossier `status/` de ce serveur.
+// statusStore — les statuts de ce serveur, EN BASE (le porteur, 2026-11-17 : « Il faut que ça soit dans la base de
+// données ») : celle du service des comptes, par ses routes internes (credentialStatuses). Sans service des comptes
+// (les tests), une mémoire propre à ce serveur.
 func (server *Server) statusStore() gamestatus.Store {
-	return gamestatus.Store{Dir: filepath.Join(server.storageRoot, "status"), AfterWrite: adoptParentOwner}
+	if server.config.CredentialURL != "" && server.config.InternalSecret != "" {
+		return gamestatus.Store{Backend: credentialStatuses{server: server}}
+	}
+	server.statusOnce.Do(func() { server.statusMemory = gamestatus.NewMemory() })
+
+	return gamestatus.Store{Backend: server.statusMemory}
+}
+
+// credentialStatuses — gamestatus.Backend par les routes /internal/game-status du service des comptes.
+type credentialStatuses struct {
+	server *Server
+}
+
+func (statuses credentialStatuses) call(method, path string, body any, into any) error {
+	var reader io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(raw)
+	}
+	request, err := http.NewRequest(method, statuses.server.config.CredentialURL+"/internal/game-status"+path, reader)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("X-Internal-Secret", statuses.server.config.InternalSecret)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := statusClient.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("game status: credential %s %s = %d", method, path, response.StatusCode)
+	}
+	if into == nil {
+		return nil
+	}
+	// credential rend sa réponse sous `item` (respondItem).
+	var envelope struct {
+		Item json.RawMessage `json:"item"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&envelope); err != nil {
+		return err
+	}
+
+	return json.Unmarshal(envelope.Item, into)
+}
+
+var statusClient = &http.Client{Timeout: 15 * time.Second}
+
+func (statuses credentialStatuses) Console(consoleID string) (gamestatus.Console, error) {
+	var console gamestatus.Console
+	err := statuses.call(http.MethodGet, "/"+url.PathEscape(consoleID), nil, &console)
+
+	return console, err
+}
+
+func (statuses credentialStatuses) AddReport(consoleID, gameID string, report gamestatus.Report) error {
+	return statuses.call(http.MethodPost, "/"+url.PathEscape(consoleID)+"/games/"+url.PathEscape(gameID), report, nil)
+}
+
+func (statuses credentialStatuses) SetConsole(consoleID, status, by string, at time.Time) error {
+	return statuses.call(http.MethodPut, "/"+url.PathEscape(consoleID), map[string]any{"status": status, "by": by, "at": at}, nil)
+}
+
+func (statuses credentialStatuses) Statuses() (map[string]string, error) {
+	statusMap := map[string]string{}
+	err := statuses.call(http.MethodGet, "", nil, &statusMap)
+
+	return statusMap, err
 }
 
 // consoleStatus — le fichier d'une console, ou rien : un fichier illisible se
@@ -164,7 +241,7 @@ func (server *Server) gameStatusAnswer(ctx context.Context, consoleID, gameID st
 func (server *Server) handleGameStatus(w http.ResponseWriter, r *http.Request) {
 	consoleID, gameID := chi.URLParam(r, "consoleId"), chi.URLParam(r, "ref")
 	if !consoles.Exists(consoleID) {
-		writeError(w, http.StatusNotFound, "unknown console")
+		writeErrorCode(w, http.StatusNotFound, "console_unknown", "unknown console")
 
 		return
 	}
@@ -176,7 +253,7 @@ func (server *Server) handleGameStatus(w http.ResponseWriter, r *http.Request) {
 func (server *Server) handleReportGame(w http.ResponseWriter, r *http.Request) {
 	consoleID, gameID := chi.URLParam(r, "consoleId"), chi.URLParam(r, "ref")
 	if !consoles.Exists(consoleID) {
-		writeError(w, http.StatusNotFound, "unknown console")
+		writeErrorCode(w, http.StatusNotFound, "console_unknown", "unknown console")
 
 		return
 	}
@@ -186,20 +263,20 @@ func (server *Server) handleReportGame(w http.ResponseWriter, r *http.Request) {
 		Note      string   `json:"note"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !gamestatus.Valid(body.Status) {
-		writeError(w, http.StatusBadRequest, "status must be untested, playable, crashes or unplayable")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "status must be untested, playable, crashes or unplayable")
 
 		return
 	}
 	known := consoles.CoresFor(consoleID)
 	for _, emulator := range body.Emulators {
 		if !slices.Contains(known, emulator) {
-			writeError(w, http.StatusBadRequest, "unknown emulator for this console: "+emulator)
+			writeErrorCode(w, http.StatusBadRequest, "bad_request", "unknown emulator for this console: "+emulator)
 
 			return
 		}
 	}
 	if !server.gameIsHere(r.Context(), consoleID, gameID) {
-		writeError(w, http.StatusNotFound, "no such game on this server")
+		writeErrorCode(w, http.StatusNotFound, "game_not_found", "no such game on this server")
 
 		return
 	}
@@ -229,7 +306,7 @@ func (server *Server) handleReportGame(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, gamestatus.ErrInvalid) {
 			status = http.StatusBadRequest
 		}
-		writeError(w, status, err.Error())
+		writeErrorCode(w, status, "status_failed", err.Error())
 
 		return
 	}
@@ -245,7 +322,7 @@ func (server *Server) handleReportGame(w http.ResponseWriter, r *http.Request) {
 func (server *Server) handleGetConsoleStatus(w http.ResponseWriter, r *http.Request) {
 	consoleID := chi.URLParam(r, "consoleId")
 	if !consoles.Exists(consoleID) {
-		writeError(w, http.StatusNotFound, "unknown console")
+		writeErrorCode(w, http.StatusNotFound, "console_unknown", "unknown console")
 
 		return
 	}
@@ -258,7 +335,7 @@ func (server *Server) handleGetConsoleStatus(w http.ResponseWriter, r *http.Requ
 func (server *Server) handleConsoleStatus(w http.ResponseWriter, r *http.Request) {
 	consoleID := chi.URLParam(r, "consoleId")
 	if !consoles.Exists(consoleID) {
-		writeError(w, http.StatusNotFound, "unknown console")
+		writeErrorCode(w, http.StatusNotFound, "console_unknown", "unknown console")
 
 		return
 	}
@@ -266,14 +343,14 @@ func (server *Server) handleConsoleStatus(w http.ResponseWriter, r *http.Request
 		Status string `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !gamestatus.Valid(body.Status) {
-		writeError(w, http.StatusBadRequest, "status must be untested, playable, crashes or unplayable")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "status must be untested, playable, crashes or unplayable")
 
 		return
 	}
 	now := time.Now().UTC()
 	by := auth.Username(r.Context())
 	if err := server.statusStore().SetConsole(consoleID, body.Status, by, now); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeErrorCode(w, http.StatusInternalServerError, "status_failed", err.Error())
 
 		return
 	}
@@ -290,9 +367,19 @@ func (server *Server) gameIsHere(ctx context.Context, consoleID, gameID string) 
 	if gameID == "" {
 		return false
 	}
+
+	return server.gamesHere(ctx, consoleID)[gameID]
+}
+
+// gamesHere — les identifiants des jeux d'une console qui sont ICI : la
+// bibliothèque, puis chaque disque interne. Un jeu d'ailleurs qui porte l'un
+// d'eux est « déjà ici » (chantier 14 : l'identifiant écrit au listing sert à
+// ça ; chantier 53, #674).
+func (server *Server) gamesHere(ctx context.Context, consoleID string) map[string]bool {
+	here := map[string]bool{}
 	for _, item := range server.selfItems(listing.Roms, consoleID) {
-		if item.ID == gameID {
-			return true
+		if item.ID != "" {
+			here[item.ID] = true
 		}
 	}
 	for _, disk := range server.presentDisks(ctx) {
@@ -301,13 +388,11 @@ func (server *Server) gameIsHere(ctx context.Context, consoleID, gameID string) 
 			continue
 		}
 		for _, rom := range roms {
-			if rom.Reference == gameID {
-				return true
-			}
+			here[rom.Reference] = true
 		}
 	}
 
-	return false
+	return here
 }
 
 // ── Le listing ─────────────────────────────────────────────────────────
@@ -330,6 +415,7 @@ func (server *Server) refreshConsoleRoms(consoleID string) {
 	if err := listing.SaveConsoleSection(listingCacheDir, listing.SelfKey, listing.Roms, consoleID, items, time.Now()); err != nil {
 		slog.Warn("self listing not refreshed", "console", consoleID, "error", err)
 	}
+	server.rememberSelfListing()
 }
 
 // refreshConsoleStatuses — le statut des consoles dans l'en-tête du listing :
@@ -347,4 +433,5 @@ func (server *Server) refreshConsoleStatuses(at time.Time) {
 	if err != nil && !errors.Is(err, listing.ErrNoCache) {
 		slog.Warn("self listing header not refreshed", "error", err)
 	}
+	server.rememberSelfListing()
 }

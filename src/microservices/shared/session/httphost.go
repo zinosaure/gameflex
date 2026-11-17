@@ -74,6 +74,12 @@ type Config struct {
 	// OnPadHandover puts a pad back to neutral when it changes hands (see
 	// Host.OnPadHandover). Optional: a runtime without held state needs none.
 	OnPadHandover func(slot int)
+
+	// OnChange — called after every mutation of the queue, outside its lock, next to the report to the kernel's
+	// mirror (Host.OnChange). Optional. The phone, which reports to no mirror, wakes its own channel from it: who plays
+	// and who holds a pad is PUSHED to its pages, never re-read on a clock (« Pas de sondage »). The sweep calls it on
+	// every tick too: a caller that only wants real changes compares Host.Snapshot.
+	OnChange func()
 }
 
 // HTTPHost serves one session over HTTP/WS and keeps the kernel's mirror fed.
@@ -124,6 +130,12 @@ func NewHTTPHost(config Config) *HTTPHost {
 		httpHost.sendTo,
 	)
 	httpHost.Host.OnChange = httpHost.reportSoon
+	if config.OnChange != nil {
+		httpHost.Host.OnChange = func() {
+			httpHost.reportSoon()
+			config.OnChange()
+		}
+	}
 	httpHost.Host.OnPadHandover = config.OnPadHandover
 
 	go httpHost.reportLoop()

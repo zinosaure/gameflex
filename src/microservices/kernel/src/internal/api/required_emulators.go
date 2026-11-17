@@ -25,14 +25,23 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 	"time"
 
+	"gameflex/facade"
 	"gameflex/kernel/internal/docker"
+	"gameflex/kernel/internal/retro_files"
+	"gameflex/storage"
 )
 
 // requiredEmulators — les fichiers qu'attendent les images installées ici. Un
 // test les donne par `server.emulatorsRequired` ; sinon c'est le manager qui
 // lit les étiquettes des images.
+//
+// GARDÉS QUELQUES SECONDES (chantier 53) : lire les étiquettes inspecte chaque
+// image Streamex par Docker, et la liste des émulateurs le faisait pour CHACUNE
+// des quelque quarante-cinq consoles du registre — 4,7 s par liste sur la dev.
+// Une image reconstruite se voit au plus `requiredEmulatorsFresh` après.
 func (server *Server) requiredEmulators(ctx context.Context) []docker.RequiredEmulator {
 	if server.emulatorsRequired != nil {
 		return server.emulatorsRequired(ctx)
@@ -40,8 +49,25 @@ func (server *Server) requiredEmulators(ctx context.Context) []docker.RequiredEm
 	if server.manager == nil {
 		return nil
 	}
+	server.requiredCache.mu.Lock()
+	defer server.requiredCache.mu.Unlock()
+	if server.requiredCache.items == nil || time.Since(server.requiredCache.at) > requiredEmulatorsFresh {
+		server.requiredCache.items = server.manager.RequiredEmulators(ctx)
+		server.requiredCache.at = time.Now()
+	}
 
-	return server.manager.RequiredEmulators(ctx)
+	return slices.Clone(server.requiredCache.items)
+}
+
+// requiredEmulatorsFresh — combien de temps les étiquettes lues restent bonnes.
+const requiredEmulatorsFresh = 15 * time.Second
+
+// requiredEmulatorsCache — la dernière lecture des étiquettes. Zéro-valeur
+// utilisable.
+type requiredEmulatorsCache struct {
+	mu    sync.Mutex
+	at    time.Time
+	items []docker.RequiredEmulator
 }
 
 // requiredEmulatorFor — celui d'un lancement : l'émulateur choisi, ou le
@@ -63,11 +89,20 @@ func (server *Server) requiredEmulatorFor(ctx context.Context, consoleID, core s
 	return docker.RequiredEmulator{}, false
 }
 
-// emulatorInUse — le fichier qu'une partie prendrait : parmi ceux qui
-// répondent au motif de l'image, le dernier déposé — le même choix que
-// consoles/unpack-emulator.sh, qui départage par la date du fichier.
+// emulatorInUse — le fichier qu'une partie prendrait : la version en service
+// que l'administrateur a choisie (console_defaults.go) quand elle est de cet
+// émulateur et toujours là ; sinon, parmi ceux qui répondent au motif de
+// l'image, le dernier déposé. Le lancement passe ce nom au conteneur
+// (GAMEFLEX_EMULATOR_CHOSEN), que consoles/unpack-emulator.sh déballe.
 func (server *Server) emulatorInUse(need docker.RequiredEmulator) (string, os.FileInfo, bool) {
 	dir := filepath.Join(server.retroCoresRoot(), need.Console)
+	if chosen := server.consoleDefaultsOf(need.Console).EmulatorFile; chosen != "" {
+		if matched, _ := filepath.Match(need.Pattern, chosen); matched {
+			if info, err := os.Stat(filepath.Join(dir, chosen)); err == nil && !info.IsDir() {
+				return chosen, info, true
+			}
+		}
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return "", nil, false
@@ -154,6 +189,9 @@ func (server *Server) markEmulatorFiles(ctx context.Context, sections []consoleS
 				tested := slices.Contains(need.Tested, row.Name)
 				row.Tested = &tested
 				row.InUse = row.Installed && row.Name == inUse
+				if row.Installed {
+					row.Version = wildcardPart(need.Pattern, row.Name)
+				}
 			}
 		}
 	}
@@ -178,19 +216,19 @@ func (server *Server) downloadRequiredEmulator(w http.ResponseWriter, r *http.Re
 		return false
 	}
 	if _, err := os.Stat(filepath.Join(server.retroCoresRoot(), need.Console, need.File)); err == nil {
-		writeError(w, http.StatusConflict, "this emulator is already here: delete it first to download it again")
+		writeErrorCode(w, http.StatusConflict, "already_installed", "this emulator is already here: delete it first to download it again")
 
 		return true
 	}
 	if need.URL == "" {
-		writeError(w, http.StatusUnprocessableEntity, "this console's image does not say where its emulator is published")
+		writeErrorCode(w, http.StatusUnprocessableEntity, "emulator_no_source", "this console's image does not say where its emulator is published")
 
 		return true
 	}
 	written, err := downloadEmulatorFile(r.Context(), need.URL,
 		filepath.Join(server.retroCoresRoot(), need.Console, need.File))
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeErrorCode(w, http.StatusBadGateway, "download_failed", err.Error())
 
 		return true
 	}
@@ -210,7 +248,7 @@ func downloadEmulatorFile(ctx context.Context, url, target string) (int64, error
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return 0, fmt.Errorf("folder cannot be created: %w", err)
 	}
-	adoptParentOwner(filepath.Dir(target))
+	storage.AdoptParentOwner(filepath.Dir(target))
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -230,7 +268,7 @@ func downloadEmulatorFile(ctx context.Context, url, target string) (int64, error
 	if err != nil {
 		return 0, fmt.Errorf("cannot write: %w", err)
 	}
-	written, err := io.Copy(out, response.Body)
+	written, err := io.Copy(facade.ProgressWriter(ctx, out, response.ContentLength), response.Body)
 	if closeErr := out.Close(); err == nil {
 		err = closeErr
 	}
@@ -247,7 +285,30 @@ func downloadEmulatorFile(ctx context.Context, url, target string) (int64, error
 
 		return 0, err
 	}
-	adoptParentOwner(target)
+	storage.AdoptParentOwner(target)
 
 	return written, nil
+}
+
+// markCoreVersions — la version d'un cœur libretro installé : la date de son
+// fichier, sous sa console d'abord, puis à plat (emulatorVersion).
+func (server *Server) markCoreVersions(sections []consoleSection) {
+	for index := range sections {
+		for item := range sections[index].Items {
+			row := &sections[index].Items[item]
+			if row.Package != "" || !row.Installed || row.Version != "" {
+				continue
+			}
+			for _, path := range []string{
+				filepath.Join(server.retroCoresRoot(), sections[index].ConsoleID, retro_files.CoreFileName(row.Name)),
+				filepath.Join(server.retroCoresRoot(), retro_files.CoreFileName(row.Name)),
+			} {
+				if info, err := os.Stat(path); err == nil {
+					row.Version = info.ModTime().UTC().Format("2006-01-02")
+
+					break
+				}
+			}
+		}
+	}
 }

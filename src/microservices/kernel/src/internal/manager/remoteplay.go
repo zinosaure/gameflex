@@ -1,7 +1,7 @@
 // Remoteplay session records — the one-container-per-session model applied
 // to PlayStation remoteplay (see GAMEFLEX_JOURNAL.md).
-// Same discipline as the retro records: sessions spawns the container, the
-// watchdog keeps records and live counts in sync, and the capacity rule is
+// Same discipline as the retro records: sessions spawns the container, Docker's
+// exit events drop the records (Manager.containerExited), and the capacity rule is
 // DATA per device type (PS4/PS5 stream one session today, Steam/Xbox may
 // allow more when they land), never a hardcoded one-per-device in the code.
 package manager
@@ -78,10 +78,12 @@ func (manager *Manager) LaunchRemoteplay(ctx context.Context, sessionID, hostID,
 	}
 
 	// Host networking means a port held by a lingering process kills
-	// the child at bind time while docker start succeeds — only the
-	// readiness poll sees it (WaitReadyHost's exit detection). On that
-	// failure blacklist the port and retry on a fresh one, the same
+	// the child at bind time while docker start succeeds — only the exit
+	// Docker reports while we wait for the child's "ready" sees it (WaitBoot).
+	// On that failure blacklist the port and retry on a fresh one, the same
 	// discipline as the daemon-reported port conflict at start time.
+	reports := manager.expectBoot(sessionID)
+	defer manager.forgetBoot(sessionID)
 	const spawnAttempts = 3
 	for attempt := 0; attempt < spawnAttempts; attempt++ {
 		port, containerName, err := manager.dockerHandler.CreateAndStartRemoteplay(ctx, spec)
@@ -89,7 +91,7 @@ func (manager *Manager) LaunchRemoteplay(ctx context.Context, sessionID, hostID,
 			return nil, fmt.Errorf("spawn container: %w", err)
 		}
 
-		if err := manager.dockerHandler.WaitReadyHost(ctx, containerName, port, 60*time.Second); err != nil {
+		if err := manager.dockerHandler.WaitBoot(ctx, containerName, reports, 60*time.Second, nil); err != nil {
 			_ = manager.dockerHandler.Stop(context.Background(), containerName)
 			if !errors.Is(err, docker.ErrChildExited) {
 				return nil, fmt.Errorf("spawn container: %w", err)
@@ -134,30 +136,6 @@ func (manager *Manager) StopRemoteplay(ctx context.Context, sessionID string) bo
 	return ok
 }
 
-// SweepRemoteplay re-runs the watchdog's checks for ONE session — the
-// relay will call it after the owner disconnects (same flow as
-// SweepRetro). Idempotent: an unknown session is a no-op.
-func (manager *Manager) SweepRemoteplay(ctx context.Context, sessionID string) {
-	record, ok := manager.remoteplay.lookup(sessionID)
-	if !ok {
-		return
-	}
-
-	running, err := manager.dockerHandler.IsRunning(ctx, record.Container)
-	if err != nil || !running {
-		manager.StopRemoteplay(ctx, sessionID)
-		return
-	}
-
-	status, err := manager.dockerHandler.StatusRemoteplay(ctx, record.Container, record.Port)
-	if err != nil {
-		return
-	}
-	if manager.remoteplay.patchPlayerCount(sessionID, status.Players) {
-		manager.notify()
-	}
-}
-
 // LookupRemoteplay returns a copy of one remoteplay session record.
 func (manager *Manager) LookupRemoteplay(sessionID string) (RemoteplaySession, bool) {
 	return manager.remoteplay.lookup(sessionID)
@@ -186,41 +164,6 @@ func (manager *Manager) ListRemoteplay() []RemoteplaySession {
 
 func (manager *Manager) runningRemoteplayCount(hostID string) int {
 	return manager.remoteplay.runningCount(func(r RemoteplaySession) bool { return r.HostID == hostID })
-}
-
-// watchdogRemoteplay keeps remoteplay records in sync with reality on the
-// same tick cadence as watchdog(): exited containers drop their records
-// and the live player count is mirrored. The idle shutdown lives in the
-// kernel's unified pool watchdog (api/idle.go, étape 3) — this loop used
-// to run its own remoteplayIdleStopAfter rule.
-//
-// Kept as its OWN ticker rather than joining watchdog()'s loop — pre-existing
-// asymmetry, not something this refactor changes (see the plan's note on
-// asymmetries to preserve rather than silently "fix").
-func (manager *Manager) watchdogRemoteplay() {
-	ticker := time.NewTicker(watchdogInterval)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		ctx := context.Background()
-
-		for _, session := range manager.ListRemoteplay() {
-			running, err := manager.dockerHandler.IsRunning(ctx, session.Container)
-			if err != nil || !running {
-				manager.StopRemoteplay(ctx, session.SessionID)
-				continue
-			}
-
-			status, err := manager.dockerHandler.StatusRemoteplay(ctx, session.Container, session.Port)
-			if err != nil {
-				continue
-			}
-
-			if manager.remoteplay.patchPlayerCount(session.SessionID, status.Players) {
-				manager.notify()
-			}
-		}
-	}
 }
 
 // RemoteplayStatus — le pendant de RetroStatus/StreamexStatus pour la PS4/PS5,

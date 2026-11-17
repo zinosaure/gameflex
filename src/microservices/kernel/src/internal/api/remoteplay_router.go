@@ -97,21 +97,15 @@ func (server *Server) serveRemoteplayChild(w http.ResponseWriter, r *http.Reques
 		//   - /input/ws — the device-status input WebSocket; the control
 		//     plane still owns device events, the child has nothing to
 		//     bind such a connection to.
-		//   - /streaming/webrtc/config — the global ICE server list AND
-		//     retro-gaming's own borrowed TURN lookup (see
-		//     use-retro-streaming-connection.js's getTurnConfig doc), which
-		//     hits this exact path too even though it never has a
-		//     remoteplay session at all. Confirmed live: every retro AND
-		//     remoteplay session hit "session id is required" here on
-		//     first connect (2026-08-18) because only /input/ws was
-		//     exempted — the frontend was never missing anything, this
-		//     router just didn't know where else to send a session-less
-		//     call.
+		//   - /streaming/webrtc/config — the global ICE server list (STUN
+		//     only since TURN was removed on 2026-11-13, #117), which has
+		//     no remoteplay session at all. The gateway reads it on
+		//     remoteplay directly; this path serves diagnostics.
 		if r.URL.Path == "/input/ws" || r.URL.Path == "/streaming/webrtc/config" {
 			server.proxyRemoteplayControlPlane(w, r)
 			return
 		}
-		writeError(w, http.StatusBadRequest, "session id is required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "session id is required")
 		return
 	}
 
@@ -124,7 +118,7 @@ func (server *Server) serveRemoteplayChild(w http.ResponseWriter, r *http.Reques
 
 	record, ok := server.manager.LookupRemoteplay(sessionID)
 	if !ok {
-		writeError(w, http.StatusNotFound, "no active session for this id")
+		writeErrorCode(w, http.StatusNotFound, "session_not_found", "no active session for this id")
 		return
 	}
 

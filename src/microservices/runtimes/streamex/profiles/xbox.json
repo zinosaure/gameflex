@@ -18,6 +18,7 @@
     { "id": "ddown", "label": "Down", "key": "gp:Down" },
     { "id": "dleft", "label": "Left", "key": "gp:Left" },
     { "id": "dright", "label": "Right", "key": "gp:Right" },
+    { "id": "home", "label": "GUIDE", "key": "gp:PS" },
     { "id": "upleft", "label": "UP-LEFT", "key": "gp:UpLeft" },
     { "id": "upright", "label": "UP-RIGHT", "key": "gp:UpRight" },
     { "id": "downleft", "label": "DOWN-LEFT", "key": "gp:DownLeft" },

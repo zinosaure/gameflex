@@ -1,33 +1,25 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import * as bs from "react-bootstrap";
 import Skeleton from "../../skeleton/skeleton.js";
 import { hasLocalLibrary, onLocalLibraryReloaded } from "../libs/localLibrary.js";
-import { federatedId, federatedServerNow, federatedServers, parseFederatedId } from "../libs/federatedHost.js";
+import { federatedServerNow, federatedServers, parseFederatedId } from "../libs/federatedHost.js";
 import { describeResources } from "../libs/hostResources.js";
 import SourceSelector from "../profile/settings/admin/storage/SourceSelector.jsx";
-import { can, capabilities } from "../libs/capabilities.js";
+import { capabilities } from "../libs/capabilities.js";
 import { useConsoles } from "../contexts/ConsolesContext.jsx";
-import { listRoms, listInternalDisks, createSession, reportLaunchFailure } from "../api/retrogaming.js";
-import { launchSession, stopSession } from "../api/spawnSessions.js";
-import { LaunchScreen } from "../stream/shared/SessionStream.jsx";
-import { handleLaunchConflict } from "../shared/LaunchConflict.jsx";
-import { useAuth, getStoredUsername } from "../profile/auth/AuthContext.jsx";
+import { listRoms, listInternalDisks } from "../api/retrogaming.js";
 import { Page, ListingElement } from "../shared/templates/Essentials.jsx";
 import { GameCard } from "./GameCard.jsx";
 import { GameDetailPanel } from "./GameDetailPanel.jsx";
 import { StatusFilter, matchesStatuses } from "./GameStatus.jsx";
 import { ITEMS_PER_PAGE, SEARCH_DEBOUNCE_MS } from "./helpers.js";
-import { withStep } from "../stream/shared/hooks/use-launch-progress.js";
 
 export default function Games() {
     const { t } = useTranslation();
     const location = useLocation();
-    const navigate = useNavigate();
     const context = useContext(Skeleton.context);
-    const { token, user } = useAuth();
     const consoles = useConsoles();
     const consoleId = location.pathname.split("/").filter(Boolean)[1] || "";
     const consoleMeta = consoles.find((c) => c.id === consoleId);
@@ -290,399 +282,9 @@ export default function Games() {
     }, [consoleId, searchQuery, libraryEpoch, selectedSource, servers === null, disks === null]);
 
 
-    // Un lancement refusé parce qu'une autre partie est là : le choix proposé
-    // est le même sur toutes les pages qui lancent (shared/LaunchConflict.jsx).
-    const handleConflict = (result, retryLaunch, host = null) =>
-        handleLaunchConflict({ result, context, t, token, host, navigate, retryLaunch });
-
-    // L'ÉCRAN DU LANCEMENT, DÈS LE CLIC (#287, demandé par le porteur le
-    // 2026-10-10 : « dès qu'on clique sur Play on doit voir l'écran de toutes
-    // étapes qui défilent »). La réponse du lancement peut prendre des
-    // minutes — un jeu distant descend d'abord, un conteneur démarre — et on
-    // l'attendait ici, sur la fiche, sans rien montrer. Les étapes arrivent
-    // pourtant déjà sur le canal de la commande (`onProgress`) : on les
-    // affiche tout de suite, sur le même écran que la page de jeu, qui le
-    // reprend à la réponse et le garde jusqu'à la première image.
-    //
-    // ANNULER pendant cette attente ne peut pas interrompre le kernel : son
-    // lancement va au bout (le jeu descendu reste en cache). La partie qui en
-    // naît est arrêtée à sa réponse, dès qu'elle a un identifiant.
-    const [launchScreen, setLaunchScreen] = useState(null);
-    const launchRunRef = useRef(null);
-
-    // `host` — le serveur d'un ami quand le jeu se lance chez lui : le flux du
-    // lancement, et donc le fond de l'écran, est sur SA passerelle.
-    const openLaunchScreen = (title, host = null) => {
-        const run = { cancelled: false };
-        launchRunRef.current = run;
-        context.offcanvas.close();
-        setLaunchScreen({ title, steps: [], failure: null, reportState: null, backdrop: null });
-        const update = (change) => {
-            if (launchRunRef.current === run) {
-                setLaunchScreen((screen) => (screen ? { ...screen, ...change(screen) } : screen));
-            }
-        };
-
-        return {
-            run,
-            // La même lecture qu'useLaunchProgress, sur le canal de la
-            // commande plutôt que sur le sujet du lancement.
-            //
-            // LE FOND D'ABORD (chantier 35) : le premier message, sans étape,
-            // donne l'identifiant du lancement — l'écran se branche sur son
-            // flux, où la passerelle tient l'image de l'intro. Sous le même
-            // compte que la page de jeu qui suivra : l'intro ne se joue
-            // qu'une fois par compte, et les deux la jouent ensemble.
-            onProgress: (message, frame) => {
-                if (frame?.launchId) {
-                    update((screen) => (screen.backdrop ? {} : {
-                        backdrop: {
-                            launch: {
-                                streamId: frame.launchId,
-                                host: host ? { origin: host.origin, token: host.token } : null,
-                                username: (host ? host.username : getStoredUsername()) || null,
-                            },
-                        },
-                    }));
-                }
-                if (!message) {
-                    return;
-                }
-                if (message.type === "failed") {
-                    run.failure = { step: message.step, error: message.error || null };
-                }
-                update((screen) => ({
-                    steps: withStep(screen.steps, {
-                        step: message.step,
-                        detail: message.detail || null,
-                        state: message.type === "failed" ? "error" : "done",
-                        at: message.at || null,
-                    }),
-                    failure: message.type === "failed"
-                        ? { step: message.step, error: message.error || null }
-                        : screen.failure,
-                }));
-            },
-            // Une étape en erreur garde l'écran (#191 : la croix et
-            // « signaler ») ; un refus sans étape se dit par un message.
-            failed: () => Boolean(run.failure),
-            close: () => {
-                if (launchRunRef.current === run) {
-                    launchRunRef.current = null;
-                    setLaunchScreen(null);
-                }
-            },
-        };
-    };
-    const launchScreenRef = useRef(null);
-    launchScreenRef.current = launchScreen;
-
-    const cancelLaunchScreen = () => {
-        if (launchRunRef.current) {
-            launchRunRef.current.cancelled = true;
-        }
-        launchRunRef.current = null;
-        setLaunchScreen(null);
-    };
-
-    // La partie née d'un lancement annulé s'arrête aussitôt — chez son hôte
-    // quand elle vit ailleurs.
-    const stopCancelledLaunch = (platform, result, host) => {
-        const sessionId = result?.ok ? (result.data?.sessionId || result.data?.session_id) : null;
-        if (sessionId) {
-            stopSession(platform, sessionId, host ? host.token : token, host).catch(() => {});
-        }
-    };
-
-    const sendLaunchReport = async () => {
-        const screen = launchScreenRef.current;
-        if (!screen) {
-            return;
-        }
-        setLaunchScreen((current) => (current ? { ...current, reportState: "sending" } : current));
-        const result = await reportLaunchFailure({
-            context: `lancement (${screen.title})`,
-            steps: screen.steps,
-            detail: screen.failure,
-        });
-        setLaunchScreen((current) => (current ? { ...current, reportState: result.ok ? "sent" : "failed" } : current));
-        context.toast.open(
-            result.ok ? t("streaming.launch.reported") : t("streaming.launch.reportFailed"),
-            { variant: result.ok ? "success" : "error" },
-        );
-    };
-
-    // Creates the session server-side FIRST (see createSession's doc,
-    // api/retrogaming.js) — the returned sessionId is the ONLY thing the
-    // unified Streaming page (../Streaming.jsx) needs; a copy-pasted or
-    // refreshed streaming link re-attaches to this same session instead of
-    // spawning a duplicate.
-    const handlePlay = async (rom, core, bios, streamSettings, host = null) => {
-        // UN SEUL GESTE (chantier 8, C8-P3) : on demande une session, on
-        // reçoit son identifiant, on va la regarder. Ce qui se passe derrière
-        // — un conteneur sur un serveur, un cœur dans le processus de
-        // l'application — ne regarde pas cette page.
-        //
-        // Avant, le téléphone partait par un chemin à lui : l'adresse portait
-        // `device=1&path=…&kind=…&source=…&files=…`, et la page de streaming
-        // lançait elle-même le jeu au moment de négocier. Elle devait donc
-        // savoir d'où vient un fichier et s'il tourne déjà — deux questions
-        // dont le serveur a la réponse, et que la page se posait à sa place.
-        // Les deux s'étaient déjà trompées (2026-09-02).
-
-        // External consoles (Switch/spawn-gaming) don't go through the retro
-        // pipeline: the sessions service spawns a dedicated container and
-        // returns play/watch URLs. The game opens in the streamer's own
-        // embedded UI until the
-        // unified Streaming page learns this platform (next frontend phase).
-        // UNE CONSOLE STREAMEX LANCÉE ICI, SUR UN HÔTE SANS CONTENEURS.
-        //
-        // Le lancement streamex du serveur SPAWNE un conteneur : ce chemin
-        // n'existe pas sur le téléphone, qui répondait 405 dès qu'on
-        // choisissait l'émulateur local (signalé le 2026-09-08). L'entrée
-        // locale venait d'être ouverte pour la Switch ; son lancement, lui,
-        // partait encore chez le serveur.
-        //
-        // Depuis #195 les deux hôtes servent la MÊME porte
-        // (la commande `launch` du centre de messages) : on y envoie
-        // `platform: "retrogaming"`, et
-        // l'hôte de session du téléphone sait reconnaître une console à
-        // émulateur embarqué (StreamingHost).
-        // Même geste, donc, et c'est le PROPRE de ce chantier : ce qui tourne
-        // derrière ne regarde pas cette page.
-        if (consoleMeta?.method === "streamex" && !host && !can("spawnsSessions")) {
-            const screen = openLaunchScreen(rom.title);
-            // LES RÉGLAGES DE FLUX PARTENT AUSSI D'ICI. Ce chemin passait
-            // `null` : le panneau s'affichait, se sauvegardait, et le
-            // téléphone ouvrait son écran X en 720p à 60 images quoi qu'on
-            // choisisse (signalé par le porteur le 2026-10-11).
-            const result = await createSession(
-                consoleId, rom.reference, rom.title, core || "", bios || "", user?.username,
-                null, streamSettings, { onProgress: screen.onProgress },
-            );
-            if (screen.run.cancelled) {
-                stopCancelledLaunch("retrogaming", result, null);
-
-                return;
-            }
-            if (!result.ok) {
-                if (!screen.failed()) {
-                    screen.close();
-                    context.toast.open(result.errorMessage || t("retrogaming.loadFailed"), {
-                        variant: "error",
-                    });
-                }
-
-                return;
-            }
-            context.offcanvas.close();
-            const backParams = new URLSearchParams({
-                sessionId: result.data.sessionId,
-                page: String(currentPage),
-            });
-            // Le fond de l'intro suit sur la page de jeu (chantier 35).
-            if (result.launchId) {
-                backParams.set("launchId", result.launchId);
-            }
-            if (searchQuery) backParams.set("q", searchQuery);
-            if (selectedSource !== "local") backParams.set("source", selectedSource);
-            backParams.set("play", "1");
-            navigate(`/streaming?${backParams.toString()}`);
-
-            return;
-        }
-
-        if (consoleMeta?.method === "streamex") {
-            // `host` — LE JEU EST CHEZ QUELQU'UN, C'EST LUI QUI LE LANCE.
-            //
-            // Rien d'autre ne change : même route, même corps de requête,
-            // même conteneur au bout. Ce qui change est à qui on le demande,
-            // et avec quel jeton — le nôtre ne veut rien dire chez lui.
-            const screen = openLaunchScreen(rom.title, host);
-            const result = await launchSession(
-                rom.title,
-                consoleId,
-                token,
-                streamSettings,
-                host,
-                { onProgress: screen.onProgress, core },
-            );
-            if (screen.run.cancelled) {
-                stopCancelledLaunch("streamex", result, host);
-
-                return;
-            }
-            // L'IDENTIFIANT DU LANCEMENT VIENT DU KERNEL, avec la réponse — et
-            // SEULEMENT pour un lancement d'ici : jouer chez un pair lance sur
-            // SON kernel, dont la page de jeu ne suivra pas le canal.
-            const launchId = host ? null : result.launchId || null;
-            // One player-session per user now covers streamex too (kernel
-            // étape 4) — same switch-confirm flow as the retro path below.
-            //
-            // UN CONFLIT N'EST PAS UN ÉCHEC À SIGNALER : sa fenêtre prend la
-            // main, et l'écran des étapes s'efface, même avec une étape en
-            // erreur. Depuis #289 il passe AU-DESSUS des fenêtres de Skeleton,
-            // et cachait le choix « Y retourner » (relevé par flows.js le
-            // 2026-10-11).
-            if (handleConflict(
-                result,
-                () => handlePlay(rom, core, bios, streamSettings, host),
-                host,
-            )) {
-                screen.close();
-
-                return;
-            }
-            if (!result.ok && !screen.failed()) {
-                screen.close();
-            }
-            if (!result.ok || !result.data?.session_id) {
-                if (!screen.failed()) {
-                    screen.close();
-                    context.toast.open(
-                        result.errorMessage ||
-                        t("streaming.connection.errors.sessionCreateFailed"),
-                        { variant: "error" },
-                    );
-                }
-                return;
-            }
-            // Même appel que les chemins rétro plus bas : la fiche
-            // panel this was opened from must not stay open underneath the
-            // streaming page (it would reappear on Exit).
-            context.offcanvas.close();
-            // Same unified page as every other platform — the session is
-            // resolved via SessionPool (the sessions service now pushes its
-            // spawned streamex sessions on the façade).
-            // L'IDENTIFIANT REPART PRÉFIXÉ quand la session vit ailleurs :
-            // l'hôte l'a frappé dans SON espace, et deux serveurs y frappent
-            // les mêmes. Sans le préfixe, la page de streaming irait chercher
-            // cette session dans notre propre façade — au mieux elle ne
-            // trouverait rien, au pire l'homonyme d'ici. Même écriture que
-            // pour une console fédérée (C9-P4) et pour un jeu (chantier 6).
-            const backParams = new URLSearchParams({
-                sessionId: host
-                    ? federatedId(host.serverId, result.data.session_id)
-                    : result.data.session_id,
-                page: String(currentPage),
-            });
-            if (launchId) {
-                backParams.set("launchId", launchId);
-            }
-            if (searchQuery) backParams.set("q", searchQuery);
-            if (selectedSource !== "local") backParams.set("source", selectedSource);
-            // Launching a game is an intent to play — carry it, or the
-            // player lands on a black watch screen of a session whose
-            // emulator has not started, with no idea why.
-            backParams.set("play", "1");
-            navigate(`/streaming?${backParams.toString()}`);
-            return;
-        }
-
-        if (!core) {
-            context.toast.open(t("retrogaming.noCoreConfigured"), {
-                variant: "error",
-            });
-            return;
-        }
-
-        // ÉMULER CHEZ CELUI QUI A LE JEU (C9-P5).
-        //
-        // Même route, même corps de requête, même conteneur au bout : ce qui
-        // change est à qui on le demande. Deux détails, et les deux sont des
-        // défauts si on les oublie — la référence doit être LA SIENNE (notre
-        // préfixe ne veut rien dire chez lui) et le nom doit être celui qu'on
-        // porte chez lui (sa file de joueurs est indexée par nom).
-        const remoteReference = host ? parseFederatedId(rom.reference)?.id : null;
-        const screen = openLaunchScreen(rom.title, host);
-        const result = await createSession(
-            consoleId,
-            remoteReference || rom.reference,
-            rom.title,
-            core,
-            bios || "",
-            host ? host.username : user?.username,
-            host,
-            // #150 — la résolution choisie part avec la demande de lancement,
-            // comme pour streamex. Vide : la console garde sa géométrie.
-            streamSettings,
-            { onProgress: screen.onProgress },
-        );
-        if (screen.run.cancelled) {
-            stopCancelledLaunch("retrogaming", result, host);
-
-            return;
-        }
-        // L'IDENTIFIANT DU LANCEMENT (#191) vient du kernel, avec la réponse,
-        // et SEULEMENT pour un lancement d'ici : émuler chez un pair lance
-        // sur SON kernel — un écran d'étapes vide serait pire que pas
-        // d'écran. Le téléphone en rend un depuis le chantier 35, pour le fond
-        // de l'intro ; ses étapes, elles, passent par son flux de nouvelles.
-        const launchId = host ? null : result.launchId || null;
-
-        if (!result.ok) {
-            // Un conflit : sa fenêtre prend la main, l'écran s'efface (voir
-            // le chemin streamex plus haut).
-            if (handleConflict(
-                result,
-                () => handlePlay(rom, core, bios, streamSettings, host),
-                host,
-            )) {
-                screen.close();
-
-                return;
-            }
-            if (!screen.failed()) {
-                screen.close();
-                context.toast.open(result.errorMessage || t("retrogaming.loadFailed"), {
-                    variant: "error",
-                });
-            }
-            return;
-        }
-        // A plain navigation, not an offcanvas — same call made for remote-
-        // play's Streaming/Watch pages: a fullscreen offcanvas kept growing
-        // skeleton.js's generic offcanvas API with streaming-only concerns
-        // for a single caller.
-        // offcanvas.close() first — the game detail panel this was opened
-        // from otherwise just stays open underneath, reappearing once the
-        // streaming page's own Exit navigates back to /retrogaming/{consoleId}.
-        context.offcanvas.close();
-        // Carries the current page + search query along so Streaming.jsx's
-        // Exit can send us back to the exact same filtered/paginated list
-        // instead of resetting to the unfiltered page 1 (see currentPage/
-        // searchQuery above) — pure UI navigation state, not part of the
-        // session itself.
-        // Préfixé quand la session vit ailleurs — même raison que pour
-        // streamex et pour une console fédérée : deux serveurs frappent les
-        // mêmes identifiants, et notre façade ne connaît pas la sienne.
-        const backParams = new URLSearchParams({
-            sessionId: host
-                ? federatedId(host.serverId, result.data.sessionId)
-                : result.data.sessionId,
-            page: String(currentPage),
-        });
-
-        // L'IDENTIFIANT VOYAGE AVEC LA SESSION (#191).
-        //
-        // On arrive ici APRÈS la réponse du lancement — volontairement : c'est cette
-        // attente qui permet de garder le traitement du conflit « tu joues déjà
-        // ailleurs », dont le bouton de reprise appartient à ce composant.
-        // L'écran d'étapes n'est donc pas perdu pour autant : le kernel garde
-        // le salon une minute après la fin, et la page de streaming rejoue tout
-        // le lancement en s'abonnant.
-        if (launchId) {
-            backParams.set("launchId", launchId);
-        }
-
-        if (searchQuery) backParams.set("q", searchQuery);
-        if (selectedSource !== "local") backParams.set("source", selectedSource);
-        // Launching a game is an intent to play — carry it, or the
-        // player lands on a black watch screen of a session whose
-        // emulator has not started, with no idea why.
-        backParams.set("play", "1");
-        navigate(`/streaming?${backParams.toString()}`);
-    };
+    // PLUS DE « JOUER » ICI (chantier 52, P8, décision du porteur du 2026-11-13) : la page de jeu est
+    // celle du launcher, et la webapp n'en a plus. La fiche d'un jeu dit ce qu'il est, d'où il vient, et
+    // le télécharge.
 
     // Une seule façon d'ouvrir la fiche d'un jeu — le clic d'une vignette,
     // et le lien qui arrive d'ailleurs (voir l'effet `?game=` plus bas). Les
@@ -695,16 +297,14 @@ export default function Games() {
             consoleMeta={consoleMeta}
             t={t}
             context={context}
-            onPlay={handlePlay}
         />,
         { size: 600 },
     );
 
     // OUVRIR UN JEU DÉSIGNÉ PAR L'ADRESSE — `?game=<référence>`.
     //
-    // Une adresse qui désigne un jeu le rouvre : on atterrit ICI — la page
-    // qui possède déjà `handlePlay`, les variantes, le choix du cœur et du
-    // BIOS.
+    // Une adresse qui désigne un jeu le rouvre : on atterrit ICI, la page qui
+    // tient la liste où il se trouve.
     //
     // On attend que le catalogue soit chargé : la référence seule ne suffit
     // pas à construire une fiche, il faut le jeu entier. Et on retire le
@@ -894,31 +494,6 @@ export default function Games() {
                     noItemsFound: t("retrogaming.noGames"),
                 }}
             />}
-            {/* AU-DESSUS DE LA FICHE QUI SE REFERME, DÈS LE CLIC.
-                Les panneaux de Skeleton vivent à la racine du document, à
-                partir de 3010 (`nextOverlayZIndex`), et mettent 500 ms à
-                sortir de l'écran. À 1050 dans la page, l'écran des étapes
-                passait dessous : sur un téléphone, où la fiche prend toute la
-                largeur, on voyait encore la fiche et son « ••• » au lieu des
-                étapes (signalé le 2026-10-10). D'où le portail, à côté des
-                panneaux, et 3400 : au-dessus d'eux, sous les toasts (3500)
-                qui doivent rester lisibles par-dessus. */}
-            {launchScreen && createPortal(
-                <LaunchScreen
-                    t={t}
-                    fixed
-                    zIndex={3400}
-                    label={launchScreen.failure ? t("streaming.launch.failed") : t("streaming.launch.title")}
-                    steps={launchScreen.steps.length > 0 ? launchScreen.steps : null}
-                    backdrop={launchScreen.backdrop}
-                    failed={Boolean(launchScreen.failure)}
-                    error={launchScreen.failure?.error || null}
-                    onCancel={cancelLaunchScreen}
-                    onReport={sendLaunchReport}
-                    reportState={launchScreen.reportState}
-                />,
-                document.body,
-            )}
         </Page>
     );
 }

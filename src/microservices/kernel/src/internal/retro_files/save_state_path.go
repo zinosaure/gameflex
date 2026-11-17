@@ -5,10 +5,12 @@ package retro_files
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"gameflex/consoles"
 	"gameflex/storage"
+	"gameflex/storage/saves"
 )
 
 // LE COMPTE VIENT DU PAQUET PARTAGÉ, pas d'ici : le kernel du téléphone doit
@@ -28,9 +30,14 @@ func StateFilePath(savesRoot, username, consoleID, reference string, slot int, e
 	return stateFilePath(savesRoot, username, consoleID, reference, slot, ext)
 }
 
-// RemoveSaveFiles — exported accessor for the API handlers.
+// RemoveSaveFiles — exported accessor for the API handlers. UN EMPLACEMENT
+// EFFACÉ EMPORTE SA NOTE : celle qu'un backup porte (saves/notes.go).
 func RemoveSaveFiles(savesRoot, username, consoleID, reference string, slot int) error {
-	return removeSaveFiles(savesRoot, username, consoleID, reference, slot)
+	if err := removeSaveFiles(savesRoot, username, consoleID, reference, slot); err != nil {
+		return err
+	}
+
+	return saves.ForgetNote(filepath.Join(savesRoot, username), saves.NoteItem{Kind: saves.KindStates, Console: consoleID, Reference: reference, Slot: slot})
 }
 
 // stateFilePath — reference can contain characters unsafe for a single

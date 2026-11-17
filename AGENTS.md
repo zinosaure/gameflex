@@ -110,7 +110,7 @@ behalf.
 | The library on disk | `GAMEFLEX_LIBRARY` in `.env`: `roms/<console>/`, `bios/<console>/`, `cores/<console>/`, `saves/`, `logs/` |
 
 After the person copies files into the library by hand, GameFlex needs a refresh: **Settings ›
-Rescan all** in the web page.
+Rescan everything** in the web page.
 
 ## Report an issue
 

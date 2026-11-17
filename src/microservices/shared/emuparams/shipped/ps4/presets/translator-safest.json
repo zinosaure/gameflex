@@ -1,10 +1,10 @@
 {
   "name": "Translator, safest",
-  "description": "The translator with every shortcut off: strong memory ordering, safest flags, smallest blocks, exact floating-point maths. Slower; the first thing to try when a game stops unexpectedly.",
+  "description": "The translator with every shortcut off, slower: the first thing to try when a game stops unexpectedly.",
   "translations": {
     "fr": {
       "name": "Traducteur, le plus sûr",
-      "description": "Le traducteur sans aucun raccourci : ordre fort des accès mémoire, drapeaux les plus sûrs, plus petits blocs, calculs à virgule flottante exacts. Plus lent ; la première chose à essayer quand un jeu s'arrête de façon inattendue."
+      "description": "Le traducteur sans aucun raccourci, plus lent : la première chose à essayer quand un jeu s'arrête de façon inattendue."
     }
   },
   "override": false,

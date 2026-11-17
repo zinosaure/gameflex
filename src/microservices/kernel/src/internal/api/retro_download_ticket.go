@@ -53,18 +53,18 @@ func (server *Server) handleRetroMintDownloadTicket(w http.ResponseWriter, r *ht
 		// La bibliothèque, puis les disques internes (chantier 23) : un jeu
 		// qui n'est que sur un disque se télécharge aussi.
 		if errors.Is(err, os.ErrNotExist) {
-			writeError(w, http.StatusNotFound, "rom not found")
+			writeErrorCode(w, http.StatusNotFound, "game_not_found", "rom not found")
 
 			return
 		}
-		writeError(w, http.StatusBadRequest, "invalid rom reference: "+err.Error())
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid rom reference: "+err.Error())
 
 		return
 	}
 
 	nonce, err := downloadTickets.Mint(consoleID, ref)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "cannot mint a download ticket")
+		writeErrorCode(w, http.StatusInternalServerError, "download_failed", "cannot mint a download ticket")
 
 		return
 	}
@@ -89,7 +89,7 @@ func (server *Server) handleRetroDownloadByTicket(w http.ResponseWriter, r *http
 	if !ok {
 		// Le même refus pour un ticket inconnu, expiré ou déjà servi : dire
 		// lequel des trois apprendrait quelque chose à qui essaie.
-		writeError(w, http.StatusForbidden, "this download link is no longer valid")
+		writeErrorCode(w, http.StatusForbidden, "download_link_expired", "this download link is no longer valid")
 
 		return
 	}
@@ -130,7 +130,7 @@ func (server *Server) resolvePeerGame(
 	game, err := server.copies().Game(peerOf(entry), consoleID, reference)
 	var refused *remote.StatusError
 	if errors.As(err, &refused) {
-		writeError(w, refused.Status, refused.Message)
+		writeErrorCode(w, refused.Status, codeOr(refused.Code, "server_failed"), refused.Message)
 
 		return registeredServer{}, listing.Item{}, false
 	}
@@ -150,7 +150,7 @@ func (server *Server) relayPeerRom(w http.ResponseWriter, r *http.Request, serve
 	var refused *remote.StatusError
 	switch {
 	case errors.As(err, &refused):
-		writeError(w, refused.Status, refused.Message)
+		writeErrorCode(w, refused.Status, codeOr(refused.Code, "server_failed"), refused.Message)
 	case err != nil:
 		// Le navigateur a abandonné, ou le pair a coupé : la réponse est
 		// partie, il n'y a plus qu'à le noter.

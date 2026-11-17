@@ -140,14 +140,14 @@ RUN groupadd -f pulse-access && usermod -aG pulse-access root && usermod -aG pul
 # données sous `lichii/` (~/.config/lichii, ~/.local/share/lichii,
 # ~/.cache/lichii) et NON plus sous `eden/` : un ~/.local/share/eden lui fait
 # ouvrir son assistant d'import, une fenêtre que personne ne peut fermer
-# (l'entrypoint refuse de démarrer dans ce cas). Sa version publiée build-150
-# (17baed7, 2026-11-10), en AppImage avec son profil PGO.
+# (l'entrypoint refuse de démarrer dans ce cas). Sa version publiée build-316
+# (5a66c89, 2026-11-16), en AppImage avec son profil PGO.
 # L'éditeur publie un nom SANS version (lichii-linux-x86_64-pgo.AppImage) :
 # celui rangé dans cores/switch2/ la porte, comme pour Xenia.
 # Même valeur que emulator_file switch2 (consoles/emulators.sh) : ce build le
 # PREND là, et nulle part ailleurs (#145). Déclarée après les apt : une montée
 # de Lichii ne refait que la suite.
-ARG LICHII_FILE=Lichii-build-150-x86_64-pgo.AppImage
+ARG LICHII_FILE=Lichii-build-316-x86_64-pgo.AppImage
 
 # ── Lichii : l'AppImage officielle, DÉBALLÉE AU LANCEMENT ──
 # L'image ne la porte pas : on ne redistribue pas un émulateur (#145), et
@@ -157,7 +157,7 @@ ARG LICHII_FILE=Lichii-build-150-x86_64-pgo.AppImage
 # télécharger quand le dossier n'en a aucune. Le kernel monte `cores/` à
 # l'exécution, et l'entrypoint déballe la DERNIÈRE DÉPOSÉE dans /opt/lichii
 # (voir consoles/unpack-emulator.sh). Son fichier se range sous cores/switch2/.
-ARG LICHII_URL=https://github.com/zortos293/Lichii/releases/download/build-150/lichii-linux-x86_64-pgo.AppImage
+ARG LICHII_URL=https://github.com/zortos293/Lichii/releases/download/build-316/lichii-linux-x86_64-pgo.AppImage
 # Les versions éprouvées avec cette image (emulator_tested) : la liste informe,
 # elle ne bloque pas — toute version que reconnaît le motif se lance.
 ARG LICHII_TESTED="${LICHII_FILE}"

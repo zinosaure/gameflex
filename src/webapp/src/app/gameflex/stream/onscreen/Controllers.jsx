@@ -65,6 +65,16 @@ function mergeSavedLayout(presetButtons, savedLayout) {
 	});
 }
 
+// LE DESSIN DES BOUTONS, ET LUI SEUL (chantier 52, option A du porteur) : une page peut donner aux
+// boutons sa propre apparence — le launcher, le sien. Le placement, les dispositions enregistrées,
+// l'appui et le balayage restent ceux de ce fichier ; absent, rien ne change.
+//
+//   face({ pressed, selected, diagonal }) — le style du disque d'un bouton (couleur, fond, bordure,
+//     ombres) ; un bouton diagonal de la croix n'a pas de disque ;
+//   glyph(button) — ce qui s'écrit dedans ;
+//   thumb(dragging) — le fond du pouce d'un stick.
+export const PadLookContext = createContext(null);
+
 function PlaceButton({
 	button,
 	callback = {},
@@ -81,6 +91,7 @@ function PlaceButton({
 }) {
 	const analog = button.analog || false;
 	const diagonal = button.diagonal || false;
+	const look = useContext(PadLookContext);
 
 	// State for tracking dragging and offset for analog sticks
 	const [dragging, setDragging] = useState(false);
@@ -194,7 +205,18 @@ function PlaceButton({
 			}}
 		>
 			<div
-				style={{
+				style={look ? {
+					width: "100%",
+					height: "100%",
+					fontSize: Math.max(isLandscape ? button.xl.size * 0.4: button.size * 0.4, 15),
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "center",
+					cursor: "grab",
+					userSelect: "none",
+					touchAction: "none",
+					...look.face({ pressed: isPressed, selected: editable && isSelected, diagonal }),
+				} : {
 					// Le glyphe s'éclaircit sous l'appui : le fond pressé est
 					// de la MÊME teinte que lui, il y disparaîtrait sinon.
 					color: isPressed ? "rgba(255, 255, 255, 0.95)" : "rgba(100, 100, 100, 1)",
@@ -315,14 +337,16 @@ function PlaceButton({
 								height: thumbSize,
 								borderRadius: "50%",
 								transform: "translate(-50%, -50%)",
-								background: dragging
-									? "rgba(100, 100, 100,0.75)"
-									: "rgba(100, 100, 100,0.35)",
+								background: look
+									? look.thumb(dragging)
+									: dragging
+										? "rgba(100, 100, 100,0.75)"
+										: "rgba(100, 100, 100,0.35)",
 								pointerEvents: "none",
 							}}
 						/>
 					</div>
-				) : (
+				) : look ? look.glyph(button) : (
 					<>
 						{button.icon ? (
 							<i className={`${button.icon}`}></i>

@@ -1,0 +1,514 @@
+/* ===================================================================
+   LE LAUNCHER — CE QUE BOOTSTRAP NE FOURNIT PAS.
+   La règle d'or du porteur (2026-11-12) : « il faut toujours suivre Bootstrap. Rester avec
+   Bootstrap partout. On crée notre propre CSS seulement là où Bootstrap ne fournit pas. »
+   Bootstrap est compilé depuis ses sources avec le thème du launcher (bootstrap.scss) ; les
+   composants (boutons, badges, formulaires, listes, panneaux, onglets, alertes, cartes) sont les
+   siens, dans le JSX. Restent ici : les jetons de disposition (paysage, téléphone en paysage,
+   portrait, téléviseur — toute la taille suit l'échelle posée sur <html>, libs/layout.js), le
+   jeton de la lumière pour la manette, l'en-tête posé sur l'image, les pages qui défilent en
+   vertical et leur parallaxe, la bande en diagonale, la fiche d'un jeu et la place de son logo, le
+   liseré des textes posés sur une image, et quelques tailles fixes (un bouton rond, une vignette).
+   =================================================================== */
+:root {
+    --bg: #07080b;
+    --bg-2: #0e1117;
+    --surface: rgba(255, 255, 255, .07);
+    --text: #f3f5f9;
+    --text-2: rgba(243, 245, 249, .76);
+    --text-3: rgba(243, 245, 249, .52);
+    --accent: #4c5df2;
+    --accent-2: #8f9dff;
+    --ease: cubic-bezier(.2, .75, .2, 1);
+    --fast: 170ms;
+    --slow: 460ms;
+
+    /* LA HAUTEUR VISIBLE, jamais 100vh (CODE_CONVENTIONS.md) : 100dvh suit la
+       barre d'adresse de Chrome Android, 100vh reste pour qui ne connaît pas dvh. */
+    --gameflex-visible-height: 100vh;
+
+    /* paysage (le défaut : le web, la console portable) — dessiné pour 1366 × 768 à l'échelle 1 */
+    --safe-x: 2.5rem;
+    --safe-y: 1.1rem;
+    --top: 3.5rem;
+    --tab-fs: 1.05rem;
+    --fs: 1rem;
+    --fs-s: .85rem;
+    --name-fs: 3rem;
+    /* La hauteur d'un bouton de Bootstrap à sa taille par défaut : une ligne (1,5), son retrait, sa bordure. */
+    --btn-h: calc(2.25rem + 2px);
+    --pinfo-w: 44rem;
+    --vis-h: 100%;
+    --panel-h: 76%;
+    --panel-x: 64%;
+    --panel-top: 9%;
+    --list-w: 40%;
+    --panel-dir: column;
+    --title: 2.8rem;
+    /* Les gestes fixés en bas à gauche, et la fiche entre la barre de la bibliothèque et eux. */
+    --actions-b: calc(var(--safe-y) + 1rem + env(safe-area-inset-bottom));
+    /* L'air entre l'en-tête et la barre de la bibliothèque. */
+    --lbar-gap: 1rem;
+    /* Le haut de la fiche d'un jeu : sous la ligne du haut de la bibliothèque, jamais dessous. */
+    --sheet-top: calc(var(--top) + var(--safe-y) + var(--lbar-gap) + var(--btn-h) + .75rem);
+    --sheet-w: 46rem;
+    /* La lumière de la manette : un liseré fin autour du voile (le voile est l'anneau de Bootstrap). */
+    --focus-line: 0 0 0 1px rgba(255, 255, 255, .3);
+    --lift: 1.04;
+    --clock: inline;
+}
+@supports (height: 100dvh) {
+    :root { --gameflex-visible-height: 100dvh; }
+}
+/* LE DEMI-ÉCRAN DES MANETTES CLIPSÉES (#410) : tout le launcher tient dans le haut de l'écran, la manette
+   couvre le bas. libs/screenOrientation.js de la webapp le décide (le mode « portrait-half », une manette
+   branchée, l'écran debout) et pose `data-half-screen` et `--gameflex-covered-height` sur <html>. <body>
+   prend la hauteur visible et devient le bloc de référence de ce qui est en `position: fixed` (la page de
+   jeu, les panneaux, les avis) ; sous la manette, du noir. En plein écran, la part cachée devient une
+   bordure noire de l'élément. */
+html[data-half-screen] { --gameflex-visible-height: calc(100dvh - var(--gameflex-covered-height)); overflow: hidden; background: #000; }
+html[data-half-screen] body { height: var(--gameflex-visible-height); contain: layout; }
+html[data-half-screen] :not(:root):fullscreen { border-bottom: var(--gameflex-covered-height) solid #000; contain: layout; }
+/* LE TÉLÉPHONE EN PAYSAGE (et toute fenêtre basse) : la hauteur manque, pas la largeur. */
+:root.short {
+    --safe-x: max(1.4rem, env(safe-area-inset-left), env(safe-area-inset-right));
+    --safe-y: .6rem;
+    --top: 2.6rem;
+    --tab-fs: .92rem;
+    --name-fs: 1.75rem;
+    --pinfo-w: 40rem;
+    --panel-h: 82%;
+    --panel-x: 70%;
+    --panel-top: 8%;
+    --panel-dir: row;
+    --title: 1.8rem;
+    --actions-b: calc(var(--safe-y) + .6rem + env(safe-area-inset-bottom));
+    --lbar-gap: .55rem;
+    --sheet-w: 34rem;
+    --clock: none;
+}
+/* LE PORTRAIT DU TÉLÉPHONE : le visuel en haut, la console et ses gestes dessous. */
+:root.portrait {
+    --safe-x: 1rem;
+    --safe-y: .9rem;
+    --top: 5.3rem;
+    --tab-fs: .84rem;
+    --name-fs: 2.05rem;
+    --pinfo-w: none;
+    --vis-h: 70%;
+    --panel-h: 74%;
+    --panel-x: 50%;
+    --panel-top: 13%;
+    --panel-dir: row;
+    --title: 2rem;
+    --sheet-w: none;
+    --clock: none;
+}
+/* LE TÉLÉVISEUR (Android TV, à 3 m) : une zone sûre de 5 % contre le surbalayage, un focus très visible. */
+:root.tv {
+    --safe-x: 5vw;
+    --safe-y: 5vh;
+    --top: 3.4rem;
+    --name-fs: 2.9rem;
+    --pinfo-w: 40rem;
+    --list-w: 42%;
+    --actions-b: calc(var(--safe-y) + .4rem);
+    --sheet-w: 40rem;
+    /* À trois mètres, la même lumière, plus marquée. */
+    --bs-focus-ring-color: rgba(76, 93, 242, .72);
+    --focus-line: 0 0 0 2px rgba(255, 255, 255, .6);
+    --lift: 1.07;
+}
+
+html, body { height: 100%; -webkit-font-smoothing: antialiased; }
+body { overflow: hidden; }
+#app { position: fixed; left: 0; right: 0; top: 0; height: var(--gameflex-visible-height); overflow: hidden; background: var(--bs-body-bg); }
+[data-nav] { outline: none; -webkit-tap-highlight-color: transparent; }
+/* LA LUMIÈRE DE LA MANETTE ET DU CLAVIER, posée une fois : l'élément s'éclaire de l'anneau de
+   Bootstrap (`--bs-focus-ring-color`, l'indigo du thème) en voile intérieur — il passe aussi sur un
+   bouton clair ou une image —, un liseré fin autour, et un bouton grandit un peu. Après un toucher ou
+   un clic (`pointing`, libs/input.js), elle ne reste pas ; le clavier et la manette la ramènent. Un
+   champ garde la lumière de Bootstrap. */
+:root:not(.pointing) .is-focus:not(input):not(select):not(textarea) { box-shadow: inset 0 0 0 100vmax var(--bs-focus-ring-color), var(--focus-line); }
+:root:not(.pointing) .btn.is-focus { transform: scale(var(--lift)); }
+.btn { transition: transform var(--fast) var(--ease), box-shadow var(--fast); }
+.bi { line-height: 1; }
+
+/* UN BOUTON ROND QUI NE PORTE QU'UNE ICÔNE (ICON_BUTTON, libs/ui.js) : carré à la hauteur d'un bouton de
+   Bootstrap — Bootstrap n'a pas de bouton-icône. */
+.btn-icon { width: var(--btn-h); height: var(--btn-h); padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+
+/* L'EN-TÊTE, posé sur l'image : la marque, les onglets (nav-underline de Bootstrap), les boutons. TRANSPARENT PARTOUT,
+   son voile sombre (ce dégradé-ci, le seul) le garde lisible : sur l'image d'une console comme sur le dégradé d'une page
+   sans image (`.screen.tabbed`, plus bas ; le porteur, 2026-11-14, chantier 53, P13 : « Peut on avoir le header de la
+   même façon que sur les autres pages, en dégradé ? »). */
+.topbar { position: absolute; z-index: 20; left: 0; right: 0; top: 0; height: calc(var(--top) + var(--safe-y)); padding: var(--safe-y) var(--safe-x) 0; display: flex; align-items: center; gap: .9rem;
+    background: linear-gradient(180deg, rgba(5, 6, 9, .78), rgba(5, 6, 9, 0)); }
+.topbar .tabs { flex: 0 0 auto; min-width: 0; scrollbar-width: none; font-size: var(--tab-fs); }
+.topbar .tabs::-webkit-scrollbar { display: none; }
+.brand { display: inline-flex; align-items: center; gap: .55rem; font-size: calc(var(--tab-fs) * 1.15); font-weight: 800; white-space: nowrap; flex: 0 0 auto; margin-right: .6rem; }
+.brand .badge { font-size: .62rem; }
+/* En portrait : la marque et les boutons sur une ligne, les onglets sur la suivante, sur un fond plus dense. */
+:root.portrait .topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "brand shortcuts gear" "tabs tabs tabs"; align-items: center; row-gap: .35rem; column-gap: .6rem;
+    background: linear-gradient(180deg, rgba(5, 6, 9, .88), rgba(5, 6, 9, .6) 75%, rgba(5, 6, 9, 0)); }
+:root.portrait .topbar .brand { grid-area: brand; }
+:root.portrait .topbar .tabs { grid-area: tabs; }
+:root.portrait .topbar [data-key="shortcuts"] { grid-area: shortcuts; }
+:root.portrait .topbar [data-key="gear"] { grid-area: gear; }
+:root.portrait .topbar .spacer, :root.portrait .topbar .clock { display: none; }
+.spacer { flex: 1; }
+.clock { display: var(--clock); font-variant-numeric: tabular-nums; }
+
+/* LES ÉCRANS : une entrée, selon le sens. */
+.screen { position: absolute; inset: 0; z-index: 1; }
+.screen.in-fwd { animation: inFwd var(--slow) var(--ease) both; }
+.screen.in-back { animation: inBack var(--slow) var(--ease) both; }
+@keyframes inFwd { from { opacity: 0; transform: scale(1.035); } to { opacity: 1; transform: none; } }
+@keyframes inBack { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes inSwap { from { opacity: 0; } to { opacity: 1; } }
+
+/* ===================================================================
+   LES PAGES QUI DÉFILENT EN VERTICAL (libs/pager.js) — les consoles d'un onglet et les
+   fiches d'une bibliothèque : un visuel plein écran par page, une parallaxe, un texte qui
+   s'efface, la bande en diagonale, et les gestes fixés en bas.
+   =================================================================== */
+.screen.platforms, .screen.library { overflow: hidden; }
+.pager { position: absolute; inset: 0; z-index: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+.pslide { position: absolute; inset: 0; overflow: hidden; will-change: transform; }
+.pvis { position: absolute; left: 0; right: 0; top: 0; height: var(--vis-h); will-change: transform; }
+:root.portrait .pvis { -webkit-mask-image: linear-gradient(180deg, #000 72%, transparent); mask-image: linear-gradient(180deg, #000 72%, transparent); }
+.vis-bg { position: absolute; inset: -2%; background-size: cover; background-position: center; }
+.vis-bg.blur { filter: blur(2.4rem) brightness(.5) saturate(1.2); inset: -10%; }
+.vis-bg.photo { animation: inSwap 600ms ease both; }
+.vis-bg .wm { position: absolute; right: 4%; bottom: 18%; font-size: 7rem; font-weight: 900; color: rgba(255, 255, 255, .07); white-space: nowrap; letter-spacing: -.03em; }
+.vis-panel { position: absolute; height: var(--panel-h); aspect-ratio: 5 / 6; left: var(--panel-x); top: var(--panel-top); transform: translateX(-50%); border-radius: 1.1rem; background-size: cover; background-position: center;
+    box-shadow: 0 2rem 5rem rgba(0, 0, 0, .55), inset 0 0 0 1px rgba(255, 255, 255, .08); }
+.pshade { position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(90deg, rgba(7, 8, 11, .88) 0%, rgba(7, 8, 11, .45) 38%, rgba(7, 8, 11, 0) 62%), linear-gradient(0deg, rgba(7, 8, 11, .96) 0%, rgba(7, 8, 11, .35) 34%, rgba(7, 8, 11, 0) 55%); }
+:root.portrait .pshade { background: linear-gradient(0deg, var(--bg) 0%, rgba(7, 8, 11, .9) 34%, rgba(7, 8, 11, 0) 62%); }
+.pdim { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
+/* Le texte d'une console : en bas à gauche, au-dessus de ses gestes. */
+.pinfo { position: absolute; left: var(--safe-x); right: var(--safe-x); bottom: calc(var(--actions-b) + var(--btn-h) + 1.2rem); max-width: var(--pinfo-w); will-change: transform, opacity; }
+.ptitle { position: relative; display: flex; align-items: center; gap: .7rem; }
+.pname { margin: .3rem 0 .45rem; font-size: var(--name-fs); line-height: 1.04; font-weight: 800; letter-spacing: -.015em; text-wrap: balance; text-shadow: 0 .2rem 1.6rem rgba(0, 0, 0, .5);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pline { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .55rem; font-size: var(--fs); color: var(--text-2); font-weight: 550; position: relative; }
+.pline > span { position: relative; display: inline-flex; align-items: center; gap: .4rem; }
+.pline > span + span::before { content: "·"; color: var(--text-3); margin-right: .15rem; }
+/* L'avertissement d'une console expérimentale : du texte simple, en petit, discret. */
+.pnote { color: var(--text-2); max-width: 34rem; line-height: 1.4; text-shadow: 0 .1rem .6rem rgba(0, 0, 0, .6); }
+/* LA BANDE DES JAQUETTES (ConsoleVisual.jsx) : des panneaux inclinés côte à côte, un mince trait sombre
+   entre eux, sur un fond sombre ; l'image redressée dans chacun, recadrée. Fixe. */
+/* Elle déborde de l'écran, en haut et sur les côtés (le porteur : « que les backgrounds remplissent
+   complètement le haut et les côtés ; le bas, on peut le cacher avec l'ombre ») : plus haute (elle commence
+   au-dessus de 0, sous l'en-tête), plus large que l'écran de tan(12°) × sa hauteur de chaque côté, pour que
+   les coins inclinés des panneaux du bord tombent hors de l'écran. Moins de panneaux : ils s'élargissent. */
+/* Le débord sur chaque côté : tan(12°) × la moitié de la hauteur de la bande (1,18 × celle du visuel :
+   tout l'écran en paysage, 70 % en portrait), plus une marge. */
+.vstrip { --strip-x: calc(.125 * var(--gameflex-visible-height) + .5rem); position: absolute; top: -14%; bottom: -4%; left: calc(-1 * var(--strip-x)); right: calc(-1 * var(--strip-x)); gap: .35rem; background: #07080b; }
+/* LA BANDE REMPLIT TOUT L'ÉCRAN, en portrait aussi (le porteur, 2026-11-12 : « on peut voir le bas qui est
+   coupé ») : son visuel prend toute la hauteur, sans le masque du visuel d'une seule image ; un seul fondu,
+   posé sur toute la bande, la fait disparaître dans le fond bien au-dessus du texte — aucun bord net. */
+:root.portrait .pvis:has(> .vstrip) { height: 100%; -webkit-mask-image: none; mask-image: none; }
+.vstrip::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(7, 8, 11, 0) 40%, rgba(7, 8, 11, .75) 62%, var(--bg) 80%); }
+:root:not(.portrait) .vstrip::after { background: linear-gradient(180deg, rgba(7, 8, 11, 0) 45%, rgba(7, 8, 11, .7) 75%, var(--bg) 95%); }
+.vpanel { position: relative; flex: 1 1 0; min-width: 0; overflow: hidden; transform: skewX(-12deg); background: var(--surface); }
+.vpanel-img { position: absolute; inset: -6% -45%; transform: skewX(12deg); background-size: cover; background-position: center; animation: inSwap 400ms ease both; }
+/* LES GESTES FIXÉS EN BAS : l'action principale à gauche (Bibliothèque, Jouer), l'engrenage à droite.
+   La ligne laisse passer le doigt entre les deux (un glissé y change de page). */
+.pactions { position: absolute; z-index: 15; left: max(var(--safe-x), env(safe-area-inset-left)); right: max(var(--safe-x), env(safe-area-inset-right)); bottom: var(--actions-b); pointer-events: none; }
+.pactions > * { pointer-events: auto; }
+/* Bibliothèque et Jouer : la moitié de la ligne (w-50), 300 px au plus, jamais plus étroits que leur libellé. */
+.pactions .btn:not(.btn-icon) { max-width: 300px; min-width: fit-content; }
+
+/* LA BIBLIOTHÈQUE : la ligne du haut (retour, nom de la console, recherche) posée sur l'image. */
+.lbar { position: absolute; z-index: 18; top: calc(var(--top) + var(--safe-y) + var(--lbar-gap)); left: max(var(--safe-x), env(safe-area-inset-left)); right: max(var(--safe-x), env(safe-area-inset-right)); }
+/* Le nom de la console, en titre de la ligne : lisible sur toute image (le liseré de texte). */
+.ltitle { font-size: calc(var(--tab-fs) * 1.35); font-weight: 800; color: #fff; -webkit-text-stroke: .2em rgba(7, 8, 11, .8); paint-order: stroke fill; }
+.lstage { position: absolute; inset: 0; }
+/* La fiche tient entre la ligne du haut et la ligne du bas. Le texte, en bas à gauche, jamais coupé ;
+   le logo (HeroArt.jsx) en tête en portrait (60 % de la largeur, 20 % de la hauteur au plus), à droite
+   en paysage (35 % de la largeur, la hauteur libre au plus), ses proportions gardées. */
+.sbody { top: var(--sheet-top); bottom: calc(var(--actions-b) + var(--btn-h) + 1rem); max-width: none; overflow: hidden; }
+.stext { min-width: 0; min-height: 0; flex: 0 1 var(--sheet-w); }
+:root.portrait .stext { flex: 0 0 auto; }
+.slogo { min-width: 0; min-height: 0; }
+.slogo .flogo { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; object-position: left center; }
+:root.portrait .slogo .flogo { max-width: 60%; max-height: calc(var(--gameflex-visible-height) * .2); }
+:root:not(.portrait) .slogo .flogo { max-width: min(100%, 35vw); object-position: right center; }
+.slogo .flogo { min-height: 0; flex: 0 1 auto; }
+.sbody .htitle { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-shadow: 0 .2rem 1.6rem rgba(0, 0, 0, .5); }
+.sbody .htitle.long { font-size: calc(var(--title) * .74); }
+/* Sous le titre, NOTRE titre (avec un logo) ou ses mentions (sans logo) : deux lignes au plus. */
+.ownTitle { font-size: var(--fs-s); font-weight: 650; color: var(--text-2); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; text-shadow: 0 .1rem .6rem rgba(0, 0, 0, .6); }
+/* La série, en petit au-dessus du titre, quand elle compte deux jeux ou plus. */
+.fseries { font-size: var(--fs-s); font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); text-shadow: 0 .1rem .6rem rgba(0, 0, 0, .6); }
+.htitle { margin: 0; font-size: var(--title); line-height: 1.05; font-weight: 800; letter-spacing: -.015em; overflow-wrap: anywhere; }
+.fmeta { display: flex; flex-wrap: wrap; gap: .3rem .6rem; color: var(--text-2); margin: .8rem 0 .7rem; }
+.fmeta span + span::before { content: "·"; color: var(--text-3); margin-right: .6rem; }
+/* LE VISUEL EN TÊTE DE L'ENGRENAGE D'UN JEU (GameBanner, HeroArt.jsx) : le fond du jeu dans un 16:9 de Bootstrap
+   (`ratio`), le logo ou l'icône au centre, par-dessus — ses proportions gardées, une ombre pour se lire sur toute image ;
+   le filigrane d'un jeu sans image, à la taille de ce cadre. Une vignette d'état (une sauvegarde) : petite, au format 4:3
+   (ratio de Bootstrap). */
+.gbanner { background: var(--surface); }
+.gbanner-front { max-width: 70%; max-height: 75%; object-fit: contain; filter: drop-shadow(0 .25rem .75rem rgba(0, 0, 0, .6)); }
+.gbanner .vis-bg .wm { font-size: 3rem; bottom: 8%; }
+.thumb { width: 5.4rem; }
+
+/* LES PANNEAUX : l'offcanvas de Bootstrap — la moitié de l'écran en paysage, tout l'écran en portrait.
+   Au téléviseur, pas de rond de fermeture (Retour est sur la télécommande). */
+:root:not(.portrait) .offcanvas { --bs-offcanvas-width: 50vw; }
+:root.portrait .offcanvas { --bs-offcanvas-width: 100vw; }
+:root.tv .offcanvas .gf-panel-close { display: none; }
+/* Un QR code (libs/share-link.js, qrImage) — celui d'une partie (screens/play/Menu.jsx), l'adresse de ce serveur
+   (Réglages › Inviter) : carré, sur blanc, jamais plus large qu'un téléphone ne le lit bien. */
+.gf-qr { max-width: 18rem; }
+/* LE PANNEAU GLISSE (SidePanel.jsx) : ouvert et fermé par le launcher, il reste visible hors de l'écran avant `.show` et
+   pendant sa sortie — la transition de Bootstrap le fait entrer et sortir par la droite. */
+.offcanvas.npanel { visibility: visible; }
+/* Sous l'en-tête d'un panneau, le padding par défaut du corps et rien de plus (le porteur, chantier 53, P12 : « dans
+   search il faut laisser le padding top par défaut dans offcanvas body ») : sa première section, ou ses tuiles, ne
+   rajoutent pas leur marge du haut. */
+.npanel > .offcanvas-body > :first-child { margin-top: 0 !important; }
+
+/* LES ÉCRANS À LISTE (En direct, Réglages, Crédits) : la liste à gauche, le détail à droite ; en portrait,
+   l'un sous l'autre. Une mise en page à jetons, que la grille de Bootstrap (par largeur) ne suit pas. */
+.screen.tabbed { display: grid; overflow-x: clip; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); padding: calc(var(--top) + var(--safe-y)) var(--safe-x) var(--safe-y); }
+/* LE FOND DES PAGES SANS IMAGE (le porteur, 2026-11-14, chantier 53, P13 : « rajouter un background d'un dégradé sur les
+   pages afin qu'on puisse faire la différence avec le header ») : un dégradé léger de la couleur primaire du thème vers
+   son fond, DEPUIS LE HAUT DE L'ÉCRAN — la barre du haut, transparente, est posée dessus avec son voile, comme sur
+   l'image d'une console (« Peut on avoir le header de la même façon que sur les autres pages, en dégradé ? ») : ni
+   bande pleine, ni trait. Le contenu défile sous le bord du bas de la barre, jamais sous ses onglets. Posé une fois, ici,
+   sur les écrans à liste : les Réglages, En direct, un onglet sans console. Les écrans à image (les consoles, la
+   bibliothèque, Remote Play : `.screen.platforms`, `.screen.library`) n'en ont pas. Les variables de Bootstrap
+   (`--bs-primary-rgb`, `--bs-body-bg`) : il suit le thème. */
+.screen.tabbed { background: linear-gradient(180deg, rgba(var(--bs-primary-rgb), .2) 0%, rgba(var(--bs-primary-rgb), .07) 40%, rgba(var(--bs-primary-rgb), 0) 100%), var(--bs-body-bg); }
+.gbody { min-height: 0; position: relative; }
+.gbody.list { display: grid; grid-template-columns: var(--list-w) minmax(0, 1fr); gap: 2.4rem; }
+:root.portrait .gbody.list { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: .9rem; }
+:root.portrait .gbody.list.single { grid-template-rows: minmax(0, 1fr); }
+:root.portrait .lpanel { order: -1; }
+.lcol { overflow-y: auto; scrollbar-width: none; padding: .45rem .3rem 1rem; min-height: 0; }
+.lcol::-webkit-scrollbar { display: none; }
+.lpanel { min-width: 0; min-height: 0; display: flex; flex-direction: var(--panel-dir); align-items: center; justify-content: center; gap: 1.3rem; text-align: center; position: relative; }
+:root.short .lpanel, :root.portrait .lpanel { text-align: left; justify-content: flex-start; align-items: center; }
+.pstill { width: min(100%, 34rem); aspect-ratio: 16 / 9; border-radius: var(--bs-border-radius-lg); position: relative; overflow: hidden; flex: 0 0 auto; box-shadow: 0 1.4rem 3rem rgba(0, 0, 0, .55); background: var(--bg-2); container-type: inline-size; }
+:root.short .pstill { width: 15rem; } :root.portrait .pstill { width: 100%; }
+:root.portrait .lpanel.live { flex-direction: column; align-items: stretch; }
+.ptext { min-width: 0; display: flex; flex-direction: column; align-items: inherit; gap: .45rem; }
+.lpanel .ptext { align-items: center; }
+:root.short .lpanel .ptext, :root.portrait .lpanel .ptext { align-items: flex-start; }
+.ptext h2 { color: #fff; margin: 0; font-size: calc(var(--name-fs) * .62); line-height: 1.12; font-weight: 800; text-wrap: balance; }
+:root.portrait .ptext h2, :root.short .ptext h2 { font-size: 1.25rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pmeta { color: var(--text-2); font-size: var(--fs-s); }
+.ptext .pbtns { margin-top: .5rem; justify-content: inherit; }
+.lpanel .ptext .pbtns { justify-content: center; }
+:root.short .lpanel .ptext .pbtns, :root.portrait .lpanel .ptext .pbtns { justify-content: flex-start; }
+:root.portrait .ptext .pbtns .btn, :root.short .ptext .pbtns .btn { height: 2.4rem; padding: 0 .9rem; }
+.art { position: absolute; inset: 0; background-size: cover; background-position: center; }
+.art img, img.art { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; animation: inSwap 300ms ease both; }
+.avatar { width: 3.6rem; height: 3.6rem; }
+/* LES RÉGLAGES DANS UNE BOÎTE (SettingsPage.jsx ; le porteur, 2026-11-13 : « max-width 600px, margin auto,
+   comme l'ancienne interface ») : `w-100 mx-auto` la centrent, Bootstrap n'a pas cette largeur-là. En direct (Live.jsx)
+   pose ses sections dans la même boîte. */
+.settings-box { max-width: 600px; }
+/* LA VIDÉO D'UNE PARTIE EN DIRECT (Live.jsx, SessionVisual) : toute l'image dans la case 16:9 de sa carte, ses bandes
+   noires plutôt qu'un recadrage — la <video> de GatewayWebRTC ne se dimensionne qu'en largeur, et dépassait. */
+.live-video video { position: absolute; inset: 0; height: 100%; }
+
+/* LES ENTRÉES D'UNE LISTE (list-group, partout : les réglages, les panneaux) — active ou en lumière (le
+   porteur, 2026-11-12 : « juste le border-bottom qui change de couleur ») : ni fond ni boîte ; le trait du
+   bas indigo, qu'une ombre intérieure épaissit d'un pixel sans changer la taille. Le fond transparent et
+   la couleur du trait viennent des variables de Bootstrap (bootstrap.scss) ; une liste « flush » ne
+   donne pas de trait du haut à l'entrée active (celui que Bootstrap ajoute à une liste encadrée). Une
+   entrée qui ouvre quelque chose (NavRow.jsx, partout) : son titre en lumière passe à l'indigo clair. */
+.list-group-flush > .list-group-item.active { margin-top: 0; border-top-width: 0; box-shadow: inset 0 -1px 0 var(--bs-primary); }
+:root:not(.pointing) .list-group .list-group-item.list-group-item-action:focus, :root:not(.pointing) .list-group .list-group-item.list-group-item-action.is-focus {
+    background: transparent; border-bottom-color: var(--bs-primary); box-shadow: inset 0 -1px 0 var(--bs-primary); }
+:root:not(.pointing) .list-group .navrow.list-group-item-action:focus, :root:not(.pointing) .list-group .navrow.list-group-item-action.is-focus {
+    background: transparent; box-shadow: inset 0 -1px 0 var(--bs-primary); }
+:root:not(.pointing) .navrow:focus .navrow-title, :root:not(.pointing) .navrow.is-focus .navrow-title { color: var(--accent-2); }
+/* Une entrée qui se règle sur place (SwitchRow, NavRow.jsx) : c'est son interrupteur qui prend la lumière. */
+:root:not(.pointing) .list-group label.navrow:focus-within { background: transparent; box-shadow: inset 0 -1px 0 var(--bs-primary); }
+:root:not(.pointing) label.navrow:focus-within .navrow-title { color: var(--accent-2); }
+
+/* LA CONNEXION : un fond, le formulaire au milieu. */
+.login { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: var(--safe-y) var(--safe-x); background: radial-gradient(120% 90% at 20% 0%, #1a2150 0%, transparent 60%), var(--bg); }
+.login form { width: min(100%, 24rem); display: flex; flex-direction: column; gap: .8rem; }
+.splash { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
+
+/* LE TOAST DESCEND jusqu'au milieu du haut de l'écran, et y remonte (le porteur, 2026-11-14 : « les toasts avec slide
+   down vers le middle-top ») : toujours là, au-dessus de l'écran et transparent tant qu'il n'a rien à dire. */
+.toast.gf-toast, .toast.gf-toast:not(.show) { display: block; }
+.toast.gf-toast { opacity: 0; visibility: hidden; transform: translateY(calc(-100% - 6rem));
+    transition: transform var(--slow) var(--ease), opacity var(--slow) var(--ease), visibility 0s linear var(--slow); }
+.toast.gf-toast.show { opacity: 1; visibility: visible; transform: none;
+    transition: transform var(--slow) var(--ease), opacity var(--slow) var(--ease), visibility 0s; }
+@media (prefers-reduced-motion: reduce) { .screen.in-fwd, .screen.in-back { animation: none; } .toast.gf-toast { transition: none; } }
+
+/* LE CURSEUR DE SKELETON (Form.Range, ui/Forms.jsx) : le curseur et sa valeur côte à côte. Ce sont
+   les trois règles de skeleton/skeleton.css qui le mettent en ligne — le launcher n'importe pas cette feuille
+   entière, qui changerait le reste de ses écrans (ses focus, ses listes, ses menus). */
+.form-range-group { display: flex; align-items: center; gap: .75rem; }
+.form-range-group .form-range { flex: 1; }
+.form-range-value { width: 88px; flex-shrink: 0; text-align: center; font-family: var(--bs-font-monospace); font-size: .875rem; }
+
+/* L'ÉDITEUR DE DISPOSITION (Réglages › Manettes) : la zone où la manette à l'écran se dessine — ses
+   positions sont relatives à elle, il lui faut une hauteur (Bootstrap n'en fournit pas de cette taille). */
+.layout-stage { min-height: 26rem; }
+
+/* LA PAGE DE JEU (chantier 52, components/Play*.jsx) : la vidéo sur tout l'écran visible, noire dessous,
+   et ce qui se pose dessus. Toujours sombre, dans les deux thèmes : le fond est la vidéo, ou l'image qui
+   l'attend (le fond GameFlex de l'intro), et les textes se lisent dessus. */
+/* UN CALQUE AU-DESSUS DE L'ÉCRAN QUI L'OUVRE (chantier 53, P12 : « quand on ouvre une session, les boutons restent au
+   dessus de l'écran de lancement ») : l'écran du lancement se pose dans la fiche, la console ou En direct, dont la barre
+   du haut et les boutons ont leur rang (.topbar, .lbar, .pactions) — `$zindex-fixed` de Bootstrap (1030) le met au-dessus
+   d'eux tous, sous les panneaux (1045) et les fenêtres de Skeleton. Une fois pour toutes les pages de jeu. */
+.play { position: fixed; inset: 0; z-index: 1030; height: var(--gameflex-visible-height); background: #000; overflow: hidden; color: #fff; touch-action: none; }
+.play.fullscreen { height: 100%; }
+/* Le bouton rond d'un écran de jeu : le menu, en bas à gauche ; la croix qui annule un lancement, en haut à
+   droite. Un disque translucide (Bootstrap n'a pas de bouton de cette taille ni de cette transparence). */
+.play-round { width: 3rem; height: 3rem; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, .55); border: 1px solid rgba(255, 255, 255, .35); color: #fff; font-size: 1.4rem; transition: opacity 300ms ease; }
+.play-round:hover, .play-round:focus-visible, .play-round.is-focus { background: color-mix(in srgb, var(--accent) 70%, transparent); border-color: var(--accent-2); color: #fff; }
+/* L'écran du lancement : le fond de l'intro, la ligne des étapes en bas sur un dégradé, au-dessus de tout. */
+.play-launch { position: absolute; inset: 0; z-index: 1010; overflow: hidden; }
+.play-launch .play-line { position: absolute; left: 0; right: 0; bottom: 0; padding: 3rem 1rem max(1rem, env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; align-items: center; gap: .5rem; text-align: center; background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, .75)); }
+.play-launch .play-cancel { position: absolute; top: max(.75rem, env(safe-area-inset-top)); right: max(.75rem, env(safe-area-inset-right)); z-index: 1; }
+/* L'appui long qui ouvre le menu (L2 + Home, trois secondes) : un anneau à la place du bouton rond, qui se
+   remplit (`--hold`, de 0 à 1). */
+.play-hold { z-index: 1004; width: 3rem; height: 3rem; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, .55); color: #fff; font-size: 1.4rem; }
+.play-hold svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.play-hold circle { fill: none; stroke-width: 3; }
+.play-hold .track { stroke: rgba(255, 255, 255, .25); }
+.play-hold .fill { stroke: var(--accent-2); stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: calc(100 - var(--hold) * 100); }
+/* Les performances (screens/play/Stats.jsx) : le panneau sur un voile à 50 % et une ombre sous le texte (le fond est
+   une vidéo dont la clarté varie) ; la vue discrète sans voile, l'ombre seule, en petit. */
+.play-stats { z-index: 1001; max-height: 100%; overflow-y: auto; background: rgba(0, 0, 0, .5); text-shadow: 0 1px 2px rgba(0, 0, 0, .9); }
+.play-stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); column-gap: 2rem; row-gap: .25rem; }
+.play-stats-section { grid-column: 1 / -1; }
+.play-strip { font-size: .65rem; line-height: 14px; text-shadow: 0 0 3px #000, 0 0 1px #000, 0 1px 2px #000; font-variant-numeric: tabular-nums; pointer-events: none; }
+/* Les pastilles de l'appareil qu'on tient (sa chaleur, sa batterie), à côté du bouton du menu. */
+.play-power { width: 3rem; height: 3rem; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, .55); border: 1px solid rgba(255, 255, 255, .35); font-size: .7rem; line-height: 1.1; transition: opacity 300ms ease; }
+/* Une lettre de la manette à l'écran (libs/padLook.jsx) : en gras, un peu plus petite que l'icône. */
+.pad-letter { font-weight: 700; font-size: .8em; line-height: 1; }
+
+/* LA DIRECTION C (« tuiles et groupes », validée par le porteur le 2026-11-13 ; ui/Bricks.jsx et
+   docs/reports/2026-11-13-launcher-modeles/composants.html) : ce que Bootstrap ne fournit pas — le grand titre,
+   le groupe en conteneur arrondi et ses traits en retrait, la pastille de couleur d'une ligne, la tuile. Un seul
+   bord gauche : rien ici n'ajoute de marge à gauche d'un titre, d'un intitulé, d'un groupe ou d'un bouton. */
+/* L'EN-TÊTE D'UNE PAGE DES RÉGLAGES (Bricks.jsx, PageHeader), comme celui de la fiche des jeux : le rond de Retour et
+   le titre (`.ltitle`) sur une ligne, le fil d'Ariane sous le titre, plus petit, dans sa colonne (chantier 53, P13) — et
+   rien d'autre : pas de sous-titre. Aucun trait dessous (le porteur, 2026-11-14 : « Pas de border bottom sous le
+   titre ») ; l'écart d'un groupe (mt-4) le sépare de la première section. */
+.gf-page-header { padding-top: .9rem; }
+/* LE FIL D'ARIANE, sous le titre, PLUS PETIT (le porteur, 2026-11-14, chantier 53, P13 : « en dessous du titre et en
+   plus petit ») : 12 px, la couleur secondaire du thème ; les pages au-dessus, chacune un lien, séparées par « / ». */
+.gf-crumbs { min-width: 0; margin-top: .125rem; font-size: .75rem; line-height: 1.35; --bs-breadcrumb-divider: '/'; }
+/* Les variables de .breadcrumb se posent SUR lui : Bootstrap les y redéfinit (sa marge du bas, 1rem). */
+.gf-crumbs .breadcrumb { --bs-breadcrumb-margin-bottom: 0; --bs-breadcrumb-item-padding-x: .35rem; --bs-breadcrumb-divider-color: var(--bs-tertiary-color); flex-wrap: nowrap; overflow: hidden; }
+.gf-crumbs .breadcrumb-item { white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.gf-crumbs a { color: var(--bs-secondary-color); text-decoration: none; }
+.gf-crumbs .gf-crumb-more { color: var(--bs-tertiary-color); }
+/* QUAND MÊME REPLIÉ IL NE TIENT PAS (Crumbs) : la racine et « … » gardent leur largeur, le dernier niveau prend la place
+   qui reste et son nom passe à la ligne — sous son début, après le « / » (le séparateur devient un élément de la ligne,
+   et non plus un flottant que la seconde ligne contournerait). Jamais coupé. */
+.gf-crumbs-wrap .breadcrumb-item { flex: 0 0 auto; }
+.gf-crumbs-wrap .breadcrumb-item:last-child { display: flex; flex: 0 1 auto; white-space: normal; overflow: visible; }
+.gf-crumbs-wrap .breadcrumb-item:last-child > a { min-width: 0; overflow-wrap: anywhere; }
+/* L'intitulé d'un groupe (GROUP_HEADING, libs/ui.js) : mb-3 sous lui, mb-1 quand son aide le suit — défini ici une
+   fois, aucun appelant ne règle cet écart. */
+.gf-group-title { font-size: .8125rem; font-weight: 700; color: var(--text-2); margin-top: 0; margin-bottom: 1rem; }
+.gf-group-title:has(+ .gf-group-help) { margin-bottom: .25rem; }
+.gf-group-help { font-size: .8125rem; color: var(--text-3); margin-top: 0; }
+.gf-list { --bs-list-group-bg: transparent; --bs-list-group-border-width: 0; --bs-list-group-border-radius: 0; background: #151922; border-radius: 16px; overflow: hidden; }
+.gf-list > .list-group-item { position: relative; }
+/* LES TRAITS D'UN GROUPE (le porteur, 2026-11-14 : « quand c'est pour les liens, les divisions doivent être remplies de
+   gauche à droite ») : entre deux lignes, d'un bord à l'autre — des liens, des renseignements, des réglages qui
+   s'appliquent sur place. */
+.gf-list > .list-group-item + .list-group-item::before { content: ""; position: absolute; top: 0; right: 0; left: 0; border-top: 1px solid var(--bs-border-color); }
+/* UN GROUPE QUI SERT DE FORMULAIRE (« on n'affiche pas les lignes de division mais on garde un mb-3 ») : TOUT GROUPE QUI
+   TIENT UN CONTRÔLE — un interrupteur, un sélecteur, un champ, une glissière, un choix segmenté, des cases : un input,
+   un select, un textarea — ou le bouton d'un formulaire (SubmitRow), qu'il s'enregistre ou s'applique sur place (le
+   porteur, 2026-11-14 : « Certains formulaires ont toujours la séparation horizontale entre les form groups. Il faut
+   faire comme les autres. » ; « Dans manettes aussi il y a des traits dans le formulaire. »). Reconnu ICI, à ce qu'il
+   contient, et aucune page ne le déclare (Bricks.jsx, Rows) ; l'ancien critère (un SubmitRow, ou un <form> autour)
+   laissait des traits aux groupes qui s'appliquent sur place : le jeton à recopier, l'apparence, les manettes. Ni
+   trait, et un mb-3 (1rem) d'une ligne à l'autre comme de l'encadré à la première : une demi-marge de chaque côté de
+   chaque ligne, une autre dans l'encadré. Un interrupteur n'a jamais d'icône (« évite de mettre l'icône à gauche quand
+   c'est un Switch dans un formulaire » : il est toujours dans un formulaire, SwitchRow n'en dessine pas). Seuls les
+   groupes de liens et de renseignements gardent traits et icônes. */
+.gf-list:is(:has(> .gf-row-submit), :has(> .list-group-item :is(input, select, textarea))) { padding-block: .5rem; }
+.gf-list:is(:has(> .gf-row-submit), :has(> .list-group-item :is(input, select, textarea))) > .list-group-item { padding-block: .5rem; }
+.gf-list:is(:has(> .gf-row-submit), :has(> .list-group-item :is(input, select, textarea))) > .list-group-item::before { display: none; }
+.gf-row { display: flex; align-items: center; gap: .875rem; padding: .8rem 1rem; color: inherit; text-align: left; width: 100%; }
+.gf-row-stack { display: block; }
+.gf-row-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.gf-row-label { font-weight: 600; }
+.gf-row-help { color: var(--text-3); }
+.gf-row-value { color: var(--text-2); white-space: nowrap; }
+.gf-row-chevron { color: var(--text-3); flex: 0 0 auto; }
+/* La fine barre d'un téléchargement sous le texte de sa ligne (NavRow, `progress`) : la `progress` de Bootstrap, 4 px. */
+.gf-progress { height: 4px; margin-top: .375rem; }
+.gf-row.danger .gf-row-label { color: #ff7b7b; }
+.gf-row .form-check { margin: 0; }
+.gf-row .form-switch .form-check-input { width: 2.5em; height: 1.35em; margin-top: 0; }
+.gf-chip { width: 2.125rem; height: 2.125rem; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; background: var(--tone); color: #fff; font-size: 1.05rem; }
+/* LA PROGRESSION D'UN TÉLÉCHARGEMENT DANS SA PASTILLE (DownloadRow) : un anneau de sa teinte qui se remplit (`--p`, 0 à
+   100), le pourcentage au centre. Bootstrap n'a pas d'anneau de progression. */
+.gf-chip-progress { position: relative; background: conic-gradient(var(--tone) calc(var(--p) * 1%), #2b3240 0); font-size: .6875rem; font-weight: 700; }
+.gf-chip-progress > span { display: inline-flex; align-items: center; justify-content: center; width: calc(100% - 6px); height: calc(100% - 6px); border-radius: 8px; background: #151922; }
+.tone-indigo { --tone: #4c5df2; } .tone-teal { --tone: #12998f; } .tone-amber { --tone: #c7841b; } .tone-rose { --tone: #cc4469; }
+.tone-green { --tone: #2f9a5e; } .tone-slate { --tone: #556075; } .tone-violet { --tone: #8457e8; } .tone-sky { --tone: #2f86cf; }
+.gf-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .625rem; }
+.gf-tile { display: flex; flex-direction: column; align-items: flex-start; gap: .625rem; padding: .875rem; min-height: 5.4rem; text-align: left; color: inherit;
+    background: #151922; border: 1px solid var(--bs-border-color); }
+.gf-tile .bi { font-size: 1.35rem; color: var(--tone); }
+.gf-tile-label { font-weight: 700; line-height: 1.2; }
+.gf-tile-value { font-size: .8125rem; font-weight: 400; color: var(--text-2); }
+.gf-tile.on { background: var(--bs-primary); border-color: var(--bs-primary); color: #fff; }
+.gf-tile.on .bi { color: #fff; }
+.gf-tile.on .gf-tile-value { color: rgba(255, 255, 255, .82); }
+.gf-tile.wide { grid-column: 1 / -1; flex-direction: row; align-items: center; min-height: 0; }
+.gf-avatar { width: 2.125rem; height: 2.125rem; flex: 0 0 auto; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: .875rem; background: #2a3042; color: #fff; }
+/* LA LIGNE D'UNE LISTE VIDE (Bricks.jsx, EmptyRow) : grisée comme une ligne désactivée de Bootstrap, et rien ne s'y
+   touche. */
+.gf-row-empty { color: var(--bs-list-group-disabled-color); pointer-events: none; }
+.gf-row-empty > .gf-chip { opacity: .5; }
+/* LA RECHERCHE D'UNE LISTE (Listing) et la ligne de son résultat, un bloc (`.gf-listing-search`) que suit un trait (`hr`)
+   puis la liste (chantier 53, P12) : le bloc prend son air de lui-même — rien sous un intitulé (il a déjà mb-3), un écart
+   de groupe (mt-4) sous l'en-tête d'une page, après un autre groupe ou des tuiles, mt-3 après le reste (un bouton, des
+   onglets). Aucun appelant ne règle cette marge. */
+.gf-search { position: relative; }
+.gf-listing-search { margin-top: 1rem; }
+.gf-group-title + .gf-listing-search, .gf-group-help + .gf-listing-search { margin-top: 0; }
+.gf-page-header + .gf-listing-search, section + .gf-listing-search, .gf-tiles + .gf-listing-search { margin-top: 1.5rem; }
+/* LE FILTRE ACCOLÉ À LA RECHERCHE (Listing, `filter`), dans l'input-group de Bootstrap : la recherche de Skeleton est
+   enveloppée (Form.Feedback), et l'input-group ne range que ses enfants directs — l'enveloppe prend la place qui reste,
+   son champ perd ses coins gauches. */
+.gf-search.input-group > :last-child { flex: 1 1 auto; min-width: 0; }
+.gf-search.input-group > :last-child .form-control { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+/* La pagination de Skeleton (usePagination) : sa rangée garde ses gouttières à l'intérieur de la boîte. */
+.gf-pager .row { --bs-gutter-x: 0; margin-left: 0; margin-right: 0; }
+/* L'interrupteur de Skeleton (Form.Switch) au bord droit d'une ligne : son libellé sans marge, centré. */
+.gf-row .form-label { margin-bottom: 0; }
+.min-w-0 { min-width: 0; }
+/* Une vignette d'état en tête d'une ligne (Mes sauvegardes, le menu de la partie, Continuer) : la taille des modèles
+   (56 px). */
+.gf-row > .thumb { width: 3.5rem; }
+/* LA JAQUETTE D'UN JEU en tête de sa ligne (les jeux d'une console, les candidats d'un service ; le modèle 22) : 40 × 53. */
+.gf-row > .gf-cover { width: 2.5rem; height: 3.3125rem; flex: 0 0 auto; }
+/* La lumière d'une ligne dans un groupe : le voile de la manette, sans le trait du bas des listes à plat. */
+:root:not(.pointing) .gf-list .list-group-item.list-group-item-action:focus, :root:not(.pointing) .gf-list .list-group-item.list-group-item-action.is-focus {
+    background: color-mix(in srgb, var(--bs-primary) 22%, transparent); box-shadow: none; }
+
+
+/* LE BOUTON D'UN GROUPE, dans son encadré, après son dernier contrôle (Bricks.jsx, SubmitRow) ; sa ligne au-dessus est
+   celle de FormButton (Forms.jsx). Deux boutons du même formulaire, l'un sous l'autre, n'en ont qu'une : au-dessus du
+   premier. */
+.gf-list > .gf-row-submit { display: block; }
+.gf-row-submit + .gf-row-submit > .gf-form-button { border-top: 0 !important; padding-top: 0 !important; }

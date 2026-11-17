@@ -269,6 +269,12 @@ func (catalog *catalogState) isStale() bool {
 	stamps := catalog.stamps
 	catalog.mu.RUnlock()
 
+	return stampsChanged(stamps)
+}
+
+// stampsChanged — un des dossiers relevés a changé de date, disparu, ou est
+// réapparu.
+func stampsChanged(stamps map[string]time.Time) bool {
 	for dir, seen := range stamps {
 		info, err := os.Stat(dir)
 		if err != nil {
@@ -352,6 +358,18 @@ func CatalogScannedAt(root string) time.Time {
 	return catalog.lastScan
 }
 
+// CatalogLastScan — la même date, DE MÉMOIRE : sans regarder si un dossier a
+// changé, et sans attendre un parcours en cours. La date zéro tant que ce
+// catalogue n'a jamais été construit. C'est ce que lit la question de
+// fraîcheur d'un ami (journal 629) : elle ne réveille pas un disque endormi.
+func CatalogLastScan(root string) time.Time {
+	catalog := catalogFor(root)
+	catalog.mu.RLock()
+	defer catalog.mu.RUnlock()
+
+	return catalog.lastScan
+}
+
 // CountCatalog — le nombre de jeux par console, lu dans le MÊME catalogue que
 // la liste (#107).
 //
@@ -410,9 +428,45 @@ func ResolveCatalogRom(root, consoleID, id string) (path string, isDir bool, err
 		return "", false, os.ErrNotExist
 	}
 
+	return entryPath(root, e)
+}
+
+// CatalogPaths — le chemin de chaque jeu d'une console (référence → chemin,
+// celui de ResolveCatalogRom), lu dans le catalogue de cette racine TEL QU'IL
+// EST EN MÉMOIRE : rien n'est parcouru, et les dates de ses dossiers ne se
+// relisent qu'une fois pour tous — ResolveCatalogRom les relit à chaque jeu
+// (les ~200 dossiers de Gamebox pour chacune de ses 10 785 ROM NES : 5 s,
+// chantier 53). `current` : il est construit, et rien n'a bougé depuis ; faux,
+// il faut le refaire (ListCatalog) avant de s'y fier. Les dates jugées sont
+// celles de CES jeux, prises avec eux : une reconstruction qui croise ne fait
+// pas passer une liste d'avant pour à jour.
+func CatalogPaths(root, consoleID string) (paths map[string]string, current bool) {
+	catalog := catalogFor(root)
+	catalog.mu.RLock()
+	scanned, stamps := catalog.scanned, catalog.stamps
+	ids := catalog.byConsole[consoleID]
+	entries := make([]catalogEntry, 0, len(ids))
+	for _, id := range ids {
+		entries = append(entries, catalog.byID[id])
+	}
+	catalog.mu.RUnlock()
+
+	paths = make(map[string]string, len(entries))
+	for _, e := range entries {
+		if path, _, err := entryPath(root, e); err == nil {
+			paths[e.ID] = path
+		}
+	}
+
+	return paths, scanned && !stampsChanged(stamps)
+}
+
+// entryPath — où un jeu du catalogue de `root` vit sur le disque : son
+// dossier, ou son fichier.
+func entryPath(root string, e catalogEntry) (path string, isDir bool, err error) {
 	// Le dossier qui porte le jeu : le sien, ou celui de la console dont un
 	// port lit la ROM.
-	folder := consoleID
+	folder := e.ConsoleID
 	if e.From != "" {
 		folder = e.From
 	}

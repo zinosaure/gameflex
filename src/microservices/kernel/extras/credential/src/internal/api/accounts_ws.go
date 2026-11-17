@@ -13,14 +13,18 @@ package api
 //
 // La liste entière à chaque fois, pas un différentiel : elle tient en
 // quelques dizaines de lignes, et une liste ratée est rattrapée par la
-// suivante sans qu'on ait à rejouer quoi que ce soit.
+// suivante sans qu'on ait à rejouer quoi que ce soit. Elle nomme aussi les
+// comptes supprimés depuis peu (`deleted`), dont le kernel efface les
+// sauvegardes (deletedAccounts).
 
 import (
 	"database/sql"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sort"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -31,6 +35,64 @@ type accountEntry struct {
 	RoleLevel int               `json:"role_level"`
 	Consoles  []string          `json:"consoles"`
 	Token     accountTokenState `json:"token"`
+	// SessionGeneration — la génération des sessions du compte (chantier 55) :
+	// le kernel refuse un jeton d'une génération plus ancienne, et ferme en 1008
+	// les canaux qu'il avait ouverts avec lui.
+	SessionGeneration int `json:"session_generation"`
+	// GamesGeneration — la génération de ses parties (sessions.go) : quand elle
+	// avance — une réinitialisation, « Déconnecter tous les appareils » —, le
+	// kernel finit ses parties en cours, comme celles d'un compte supprimé.
+	GamesGeneration int `json:"games_generation"`
+}
+
+// deletedAccountsKept — combien de temps la liste nomme un compte supprimé : de
+// quoi rattraper un kernel qui redémarrait au moment de la suppression (il les
+// lit à sa première liste), ou une construction ratée qu'on corrige.
+const deletedAccountsKept = time.Hour
+
+// deletedAccounts — LES COMPTES SUPPRIMÉS, NOMMÉS AU KERNEL (le porteur,
+// 2026-11-14 : « Supprimer » — supprimer un membre supprime ses sauvegardes).
+// Le kernel range les sauvegardes, ce service l'identité : il efface celles
+// d'un compte quand la liste le DIT supprimé, jamais parce qu'un nom y manque.
+// Une base vide ou remplacée retirerait tous les comptes d'un coup, et leurs
+// sauvegardes partiraient avec ; une suppression, elle, passe par ici.
+//
+// En mémoire seulement : ce service redémarré n'en dit plus rien, et les
+// sauvegardes restent — un défaut qui ne détruit rien. Zéro-valeur utilisable.
+type deletedAccounts struct {
+	mu    sync.Mutex
+	since map[string]time.Time
+}
+
+// add — ce compte vient d'être supprimé.
+func (deleted *deletedAccounts) add(username string, at time.Time) {
+	deleted.mu.Lock()
+	defer deleted.mu.Unlock()
+
+	if deleted.since == nil {
+		deleted.since = map[string]time.Time{}
+	}
+	deleted.since[username] = at
+}
+
+// recent — les comptes supprimés depuis moins de deletedAccountsKept, par nom ;
+// les plus anciens s'oublient.
+func (deleted *deletedAccounts) recent(now time.Time) []string {
+	deleted.mu.Lock()
+	defer deleted.mu.Unlock()
+
+	names := []string{}
+	for name, at := range deleted.since {
+		if now.Sub(at) >= deletedAccountsKept {
+			delete(deleted.since, name)
+
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	return names
 }
 
 // accountTokenState — ce que le kernel doit savoir du jeton pour couper les
@@ -83,7 +145,7 @@ func (hub *accountsHub) publish(payload []byte) {
 // accountsSnapshot — la liste des comptes, telle que le kernel la reçoit.
 func (server *Server) accountsSnapshot() ([]byte, error) {
 	rows, err := server.db.Query(
-		`SELECT u.id, u.username, u.role_level, u.consoles, t.token, t.enabled, t.expires_at
+		`SELECT u.id, u.username, u.role_level, u.consoles, t.token, t.enabled, t.expires_at, u.session_generation, u.games_generation
 		 FROM users u LEFT JOIN account_tokens t ON t.user_id = u.id ORDER BY u.id`,
 	)
 	if err != nil {
@@ -100,7 +162,7 @@ func (server *Server) accountsSnapshot() ([]byte, error) {
 			enabled   sql.NullInt64
 			expiresAt sql.NullString
 		)
-		if err := rows.Scan(&entry.ID, &entry.Username, &entry.RoleLevel, &stored, &token, &enabled, &expiresAt); err != nil {
+		if err := rows.Scan(&entry.ID, &entry.Username, &entry.RoleLevel, &stored, &token, &enabled, &expiresAt, &entry.SessionGeneration, &entry.GamesGeneration); err != nil {
 			return nil, err
 		}
 		entry.Consoles = effectiveGrants(entry.RoleLevel, stored)
@@ -117,7 +179,7 @@ func (server *Server) accountsSnapshot() ([]byte, error) {
 		return nil, err
 	}
 
-	return json.Marshal(map[string]any{"type": "accounts", "accounts": accounts})
+	return json.Marshal(map[string]any{"type": "accounts", "accounts": accounts, "deleted": server.deleted.recent(time.Now())})
 }
 
 // accountsChanged — un compte ou son jeton vient de changer : la liste à jour
@@ -149,6 +211,11 @@ func (server *Server) handleAccountsWS(w http.ResponseWriter, r *http.Request) {
 
 	slot := server.accounts.subscribe()
 	defer server.accounts.unsubscribe(slot)
+	// LES MODES DÉCOUVERTE ET LES CODES (chantier 60, pairing.go), sur le même
+	// canal, dans une place à eux : une trame `pairing` ne remplace jamais une
+	// liste des comptes pas encore lue, ni l'inverse.
+	pairingSlot := server.pairing.hub.subscribe()
+	defer server.pairing.hub.unsubscribe(pairingSlot)
 
 	// La fermeture se voit en lisant : le kernel n'envoie rien d'autre.
 	gone := make(chan struct{})
@@ -167,16 +234,21 @@ func (server *Server) handleAccountsWS(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	pending := [][]byte{payload, server.PairingFrame()}
 	for {
-		conn.SetWriteDeadline(writeDeadline())
-		if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
-			return
+		for _, frame := range pending {
+			conn.SetWriteDeadline(writeDeadline())
+			if err := conn.WriteMessage(websocket.TextMessage, frame); err != nil {
+				return
+			}
 		}
 		select {
 		case <-gone:
 			return
 		case payload = <-slot:
+		case payload = <-pairingSlot:
 		}
+		pending = [][]byte{payload}
 	}
 }
 

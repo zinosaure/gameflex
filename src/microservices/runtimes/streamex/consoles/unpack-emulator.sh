@@ -7,12 +7,15 @@
 # seule, sous /gameflex/cores, et ce script y prend l'émulateur au début de
 # l'entrypoint, pour le déballer à la place que l'adaptateur connaît.
 #
-# LE DERNIER DÉPOSÉ (le porteur, 2026-10-24). Le dossier peut tenir plusieurs
-# versions : la partie prend celle qu'on a ajoutée en dernier, parmi les
-# fichiers qui répondent à GAMEFLEX_EMULATOR_PATTERN — le nom de l'éditeur, sa
-# version remplacée par `*`. C'est la date du fichier qui départage, pas son
-# nom : Citron, Eden et Xenia nomment leurs versions par un hash, qui ne se
-# classe pas. Revenir à une version, c'est supprimer la plus récente.
+# LA VERSION EN SERVICE (chantier 53, le porteur, 2026-11-13 : « Le "in use"
+# permet de choisir la version qu'on veut »). Le dossier peut tenir plusieurs
+# versions : la partie prend celle que le kernel nomme, GAMEFLEX_EMULATOR_CHOSEN
+# — celle que l'administrateur a mise en service sur l'écran de la console.
+# Sans elle (l'image lancée à la main, ou rien de choisi), celle qu'on a
+# ajoutée en dernier, parmi les fichiers qui répondent à
+# GAMEFLEX_EMULATOR_PATTERN — le nom de l'éditeur, sa version remplacée par
+# `*`. C'est la date du fichier qui départage, pas son nom : Citron, Eden et
+# Xenia nomment leurs versions par un hash, qui ne se classe pas.
 # GAMEFLEX_EMULATOR_FILE est celle testée avec cette image (emulators.sh) :
 # celle que l'écran Émulateurs télécharge quand le dossier n'en a aucune.
 #
@@ -64,11 +67,24 @@ pattern=${GAMEFLEX_EMULATOR_PATTERN:?cette image ne déclare pas GAMEFLEX_EMULAT
 dir=${GAMEFLEX_EMULATOR_DIR:?cette image ne déclare pas GAMEFLEX_EMULATOR_DIR}
 marker="$dest/.gameflex-emulator"
 
-# Le plus récent d'abord. Le motif se développe ici, sans guillemets : c'est
-# voulu. Aucun nom de fichier d'émulateur ne porte d'espace (le kernel les
-# refuse, retro_files.IsEmulatorFile).
-# shellcheck disable=SC2012,SC2086
-file=$(cd "$dir" 2>/dev/null && ls -t -- $pattern 2>/dev/null | head -n 1) || true
+# Celle que le kernel nomme, si elle est de cette image (son motif) et là ;
+# sinon le plus récent d'abord. Le motif se développe ici, sans guillemets :
+# c'est voulu. Aucun nom de fichier d'émulateur ne porte d'espace (le kernel
+# les refuse, retro_files.IsEmulatorFile).
+file=""
+chosen=${GAMEFLEX_EMULATOR_CHOSEN:-}
+if [ -n "$chosen" ]; then
+    # shellcheck disable=SC2254
+    case "$chosen" in
+        */*) ;;
+        $pattern) [ -f "$dir/$chosen" ] && file=$chosen ;;
+    esac
+    [ -n "$file" ] || echo "[entry] WARNING: $chosen (version in service) is not in ${dir#/gameflex/} — taking the newest" >&2
+fi
+if [ -z "$file" ]; then
+    # shellcheck disable=SC2012,SC2086
+    file=$(cd "$dir" 2>/dev/null && ls -t -- $pattern 2>/dev/null | head -n 1) || true
+fi
 
 # LE KERNEL REFUSE DÉJÀ LA PARTIE quand aucun ne s'y trouve (requireEmulator) :
 # ce message ne se lit que si l'on lance l'image à la main, ou si le fichier a

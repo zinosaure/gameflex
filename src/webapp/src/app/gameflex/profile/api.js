@@ -319,3 +319,25 @@ export function removeRemoteMount(token, id) {
         headers: authHeaders(token),
     });
 }
+
+// LES COMPTES DES SERVICES DE MÉTADONNÉES (chantier 49) — IGDB et SteamGridDB.
+// La liste ne rend que les champs remplis, jamais leurs valeurs ; un champ vide
+// envoyé garde la valeur enregistrée.
+export function listMetadataServices(token) {
+    return authApi("/api/v1/metadata-services", { headers: authHeaders(token) });
+}
+
+export function saveMetadataService(token, service, fields) {
+    return authApi(`/api/v1/metadata-services/${service}`, {
+        method: "PUT",
+        headers: { ...jsonHeaders, ...authHeaders(token) },
+        body: JSON.stringify({ fields }),
+    });
+}
+
+export function removeMetadataService(token, service) {
+    return authApi(`/api/v1/metadata-services/${service}`, {
+        method: "DELETE",
+        headers: authHeaders(token),
+    });
+}

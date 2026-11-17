@@ -79,8 +79,7 @@ export function clearStreamBase() {
  *
  * Distinct de `serverOrigin()`, qui rend aussi l'adresse déclarée par
  * l'application : celle-ci répond « est-ce que je parle à quelqu'un
- * d'AUTRE ? », et c'est une question différente — voir buildIceServers, où
- * s'être trompé de question coûtait toute la vidéo.
+ * d'AUTRE ? », et c'est une question différente.
  */
 export function streamHostOrigin() {
     return streamBase;

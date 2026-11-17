@@ -75,6 +75,10 @@ func Redact(text string) string {
 // information, à ceci près que la valeur des paramètres sensibles est
 // masquée. Écrit en `net/http` pur pour qu'aucun service n'hérite d'une
 // dépendance de plus en s'en servant.
+//
+// Son message, HTTPMessage, est ce que le réglage des journaux reconnaît
+// (Settings.HTTP) : les requêtes s'écrivent dans le fichier, ou non, à part
+// des niveaux.
 func HTTPLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
@@ -82,7 +86,7 @@ func HTTPLogger(next http.Handler) http.Handler {
 
 		next.ServeHTTP(recorder, r)
 
-		slog.Info("http",
+		slog.Info(HTTPMessage,
 			"method", r.Method,
 			"path", Redact(r.URL.RequestURI()),
 			"from", r.RemoteAddr,
@@ -92,6 +96,9 @@ func HTTPLogger(next http.Handler) http.Handler {
 		)
 	})
 }
+
+// HTTPMessage — le message d'une ligne du journal d'accès.
+const HTTPMessage = "http"
 
 // statusRecorder retient ce que le handler a répondu — un `ResponseWriter` ne
 // le rend pas.

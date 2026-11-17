@@ -11,23 +11,13 @@ import (
 // handlePresenceWS upgrades the presence WebSocket. The JWT travels in the
 // query string (browsers cannot set headers on a WS handshake). Invalid
 // tokens close the connection with code 1008, like the Python service.
+//
+// PAR LoadToken DEPUIS LE CHANTIER 55 : la présence lisait le jeton et la ligne
+// elle-même, sans la règle du jeton de compte ni la génération des sessions — un
+// compte réinitialisé y restait en ligne. Elle juge désormais comme toutes les
+// routes du service.
 func (server *Server) handlePresenceWS(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	claims, err := auth.ParseToken(server.config.JWTSecret, token)
-	if err != nil {
-		server.rejectPresence(w, r)
-		return
-	}
-
-	var principal auth.Principal
-	principal.ID, err = claimsUserID(claims)
-	if err != nil {
-		server.rejectPresence(w, r)
-		return
-	}
-	err = server.db.QueryRow(
-		`SELECT id, username, display_name, role_level FROM users WHERE id = ?`, principal.ID,
-	).Scan(&principal.ID, &principal.Username, &principal.DisplayName, &principal.RoleLevel)
+	principal, err := auth.LoadToken(server.db, server.config.JWTSecret, r.URL.Query().Get("token"))
 	if err != nil {
 		server.rejectPresence(w, r)
 		return

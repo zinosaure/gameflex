@@ -1,10 +1,10 @@
 {
   "name": "Performance",
-  "description": "The most frames per second for a phone: shaders in the background, no accurate barriers, no vertical sync. A few games may flicker.",
+  "description": "The most frames per second for a phone: background shaders, no accurate barriers, no vertical sync; a few games may flicker.",
   "translations": {
     "fr": {
       "name": "Performance",
-      "description": "Le plus d'images par seconde pour un téléphone : shaders en arrière-plan, sans barrières exactes, sans synchronisation verticale. Quelques jeux peuvent clignoter."
+      "description": "Le plus d'images par seconde pour un téléphone : shaders en arrière-plan, sans barrières exactes ni synchronisation verticale ; quelques jeux peuvent clignoter."
     }
   },
   "override": false,

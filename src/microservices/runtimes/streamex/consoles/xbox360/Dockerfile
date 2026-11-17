@@ -37,7 +37,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # depuis le 2026-03-24, et ses adresses répondent 404 depuis le 2026-06-24.
 # Le nom de l'AppImage de l'éditeur ne porte pas la version : le fichier
 # rangé dans la bibliothèque, lui, la porte (consoles/emulators.sh).
-ARG XENIA_RELEASE=57cddf7
+ARG XENIA_RELEASE=f9431eb
 ARG XENIA_FILE=xenia_canary_linux-${XENIA_RELEASE}.AppImage
 # La version, pour que le journal d'une partie dise contre quoi on jouait.
 ENV XENIA_RELEASE=${XENIA_RELEASE}
@@ -90,7 +90,7 @@ RUN groupadd -f pulse-access && usermod -aG pulse-access root && usermod -aG pul
 # Xenia publie son AppImage sous un nom SANS version : celui rangé dans la
 # bibliothèque la porte (emulators.sh), et le téléchargement de l'écran
 # Émulateurs l'enregistre sous ce nom-là.
-ARG XENIA_URL=https://github.com/xenia-canary/xenia-canary/releases/download/57cddf7/xenia_canary_linux.AppImage
+ARG XENIA_URL=https://github.com/xenia-canary/xenia-canary/releases/download/f9431eb/xenia_canary_linux.AppImage
 # Les versions éprouvées avec cette image (emulator_tested) : la liste informe,
 # elle ne bloque pas — toute version que reconnaît le motif se lance.
 ARG XENIA_TESTED="${XENIA_FILE}"

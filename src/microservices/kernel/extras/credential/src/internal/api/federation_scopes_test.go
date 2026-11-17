@@ -34,12 +34,30 @@ func TestScopesAreDeduplicatedAndOrdered(t *testing.T) {
 	}
 }
 
-// LES CONSOLES SE DEMANDENT SEULES. Prêter sa bibliothèque et montrer son
-// salon sont deux décisions ; rien n'oblige à prendre la première pour avoir
-// la seconde.
-func TestDevicesCanBeGrantedAlone(t *testing.T) {
-	granted, err := parseScopes([]string{ScopeDevices})
-	if err != nil || granted != ScopeDevices {
-		t.Fatalf("parseScopes([devices]) = %q / %v, attendu %q", granted, err, ScopeDevices)
+// LE CATALOGUE EST TOUJOURS ACCORDÉ (le porteur, 2026-11-16 : « par défaut
+// les jeux sont toujours autorisé ») : demander les consoles, ou les
+// fournisseurs, seuls donne aussi les jeux. Remplace « les consoles se
+// demandent seules ».
+func TestTheCatalogIsAlwaysGranted(t *testing.T) {
+	for asked, want := range map[string]string{
+		ScopeDevices:           ScopeCatalog + "," + ScopeDevices,
+		ScopeMetadataProviders: ScopeCatalog + "," + ScopeMetadataProviders,
+	} {
+		if granted, err := parseScopes([]string{asked}); err != nil || granted != want {
+			t.Fatalf("parseScopes([%s]) = %q / %v, attendu %q", asked, granted, err, want)
+		}
+	}
+}
+
+// PARTAGER SES FOURNISSEURS DE MÉTADONNÉES EST UNE PORTÉE DE PLUS (chantier 57,
+// `#719`) : elle s'accorde avec le catalogue, se range dans l'ordre stable, et
+// rien ne la donne sans qu'on la demande.
+func TestMetadataProvidersIsGrantedOnlyWhenAsked(t *testing.T) {
+	granted, err := parseScopes([]string{ScopeMetadataProviders, ScopeCatalog})
+	if err != nil || granted != ScopeCatalog+","+ScopeMetadataProviders {
+		t.Fatalf("parseScopes = %q / %v, attendu %q", granted, err, ScopeCatalog+","+ScopeMetadataProviders)
+	}
+	if granted, _ := parseScopes([]string{ScopeCatalog, ScopeDevices}); granted != ScopeCatalog+","+ScopeDevices {
+		t.Fatalf("sans la demander, la portée apparaît : %q", granted)
 	}
 }

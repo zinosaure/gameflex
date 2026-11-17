@@ -333,3 +333,49 @@ func TestTheCatalogKnowsAGameEngine(t *testing.T) {
 		}
 	}
 }
+
+// LES CHEMINS D'UNE CONSOLE, LUS EN MÉMOIRE SEULEMENT (chantier 53) : CatalogPaths ne construit rien — un catalogue
+// jamais lu n'est pas « à jour », et le reste après l'appel ; construit, il rend les chemins de ResolveCatalogRom ; un
+// jeu déposé depuis le refait passer pour périmé, jusqu'au prochain ListCatalog.
+func TestCatalogPathsReadOnlyWhatIsInMemory(t *testing.T) {
+	resetCatalog()
+	root := t.TempDir()
+	consoleDir := filepath.Join(root, "nes")
+	if err := os.MkdirAll(consoleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(consoleDir, "Mario.nes"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeGameFolder(t, root, "nes", "Zelda", "Zelda.nes")
+
+	if paths, current := CatalogPaths(root, "nes"); current || len(paths) != 0 {
+		t.Fatalf("jamais lu : %d chemins, à jour %v", len(paths), current)
+	}
+	if paths, current := CatalogPaths(root, "nes"); current || len(paths) != 0 {
+		t.Fatalf("CatalogPaths a construit le catalogue : %d chemins, à jour %v", len(paths), current)
+	}
+
+	games, _ := ListCatalog(root, "nes", "")
+	paths, current := CatalogPaths(root, "nes")
+	if !current || len(paths) != len(games) || len(games) != 2 {
+		t.Fatalf("construit : %d chemins pour %d jeux, à jour %v", len(paths), len(games), current)
+	}
+	for _, game := range games {
+		resolved, _, err := ResolveCatalogRom(root, "nes", game.Reference)
+		if err != nil || paths[game.Reference] != resolved {
+			t.Fatalf("%s : %q, ResolveCatalogRom %q (%v)", game.Title, paths[game.Reference], resolved, err)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(consoleDir, "Metroid.nes"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, current := CatalogPaths(root, "nes"); current {
+		t.Fatal("un jeu déposé depuis : le catalogue se dit encore à jour")
+	}
+	ListCatalog(root, "nes", "")
+	if paths, current := CatalogPaths(root, "nes"); !current || len(paths) != 3 {
+		t.Fatalf("refait : %d chemins, à jour %v", len(paths), current)
+	}
+}

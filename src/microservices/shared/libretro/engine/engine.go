@@ -199,9 +199,13 @@ type Engine struct {
 	config Config
 	inputs inputs
 
-	// Fixés au chargement, lus seulement ensuite.
-	system    libretro.SystemInfo
-	info      libretro.SystemAVInfo
+	// Fixés au chargement, lus seulement ensuite. `info` garde la cadence et
+	// la fréquence du chargement : celle-ci reste la fréquence du son rendu.
+	system libretro.SystemInfo
+	info   libretro.SystemAVInfo
+	// fps — la cadence du cœur : celle du chargement, puis celle qu'il
+	// annonce (timing.go). Écrite sur le fil du moteur sous mu, lue ailleurs
+	// sous mu (OutputFPS) ; frameTime en découle, sur le fil du moteur seul.
 	fps       float64
 	frameTime time.Duration
 
@@ -238,6 +242,11 @@ type Engine struct {
 	sramLast       []byte
 	audioBuf       []int16
 	audioBufMax    int
+	// coreSampleRate — la fréquence du son du cœur, que `sound` ramène à
+	// celle du chargement ; audioFrames compte ce qui part, pour le relevé.
+	coreSampleRate float64
+	sound          soundRate
+	audioFrames    int
 	comboFrames    int
 	devicesShown   map[uint32]bool
 	rewind         rewindState
@@ -250,6 +259,9 @@ type Engine struct {
 	latestFPS   float64
 	rumble      [MaxPorts][2]uint16 // [port][0] faible, [port][1] fort
 	alive       atomic.Int64
+	// announcedTiming — la dernière cadence que le cœur a annoncée, que la
+	// boucle n'a pas encore appliquée (timing.go).
+	announcedTiming *libretro.SystemTiming
 	// aspect — Frame.Aspect, en bits de float64 : SET_GEOMETRY peut venir d'un
 	// autre fil du cœur que celui des images.
 	aspect atomic.Uint64
@@ -325,6 +337,8 @@ func (e *Engine) Done() <-chan struct{} {
 }
 
 // Info — la géométrie et la cadence que le cœur a annoncées au chargement.
+// Sa fréquence de son reste celle du son rendu, quoi que le cœur annonce
+// ensuite ; la cadence du moment est OutputFPS.
 func (e *Engine) Info() libretro.SystemAVInfo {
 	return e.info
 }
@@ -352,8 +366,11 @@ const streamFPSSlack = 2
 
 // OutputFPS — la cadence des images que le moteur rend : celle du cœur, ou la
 // cadence du flux choisie (Config.StreamFPS) quand elle est franchement plus
-// basse. C'est elle que l'appelant donne à son encodeur. Fixée au chargement.
+// basse. C'est elle que l'appelant donne à son encodeur. Elle suit la cadence
+// que le cœur annonce en cours de partie (timing.go) : la relire, pas la garder.
 func (e *Engine) OutputFPS() float64 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	if want := e.config.StreamFPS; want > 0 && want < e.fps-streamFPSSlack {
 		return want
 	}
@@ -706,6 +723,7 @@ func (e *Engine) boot() error {
 		e.info.Timing.SampleRate = 44100
 	}
 	e.info.Timing.FPS = e.fps
+	e.coreSampleRate = e.info.Timing.SampleRate
 	e.frameTime = time.Duration(float64(time.Second) / e.fps)
 	// La première image part tout de suite : le crédit commence là où il la
 	// laisse passer.
@@ -869,15 +887,20 @@ func (e *Engine) loop() {
 				e.alive.Store(time.Now().UnixNano())
 				e.captureRewind()
 			}
+			e.applyTiming()
 
 			if elapsed := time.Since(lastReport); elapsed >= 5*time.Second {
 				fps := float64(frameCount) / elapsed.Seconds()
+				// LE SON QUI PART, PAR SECONDE : la fréquence du chargement quand la
+				// boucle suit la cadence du cœur. Il aurait dit 57 600 Hz pour 48 000
+				// dans les parties PAL de LRPS2 (timing.go).
+				soundPerSecond := float64(e.audioFrames) / elapsed.Seconds()
 				if abandoned > 0 {
-					log.Printf("[engine] émulation : %d images, ~%.1f par seconde (%d abandonnée(s) — retard > %s)",
-						frameCount, fps, abandoned, catchUpLagCeiling)
+					log.Printf("[engine] émulation : %d images, ~%.1f par seconde (%d abandonnée(s) — retard > %s), son %.0f Hz",
+						frameCount, fps, abandoned, catchUpLagCeiling, soundPerSecond)
 					abandoned = 0
 				} else {
-					log.Printf("[engine] émulation : %d images, ~%.1f par seconde, %d rendues", frameCount, fps, e.frames)
+					log.Printf("[engine] émulation : %d images, ~%.1f par seconde, %d rendues, son %.0f Hz", frameCount, fps, e.frames, soundPerSecond)
 				}
 				e.mu.Lock()
 				e.latestFPS = fps
@@ -886,6 +909,7 @@ func (e *Engine) loop() {
 				lastReport = time.Now()
 				frameCount = 0
 				e.frames = 0
+				e.audioFrames = 0
 			}
 
 			if time.Since(lastSRAMFlush) >= sramFlushInterval {
@@ -1145,6 +1169,8 @@ func (e *Engine) muted() bool {
 }
 
 func (e *Engine) appendAudio(samples []int16) {
+	samples = e.sound.resample(samples)
+	e.audioFrames += len(samples) / 2
 	e.audioBuf = append(e.audioBuf, samples...)
 	if len(e.audioBuf) < e.audioBufMax {
 		return

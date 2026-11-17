@@ -4,52 +4,31 @@ import * as bs from "react-bootstrap";
 import { useTranslation } from "react-i18next";
 import Skeleton from "../../../skeleton/skeleton.js";
 import { useDownloadProgress } from "../../libs/deviceStream.js";
-import { LAUNCH_BAR_GRADIENT, LAUNCH_SCREEN_BACKGROUND } from "../../stream/shared/launch-backdrop.js";
 
 const Form = Skeleton.Form;
 
 // Full-viewport spinner — the screen every async page entry shows before
-// its data resolves (was duplicated in index.js and the streaming pages).
-//
-// `launch` — L'ASPECT DE L'ÉCRAN DE LANCEMENT, pour celui d'une partie (le
-// porteur, 2026-11-06 : « le background de GameFlex ») : son fond, et le
-// contenu en bas sur le même dégradé — le haut de l'image est au logo, et une
-// erreur posée au milieu le recouvrait.
-export function LoadingScreen({ label = null, bgColor = "black", textOnFailure = null, onFailure = null, launch = false }) {
+// its data resolves (index.js). Son aspect « lancement » et son échec sont
+// partis avec la page de jeu de la webapp (chantier 52, P8) : l'écran du
+// lancement est celui du launcher.
+export function LoadingScreen({ label = null, bgColor = "black" }) {
     const { t } = useTranslation();
 
     return (
         <div
-            className={`d-flex flex-column align-items-center ${launch ? "justify-content-end" : "justify-content-center"} text-white gap-3`}
+            className="d-flex flex-column align-items-center justify-content-center text-white gap-3"
             style={{
                 position: "fixed",
                 inset: 0,
                 width: "100vw",
                 height: "var(--gameflex-visible-height)",
                 zIndex: 3005,
-                background: launch ? LAUNCH_SCREEN_BACKGROUND : bgColor,
+                background: bgColor,
             }}
         >
-            <div
-                className={launch ? "w-100 d-flex flex-column align-items-center px-3 pb-4 pt-5" : undefined}
-                style={launch ? { background: LAUNCH_BAR_GRADIENT } : undefined}
-            >
-            {textOnFailure ? (
-                <div className="text-center">
-                    <p className="text-danger mb-3">{textOnFailure}</p>
-                    <bs.Button
-                        variant="danger"
-                        onClick={onFailure}
-                    >
-                        {t("app.returnBack")}
-                    </bs.Button>
-                </div>
-            ) : (
-                <bs.Spinner animation="border" role="status">
-                    <span className="visually-hidden">{label || t("app.loading")}</span>
-                </bs.Spinner>
-            )}
-            </div>
+            <bs.Spinner animation="border" role="status">
+                <span className="visually-hidden">{label || t("app.loading")}</span>
+            </bs.Spinner>
         </div>
     );
 }
@@ -73,8 +52,8 @@ export function Page({ label, helpText = null, helpButton = null, props = {}, ch
 }
 
 // Card frame for a settings form — label row + body. Extracted from
-// admin/Members.jsx's create/edit card so TurnConfig/Storage keep the
-// same look. `label`, `helpText` and `helpButton` are both optional (the Storage/Turn
+// admin/Members.jsx's create/edit card so the settings forms keep the
+// same look. `label`, `helpText` and `helpButton` are both optional (the Storage
 // tabs already carry their own section labels).
 export function SectionPanel({ label = null, helpText = null, helpButton = null, collapsible = false, borderless = true, children }) {
     const [isCollapsed, setCollapsed] = useState(collapsible);

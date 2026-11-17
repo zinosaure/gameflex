@@ -25,8 +25,9 @@
 # Un fichier livré dans cores/ sans sa ligne ici fait échouer assemble.py : chaque
 # livraison ajoute la sienne. Les anciennes lignes restent (Gamebox garde l'historique).
 
-ps3/rpcs3-v0.0.43-20508-8e26652c_linux64.AppImage	upstream	https://github.com/RPCS3/rpcs3@8e26652c85bb5658965fa5731d9a0309ca10b42b	-	-
+ps3/rpcs3-v0.0.43-20607-fb6737b1_linux64.AppImage	upstream	https://github.com/RPCS3/rpcs3@fb6737b1c8306ceeccb53b7fa051acfc9e641cd7	-	-
 ps3/rpcs3-0.0.43-20508-forky-r1-x86_64.zip	repackaged	https://github.com/RPCS3/rpcs3@8e26652c85bb5658965fa5731d9a0309ca10b42b	src/mobileapp/tools/assemble-appimage.sh@43050ecf src/mobileapp/tools/assemble-glibc.sh@43050ecf src/microservices/runtimes/streamex/consoles/emulators.sh@43050ecf	src/mobileapp/tools/assemble-appimage.sh ps3 x86_64
+ps3/rpcs3-0.0.43-20607-forky-r1-aarch64.zip	repackaged	https://github.com/RPCS3/rpcs3@fb6737b1c8306ceeccb53b7fa051acfc9e641cd7	src/mobileapp/tools/assemble-appimage.sh@72911402 src/mobileapp/tools/assemble-glibc.sh@72911402	src/mobileapp/tools/assemble-appimage.sh ps3 aarch64
 ps3/rpcs3-0.0.43-20508-forky-r1-aarch64.zip	repackaged	https://github.com/RPCS3/rpcs3@8e26652c85bb5658965fa5731d9a0309ca10b42b	src/mobileapp/tools/assemble-appimage.sh@43050ecf src/mobileapp/tools/assemble-glibc.sh@43050ecf	src/mobileapp/tools/assemble-appimage.sh ps3 aarch64
 ps3/rpcs3-0.0.43-20404-forky-r1-x86_64.zip	repackaged	https://github.com/RPCS3/rpcs3@e8979d31b3a22c8bc9a6eae6bdc31756eac8ee89	src/mobileapp/tools/assemble-appimage.sh@e92f5609 src/mobileapp/tools/assemble-glibc.sh@e92f5609 src/microservices/runtimes/streamex/consoles/emulators.sh@e92f5609	src/mobileapp/tools/assemble-appimage.sh ps3 x86_64
 ps3/rpcs3-0.0.43-20404-forky-r1-aarch64.zip	repackaged	https://github.com/RPCS3/rpcs3@e8979d31b3a22c8bc9a6eae6bdc31756eac8ee89	src/mobileapp/tools/assemble-appimage.sh@e92f5609 src/mobileapp/tools/assemble-glibc.sh@e92f5609	src/mobileapp/tools/assemble-appimage.sh ps3 aarch64
@@ -51,6 +52,7 @@ ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p92	ours	https://github.co
 ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p93	ours	https://github.com/zinosaure/KytyPS5@41d2131fb0612cb849e63d353ad91603762dd2cf	tools/kyty@4a231393	tools/kyty/build.sh --server
 ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p95	ours	https://github.com/zinosaure/KytyPS5@c7e5ffb749688483aff5334bc3af5acc77b35650	tools/kyty@2bc6491c	tools/kyty/build.sh --server
 ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820	ours	https://github.com/zinosaure/KytyPS5@06197cdc832e6edf6177efa32b5106df686fd833	tools/kyty@a62c569b	tools/kyty/build.sh --server
+ps5/kyty-2026-11-04+box64-d653d0ebe-forky-r12-aarch64.zip	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 https://github.com/ptitSeb/box64@d653d0ebefeba2c9abe13a5c4c13663bbd242549	tools/kyty@72911402 tools/box64@72911402 tools/box64/bundle.sh@72911402	tools/kyty/build.sh; tools/box64/build.sh; tools/box64/bundle.sh
 ps5/kyty-2026-11-04+box64-d653d0ebe-forky-r11-aarch64.zip	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 https://github.com/ptitSeb/box64@d653d0ebefeba2c9abe13a5c4c13663bbd242549	tools/kyty@83832e5f tools/box64@83832e5f tools/box64/bundle.sh@83832e5f	tools/kyty/build.sh; tools/box64/build.sh; tools/box64/bundle.sh
 ps5/kyty-2026-11-04+box64-d653d0ebe-forky-r11-x86_64.zip	repackaged	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591	src/mobileapp/tools/assemble-appimage.sh@83832e5f src/mobileapp/tools/assemble-glibc.sh@83832e5f src/microservices/runtimes/streamex/consoles/emulators.sh@83832e5f	src/mobileapp/tools/assemble-appimage.sh ps5 x86_64
 ps5/KytyPS5-2026-10-29-5eab0ec-Linux-x86_64.tar.gz	upstream	https://github.com/KytyPS5/KytyPS5@5eab0ec73855acdf776f5c0669911e2f5ddfb743	-	-
@@ -61,13 +63,15 @@ ps5/kyty_emulator-gameflex-KytyPS5-2026-10-26-597137e	ours	https://github.com/Ky
 ps5/kyty-2026-10-26+box64-d653d0ebe-forky-r1-aarch64.zip	ours	https://github.com/KytyPS5/KytyPS5@597137e8b19aa86d64710cd38064bb14a7ca3e44 https://github.com/ptitSeb/box64@d653d0ebefeba2c9abe13a5c4c13663bbd242549	tools/kyty@006bc43c tools/box64@006bc43c tools/box64/bundle.sh@e92f5609	tools/kyty/build.sh; tools/box64/build.sh; tools/box64/bundle.sh
 ps5/kyty-2026-10-26+box64-d653d0ebe-forky-r1-x86_64.zip	repackaged	https://github.com/KytyPS5/KytyPS5@597137e8b19aa86d64710cd38064bb14a7ca3e44	src/mobileapp/tools/assemble-appimage.sh@e92f5609 src/mobileapp/tools/assemble-glibc.sh@e92f5609 src/microservices/runtimes/streamex/consoles/emulators.sh@e92f5609	src/mobileapp/tools/assemble-appimage.sh ps5 x86_64
 
-switch/Eden-Linux-de7e6e01d4-amd64-clang-pgo.AppImage	upstream	https://git.eden-emu.dev/eden-emu/eden@de7e6e01d43e8cf2ec193d74fa053b0d7949955f	-	-
+switch/Eden-Linux-d85bad8924-amd64-clang-pgo.AppImage	upstream	https://git.eden-emu.dev/eden-emu/eden@d85bad89248fcae68f812d7e1c937436261404cb	-	-
+switch/eden-d85bad8924-gameflex-r1-aarch64.zip	ours	https://git.eden-emu.dev/eden-emu/eden@d85bad89248fcae68f812d7e1c937436261404cb	tools/eden@72911402 src/mobileapp/tools/assemble-appimage.sh@72911402 src/mobileapp/tools/assemble-glibc.sh@72911402	tools/eden/build.sh; src/mobileapp/tools/assemble-appimage.sh switch-eden aarch64
 switch/eden-de7e6e01d4-gameflex-r4-aarch64.zip	ours	https://git.eden-emu.dev/eden-emu/eden@de7e6e01d43e8cf2ec193d74fa053b0d7949955f	tools/eden@7394ceab src/mobileapp/tools/assemble-appimage.sh@e92f5609 src/mobileapp/tools/assemble-glibc.sh@e92f5609	tools/eden/build.sh; src/mobileapp/tools/assemble-appimage.sh switch-eden aarch64
 switch/eden-de7e6e01d4-gameflex-r4-x86_64.zip	repackaged	https://git.eden-emu.dev/eden-emu/eden@v0.2.1	src/mobileapp/tools/assemble-appimage.sh@e92f5609 src/mobileapp/tools/assemble-glibc.sh@e92f5609	src/mobileapp/tools/assemble-appimage.sh switch-eden x86_64
 switch/citron_nightly-0237a9b88-linux-x86_64_v3.AppImage	upstream	https://github.com/citron-neo/emulator@0237a9b88a5047b9940ab3b3c3412d71cf8e50be	-	-
 switch/citron-0237a9b88-forky-r3-x86_64.zip	repackaged	https://github.com/citron-neo/emulator@0237a9b88a5047b9940ab3b3c3412d71cf8e50be	src/mobileapp/tools/assemble-appimage.sh@e92f5609 src/mobileapp/tools/assemble-glibc.sh@e92f5609 src/microservices/runtimes/streamex/consoles/emulators.sh@e92f5609	src/mobileapp/tools/assemble-appimage.sh switch x86_64
 switch/citron-0237a9b88-forky-r3-aarch64.zip	repackaged	https://github.com/citron-neo/emulator@0237a9b88a5047b9940ab3b3c3412d71cf8e50be	src/mobileapp/tools/assemble-appimage.sh@e92f5609 src/mobileapp/tools/assemble-glibc.sh@e92f5609	src/mobileapp/tools/assemble-appimage.sh switch aarch64
-switch2/Lichii-build-150-x86_64-pgo.AppImage	upstream	https://github.com/zortos293/Lichii@17baed716da04fd743fbd8f9604bec96eab0a123	-	-
+switch2/Lichii-build-316-x86_64-pgo.AppImage	upstream	https://github.com/zortos293/Lichii@5a66c8959f3831aa54f8182118e1d32bfcb05f16	-	-
+switch2/lichii-build-316-forky-r1-aarch64.zip	repackaged	https://github.com/zortos293/Lichii@5a66c8959f3831aa54f8182118e1d32bfcb05f16	src/mobileapp/tools/assemble-appimage.sh@72911402 src/mobileapp/tools/assemble-glibc.sh@72911402	src/mobileapp/tools/assemble-appimage.sh switch2 aarch64
 switch2/lichii-build-150-forky-r1-aarch64.zip	repackaged	https://github.com/zortos293/Lichii@17baed716da04fd743fbd8f9604bec96eab0a123	src/mobileapp/tools/assemble-appimage.sh@c980602d src/mobileapp/tools/assemble-glibc.sh@c980602d	src/mobileapp/tools/assemble-appimage.sh switch2 aarch64
 
 wiiu/Cemu-2.6-x86_64.AppImage	upstream	https://github.com/cemu-project/Cemu@v2.6	-	-
@@ -78,7 +82,7 @@ xbox/xemu-0.8.139-x86_64.AppImage	upstream	https://github.com/xemu-project/xemu@
 xbox/xemu-0.8.139-forky-r1-x86_64.zip	repackaged	https://github.com/xemu-project/xemu@v0.8.139	src/mobileapp/tools/assemble-appimage.sh@e92f5609 src/mobileapp/tools/assemble-glibc.sh@e92f5609 src/microservices/runtimes/streamex/consoles/emulators.sh@e92f5609	src/mobileapp/tools/assemble-appimage.sh xbox x86_64
 xbox/xemu-0.8.139-forky-r1-aarch64.zip	repackaged	https://github.com/xemu-project/xemu@v0.8.139	src/mobileapp/tools/assemble-appimage.sh@e92f5609 src/mobileapp/tools/assemble-glibc.sh@e92f5609	src/mobileapp/tools/assemble-appimage.sh xbox aarch64
 
-xbox360/xenia_canary_linux-57cddf7.AppImage	upstream	https://github.com/xenia-canary/xenia-canary@57cddf7d2939b52ed91344718b9afbf4870f4087	-	-
+xbox360/xenia_canary_linux-f9431eb.AppImage	upstream	https://github.com/xenia-canary/xenia-canary@f9431eb953f850e4d566773da0295413a0f8ac03	-	-
 
 # L'HISTORIQUE DE GAMEBOX (le porteur, 2026-10-27 : il garde les anciennes versions de nos
 # constructions). Mêmes règles ; les zips y ont été recopiés le 2026-10-24 à 15:09, la date

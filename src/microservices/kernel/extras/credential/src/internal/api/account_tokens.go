@@ -120,7 +120,7 @@ func (server *Server) accountToken(userID int64, withValue bool) (accountTokenRe
 func (server *Server) handleUpdateAccountToken(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "User not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "User not found.")
 		return
 	}
 	var body struct {
@@ -135,7 +135,7 @@ func (server *Server) handleUpdateAccountToken(w http.ResponseWriter, r *http.Re
 	if body.Enabled {
 		until, known := tokenDurations[body.Duration]
 		if !known {
-			respondError(w, http.StatusBadRequest, "Choose how long the token stays valid: 1d, 1w, 1m, 3m, 6m, 1y or 2y.")
+			respondErrorCode(w, http.StatusBadRequest, "bad_request", "Choose how long the token stays valid: 1d, 1w, 1m, 3m, 6m, 1y or 2y.")
 			return
 		}
 		expiresAt = until(time.Now()).UTC().Format(time.RFC3339)
@@ -147,11 +147,11 @@ func (server *Server) handleUpdateAccountToken(w http.ResponseWriter, r *http.Re
 	}
 	result, err := server.db.Exec(`UPDATE account_tokens SET enabled = ?, expires_at = ? WHERE user_id = ?`, enabled, expiresAt, id)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {
-		respondError(w, http.StatusNotFound, "User not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "User not found.")
 		return
 	}
 	server.respondAccountToken(w, id)
@@ -164,7 +164,7 @@ func (server *Server) handleUpdateAccountToken(w http.ResponseWriter, r *http.Re
 func (server *Server) handleRegenerateAccountToken(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "User not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "User not found.")
 		return
 	}
 	result, err := server.db.Exec(
@@ -172,11 +172,11 @@ func (server *Server) handleRegenerateAccountToken(w http.ResponseWriter, r *htt
 		now(), id,
 	)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {
-		respondError(w, http.StatusNotFound, "User not found.")
+		respondErrorCode(w, http.StatusNotFound, "not_found", "User not found.")
 		return
 	}
 	server.respondAccountToken(w, id)
@@ -188,7 +188,7 @@ func (server *Server) respondAccountToken(w http.ResponseWriter, userID int64) {
 	server.accountsChanged()
 	token, err := server.accountToken(userID, true)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	respondItem(w, http.StatusOK, token)
@@ -204,19 +204,19 @@ func (server *Server) handleMyAccountToken(w http.ResponseWriter, r *http.Reques
 	}
 	token, err := server.accountToken(principal.ID, false)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	if token.Enabled {
 		token, err = server.accountToken(principal.ID, true)
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 	}
 	var stored string
 	if err := server.db.QueryRow(`SELECT consoles FROM users WHERE id = ?`, principal.ID).Scan(&stored); err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	respondItem(w, http.StatusOK, map[string]any{
@@ -233,7 +233,7 @@ func refuseFederated(w http.ResponseWriter, principal auth.Principal) bool {
 	if !principal.Federated {
 		return false
 	}
-	respondError(w, http.StatusForbidden, "A session opened with an account token cannot manage the account.")
+	respondErrorCode(w, http.StatusForbidden, "federated_session_play_only", "A session opened with an account token cannot manage the account.")
 
 	return true
 }
@@ -312,11 +312,11 @@ func (server *Server) handleFederationSession(w http.ResponseWriter, r *http.Req
 	}
 	session, account, err := server.FederatedSession(body.Token)
 	if errors.Is(err, ErrTokenRefused) {
-		respondError(w, http.StatusUnauthorized, "Invalid token.")
+		respondErrorCode(w, http.StatusUnauthorized, "auth_required", "Invalid token.")
 		return
 	}
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 	respondItem(w, http.StatusOK, map[string]any{
@@ -339,8 +339,12 @@ func (server *Server) FederatedSession(token string) (string, TokenAccount, erro
 	if err != nil {
 		return "", TokenAccount{}, err
 	}
+	var sessions int
+	if err := server.db.QueryRow(`SELECT session_generation FROM users WHERE id = ?`, account.UserID).Scan(&sessions); err != nil {
+		return "", TokenAccount{}, err
+	}
 	session, err := auth.CreateFederatedToken(server.config.JWTSecret, account.UserID, account.Username,
-		account.Generation, time.Until(account.ExpiresAt))
+		account.Generation, sessions, time.Until(account.ExpiresAt))
 	if err != nil {
 		return "", TokenAccount{}, err
 	}

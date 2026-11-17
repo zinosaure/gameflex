@@ -48,7 +48,7 @@ func (server *Server) handleSubscribe(w http.ResponseWriter, r *http.Request, pr
 			principal.ID, body.Endpoint, body.Keys.P256DH, body.Keys.Auth, now(),
 		)
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "Internal server error.")
+			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 	}
@@ -58,7 +58,7 @@ func (server *Server) handleSubscribe(w http.ResponseWriter, r *http.Request, pr
 func (server *Server) handleUnsubscribe(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	endpoint := r.URL.Query().Get("endpoint")
 	if endpoint == "" {
-		respondError(w, http.StatusBadRequest, "Missing endpoint.")
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "Missing endpoint.")
 		return
 	}
 	// Only the owning user's rows are removed — no-op otherwise.
@@ -82,11 +82,11 @@ func (server *Server) handleInvite(w http.ResponseWriter, r *http.Request, princ
 	var recipientName string
 	err := server.db.QueryRow(`SELECT id, display_name FROM users WHERE username = ?`, body.ToUsername).Scan(&recipientID, &recipientName)
 	if errors.Is(err, sql.ErrNoRows) {
-		respondError(w, http.StatusNotFound, "No account with that username.")
+		respondErrorCode(w, http.StatusNotFound, "account_unknown", "No account with that username.")
 		return
 	}
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Internal server error.")
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
 

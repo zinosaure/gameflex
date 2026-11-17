@@ -82,7 +82,7 @@ func (server *Server) handleMountListing(w http.ResponseWriter, r *http.Request)
 	// La synchronisation des sauvegardes, quand elle arrivera, ajoutera une
 	// section légitime — c'est le seul motif d'en rouvrir une.
 	if section != "roms" {
-		writeError(w, http.StatusBadRequest, "section must be roms")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "section must be roms")
 
 		return
 	}
@@ -164,20 +164,20 @@ func (server *Server) handleMountFetch(w http.ResponseWriter, r *http.Request) {
 
 	path := strings.TrimSpace(r.URL.Query().Get("path"))
 	if path == "" {
-		writeError(w, http.StatusBadRequest, "path required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "path required")
 
 		return
 	}
 
 	source, err := cachedSourceFor(mount)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeErrorCode(w, http.StatusBadGateway, "share_failed", err.Error())
 
 		return
 	}
 	opener, canOpen := source.(storage.Opener)
 	if !canOpen {
-		writeError(w, http.StatusBadGateway, "this share cannot serve files")
+		writeErrorCode(w, http.StatusBadGateway, "share_failed", "this share cannot serve files")
 
 		return
 	}
@@ -186,14 +186,14 @@ func (server *Server) handleMountFetch(w http.ResponseWriter, r *http.Request) {
 	// la source, elle, part de sa propre racine.
 	_, inside, found := strings.Cut(strings.TrimPrefix(path, "/"), "/")
 	if !found {
-		writeError(w, http.StatusBadRequest, "path must name a file inside the share")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "path must name a file inside the share")
 
 		return
 	}
 
 	body, err := opener.Open(inside)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeErrorCode(w, http.StatusBadGateway, "share_failed", err.Error())
 
 		return
 	}
@@ -223,19 +223,19 @@ func (server *Server) handleMountFetch(w http.ResponseWriter, r *http.Request) {
 func (server *Server) mountByID(w http.ResponseWriter, r *http.Request) (mountedShare, bool) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid id")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid id")
 
 		return mountedShare{}, false
 	}
 
 	mount, found, err := server.findMount(id)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeErrorCode(w, http.StatusBadGateway, "share_failed", err.Error())
 
 		return mountedShare{}, false
 	}
 	if !found {
-		writeError(w, http.StatusNotFound, "mount not found")
+		writeErrorCode(w, http.StatusNotFound, "not_found", "mount not found")
 
 		return mountedShare{}, false
 	}
@@ -271,14 +271,14 @@ func (server *Server) handleMountGameFiles(w http.ResponseWriter, r *http.Reques
 
 	path := strings.TrimSpace(r.URL.Query().Get("path"))
 	if path == "" {
-		writeError(w, http.StatusBadRequest, "path required")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "path required")
 
 		return
 	}
 
 	game, err := mountGame(mount, strings.TrimSpace(r.URL.Query().Get("consoleId")), path)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		writeErrorCode(w, http.StatusBadGateway, "share_failed", err.Error())
 
 		return
 	}
@@ -325,26 +325,26 @@ func (server *Server) handleMountImport(w http.ResponseWriter, r *http.Request) 
 		Path      string `json:"path"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "corps illisible")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "corps illisible")
 
 		return
 	}
 	consoleID := strings.ToLower(strings.TrimSpace(body.ConsoleID))
 	path := strings.TrimSpace(body.Path)
 	if consoleID == "" || path == "" {
-		writeError(w, http.StatusBadRequest, "consoleId et path sont requis")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "consoleId et path sont requis")
 
 		return
 	}
 	if !consoles.Exists(consoleID) {
-		writeError(w, http.StatusBadRequest, "console inconnue : "+consoleID)
+		writeErrorCode(w, http.StatusBadRequest, "console_unknown", "console inconnue : "+consoleID)
 
 		return
 	}
 
 	game, err := mountGame(mount, consoleID, path)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "ce partage ne l'a pas donné : "+err.Error())
+		writeErrorCode(w, http.StatusBadGateway, "share_failed", "ce partage ne l'a pas donné : "+err.Error())
 
 		return
 	}
@@ -353,8 +353,7 @@ func (server *Server) handleMountImport(w http.ResponseWriter, r *http.Request) 
 	// rapatriement depuis un pair : un seul comportement à apprendre.
 	target := filepath.Join(server.retroRomsRoot(), consoleID, game.name)
 	if _, err := os.Stat(target); err == nil {
-		writeError(w, http.StatusConflict,
-			"ce jeu existe déjà : le supprimer d'abord pour en reprendre une copie")
+		writeErrorCode(w, http.StatusConflict, "already_installed", "ce jeu existe déjà : le supprimer d'abord pour en reprendre une copie")
 
 		return
 	}
@@ -369,7 +368,7 @@ func (server *Server) handleMountImport(w http.ResponseWriter, r *http.Request) 
 			destination = filepath.Join(target, filepath.FromSlash(file.relative))
 		}
 		if err := importGameFile(file.open, destination, file.size); err != nil {
-			writeError(w, http.StatusBadGateway, "copie interrompue : "+err.Error())
+			writeErrorCode(w, http.StatusBadGateway, "share_failed", "copie interrompue : "+err.Error())
 
 			return
 		}

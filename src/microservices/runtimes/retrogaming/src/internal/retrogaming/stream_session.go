@@ -26,12 +26,14 @@ import (
 	"gameflex/consoles"
 	"gameflex/gatewayclient"
 	"gameflex/libretro"
+	"gameflex/libretro/biosdir"
 	"gameflex/libretro/engine"
 	"gameflex/retrogaming/internal/retrogaming/encoder"
 	"image"
 	"image/png"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -230,7 +232,7 @@ type streamMessage struct {
 	// picker, which the KERNEL serves (retro_files.ListBiosFiles, reading
 	// bios/<consoleId>/ — the folder is the console id, see consoles.BiosDir).
 	// Optional: empty keeps the flat BIOS root, except for a core that only
-	// reads a mirror subfolder (see resolveBiosDir's own doc).
+	// reads a mirror subfolder (see biosdir.Resolve's own doc).
 	Bios  string `json:"bios,omitempty"`
 	Error string `json:"error,omitempty"`
 	// Code — un refus que la page dit dans sa langue : « state-refused », le
@@ -501,9 +503,10 @@ type emulationSession struct {
 	// moteur gèle si l'un des deux le demande (applyPause).
 	heldPaused bool
 
-	// fps/sampleRate — la cadence et le débit de son que le cœur annonce,
-	// recopiés du moteur pour les encodeurs.
-	fps        float64
+	// sampleRate — la fréquence du son que le moteur rend, celle du
+	// chargement : il y ramène toute autre fréquence du cœur. La cadence des
+	// images, elle, change en cours de partie (un jeu PAL de LRPS2) : elle se
+	// relit au moteur (OutputFPS), jamais recopiée.
 	sampleRate float64
 
 	// audioBatchReady carries fully-accumulated batches to a single
@@ -560,7 +563,7 @@ type emulationSession struct {
 	savesRoot string
 	// biosDir is the systemDir ACTUALLY passed to libretro.InitEnvPaths —
 	// either biosRoot unchanged, or a session-scoped temp directory
-	// containing just the chosen BIOS file (see resolveBiosDir, bios.go).
+	// containing just the chosen BIOS file (see biosdir.Resolve, gameflex/libretro/biosdir).
 	// biosTempDir is only set (and only ever needs
 	// cleanup, in handleStart's own defer and shutdown()) when biosDir is
 	// that temp directory, not biosRoot itself.
@@ -578,7 +581,7 @@ type emulationSession struct {
 	// pcsx2's is `pcsx2_bios`: without an answer there it enumerates the
 	// dumps at retro_init ("Bios Found: Europe v02.20"), then refuses the
 	// game anyway at retro_load_game because nothing ever SELECTED one.
-	// Empty whenever no explicit choice was made (see resolveBiosDir).
+	// Empty whenever no explicit choice was made (see biosdir.Resolve).
 	biosFile string
 
 	// broadcastTargets holds one entry per currently-connected browser
@@ -975,7 +978,7 @@ func (s *emulationSession) handleStart(romsRoot, coresRoot, savesRoot, biosRoot,
 			s.tempRomPath = ""
 		}
 		if s.biosTempDir != "" {
-			persistBiosCompanions(s.biosRoot, s.savesRoot, s.consoleID, s.biosFile, s.biosTempDir)
+			biosdir.PersistCompanions(s.biosRoot, s.savesRoot, s.consoleID, s.biosFile, s.biosTempDir)
 			os.RemoveAll(s.biosTempDir)
 			s.biosTempDir = ""
 		}
@@ -1075,9 +1078,6 @@ func (s *emulationSession) handleStart(romsRoot, coresRoot, savesRoot, biosRoot,
 	info := eng.Info()
 	s.mu.Lock()
 	s.engine = eng
-	// LA CADENCE DES IMAGES RENDUES, pas celle du cœur : c'est elle que
-	// l'encodeur et la durée de chaque image doivent connaître (#332).
-	s.fps = eng.OutputFPS()
 	s.sampleRate = info.Timing.SampleRate
 	s.mu.Unlock()
 	// Une pause déjà demandée — un onglet caché avant le démarrage — vaut
@@ -1204,14 +1204,14 @@ func (s *emulationSession) prepareGame(system libretro.SystemInfo, game *engine.
 	// bios ("" unless the frontend's BIOS picker sent an explicit choice,
 	// see admin/GameDetailPanel's own doc) resolves to either biosRoot
 	// unchanged or a session-scoped temp dir holding just that one file —
-	// see resolveBiosDir's own doc (bios.go) for why forcing just one file
+	// see biosdir.Resolve's own doc (gameflex/libretro/biosdir) for why forcing just one file
 	// into view is what actually makes a core use it.
-	biosDir, biosTempDir, biosChoice, err := resolveBiosDir(biosRoot, savesRoot, consoleID, bios)
+	biosDir, biosTempDir, biosChoice, err := biosdir.Resolve(biosRoot, savesRoot, "", consoleID, bios)
 	if err != nil {
 		return fmt.Errorf("Failed to resolve BIOS: %v", err)
 	}
 	// LE BIOS RÉELLEMENT RETENU, pas celui qu'on a demandé — c'est la valeur
-	// que resolveBiosDir a choisie quand personne n'a choisi. Une console qui
+	// que biosdir.Resolve a choisie quand personne n'a choisi. Une console qui
 	// démarre noire à cause d'un firmware absent se diagnostique ici, et nulle
 	// part ailleurs à l'écran.
 	s.sendProgress("bios.resolved", biosChoice)
@@ -1219,7 +1219,7 @@ func (s *emulationSession) prepareGame(system libretro.SystemInfo, game *engine.
 	s.biosDir = biosDir
 	s.biosTempDir = biosTempDir
 	// LE BIOS RÉELLEMENT DÉSIGNÉ, pas seulement celui qu'on a demandé : quand
-	// personne n'a choisi, resolveBiosDir en nomme un pour les cœurs qui ne
+	// personne n'a choisi, biosdir.Resolve en nomme un pour les cœurs qui ne
 	// choisissent pas eux-mêmes (pcsx2). C'est cette valeur que GET_VARIABLE
 	// doit rendre, sinon le cœur voit les dumps et refuse quand même.
 	s.biosFile = biosChoice
@@ -1374,8 +1374,13 @@ func (s *emulationSession) startVideoEncoderOnce(w, h int) bool {
 	//
 	// Ce que ça coûte, et ce n'est pas gratuit : agrandir 256×240 vers 1080p
 	// se fait au plus proche voisin (engine.FitBGRA, au format du jeu, bandes noires autour), une image entière allouée à
-	// chaque trame, sans ajouter un pixel de détail. Le défaut reste donc la
-	// géométrie d'époque, et c'est le bon défaut.
+	// chaque trame, sans ajouter un pixel de détail.
+	//
+	// LE KERNEL POSE TOUJOURS CETTE TAILLE depuis le 2026-11-16 : le choix du
+	// joueur, ou le défaut de toutes les consoles, 540p à 30 (le porteur : « La
+	// valeur par défaut ça toujours été 540p@30 pour tout le stream settings de
+	// toutes les consoles » ; manager.normalizeLaunchSettings). La géométrie
+	// d'époque ci-dessous ne vaut plus que pour un enfant lancé sans elle.
 	chosen := false
 	if wantW, wantH, ok := chosenSize(); ok {
 		log.Printf("[retrogaming-stream] canevas: %dx%d demandé au lancement (première image %dx%d)",
@@ -1398,17 +1403,29 @@ func (s *emulationSession) startVideoEncoderOnce(w, h int) bool {
 	// consoles qui en demandent le plus. Un débit choisi dans le panneau des
 	// réglages de flux passe avant (#332) : jouer en ligne dépend de la
 	// connexion de chacun.
+	//
+	// LA CADENCE DES IMAGES RENDUES, pas celle du cœur (#332) : celle du
+	// moment. L'encodeur la garde ensuite — elle n'y règle que la part du
+	// débit de chaque image ; la durée des images, elle, suit le moteur
+	// (consumeVideoOutput).
+	fps := s.currentEngine().OutputFPS()
 	bitrate := launchSetting("GAMEFLEX_BITRATE")
 	if bitrate <= 0 {
-		bitrate = encoder.AutoBitrate(w, h, s.fps)
+		bitrate = encoder.AutoBitrate(w, h, fps)
 	}
-	log.Printf("[retrogaming-stream] creating encoder: %dx%d@%.2f bitrate=%dk", w, h, s.fps, bitrate)
-	s.videoEnc = encoder.NewVideoEncoder(w, h, s.fps, bitrate)
+	log.Printf("[retrogaming-stream] creating encoder: %dx%d@%.2f bitrate=%dk", w, h, fps, bitrate)
+	s.videoEnc = encoder.NewVideoEncoder(w, h, fps, bitrate)
 	if err := s.videoEnc.Start(); err != nil {
 		log.Printf("[retrogaming-stream] FATAL: video encoder start failed: %v", err)
 		return false
 	}
 	s.encW, s.encH = w, h
+	// La passerelle apprend le flux tel qu'il part (#759).
+	if childGatewayClient != nil {
+		if err := childGatewayClient.SetStream(w, h, int(math.Round(fps))); err != nil {
+			log.Printf("[retrogaming-stream] flux non dit à la passerelle : %v", err)
+		}
+	}
 	close(s.encoderReady)
 	return true
 }
@@ -1640,7 +1657,10 @@ func (s *emulationSession) consumeVideoOutput() {
 	case <-s.encoderReady:
 	}
 
-	frameDur := time.Duration(float64(time.Second) / s.fps)
+	// LA DURÉE D'UNE IMAGE SUIT LA CADENCE DU MOMENT : un jeu PAL de LRPS2
+	// passe de 59,94 à 50 images par seconde une fois lancé, et des images
+	// horodatées à 59,94 prendraient du retard sur le son.
+	eng := s.currentEngine()
 
 	for {
 		select {
@@ -1649,7 +1669,7 @@ func (s *emulationSession) consumeVideoOutput() {
 		case nal := <-s.videoEnc.Output:
 			dur := time.Duration(0)
 			if encoder.IsVCLNal(nal) {
-				dur = frameDur
+				dur = time.Duration(float64(time.Second) / eng.OutputFPS())
 			}
 			// ONE push to the shared transport — gatewaywebrtc fans the same
 			// NAL out to every viewer, owner, joiners and spectators alike.
@@ -2543,8 +2563,8 @@ func (s *emulationSession) shutdown() {
 	}
 	if s.biosTempDir != "" {
 		// Before the temp dir goes away — this is where a core's freshly
-		// created .NVM/.MEC still lives (see persistBiosCompanions).
-		persistBiosCompanions(s.biosRoot, s.savesRoot, s.consoleID, s.biosFile, s.biosTempDir)
+		// created .NVM/.MEC still lives (see biosdir.PersistCompanions).
+		biosdir.PersistCompanions(s.biosRoot, s.savesRoot, s.consoleID, s.biosFile, s.biosTempDir)
 		os.RemoveAll(s.biosTempDir)
 		s.biosTempDir = ""
 	}

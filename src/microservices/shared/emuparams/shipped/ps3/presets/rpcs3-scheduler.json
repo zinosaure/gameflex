@@ -1,10 +1,10 @@
 {
   "name": "RPCS3 thread scheduling",
-  "description": "RPCS3 places its threads on the processor cores itself instead of leaving it to the operating system. A single change from “Default”, to try when a game runs too slowly: compare its frame rate with that of “Default”.",
+  "description": "“Default” with RPCS3 placing its threads on the processor cores itself, to try when a game runs too slowly.",
   "translations": {
     "fr": {
       "name": "Répartition des fils par RPCS3",
-      "description": "RPCS3 place lui-même ses fils sur les cœurs du processeur au lieu de laisser faire le système d'exploitation. Un seul changement par rapport à « Par défaut », à essayer quand un jeu est trop lent : comparez ses images par seconde avec celles de « Par défaut »."
+      "description": "« Par défaut », mais RPCS3 place lui-même ses fils sur les cœurs du processeur, à essayer quand un jeu est trop lent."
     }
   },
   "override": false,

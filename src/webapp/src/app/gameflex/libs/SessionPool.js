@@ -415,9 +415,7 @@ export function useResolvedSession(sessionId, { host = null, waitingOn = null } 
         // `session` too, not just liveSession: the REST fallback can resolve
         // the session while the façade WS is down — the timer must not
         // conclude "not found" over a session it already holds. A null
-        // sessionId (keytest synthetic id still spawning its real session,
-        // see Streaming.jsx's useKeytestSessionId) must not start the clock
-        // either.
+        // sessionId must not start the clock either.
         if (!sessionId || liveSession || session || waitingOn) {
             // Et on RETIRE un verdict déjà rendu : sans ça, un « introuvable »
             // prononcé avant que l'attente ne soit déclarée resterait vrai

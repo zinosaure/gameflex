@@ -224,26 +224,6 @@ func (pool *Pool) Lookup(id string) (Session, bool) {
 	return *session, true
 }
 
-// SetPlayerCount mirrors a platform-owned live player count without
-// touching the Players slice — used by the manager bridge for retro
-// sessions, whose REAL names are added/removed by the WS relay and must
-// not be clobbered by the watchdog's count-only /status.
-func (pool *Pool) SetPlayerCount(id string, count int) {
-	pool.mu.Lock()
-	session, ok := pool.sessions[id]
-	if !ok {
-		pool.mu.Unlock()
-		return
-	}
-	session.PlayerCount = count
-	if count == 0 && session.IdleSince == nil {
-		now := time.Now()
-		session.IdleSince = &now
-	}
-	pool.mu.Unlock()
-	pool.notify()
-}
-
 // AddPlayer/RemovePlayer mirror a player joining/leaving an already-
 // registered session — this keeps Players (and therefore PlayerCount and
 // IsAlreadyPlaying) accurate as joiners come and go.

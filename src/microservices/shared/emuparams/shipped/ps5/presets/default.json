@@ -1,10 +1,10 @@
 {
   "name": "Default",
-  "description": "Kyty's occlusion queries, shader cache, unified memory and coarse shading on, and Box64's own values except two: the safest flags, which games need to start, and the call/return shortcut off.",
+  "description": "Occlusion queries, shader cache, unified memory and coarse shading on; Box64's own values but the safest flags and call/return off.",
   "translations": {
     "fr": {
       "name": "Par défaut",
-      "description": "Les requêtes d'occlusion, le cache des shaders, la mémoire unifiée et l'ombrage réduit de Kyty activés, et les valeurs de Box64 sauf deux : les drapeaux les plus sûrs, dont les jeux ont besoin pour démarrer, et l'optimisation des appels et retours désactivée."
+      "description": "Requêtes d'occlusion, cache des shaders, mémoire unifiée et ombrage réduit activés ; Box64 à ses valeurs, sauf drapeaux sûrs et appels sans optimisation."
     }
   },
   "override": false,

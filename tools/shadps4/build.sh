@@ -1,52 +1,18 @@
 #!/usr/bin/env bash
-# Construit shadPS4 avec les patchs de ce dossier, dans l'ordre de leur numéro. La
-# source : le commit de l'amont écrit dans COMMIT s'il existe — `main`, plus récent
-# que la dernière version publiée (le porteur, 2026-10-27 : le rendu de la 0.20
-# arrêtait FIFA 22) —, sinon l'étiquette que le serveur emploie (consoles/ps4/
-# Dockerfile, SHADPS4_VERSION). Le binaire remplace celui de l'AppImage de cette
-# version, et garde son nom (shadps4-gameflex-<version>) :
-#   0001 le réglage `user_vaddr_max_in_gbytes`, qui borne la plage d'adresses du
-#        jeu pour qu'elle tienne dans les 39 bits d'un téléphone (chantier 17, #367) ;
-#   0002 la souris en mode pavé tactile ne bloque plus que ses propres boutons
-#        (elle avalait le stick gauche vertical, le stick droit vertical, rond et
-#        triangle, #424) ;
-#   0003 la passe statique des patchs CPU n'a lieu que si l'un d'eux peut s'appliquer :
-#        sur un AMD avec SSE4a (Box64 en BOX64_CPUTYPE=1, comme la console), elle
-#        parcourait tout le code du jeu pour rien — 108 s pour Final Fantasy VII
-#        Remake sur le S25 (#503) ;
-#   0004 un signal du jeu n'est délivré qu'à un point sûr — dans son code, ou dans
-#        une attente émulée qui ne tient aucun verrou de l'hôte —, et relancé jusque-là
-#        sinon : les jeux Unity (IL2CPP) se figeaient au premier arrêt de leurs fils par
-#        le ramasse-miettes, suspendus au milieu du journal ou de malloc (#510) ;
-#   0005 le lecteur vidéo (AvPlayerState) relâche son verrou avant de prévenir le jeu :
-#        le rappel du jeu, sur le même fil, le reprenait (EDEADLK), et shadPS4
-#        s'arrêtait à la première vidéo de Kingdom Hearts Melody of Memory (#511) ;
-#   0006 les manettes d'un serveur DSU (cemuhook), GAMEFLEX_DSU_SERVER=<ip>:<port>,
-#        deviennent quatre manettes virtuelles de SDL, données aux joueurs 1 à 4 :
-#        celles du téléphone, dont le clavier X n'avait de touches que pour un
-#        joueur (#509). Sans la variable, rien ne change (le serveur) ;
-#   0007 le fil de service du noyau prend ses demandes AVANT de faire tourner
-#        io_context, au lieu de les effacer après : une minuterie programmée au
-#        moment où run() finissait était perdue, et le jeu l'attendait sans fin —
-#        FIFA 22 et FC 27 au démarrage, une fois sur deux (#512). Défaut de l'amont,
-#        encore sur main le 2026-10-27 ;
-#   0008 (repris de l'amont, b3d46e9) n'a plus lieu d'être : main l'a ;
-#   0009 une tâche audio (AJM) pour une instance que le jeu vient de détruire
-#        échoue (paramètre invalide) au lieu d'arrêter l'émulateur : un lot lancé
-#        avant la destruction arrivait après — FIFA 22, quand un menu coupe ses
-#        sons (#513). Encore sur main le 2026-10-27 ;
-#   0010 le tampon d'une copie couleur/profondeur a la taille de l'image, et non 128 Mo
-#        fixes : FF7 Remake y copie 256 Mio après son écran-titre, le GPU écrivait au-delà
-#        de la fin et se bloquait (#613). Défaut de l'amont, encore sur main le 2026-11-04 ;
-#   0011 readv et writev acceptent une liste vide, comme le noyau FreeBSD de la console : l'amont
-#        la refuse depuis le 2026-10-28 (EINVAL), et FC 27 ne pouvait plus sauvegarder ses
-#        réglages (#622). Encore sur main le 2026-11-05 ;
-#   0012 (repris de la demande de fusion #5580 de l'amont, encore ouverte le 2026-11-05) un
-#        saut indirect par une table, un `switch` compilé, au lieu de l'assertion qui
-#        arrêtait FC 27 (#512). À retirer quand main l'aura.
-#   0013 GAMEFLEX_UE_RENDER_HEIGHT (720, 540, 360) : la hauteur de rendu d'un jeu Unreal, par
-#        un engine.ini dans son dossier saved/, monté ailleurs : le jeu le lit, sa ligne de
-#        commande n'a pas d'effet sur PS4 (#617).
+# Construit shadPS4 depuis NOTRE FOURCHE — https://github.com/zinosaure/shadPS4 —, branche
+# `gameflex`, à la révision épinglée ci-dessous (FORK_REV) : un commit de `main` de l'amont
+# (ce7643c, du 2026-11-04 — plus récent que la dernière version publiée : le porteur, 2026-10-27,
+# le rendu de la 0.20 arrêtait FIFA 22), plus nos commits `gameflex 00NN: …`, chacun décrit dans
+# README.md par son numéro. Une seule branche : le serveur et le téléphone (sous Box64,
+# tools/box64/bundle.sh) prennent le même binaire, les réglages du téléphone sont des réglages
+# (0001) ou des variables d'environnement (0006).
+#
+# Plus de fichiers de patch depuis le 2026-11-11, comme pour Kyty (le porteur : « il faut du vrai
+# changement de code »). Changer shadPS4, c'est un commit sur la branche, poussé sur la fourche,
+# puis FORK_REV avancé ici — et son entrée dans README.md.
+#
+# Le binaire remplace celui de l'AppImage de la version du serveur (consoles/ps4/Dockerfile,
+# SHADPS4_VERSION), et en garde le nom à la livraison (shadps4-gameflex-<version>).
 #
 #   tools/shadps4/build.sh [dossier de sortie]     (défaut : ./shadps4-out)
 #
@@ -60,15 +26,16 @@
 # streamex-ps4 (trixie aussi), à la place de l'AppImage de l'amont.
 set -euo pipefail
 
+FORK=https://github.com/zinosaure/shadPS4.git
+BRANCH=gameflex
+# La révision construite ; à avancer avec la fourche (README.md).
+FORK_REV=3caec584ba4f6548ca19b4de7b8efd1339d6e996
+
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 OUT=${1:-$PWD/shadps4-out}
 CONTAINER=${SHADPS4_BUILD_CONTAINER:-gameflex-shadps4-build}
-PATCHES=("$HERE"/0*.patch)
 VERSION=$(sed -n 's/^ARG SHADPS4_VERSION=//p' "$ROOT/src/microservices/runtimes/streamex/consoles/ps4/Dockerfile")
-TAG="v.${VERSION}"
-REF=$TAG
-[ -f "$HERE/COMMIT" ] && REF=$(tr -d '[:space:]' < "$HERE/COMMIT")
 # Quelques cœurs laissés à la machine : la pile de dev et une partie en cours
 # tournent à côté.
 JOBS=${JOBS:-$(( $(nproc) > 4 ? $(nproc) - 4 : 2 ))}
@@ -80,13 +47,11 @@ if ! docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
     docker run -d --name "$CONTAINER" debian:trixie sleep infinity > /dev/null
 fi
 docker start "$CONTAINER" > /dev/null
-# Un seul fichier pour `git apply` : les patchs touchent des fichiers distincts.
-cat "${PATCHES[@]}" | docker exec -i "$CONTAINER" sh -c 'cat > /tmp/gameflex.patch'
 
-echo "shadPS4 $REF + $(cd "$HERE" && echo 0*.patch), $JOBS tâches, dans $CONTAINER"
+echo "shadPS4, fourche $BRANCH@${FORK_REV:0:12}, $JOBS tâches, dans $CONTAINER"
 # -i : le script passe par l'entrée standard ; sans lui, bash -s ne lit rien et
 # sort aussitôt, sans erreur.
-docker exec -i -e TAG="$TAG" -e REF="$REF" -e JOBS="$JOBS" "$CONTAINER" bash -s <<'EOF'
+docker exec -i -e FORK="$FORK" -e BRANCH="$BRANCH" -e FORK_REV="$FORK_REV" -e JOBS="$JOBS" "$CONTAINER" bash -s <<'EOF'
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
@@ -101,36 +66,25 @@ if ! command -v clang > /dev/null; then
         || { tail -5 /tmp/apt.log; exit 1; }
 fi
 
+# Un arbre d'une autre origine (l'ancien clone de l'éditeur plus ses patchs) se reclone.
+if [ -d /src/.git ] && [ "$(git -C /src remote get-url origin 2>/dev/null)" != "$FORK" ]; then
+    echo "→ /src n'est pas un clone de la fourche : nouveau clone"
+    rm -rf /src
+fi
 if [ ! -d /src/.git ]; then
-    git clone -q --depth 1 --branch "$TAG" --recurse-submodules --shallow-submodules \
-        https://github.com/shadps4-emu/shadPS4.git /src
+    git clone -q --depth 1 --branch "$BRANCH" --recurse-submodules --shallow-submodules \
+        "$FORK" /src
 fi
 
 cd /src
-# Un arbre vierge avant le patch : une relance ne doit pas l'appliquer deux fois.
-# Tout l'arbre suivi (0006 touche CMakeLists.txt, à la racine), et les fichiers
-# qu'un patch ajoute (0006 : src/input/gameflex_dsu.*) — pas build/, hors de src.
-git reset -q
-git checkout -q -- .
-git clean -fdq -- src
-# La source voulue (COMMIT ou l'étiquette), et ses externals : un clone superficiel
-# ne la connaît pas forcément, on va la chercher.
-git fetch -q --depth 1 origin "$REF"
-if [ "$(git rev-parse HEAD)" != "$(git rev-parse FETCH_HEAD)" ]; then
-    git checkout -q FETCH_HEAD
+# La révision voulue, et ses externals : un clone superficiel ne la connaît pas
+# forcément, on va la chercher.
+if [ "$(git rev-parse HEAD)" != "$FORK_REV" ]; then
+    git fetch -q --depth 1 origin "$FORK_REV"
+    git checkout -q --detach "$FORK_REV"
     git submodule update -q --init --recursive --depth 1
 fi
-# Une nouvelle version de l'amont peut déplacer le contexte du patch : on tente
-# alors la fusion à trois voies, et on le dit — ou on s'arrête, en le disant.
-if ! git apply /tmp/gameflex.patch 2> /tmp/apply.err; then
-    if git apply --3way /tmp/gameflex.patch 2>> /tmp/apply.err; then
-        echo "⚠ patch appliqué par fusion à trois voies sur $REF : relire (docker exec <conteneur> git -C /src diff)" >&2
-    else
-        echo "✗ le patch ne s'applique plus sur $REF — à rebaser (README.md) :" >&2
-        cat /tmp/apply.err >&2
-        exit 1
-    fi
-fi
+git status --short | grep -q . && { echo "✗ /src a des modifications locales : les ranger avant de construire" >&2; git status --short | head; exit 1; }
 mkdir -p build
 # SCAN_FOR_MODULES=OFF : sans lui, CMake cherche clang-scan-deps (paquet
 # clang-tools) pour des modules C++20 que shadPS4 n'emploie pas.
@@ -142,4 +96,4 @@ cmake --build build --parallel "$JOBS"
 EOF
 
 docker cp "$CONTAINER:/src/build/shadps4" "$OUT/shadps4"
-echo "→ $OUT/shadps4 ($(du -h "$OUT/shadps4" | cut -f1) — shadPS4 $REF et ses patchs)"
+echo "→ $OUT/shadps4 ($(du -h "$OUT/shadps4" | cut -f1) — fourche $BRANCH@${FORK_REV:0:12} ; à livrer sous le nom shadps4-gameflex-$VERSION)"

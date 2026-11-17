@@ -9,6 +9,7 @@ import (
 	"time"
 
 	sharedauth "gameflex/auth"
+	"gameflex/kernel/internal/docker"
 	"gameflex/kernel/internal/registry"
 )
 
@@ -26,7 +27,7 @@ func (server *Server) sessionSecret(next http.HandlerFunc) http.HandlerFunc {
 		presented := r.Header.Get("X-Internal-Secret")
 		if !sharedauth.SameSecret(presented, server.config.InternalSecret) &&
 			!sharedauth.SameSecret(presented, sharedauth.SessionSecret(server.config.InternalSecret, r.PathValue("id"))) {
-			writeError(w, http.StatusUnauthorized, "invalid or missing internal secret")
+			writeErrorCode(w, http.StatusUnauthorized, "auth_required", "invalid or missing internal secret")
 			return
 		}
 		next(w, r)
@@ -45,7 +46,7 @@ func (server *Server) handleInternalUnregister(w http.ResponseWriter, r *http.Re
 func (server *Server) handleInternalLookup(w http.ResponseWriter, r *http.Request) {
 	session, ok := server.pool.Lookup(r.PathValue("id"))
 	if !ok {
-		writeError(w, http.StatusNotFound, "session not found")
+		writeErrorCode(w, http.StatusNotFound, "session_not_found", "session not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, session)
@@ -58,7 +59,7 @@ func (server *Server) handleInternalPlayers(w http.ResponseWriter, r *http.Reque
 		ReleasePad bool   `json:"releasePad"` // true = graceful leave, pad frees now
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Username == "" {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		return
 	}
 
@@ -80,7 +81,7 @@ func (server *Server) handleInternalSpectators(w http.ResponseWriter, r *http.Re
 		Join     bool   `json:"join"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		return
 	}
 
@@ -100,7 +101,7 @@ func (server *Server) handleInternalPad(w http.ResponseWriter, r *http.Request) 
 		Username string `json:"username"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Username == "" || body.Pad < 1 {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid request body")
 		return
 	}
 
@@ -189,7 +190,7 @@ func (server *Server) ownedGameGoesOn(username string) (registry.Session, []stri
 func (server *Server) handleInternalIsAlreadyPlaying(w http.ResponseWriter, r *http.Request) {
 	sessionID, already := server.alreadyPlaying(r.PathValue("username"))
 	if !already {
-		writeError(w, http.StatusNotFound, "player has no active session")
+		writeErrorCode(w, http.StatusNotFound, "session_not_found", "player has no active session")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"session_id": sessionID})
@@ -352,7 +353,7 @@ func sessionHasSpectator(session registry.Session, username string) bool {
 func (server *Server) handlePublicSession(w http.ResponseWriter, r *http.Request) {
 	session, found := server.pool.Lookup(r.PathValue("id"))
 	if !found {
-		writeError(w, http.StatusNotFound, "session not found")
+		writeErrorCode(w, http.StatusNotFound, "session_not_found", "session not found")
 		return
 	}
 	session = server.enrichSessions([]registry.Session{session}, facadeViewer{forceSpectate: true})[0]
@@ -363,6 +364,27 @@ func (server *Server) handlePublicSession(w http.ResponseWriter, r *http.Request
 	// on the cast receiver: it fell into the remoteplay fallback branch and
 	// the viewer offer hit "session id is required").
 	writeJSON(w, http.StatusOK, session)
+}
+
+// handleSessionBoot — POST /internal/sessions/{id}/boot : un child dit où en est son démarrage (« booting », l'avancée
+// d'un déballage) ou qu'il est prêt (gameflex/session.ReportBoot). Le lancement qui l'attend le reçoit
+// (manager.ReportBoot) ; aucun ne l'attend : 404. C'est ce qui remplace le `/status` que le kernel sondait chaque
+// seconde pendant un lancement (#751, `#262`).
+func (server *Server) handleSessionBoot(w http.ResponseWriter, r *http.Request) {
+	var report docker.BootReport
+	if err := json.NewDecoder(r.Body).Decode(&report); err != nil || (report.State != "ready" && report.State != "booting") {
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid boot report")
+		return
+	}
+	if server.manager == nil || !server.manager.ReportBoot(r.PathValue("id"), report) {
+		writeErrorCode(w, http.StatusNotFound, "session_not_found", "no launch waits for this session")
+		return
+	}
+	if report.State == "ready" {
+		slog.Info("child ready (pushed)", "session_id", r.PathValue("id"))
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"received": true})
 }
 
 // handleSessionMirror receives what a child-managed session says about
@@ -376,7 +398,7 @@ func (server *Server) handleSessionMirror(w http.ResponseWriter, r *http.Request
 
 	var snapshot registry.MirrorSnapshot
 	if err := json.NewDecoder(r.Body).Decode(&snapshot); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid snapshot")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "invalid snapshot")
 		return
 	}
 

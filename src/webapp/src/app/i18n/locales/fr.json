@@ -9,7 +9,6 @@
         "overwrite": "Remplacer",
         "cancel": "Annuler",
         "delete": "Supprimer",
-        "returnBack": "Retour",
         "yes": "Oui",
         "no": "Non",
         "download": "Téléchargement"
@@ -18,8 +17,7 @@
         "retrogaming": "Rétrogaming",
         "remotePlay": "Remote Play",
         "streaming": "Streaming",
-        "streamex": "Streamex",
-        "keytest": "Test des touches"
+        "streamex": "Streamex"
     },
     "auth": {
         "login": "Connexion",
@@ -442,34 +440,6 @@
             "noLine": "Aucune ligne ne correspond.",
             "redownload": "Retélécharger"
         },
-        "turnConfig": {
-            "usernameHelp": "Le nom de compte qu'attend coturn, tel qu'il est configuré sur votre serveur TURN.",
-            "genericLabel": "Generic",
-            "genericDescription": "Un serveur TURN que vous hébergez vous-même, ou tout fournisseur qui vous donne une adresse fixe et des identifiants.",
-            "genericTypeLabel": "Quel serveur TURN ?",
-            "genericTypeHelp": "Coturn est le plus répandu, Eturnal est une autre option open source. Chacun garde ses propres réglages : vous pouvez renseigner les deux et passer de l'un à l'autre.",
-            "cloudflareLabel": "Cloudflare",
-            "cloudflareDescription": "Cloudflare Realtime TURN — vous fournissez une clé, et les identifiants d'accès sont créés automatiquement au besoin.",
-            "activeProvider": "Fournisseur actuel",
-            "activeProviderHelp": "Celui réellement utilisé pour les connexions — un seul à la fois. Une option reste indisponible tant que ses réglages ne sont pas enregistrés et complets.",
-            "noneSelected": "Aucun — connexions directes uniquement",
-            "incomplete": "non renseigné",
-            "urls": "Adresse du serveur",
-            "urlsHelp": "Par exemple turn:example.com:3478. Sépare-en plusieurs par des virgules.",
-            "urlsInvalid": "Une adresse doit commencer par turn: ou turns:",
-            "username": "Identifiant",
-            "usernameRequired": "Coturn a besoin d'un identifiant.",
-            "passphrase": "Passphrase",
-            "coturnPassphraseHelp": "Le mot de passe qui va avec l'identifiant ci-dessus.",
-            "eturnalPassphraseHelp": "Le secret partagé d'Eturnal — le même que celui configuré sur le serveur Eturnal. Il n'y a pas de nom d'utilisateur.",
-            "cloudflareTokenId": "Cloudflare TURN Token ID",
-            "cloudflareTokenIdHelp": "Depuis votre clé TURN Cloudflare Realtime — c'est l'identifiant, pas l'API Token ci-dessous.",
-            "cloudflareApiToken": "Cloudflare API Token",
-            "cloudflareApiTokenHelp": "Le jeton secret lui-même, issu de la même clé Cloudflare Realtime TURN que l'ID ci-dessus.",
-            "saved": "Réglages TURN enregistrés.",
-            "saveFailed": "Impossible d'enregistrer les réglages TURN.",
-            "loadFailed": "Impossible de charger les réglages TURN."
-        },
         "servers": {
             "consoleHelp": "N'afficher que les jeux de cette console. Le nombre indique combien elle en a.",
             "addTitle": "Ajouter un serveur",
@@ -610,6 +580,30 @@
             "rescanned": "{{name}} relu.",
             "rescanFailed": "Relecture impossible.",
             "loadFailed": "Impossible de lire les disques internes."
+        },
+        "metadataServices": {
+            "configured": "Configuré",
+            "notConfigured": "Non configuré",
+            "stored": "Enregistré — laisser vide pour le garder",
+            "saved": "Compte enregistré",
+            "saveFailed": "Impossible d'enregistrer ce compte",
+            "removed": "Compte retiré",
+            "remove": "Retirer ce compte",
+            "loadFailed": "Impossible de lire les comptes des services",
+            "igdb": {
+                "label": "IGDB",
+                "help": "Jaquettes, illustrations en grand format pour les fonds, et captures, pour toutes les consoles. Demande un compte Twitch avec la double authentification, puis une application de type « Confidential » sur dev.twitch.tv.",
+                "client_id": "Identifiant client (Client ID)",
+                "client_idHelp": "Affiché dans la page de votre application sur dev.twitch.tv",
+                "client_secret": "Secret client (Client Secret)",
+                "client_secretHelp": "Généré dans la même page (bouton « Nouveau secret »). Il n'est plus jamais réaffiché ici."
+            },
+            "steamgriddb": {
+                "label": "SteamGridDB",
+                "help": "Jaquettes, grands bandeaux pour les fonds et logos transparents, proposés par sa communauté. Usage personnel seulement.",
+                "api_key": "Clé d'API",
+                "api_keyHelp": "Générée dans les préférences de votre compte steamgriddb.com, onglet API. Elle n'est plus jamais réaffichée ici."
+            }
         }
     },
     "form": {
@@ -800,9 +794,7 @@
                 }
             }
         },
-        "controller": {
-            "keyTest": "Test des touches"
-        },
+        "controller": {},
         "invite": {
             "title": "Inviter quelqu'un",
             "confirmMessage": "Envoyer une invitation à {{username}} ?",
@@ -953,10 +945,10 @@
         "menu": {
             "open": "Menu",
             "help": "Réglages de la partie",
-            "holdHint": "Gardez L2 + Home enfoncés pour ouvrir le menu",
+            "holdHint": "Gardez L2 + Home enfoncés trois secondes pour ouvrir le menu",
             "temperature": "Température",
             "battery": "Batterie",
-            "gamepadTip": "Manette : maintiens L2, puis Home, une seconde pour ouvrir le menu. Clavier : Échap.",
+            "gamepadTip": "Manette : maintiens L2, puis Home, trois secondes pour ouvrir le menu. Clavier : Échap.",
             "quit": {
                 "title": "Sortir",
                 "label": "Quitter la partie",
@@ -1046,45 +1038,14 @@
     },
     "dashboard": {
         "greeting": "Ravis de vous revoir, {{name}} !",
-        "mySessions": {
-            "title": "Vos sessions",
-            "stop": "Terminer cette session",
-            "stopConfirmTitle": "Terminer cette session ?",
-            "stopConfirmMessage": "Cela la ferme pour tous ceux qui y sont connectés, pas seulement pour vous.",
-            "stopFailed": "Impossible de terminer la session.",
-            "resume": "Reprendre le contrôle",
-            "timeLeft": "Se termine dans {{time}}",
-            "endingNow": "Se termine…"
-        },
-        "live": {
-            "title": "En direct",
-            "badge": "LIVE",
-            "join": "Rejoindre",
-            "watch": "Regarder",
-            "slideLabel": "Session {{position}} sur {{count}}",
-            "empty": "Aucun live en ce moment, pourquoi pas en lancer un ?",
-            "stop": "Arrêter cette partie pour tout le monde",
-            "stopFirstTitle": "Arrêter la partie d'un autre ?",
-            "stopFirstMessage": "{{owner}} joue à {{title}}. En tant qu'administrateur, vous pouvez arrêter cette partie.",
-            "stopContinue": "Continuer",
-            "stopSecondTitle": "Vous êtes sûr ?",
-            "stopSecondMessage": "La partie s'arrête tout de suite pour tout le monde, joueurs et spectateurs. Impossible de revenir en arrière.",
-            "stopConfirm": "Arrêter la partie",
-            "stopFailed": "Impossible d'arrêter la partie."
-        },
-        "federationLive": {
-            "title": "En direct chez vos serveurs",
-            "join": "Rejoindre",
-            "players_one": "{{count}} joueur",
-            "players_other": "{{count}} joueurs"
-        }
+        "playInLauncher": "Les parties se lancent, se regardent et se rejoignent depuis le launcher."
     },
     "remoteplay": {
         "devicesFound": "Consoles trouvées",
         "noDevicesFound": "Aucune console trouvée",
         "addDevice": "Rajouter une console",
         "addDeviceDesc": "Enregistrer un nouvel appareil",
-        "devicesDescription": "Les consoles enregistrées pour le Remote Play. Connectez-vous à l'une d'elles en ligne, ou ajoutez un nouvel appareil.",
+        "devicesDescription": "Les consoles enregistrées pour le Remote Play. Réveillez-en une, réglez son flux ou ajoutez un nouvel appareil : on s'y connecte depuis le launcher.",
         "devicesDescriptionRemote": "Les consoles tenues par les serveurs auxquels vous avez accès. Connectez-vous à l'une d'elles en ligne — l'appairage se fait sur le serveur qui l'a sur son réseau.",
         "loadFailed": "Impossible de charger les appareils.",
         "notSupportedYet": "La prise en charge {{platform}} arrive bientôt.",
@@ -1164,7 +1125,9 @@
             "loadFailed": "Impossible de charger les réglages.",
             "probeApplied": "Suggestion appliquée — vérifiez puis enregistrez.",
             "probeUnreachable": "Réseau injoignable, impossible de suggérer un réglage.",
-            "probeFailed": "Échec de la détection réseau."
+            "probeFailed": "Échec de la détection réseau.",
+            "save": "Enregistrer les réglages",
+            "saved": "Réglages enregistrés : la prochaine connexion depuis le launcher les prendra."
         }
     },
     "federation": {
@@ -1183,7 +1146,7 @@
     "retrogaming": {
         "gpuAvailable": "Ce téléphone a un GPU Adreno : l'émulateur de cette console dessine dessus.",
         "gamesTitle": "{{console}}",
-        "gamesDescription": "La ludothèque de cette console. Choisissez un jeu pour y jouer, ou ouvrez-le pour voir ses détails, ses cœurs et ses options de BIOS.",
+        "gamesDescription": "La ludothèque de cette console. Ouvrez un jeu pour voir sa source, son statut et sa copie locale : on y joue depuis le launcher.",
         "experimentalWarning": "Encore expérimental : cet émulateur peut planter en pleine partie, et certains jeux ne démarrent pas du tout.",
         "experimentalHeavyWarning": "Encore expérimental pour les jeux les plus exigeants : quelques titres lourds peuvent planter ou tourner à moitié vitesse. Les autres se jouent normalement.",
         "experimentalFirmwareWarning": "Encore expérimental : certains jeux demandent un autre firmware système que celui installé, et ne démarrent pas sans lui.",
@@ -1312,8 +1275,6 @@
         "membersHelp": "Modifiez vos paramètres de gestion des membres",
         "remoteTitle": "Ressources distantes",
         "remoteHelp": "Un partage Samba, un dossier WebDAV ou un kDrive — ses jeux rejoignent votre catalogue.",
-        "turnTitle": "Serveur TURN",
-        "turnHelp": "Modifiez vos paramètres de serveur TURN",
         "downloadTitle": "Téléchargez l'application GameFlex",
         "downloadReleaseHelp": "La dernière version, sur GitHub.",
         "downloadHelp": "Téléchargez l'application GameFlex pour Android (v{{version}})",
@@ -1337,14 +1298,9 @@
         "federationsTitle": "Fédérations",
         "federationsHelp": "Les serveurs GameFlex que vous avez enregistrés, et les jetons que vous avez émis pour les autres.",
         "internalTitle": "Ressources internes",
-        "internalHelp": "Les autres disques de cette machine — leurs jeux se jouent ici, avec les consoles de la bibliothèque ; leurs cœurs, BIOS, paramètres et correctifs s'importent."
-    },
-    "keytest": {
-        "controllerLabel": "Manette",
-        "controllerHelp": "En essayer une autre sans quitter — la session reste ouverte.",
-        "exitTitle": "Quitter le test",
-        "exitConfirm": "Quitter arrête cette session de test. Personne d'autre n'y est.",
-        "exitLabel": "Quitter"
+        "internalHelp": "Les autres disques de cette machine — leurs jeux se jouent ici, avec les consoles de la bibliothèque ; leurs cœurs, BIOS, paramètres et correctifs s'importent.",
+        "metadataTitle": "Images et informations des jeux",
+        "metadataHelp": "Les comptes des services qui fournissent les jaquettes, les fonds et les logos que vos jeux ne portent pas"
     },
     "download": {
         "noBuildTitle": "Aucune version publiée pour l'instant.",

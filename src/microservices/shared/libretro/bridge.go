@@ -1144,14 +1144,17 @@ func GetSystemInfo() SystemInfo {
 func GetSystemAVInfo() SystemAVInfo {
 	var avInfo C.struct_retro_system_av_info
 	C.wrap_retro_get_system_av_info(&avInfo)
+
+	return SystemAVInfoAt(unsafe.Pointer(&avInfo))
+}
+
+// SystemAVInfoAt lit la géométrie et la cadence qu'un cœur passe à
+// SET_SYSTEM_AV_INFO (`const struct retro_system_av_info *`).
+func SystemAVInfoAt(data unsafe.Pointer) SystemAVInfo {
+	avInfo := (*C.struct_retro_system_av_info)(data)
+
 	return SystemAVInfo{
-		Geometry: GameGeometry{
-			BaseWidth:   uint32(avInfo.geometry.base_width),
-			BaseHeight:  uint32(avInfo.geometry.base_height),
-			MaxWidth:    uint32(avInfo.geometry.max_width),
-			MaxHeight:   uint32(avInfo.geometry.max_height),
-			AspectRatio: float32(avInfo.geometry.aspect_ratio),
-		},
+		Geometry: GeometryAt(unsafe.Pointer(&avInfo.geometry)),
 		Timing: SystemTiming{
 			FPS:        float64(avInfo.timing.fps),
 			SampleRate: float64(avInfo.timing.sample_rate),

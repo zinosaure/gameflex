@@ -19,6 +19,7 @@ package embed
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -109,6 +110,12 @@ func New(options Options) (*Service, error) {
 	// l'appareil (#459), comme sur le serveur.
 	api.SealRemoteMounts(db, cfg.JWTSecret)
 
+	// L'INSCRIPTION LIBRE EST PARTIE (chantier 55) : un administrateur crée le
+	// compte et la personne choisit son mot de passe par son lien, comme sur un
+	// serveur. Son interrupteur ne reste pas en base. La table peut ne pas
+	// exister : rien à purger alors.
+	_, _ = db.Exec(`DELETE FROM settings WHERE key = 'registration_open'`)
+
 	// Révoquer le mot de passe PUBLIÉ des versions précédentes s'il traîne
 	// encore ici : la faille se ferme au démarrage suivant, sans geste du
 	// porteur (voir revokePublishedDefault). Sur une base fournie avec un
@@ -141,6 +148,8 @@ func New(options Options) (*Service, error) {
 		return nil, fmt.Errorf("embed: web_push: %w", err)
 	}
 
+	// LES DEUX MODES DU CODE D'APPAIRAGE (chantier 60), et les jetons de catalogue : le téléphone partage comme un
+	// serveur (`#756` ; le porteur, 2026-11-17 : « le téléphone fait tout ce que fait un serveur »).
 	server := api.NewServer(cfg, db, presence.NewRegistry(), pushClient)
 
 	return &Service{
@@ -175,7 +184,8 @@ func (service *Service) TokenForOwner() (string, error) {
 		return "", fmt.Errorf("embed: no owner account: %w", err)
 	}
 
-	return auth.CreateToken(service.secret, id, name, role)
+	// À la génération de ses sessions (chantier 55), comme tout jeton du service.
+	return service.api.SessionToken(id)
 }
 
 // ownerAccount — le compte du propriétaire de l'appareil : SON compte
@@ -275,6 +285,20 @@ func (service *Service) FederationServers() ([]FederationServer, error) {
 	}
 
 	return servers, rows.Err()
+}
+
+// MetadataAccounts — les comptes des services de métadonnées (IGDB, SteamGridDB), EN CLAIR, pour le kernel du
+// téléphone (chantier 57, P4) : son fournisseur à lui, pour ses jeux. Saisis par la page d'administration
+// (`/api/v1/metadata-services`, que ce service monte), scellés en base par le secret de l'appareil, ils ne ressortent
+// jamais par l'API — seulement ici, dans le même processus, comme les jetons des serveurs fédérés.
+func (service *Service) MetadataAccounts() (map[string]map[string]string, error) {
+	return service.api.MetadataAccounts()
+}
+
+// MetadataWriteOnGameDisk — l'interrupteur « Écrire les métadonnées sur le disque du jeu » (allumé par défaut) : coupé,
+// celles d'un jeu d'un disque interne vivent dans la bibliothèque du téléphone (un disque NTFS y est en lecture seule).
+func (service *Service) MetadataWriteOnGameDisk() (bool, error) {
+	return service.api.MetadataWriteOnGameDisk()
 }
 
 // SetDisplayName donne au compte unique le nom SOUS LEQUEL ON LE VOIT.
@@ -383,10 +407,20 @@ func (service *Service) ResetRootPassword() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("embed: hash root password: %w", err)
 	}
+	var rootID int64
+	if err := service.DB.QueryRow(`SELECT id FROM users WHERE role_level = 0 ORDER BY id LIMIT 1`).Scan(&rootID); err != nil {
+		return "", fmt.Errorf("embed: no root account: %w", err)
+	}
 	if _, err := service.DB.Exec(
-		`UPDATE users SET hashed_password = ? WHERE role_level = 0`, hashed,
+		`UPDATE users SET hashed_password = ?, password_set_at = ? WHERE id = ?`,
+		hashed, time.Now().Format("2006-01-02 15:04:05.999999"), rootID,
 	); err != nil {
 		return "", fmt.Errorf("embed: reset root password: %w", err)
+	}
+	// Qui avait l'ancien mot de passe perd aussi ses sessions (chantier 55) : la
+	// génération avance, et le kernel du téléphone ferme ses canaux.
+	if err := service.api.AdvanceSessions(rootID); err != nil {
+		return "", fmt.Errorf("embed: end root sessions: %w", err)
 	}
 	slog.Info("embedded identity: root password reset from the device console")
 
@@ -412,49 +446,26 @@ func (service *Service) Owner() (string, int, error) {
 	return name, role, nil
 }
 
-// RegistrationOpen — l'appareil accepte-t-il de nouvelles inscriptions ?
+// Accounts — le nom du compte root, et combien la base compte
+// d'administrateurs et de joueurs (root à part).
 //
-// FERMÉ par défaut, et c'est un choix : l'administrateur doit ouvrir la porte
-// pour qu'elle s'ouvre. Un réglage qui part permissif ne se découvre jamais —
-// on ne cherche pas l'interrupteur d'une chose qui marche déjà, et on
-// l'apprend le jour où quelqu'un s'est inscrit sans qu'on le sache. Ouvrir
-// pour la soirée, refermer après, est le geste qu'on veut rendre conscient.
-func (service *Service) RegistrationOpen() bool {
-	if _, err := service.DB.Exec(
-		`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`,
-	); err != nil {
-		return false
-	}
-	var stored string
+// Pour la page « Compte root » de la console de l'appareil (le porteur,
+// 2026-11-17) : elle ne montre plus UN compte administrateur — lequel, quand
+// il y en a plusieurs ? —, mais root et ces deux nombres ; à zéro
+// administrateur, elle dit de commencer par root pour en créer un.
+func (service *Service) Accounts() (root string, admins, players int, err error) {
 	if err := service.DB.QueryRow(
-		`SELECT value FROM settings WHERE key = 'registration_open'`,
-	).Scan(&stored); err != nil {
-		// Rien d'enregistré : fermé. Voir ci-dessus.
-		return false
+		`SELECT username FROM users WHERE role_level = 0 ORDER BY id LIMIT 1`,
+	).Scan(&root); err != nil {
+		return "", 0, 0, fmt.Errorf("embed: no root account: %w", err)
+	}
+	if err := service.DB.QueryRow(
+		`SELECT COUNT(CASE WHEN role_level = 1 THEN 1 END), COUNT(CASE WHEN role_level >= 2 THEN 1 END) FROM users`,
+	).Scan(&admins, &players); err != nil {
+		return "", 0, 0, fmt.Errorf("embed: count accounts: %w", err)
 	}
 
-	return stored == "1"
-}
-
-// SetRegistrationOpen ouvre ou ferme les inscriptions.
-func (service *Service) SetRegistrationOpen(open bool) error {
-	if _, err := service.DB.Exec(
-		`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`,
-	); err != nil {
-		return fmt.Errorf("embed: settings table: %w", err)
-	}
-	value := "0"
-	if open {
-		value = "1"
-	}
-	if _, err := service.DB.Exec(
-		`INSERT INTO settings (key, value) VALUES ('registration_open', ?)
-		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, value,
-	); err != nil {
-		return fmt.Errorf("embed: set registration: %w", err)
-	}
-
-	return nil
+	return root, admins, players, nil
 }
 
 // RoleOf rend le niveau de rôle que porte ce jeton, tel que LA BASE le dit.
@@ -520,10 +531,37 @@ type (
 	Redeemed       = api.Redeemed
 )
 
+// ErrPairingClosed — un code d'appairage présenté hors du mode de sa sorte
+// (chantier 60) : refusé sans rien compter.
+var ErrPairingClosed = api.ErrPairingClosed
+
 // RedeemInvitation — un autre serveur échange une invitation de ce téléphone
-// contre son jeton, une seule fois (invitations.go).
-func (service *Service) RedeemInvitation(code, kind, address string) (Redeemed, error) {
-	return service.api.RedeemInvitation(code, kind, address)
+// contre son jeton, une seule fois (invitations.go) ; `from` est son nom, que
+// la fenêtre d'un code d'appairage montre.
+func (service *Service) RedeemInvitation(code, kind, from, address string) (Redeemed, error) {
+	return service.api.RedeemInvitation(code, kind, from, address)
+}
+
+// PairingFrame — les modes découverte et les codes vivants (chantier 60), comme
+// la trame `pairing` du serveur les porte : jamais la valeur d'un code.
+func (service *Service) PairingFrame() []byte {
+	return service.api.PairingFrame()
+}
+
+// OnPairingChanged — `callback(frame)` après chaque changement d'un mode ou
+// d'un code : le kernel du téléphone le pousse au sujet `pairing`.
+func (service *Service) OnPairingChanged(callback func(frame []byte)) {
+	service.api.OnPairingChanged(callback)
+}
+
+// ErrCatalogTokenRefused — un jeton de catalogue inconnu ou révoqué.
+var ErrCatalogTokenRefused = api.ErrCatalogTokenRefused
+
+// VerifyCatalogToken — le nom et les portées derrière un jeton de catalogue émis ici (« Accès délivrés »), ou
+// ErrCatalogTokenRefused : la règle du serveur (`/internal/federation/verify`), sans le plan interne. Le kernel du
+// téléphone garde sa surface fédérée avec (`#756`).
+func (service *Service) VerifyCatalogToken(token string) (label, scopes string, err error) {
+	return service.api.VerifyCatalogToken(token)
 }
 
 // ErrNoFederatedAccount — ce membre n'a pas collé de jeton pour ce serveur.
@@ -551,180 +589,6 @@ func (service *Service) OnAccountsChanged(callback func()) {
 	service.api.OnAccountsChanged(callback)
 }
 
-// Register inscrit un compte ORDINAIRE, choisi par la personne elle-même.
-//
-// POURQUOI L'INSCRIPTION LIBRE EXISTE ICI ET PAS SUR LE SERVEUR : sur un
-// serveur, les comptes sont créés par un administrateur — il n'y a
-// délibérément aucune route d'inscription. Un téléphone n'a pas
-// d'administrateur sous la main quand trois personnes veulent jouer dans le
-// salon, et le périmètre n'est pas le même : un réseau local, et une machine
-// qui n'est pas allumée en permanence.
-//
-// POURQUOI UN VRAI COMPTE ET PAS UNE IDENTITÉ JETABLE : un nom d'usage sans
-// mot de passe ne permet pas de REVENIR. Le jour où son jeton expire, la
-// personne redevient quelqu'un d'autre — elle perd ses sauvegardes, son
-// mapping de manette et sa place dans la file. C'est ce qui a fait
-// abandonner le modèle de l'invité anonyme (2026-09-04).
-func (service *Service) Register(username, password, displayName string) (string, error) {
-	username = strings.ToLower(strings.TrimSpace(username))
-	password = strings.TrimSpace(password)
-	displayName = strings.TrimSpace(displayName)
-	if displayName == "" {
-		displayName = username
-	}
-	if len(username) < 2 || len(username) > 32 {
-		return "", fmt.Errorf("embed: le nom d'utilisateur doit faire entre 2 et 32 caractères")
-	}
-	for _, r := range username {
-		if !(r >= 'a' && r <= 'z') && !(r >= '0' && r <= '9') && r != '-' && r != '_' {
-			return "", fmt.Errorf("embed: lettres, chiffres, - et _ seulement")
-		}
-	}
-	if len(password) < 4 {
-		return "", fmt.Errorf("embed: le mot de passe doit faire au moins 4 caractères")
-	}
-	if !service.RegistrationOpen() {
-		return "", fmt.Errorf("embed: les inscriptions sont fermées sur cet appareil")
-	}
-
-	var taken int
-	if err := service.DB.QueryRow(
-		`SELECT COUNT(*) FROM users WHERE username = ?`, username,
-	).Scan(&taken); err != nil {
-		return "", fmt.Errorf("embed: name check: %w", err)
-	}
-	if taken > 0 {
-		return "", fmt.Errorf("embed: ce nom est déjà pris")
-	}
-
-	hashed, err := auth.HashPassword(password)
-	if err != nil {
-		return "", fmt.Errorf("embed: hash password: %w", err)
-	}
-	result, err := service.DB.Exec(
-		`INSERT INTO users (username, hashed_password, display_name, role_level, created_at)
-		 VALUES (?, ?, ?, ?, ?)`,
-		username, hashed, displayName, auth.RoleUser,
-		time.Now().Format("2006-01-02 15:04:05.999999"),
-	)
-	if err != nil {
-		return "", fmt.Errorf("embed: register: %w", err)
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return "", fmt.Errorf("embed: register: %w", err)
-	}
-	token, err := auth.CreateToken(service.secret, id, username, auth.RoleUser)
-	if err != nil {
-		return "", fmt.Errorf("embed: token: %w", err)
-	}
-	slog.Info("embedded identity: account registered", "username", username)
-
-	return token, nil
-}
-
-// RegisterGuest inscrit un invité, et rend son jeton.
-//
-// POURQUOI UN VRAI COMPTE, et pas seulement un jeton signé : le téléphone
-// savait déjà frapper un jeton pour un invité du réseau, mais ce jeton ne
-// porte qu'un nom — il n'a pas de ligne en base, donc `/api/v1/auth/me` le
-// rejette, et la page retombe sur l'écran de connexion qu'on essayait
-// justement de lui éviter. Le piège est déjà documenté pour le jeton
-// d'appareil ; c'est le même.
-//
-// POURQUOI PAS LE COMPTE DU PROPRIÉTAIRE : prêter root à un invité lui donne
-// L'IDENTITÉ de l'hôte. La file de joueurs est indexée par nom, donc les deux
-// deviennent la même personne, et l'écran de jeu propose « reprendre la
-// manette » au lieu de « rejoindre » (signalé le 2026-09-04).
-//
-// L'invité ne choisit donc qu'un NOM D'USAGE. L'identifiant et le mot de passe
-// sont tirés au sort et ne servent jamais à ouvrir une session : c'est le
-// jeton qui la porte, et il vit dans le navigateur de l'invité.
-func (service *Service) RegisterGuest(displayName string) (string, string, error) {
-	displayName = strings.TrimSpace(displayName)
-	if displayName == "" {
-		return "", "", fmt.Errorf("embed: guest name is required")
-	}
-	if len(displayName) > 32 {
-		displayName = strings.TrimSpace(displayName[:32])
-	}
-
-	username, err := freeGuestUsername(service.DB, displayName)
-	if err != nil {
-		return "", "", err
-	}
-
-	// Un mot de passe que personne ne connaît, pas même nous : il n'existe
-	// que pour que la colonne ne soit pas vide.
-	hashed, err := auth.HashPassword(config.RandomToken(24))
-	if err != nil {
-		return "", "", fmt.Errorf("embed: hash guest password: %w", err)
-	}
-
-	result, err := service.DB.Exec(
-		`INSERT INTO users (username, hashed_password, display_name, role_level, created_at)
-		 VALUES (?, ?, ?, 2, ?)`,
-		username, hashed, displayName,
-		time.Now().Format("2006-01-02 15:04:05.999999"),
-	)
-	if err != nil {
-		return "", "", fmt.Errorf("embed: register guest: %w", err)
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return "", "", fmt.Errorf("embed: register guest: %w", err)
-	}
-
-	token, err := auth.CreateToken(service.secret, id, username, 2)
-	if err != nil {
-		return "", "", fmt.Errorf("embed: guest token: %w", err)
-	}
-	slog.Info("embedded identity: guest registered", "username", username, "name", displayName)
-
-	return token, username, nil
-}
-
-// freeGuestUsername dérive un identifiant du nom d'usage, et le rend unique.
-//
-// Deux invités qui s'appellent pareil ne doivent pas devenir la même personne
-// dans la file de joueurs — c'est l'invariant que tout le reste suppose. Un
-// nom déjà pris reçoit un suffixe plutôt qu'un refus : un invité est un
-// invité, pas un compte avec qui négocier.
-func freeGuestUsername(db *sql.DB, displayName string) (string, error) {
-	base := strings.Map(func(r rune) rune {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			return r
-		case r >= 'A' && r <= 'Z':
-			return r + 32
-		default:
-			return '-'
-		}
-	}, displayName)
-	base = strings.Trim(base, "-")
-	if base == "" {
-		base = "invite"
-	}
-
-	for suffix := 0; suffix < 200; suffix++ {
-		candidate := base
-		if suffix > 0 {
-			candidate = fmt.Sprintf("%s-%d", base, suffix+1)
-		}
-		var count int
-		if err := db.QueryRow(
-			`SELECT COUNT(*) FROM users WHERE username = ?`, candidate,
-		).Scan(&count); err != nil {
-			return "", fmt.Errorf("embed: guest name check: %w", err)
-		}
-		if count == 0 {
-			return candidate, nil
-		}
-	}
-
-	return "", fmt.Errorf("embed: no free guest name for %q", displayName)
-}
-
 // seedRoot — le compte unique, créé une fois. Copie fidèle de ce que fait
 // cmd/auth au démarrage : même table, même rôle, même idempotence.
 func seedRoot(db *sql.DB, cfg config.Config) error {
@@ -745,14 +609,51 @@ func seedRoot(db *sql.DB, cfg config.Config) error {
 		return fmt.Errorf("embed: hash root password: %w", err)
 	}
 
+	created := time.Now().Format("2006-01-02 15:04:05.999999")
 	if _, err := db.Exec(
-		`INSERT INTO users (username, hashed_password, display_name, role_level, created_at)
-		 VALUES (?, ?, ?, 0, ?)`,
-		cfg.RootUsername, hashed, "Root", time.Now().Format("2006-01-02 15:04:05.999999"),
+		`INSERT INTO users (username, hashed_password, display_name, role_level, created_at, password_set_at)
+		 VALUES (?, ?, ?, 0, ?, ?)`,
+		cfg.RootUsername, hashed, "Root", created, created,
 	); err != nil {
 		return fmt.Errorf("embed: seed root: %w", err)
 	}
 	slog.Info("embedded identity: root account created", "username", cfg.RootUsername)
 
 	return nil
+}
+
+// ── Le statut des consoles et des jeux (chantier 30, en base depuis le 2026-11-17) ──
+//
+// Les mêmes fonctions que les routes /internal/game-status du serveur (api/game_status.go), dans le même processus :
+// le kernel du téléphone en fait son gamestatus.Store. La forme échangée est le JSON de gamestatus.Console et de
+// gamestatus.Report, pour que ce module n'ait pas à connaître gameflex/storage.
+
+// GameStatusConsole — une console et les signalements de ses jeux, en JSON.
+func (service *Service) GameStatusConsole(consoleID string) ([]byte, error) {
+	console, err := api.LoadGameStatus(service.DB, consoleID)
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(console)
+}
+
+// AddGameStatusReport — un signalement (JSON de gamestatus.Report).
+func (service *Service) AddGameStatusReport(consoleID, gameID string, report []byte) error {
+	var decoded api.GameStatusReport
+	if err := json.Unmarshal(report, &decoded); err != nil {
+		return err
+	}
+
+	return api.AddGameStatusReport(service.DB, consoleID, gameID, decoded)
+}
+
+// SetGameStatusConsole — le statut de toute la console.
+func (service *Service) SetGameStatusConsole(consoleID, status, by string, at time.Time) error {
+	return api.SetGameStatusConsole(service.DB, consoleID, status, by, at)
+}
+
+// GameStatuses — le statut de chaque console réglée.
+func (service *Service) GameStatuses() (map[string]string, error) {
+	return api.GameStatuses(service.DB)
 }

@@ -49,7 +49,7 @@ func TestFederationInvitationIsRedeemedOnce(t *testing.T) {
 		t.Fatalf("création : %d, code %q", code, created.Code)
 	}
 
-	redeemed, err := server.RedeemInvitation(created.Code, InvitationFederation, "10.0.0.2")
+	redeemed, err := server.RedeemInvitation(created.Code, InvitationFederation, "", "10.0.0.2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func TestFederationInvitationIsRedeemedOnce(t *testing.T) {
 		t.Fatalf("le jeton né de l'échange est refusé : %d", recorder.Code)
 	}
 
-	if _, err := server.RedeemInvitation(created.Code, InvitationFederation, "10.0.0.2"); !errors.Is(err, ErrInvitationRefused) {
+	if _, err := server.RedeemInvitation(created.Code, InvitationFederation, "", "10.0.0.2"); !errors.Is(err, ErrInvitationRefused) {
 		t.Fatalf("second échange : %v, attendu un refus", err)
 	}
 	var count int
@@ -87,14 +87,14 @@ func TestExpiredOrRevokedInvitationIsRefused(t *testing.T) {
 	if strings.Contains(recorder.Body.String(), revoked.Code) {
 		t.Fatal("la liste montre le code")
 	}
-	if _, err := server.RedeemInvitation(expired.Code, InvitationFederation, "a"); !errors.Is(err, ErrInvitationRefused) {
+	if _, err := server.RedeemInvitation(expired.Code, InvitationFederation, "", "a"); !errors.Is(err, ErrInvitationRefused) {
 		t.Fatalf("échue : %v", err)
 	}
 
 	if recorder := adminCall(server, server.handleRevokeInvitation, http.MethodDelete, "2", ""); recorder.Code != http.StatusNoContent {
 		t.Fatalf("révocation : %d", recorder.Code)
 	}
-	if _, err := server.RedeemInvitation(revoked.Code, InvitationFederation, "a"); !errors.Is(err, ErrInvitationRefused) {
+	if _, err := server.RedeemInvitation(revoked.Code, InvitationFederation, "", "a"); !errors.Is(err, ErrInvitationRefused) {
 		t.Fatalf("révoquée : %v", err)
 	}
 }
@@ -103,10 +103,10 @@ func TestExpiredOrRevokedInvitationIsRefused(t *testing.T) {
 func TestInvitationOfAnotherKindIsNotConsumed(t *testing.T) {
 	server := invitationServer(t)
 	_, created := createInvitation(t, server, inviter, `{"kind":"federation","label":"Marc"}`)
-	if _, err := server.RedeemInvitation(created.Code, InvitationAccount, "a"); !errors.Is(err, ErrInvitationKind) {
+	if _, err := server.RedeemInvitation(created.Code, InvitationAccount, "", "a"); !errors.Is(err, ErrInvitationKind) {
 		t.Fatalf("autre sorte : %v", err)
 	}
-	if _, err := server.RedeemInvitation(created.Code, InvitationFederation, "a"); err != nil {
+	if _, err := server.RedeemInvitation(created.Code, InvitationFederation, "", "a"); err != nil {
 		t.Fatalf("la bonne sorte, ensuite : %v", err)
 	}
 }
@@ -133,12 +133,12 @@ func TestAccountInvitationGivesTheAccountToken(t *testing.T) {
 		t.Fatalf("pour qui : %q", created.Label)
 	}
 	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":false}`)
-	if _, err := server.RedeemInvitation(created.Code, InvitationAccount, "a"); !errors.Is(err, ErrInvitationTokenOff) {
+	if _, err := server.RedeemInvitation(created.Code, InvitationAccount, "", "a"); !errors.Is(err, ErrInvitationTokenOff) {
 		t.Fatalf("jeton éteint : %v", err)
 	}
 
 	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1d"}`)
-	redeemed, err := server.RedeemInvitation(created.Code, InvitationAccount, "a")
+	redeemed, err := server.RedeemInvitation(created.Code, InvitationAccount, "", "a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestConcurrentRedeemsHaveOneWinner(t *testing.T) {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			_, err := server.RedeemInvitation(created.Code, InvitationFederation, "a")
+			_, err := server.RedeemInvitation(created.Code, InvitationFederation, "", "a")
 			results <- err
 		}()
 	}
@@ -183,15 +183,15 @@ func TestConcurrentRedeemsHaveOneWinner(t *testing.T) {
 func TestFailedRedeemsAreThrottled(t *testing.T) {
 	server := invitationServer(t)
 	for range loginFreeTries {
-		if _, err := server.RedeemInvitation("pas-un-code", InvitationFederation, "10.0.0.9"); !errors.Is(err, ErrInvitationRefused) {
+		if _, err := server.RedeemInvitation("pas-un-code", InvitationFederation, "", "10.0.0.9"); !errors.Is(err, ErrInvitationRefused) {
 			t.Fatalf("code inconnu : %v", err)
 		}
 	}
 	var throttled ThrottledError
-	if _, err := server.RedeemInvitation("pas-un-code", InvitationFederation, "10.0.0.9"); !errors.As(err, &throttled) {
+	if _, err := server.RedeemInvitation("pas-un-code", InvitationFederation, "", "10.0.0.9"); !errors.As(err, &throttled) {
 		t.Fatalf("après %d échecs : %v, attendu un frein", loginFreeTries, err)
 	}
-	if _, err := server.RedeemInvitation("pas-un-code", InvitationFederation, "10.0.0.10"); !errors.Is(err, ErrInvitationRefused) {
+	if _, err := server.RedeemInvitation("pas-un-code", InvitationFederation, "", "10.0.0.10"); !errors.Is(err, ErrInvitationRefused) {
 		t.Fatalf("une autre adresse : %v", err)
 	}
 

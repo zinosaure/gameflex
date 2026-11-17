@@ -1,10 +1,10 @@
 {
   "name": "Interpreter (exact)",
-  "description": "No translator: the x86-64 code is interpreted. Many times slower, but exact: useful to tell a translation fault from a fault in the game itself.",
+  "description": "No translator: the x86-64 code is interpreted, many times slower but exact.",
   "translations": {
     "fr": {
       "name": "Interpréteur (exact)",
-      "description": "Sans traducteur : le code x86-64 est interprété. Bien plus lent, mais exact : utile pour distinguer une erreur de traduction d'une erreur du jeu lui-même."
+      "description": "Sans traducteur : le code x86-64 est interprété, bien plus lent mais exact."
     }
   },
   "override": false,
