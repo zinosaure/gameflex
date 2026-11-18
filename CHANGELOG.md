@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-18
+
+### Fixed
+
+- **The list of tested games in the README**: Grand Theft Auto V, Kingdom Hearts III and Final Fantasy XV Pocket
+  Edition play on PlayStation 4, and FIFA 22 is not playable yet; the games tried on the phone itself; the recent
+  consoles' emulators come from the gameflex-streamex packages.
+
 ## [0.14.0] - 2026-11-18
 
 ### Added

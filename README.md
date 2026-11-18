@@ -173,15 +173,17 @@ should work, but has not been tried.
     Remake Intergrade, Kingdom Hearts III, Tekken 8, Richman 11. They run at about 15 to 30 frames per
     second at 540p, depending on the game; big games take a few minutes to start the first time (their
     shaders compile).
-  - **PlayStation 4:** Final Fantasy VII Remake, Kingdom Hearts HD 2.8 Final Chapter Prologue,
-    Driveclub, FIFA 22 (with graphical glitches on the pitch), Sonic Mania Plus.
+  - **PlayStation 4:** Final Fantasy VII Remake, Final Fantasy XV Pocket Edition, Grand Theft Auto
+    V, Kingdom Hearts III, Kingdom Hearts HD 2.8 Final Chapter Prologue, Driveclub, Sonic Mania
+    Plus.
   - **PlayStation 3:** Final Fantasy XIII. **Switch:** Mini Metro, EA Sports FC 27. **Switch 2:** The
     Legend of Zelda: Ocarina of Time, with its saves. **Wii U:** New Super Mario Bros. U (as a disc
     image and extracted). **Xbox:** Dead or Alive 3. **Xbox 360:** Halo 3.
   - **PC Ports:** The Legend of Zelda: Majora's Mask (Zelda 64: Recompiled).
 
-  Not yet playable: EA Sports FC 27 on PlayStation 4 (it stops after its title screen), Final
-  Fantasy XVI (it stays on its loading screen), the Marvel games. Every game is different: see the
+  Not yet playable: FIFA 22 (graphical glitches on the pitch) and EA Sports FC 27 (it stops after
+  its title screen) on PlayStation 4, Final Fantasy XVI (it stays on its loading screen), the
+  Marvel games. Every game is different: see the
   known limitations in [Consoles](docs/consoles.md).
 - **Remote Play:** with a PlayStation 5 (Black Myth: Wukong), from a phone. The PlayStation 4 has
   not been tried: we have none.
@@ -190,10 +192,15 @@ should work, but has not been tried.
 - **The WireGuard VPN:** a retro game played through it, from a client on the same computer. Not
   yet from a phone on mobile data.
 - **The Android app:** on a Samsung Galaxy S25 (Snapdragon 8 Elite, Adreno 830 graphics, 12 GB of
-  RAM). The recent consoles on the phone need a Snapdragon (Adreno) graphics chip. On the phone
-  itself, PlayStation 4 and PlayStation 5 games start and play — Sonic Mania Plus and Kingdom Hearts
-  III (PS4), Richman 11 (PS5) — but well below full speed: the big ones are not playable there yet.
-  Played from the phone on the server, or on a friend's server, they run like in a browser.
+  RAM). The recent consoles on the phone need a Snapdragon (Adreno) graphics chip. Played on the
+  phone itself:
+  - **PlayStation 4:** Final Fantasy XV Pocket Edition, Grand Theft Auto V, Kingdom Hearts III,
+    Sonic Mania Plus.
+  - **PlayStation 5:** Neptunia ReVerse at a steady 30 frames per second, Kingdom Hearts III at
+    about 15, Richman 11.
+
+  The other games that play on the server have not been tried on the phone yet. Played from the
+  phone on the server, or on a friend's server, games run like in a browser.
 - **Not tried yet:** playing with friends over the phone's own hotspot, without Internet.
 
 ## Quick start
@@ -296,9 +303,10 @@ and what you download from them is your responsibility.
   cores it needs from there for you, from **Settings › Consoles**.
 - **BIOS and firmware:** [RetroBIOS](https://abdess.github.io/retrobios/). Use the files from its
   RetroArch pack, under the names listed in [Consoles](docs/consoles.md).
-- **Emulators for the recent consoles:** GameFlex downloads them for you too, from each emulator's
-  publisher, in **Settings › Consoles**. Each one's website is linked from
-  [Consoles](docs/consoles.md).
+- **Emulators for the recent consoles:** GameFlex installs them for you too, in **Settings ›
+  Emulators**: the version tested with GameFlex, from the
+  [gameflex-streamex](https://github.com/zinosaure/gameflex-streamex/releases) packages. Each
+  emulator's website is linked from [Consoles](docs/consoles.md).
 - **All of the above, laid out like a GameFlex library:** the mirror below.
 
 ### The mirror
