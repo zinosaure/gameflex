@@ -91,14 +91,13 @@ RUN groupadd -f pulse-access && usermod -aG pulse-access root && usermod -aG pul
 # (voir consoles/unpack-emulator.sh).
 # NB: AppRun must be invoked as squashfs-root/AppRun (a symlink outside would
 # break its APPDIR resolution and the apprun-hooks lookup).
-ARG RPCS3_URL=https://github.com/RPCS3/rpcs3-binaries-linux/releases/download/build-fb6737b1c8306ceeccb53b7fa051acfc9e641cd7/rpcs3-v0.0.43-20607-fb6737b1_linux64.AppImage
 # Les versions éprouvées avec cette image (emulator_tested) : la liste informe,
 # elle ne bloque pas — toute version que reconnaît le motif se lance.
 ARG RPCS3_TESTED="${RPCS3_APPIMAGE}"
 ENV GAMEFLEX_EMULATOR_FILE=${RPCS3_APPIMAGE} GAMEFLEX_EMULATOR_DIR=/gameflex/cores/ps3 \
     GAMEFLEX_EMULATOR_PATTERN="rpcs3-v*_linux64.AppImage" GAMEFLEX_EMULATOR_NAME="RPCS3" \
     GAMEFLEX_EMULATOR_TESTED="${RPCS3_TESTED}"
-LABEL gameflex.emulator.file=${RPCS3_APPIMAGE} gameflex.emulator.url=${RPCS3_URL} \
+LABEL gameflex.emulator.file=${RPCS3_APPIMAGE} \
     gameflex.emulator.pattern="rpcs3-v*_linux64.AppImage" \
     gameflex.emulator.tested="${RPCS3_TESTED}"
 COPY src/microservices/runtimes/streamex/consoles/unpack-emulator.sh /usr/local/bin/unpack-emulator

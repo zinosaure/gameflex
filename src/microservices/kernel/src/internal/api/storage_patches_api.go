@@ -207,10 +207,11 @@ func (server *Server) importPeerPatch(w http.ResponseWriter, r *http.Request) {
 // Le correctif d'un jeu porte le nom de son identifiant (`patches/<console>/<id>/`,
 // le même que ses réglages par jeu). Ses sources : chaque disque interne, puis
 // chaque serveur fédéré, lu dans la copie de son listing — un pair qui la
-// refuse ou ne répond pas le dit, au lieu d'une liste vide. Il n'y a pas de
-// source officielle.
+// refuse ou ne répond pas le dit, au lieu d'une liste vide. Et d'abord la
+// source officielle (chantier 63, P6) : le paquet `streamex-patches` de l'index
+// des paquets streamex, quand il porte ce correctif.
 type gamePatchSource struct {
-	Source    string `json:"source"` // "disk" | "server"
+	Source    string `json:"source"` // "official" | "disk" | "server"
 	Disk      string `json:"disk,omitempty"`
 	ServerID  int64  `json:"serverId,omitempty"`
 	Name      string `json:"name,omitempty"`
@@ -249,6 +250,14 @@ func (server *Server) handleGamePatch(w http.ResponseWriter, r *http.Request) {
 			view.Installed = &remote.PatchItem{Name: item.Name, SizeBytes: item.Size, Dir: item.Dir, Files: files, Installed: true}
 		}
 	}
+
+	official := gamePatchSource{Source: "official"}
+	if index, err := server.cachedStreamexIndex(r.Context()); err != nil {
+		official.Reason = err.Error()
+	} else if pkg, ok := index.patchesFor(consoleID, view.GameID); ok {
+		official.Available, official.SizeBytes = true, pkg.SizeBytes
+	}
+	view.Sources = append(view.Sources, official)
 
 	for _, disk := range server.presentDisks(r.Context()) {
 		source := gamePatchSource{Source: "disk", Disk: disk.Name}

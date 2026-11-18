@@ -7,9 +7,12 @@ license. This file lists that software, artifact by artifact, with the version f
 artifact, its license and where its source code can be found. The full license texts and copyright
 notices are in [THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt).
 
-**No emulator, BIOS, firmware, game or libretro core is included in any GameFlex artifact.**
-The console images unpack the emulator file that *you* place in `cores/<console>/` when a game is
-launched; cores, BIOS files and games are always supplied by the user.
+**No BIOS, firmware, game or libretro core is included in any GameFlex artifact.** The console images
+contain no emulator either: they unpack, when a game is launched, the emulator file in
+`cores/<console>/`. That file comes from a **streamex package** of the
+[gameflex-streamex](https://github.com/zinosaure/gameflex-streamex) releases, which GameFlex installs
+from Settings › Emulators, or from the user ([5. Streamex packages](#5-streamex-packages)). Cores,
+BIOS files and games are always supplied by the user.
 
 **The optional WireGuard VPN is not a GameFlex artifact either.** `docker-compose.yml` names the
 image of [wg-easy](https://github.com/wg-easy/wg-easy) (`ghcr.io/wg-easy/wg-easy`, AGPL-3.0), which
@@ -33,6 +36,7 @@ any later version", and so on.
 - [2. Docker images: consoles](#2-docker-images-consoles)
 - [3. Android app](#3-android-app)
 - [4. Runtime archives for the Android app](#4-runtime-archives-for-the-android-app)
+- [5. Streamex packages](#5-streamex-packages)
 - [Copyleft components and their source code](#copyleft-components-and-their-source-code)
 - [Finding the licenses and sources yourself](#finding-the-licenses-and-sources-yourself)
 - [Notices reproduced as required](#notices-reproduced-as-required)
@@ -223,10 +227,10 @@ are not imported by the interface and are not in the bundle.
 
 ### No emulator inside
 
-None of the eight console images contains an emulator. Each one unpacks, at launch, the emulator
-file that the user has placed in `cores/<console>/`; the image only carries the name and the
-official download address of the version it was tested with (image labels
-`gameflex.emulator.file` and `gameflex.emulator.url`), plus configuration files.
+None of the console images contains an emulator. Each one unpacks, at launch, the emulator file
+in `cores/<console>/`; the image only carries the name of the version it was tested with (image
+label `gameflex.emulator.file`), plus configuration files. That file comes from the console's
+streamex package ([5. Streamex packages](#5-streamex-packages)).
 
 | Image | Emulator it expects (not included) |
 |---|---|
@@ -240,8 +244,7 @@ official download address of the version it was tested with (image labels
 | `gameflex-xbox` | xemu |
 | `gameflex-xbox360` | Xenia Canary |
 
-Each emulator is distributed by its own authors under its own license; GameFlex does not
-redistribute it.
+Each emulator keeps its own license; the streamex packages that carry them are listed below.
 
 ### Base image and Debian packages
 
@@ -536,6 +539,31 @@ sources: X.Org <https://gitlab.freedesktop.org/xorg>, Mesa <https://mesa3d.org>,
 <https://www.gnu.org/software/libiconv/>, OpenSSL <https://www.openssl.org>.
 
 ---
+
+## 5. Streamex packages
+
+The releases of [gameflex-streamex](https://github.com/zinosaure/gameflex-streamex) carry one package
+per console image: streamex's files for that console, with its emulator inside, as built and
+published by the emulator's authors, in the version tested with GameFlex. Each package's
+`component.json` says what it holds. The packages index is `components.json` in the same release.
+
+| Package | Emulator | License | Official repository |
+|---|---|---|---|
+| `streamex-ps3` | RPCS3 | GPL-2.0 | [RPCS3/rpcs3](https://github.com/RPCS3/rpcs3) |
+| `streamex-ps4` | shadPS4, and our build of it | GPL-2.0 | [shadps4-emu/shadPS4](https://github.com/shadps4-emu/shadPS4) |
+| `streamex-ps5` | KytyPS5, and our build of it | GPL-2.0 | [KytyPS5/KytyPS5](https://github.com/KytyPS5/KytyPS5) |
+| `streamex-switch` | Citron | GPL-3.0 | [Citron-NEO/emulator](https://git.mythrax-rs.org/Citron-NEO/emulator) |
+| `streamex-switch-eden` | Eden | GPL-3.0 | [eden-emu/eden](https://git.eden-emu.dev/eden-emu/eden) |
+| `streamex-switch2` | Lichii | GPL-3.0 | [zortos293/Lichii](https://github.com/zortos293/Lichii) |
+| `streamex-wiiu` | Cemu | MPL-2.0 | [cemu-project/Cemu](https://github.com/cemu-project/Cemu) |
+| `streamex-xbox` | xemu | GPL-2.0 | [xemu-project/xemu](https://github.com/xemu-project/xemu) |
+| `streamex-xbox360` | Xenia Canary | BSD-3-Clause | [xenia-canary/xenia-canary](https://github.com/xenia-canary/xenia-canary) |
+| `streamex-ports-zelda64recomp` | Zelda 64: Recompiled | GPL-3.0 | [Zelda64Recomp/Zelda64Recomp](https://github.com/Zelda64Recomp/Zelda64Recomp) |
+
+**Our builds** of shadPS4 and KytyPS5 are the official source at a pinned commit plus the patches
+in this repository (`tools/shadps4/patches/`, `tools/kyty/patches/`); their package's `component.json`
+names the repository, the commit and the patches. The emulators' source code is in their official
+repositories.
 
 ## Copyleft components and their source code
 

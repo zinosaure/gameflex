@@ -67,6 +67,11 @@ export function hostRefusal(console, rom, capabilities, isAdmin) {
 }
 export const useData = () => useContext(DataContext);
 
+// UN SERVEUR QUI NE LANCE RIEN — gameflex-federation (le porteur, 2026-11-18 : « les jeux de Gameflex-Federation ne
+// doivent apparaître que dans catalogue/jeux ») : son listing le dit (`server.catalogOnly`). Ses jeux se téléchargent,
+// depuis le catalogue ; aucune bibliothèque ne les montre.
+export const catalogOnly = (server) => Boolean(server?.listing?.server?.catalogOnly);
+
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [status, setStatus] = useState(readToken() ? "loading" : "out");
@@ -356,8 +361,10 @@ export function DataProvider({ children, idle = false }) {
     }, [idle, user?.id]);
 
     // LES SERVEURS FÉDÉRÉS DONT CE COMPTE VOIT LES JEUX : tous, moins ceux qu'il a éteints — la bibliothèque (Library.jsx)
-    // et ses nombres (libraryCountOf) ne lisent que ceux-là ; les Réglages des consoles lisent toujours `servers`.
-    const shownServers = useMemo(() => servers.filter((server) => !hiddenServers.has(String(server.id))), [servers, hiddenServers]);
+    // et ses nombres (libraryCountOf) ne lisent que ceux-là ; les Réglages des consoles lisent toujours `servers`. MOINS
+    // CEUX QUI NE LANCENT RIEN (gameflex-federation, `catalogOnly`) : leurs jeux ne sont que dans le catalogue.
+    const shownServers = useMemo(() => servers.filter((server) => !hiddenServers.has(String(server.id)) && !catalogOnly(server)),
+        [servers, hiddenServers]);
 
     // LE NOMBRE DE JEUX D'ICI d'une console (besoin B4) : `GET /retrogaming/consoles`, la
     // bibliothèque de cet hôte et ses disques internes — ce que comptent Réglages › Consoles

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -208,28 +209,47 @@ func (s *Server) params(w http.ResponseWriter, r *http.Request) {
 
 // ── Les fiches des jeux ────────────────────────────────────────────────────
 
-// sheetGame — un jeu dont la fiche se lit ici : une copie sur un disque (le fichier est sur cette machine). Les jeux
-// d'un partage distant seulement n'ont pas encore de fiche : 404.
+// sheetGame — un jeu dont la fiche se lit ici (chantier 61, P3, question 2 A) :
+//
+//   - une copie sur un disque qui porte déjà sa fiche (`metadata/<console>/<gameid>`, une bibliothèque GameFlex) : elle
+//     se lit là ;
+//   - sinon, la fiche que le service fait lui-même avec ses comptes (metadataAccounts), dans son volume : celle d'un jeu
+//     de disque sans fiche (le disque est monté en lecture seule), et celle d'un jeu d'un partage — son fichier n'est pas
+//     sur cette machine, il se désigne par sa référence et se cherche par son nom.
 func (s *Server) sheetGame(w http.ResponseWriter, r *http.Request) (consoleID, reference, gamePath string, roots metadata.Roots, ok bool) {
 	consoleID, reference = chi.URLParam(r, "consoleId"), chi.URLParam(r, "ref")
+	gamePath, roots, ok = s.sheetPlace(consoleID, reference)
+	if !ok {
+		writeError(w, http.StatusNotFound, "game_not_found", "rom not found")
+	}
+
+	return consoleID, reference, gamePath, roots, ok
+}
+
+// sheetPlace — le fichier d'un jeu et les racines de sa fiche (voir sheetGame) ; faux si le service ne l'a pas.
+func (s *Server) sheetPlace(consoleID, reference string) (gamePath string, roots metadata.Roots, ok bool) {
 	copies := s.Catalog.Candidates(listing.Roms, consoleID, reference, 0)
 	if len(copies) == 0 {
-		writeError(w, http.StatusNotFound, "game_not_found", "rom not found")
-
-		return "", "", "", roots, false
+		return "", roots, false
 	}
+	own := metadata.Roots{Server: s.DataDir, Game: s.DataDir}
 	for _, copy := range copies {
 		if copy.Kind != "disk" {
 			continue
 		}
 		// Un jeu en dossier se lit depuis son dossier, comme chez GameFlex.
-		roots = metadata.Roots{Server: s.DataDir, Game: copy.Resource.Address}
+		gamePath = filepath.Join(copy.Resource.Address, filepath.FromSlash(copy.Where.Path))
+		sheet := filepath.Join(copy.Resource.Address, "metadata", consoleID, metadata.GameKey(gamePath, reference))
+		if _, err := os.Stat(sheet); err == nil {
+			return gamePath, metadata.Roots{Server: s.DataDir, Game: copy.Resource.Address}, true
+		}
 
-		return consoleID, reference, filepath.Join(copy.Resource.Address, filepath.FromSlash(copy.Where.Path)), roots, true
+		return gamePath, own, true
 	}
-	writeError(w, http.StatusNotFound, "no_sheet", "this game's sheet is not lent by this server")
+	// Un jeu d'un partage : un chemin qui n'existe pas ici, au nom de son fichier — sa clé est sa référence.
+	gamePath = filepath.Join(s.DataDir, "shared-games", consoleID, path.Base(copies[0].Where.Path))
 
-	return "", "", "", roots, false
+	return gamePath, own, true
 }
 
 func (s *Server) gameSheet(w http.ResponseWriter, r *http.Request) {
@@ -237,7 +257,7 @@ func (s *Server) gameSheet(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, metadata.Info(r.Context(), roots, metadata.Accounts{}, consoleID, gamePath, reference))
+	writeJSON(w, http.StatusOK, metadata.Info(r.Context(), roots, s.metadataAccounts(), consoleID, gamePath, reference))
 }
 
 func (s *Server) gameImage(w http.ResponseWriter, r *http.Request) {
@@ -246,7 +266,7 @@ func (s *Server) gameImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	width, _ := strconv.Atoi(r.URL.Query().Get("w"))
-	file, err := metadata.Image(r.Context(), roots, metadata.Accounts{}, consoleID, gamePath, reference, chi.URLParam(r, "kind"), width)
+	file, err := metadata.Image(r.Context(), roots, s.metadataAccounts(), consoleID, gamePath, reference, chi.URLParam(r, "kind"), width)
 	if err != nil || file == "" {
 		writeError(w, http.StatusNotFound, "no_image", "no image")
 

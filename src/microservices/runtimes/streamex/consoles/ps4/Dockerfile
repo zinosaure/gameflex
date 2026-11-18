@@ -108,7 +108,6 @@ RUN groupadd -f pulse-access && usermod -aG pulse-access root && usermod -aG pul
 # binaire de l'AppImage ; AppRun et le reste restent. Sans lui, celui de
 # l'éditeur — et le journal de la partie le dit.
 ARG SHADPS4_FILE=shadps4-linux-sdl-${SHADPS4_VERSION}.zip
-ARG SHADPS4_URL=https://github.com/shadps4-emu/shadPS4/releases/download/v.0.20.0/shadps4-linux-sdl-0.20.0.zip
 # Les versions éprouvées avec cette image (emulator_tested) : la liste informe,
 # elle ne bloque pas — toute version que reconnaît le motif se lance.
 ARG SHADPS4_TESTED="${SHADPS4_FILE}"
@@ -117,7 +116,7 @@ ENV GAMEFLEX_EMULATOR_FILE=${SHADPS4_FILE} GAMEFLEX_EMULATOR_DIR=/gameflex/cores
     GAMEFLEX_EMULATOR_TESTED="${SHADPS4_TESTED}" \
     GAMEFLEX_EMULATOR_BUILD="shadps4-gameflex-*" \
     GAMEFLEX_EMULATOR_BUILD_TARGET=/opt/shadps4/squashfs-root/usr/bin/shadps4
-LABEL gameflex.emulator.file=${SHADPS4_FILE} gameflex.emulator.url=${SHADPS4_URL} \
+LABEL gameflex.emulator.file=${SHADPS4_FILE} \
     gameflex.emulator.pattern="shadps4-linux-sdl-*.zip" \
     gameflex.emulator.tested="${SHADPS4_TESTED}"
 COPY src/microservices/runtimes/streamex/consoles/unpack-emulator.sh /usr/local/bin/unpack-emulator

@@ -41,6 +41,10 @@ type fakePeer struct {
 	// sessions — les sessions échangées ; `alive`, celle qu'il accepte encore.
 	sessions int
 	alive    string
+	// caller — sous quel nom, quel compte et quel genre le dernier échange s'est présenté (#781, #787).
+	caller [3]string
+	// catalogOnly — il se dit serveur qui ne lance rien (gameflex-federation), sur /listing/updated.
+	catalogOnly bool
 }
 
 func sampleListing(at time.Time) listing.Listing {
@@ -88,9 +92,13 @@ func newFakePeer(t *testing.T, token string) *fakePeer {
 	mux.HandleFunc("/api/v1/federation/listing/updated", guard(func(w http.ResponseWriter, r *http.Request) {
 		peer.mu.Lock()
 		peer.asked++
-		at, scopes := peer.listing.Header.UpdatedAt, peer.listing.Header.Scopes
+		at, scopes, only := peer.listing.Header.UpdatedAt, peer.listing.Header.Scopes, peer.catalogOnly
 		peer.mu.Unlock()
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"updatedAt": at, "scopes": scopes}})
+		data := map[string]any{"updatedAt": at, "scopes": scopes}
+		if only {
+			data["catalogOnly"] = true
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
 	}))
 	mux.HandleFunc("/api/v1/federation/params/ps3/rpcs3/presets/hd-perso", guard(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
@@ -112,6 +120,7 @@ func newFakePeer(t *testing.T, token string) *fakePeer {
 			return
 		}
 		peer.mu.Lock()
+		peer.caller = [3]string{r.Header.Get("X-GameFlex-From"), r.Header.Get("X-GameFlex-Member"), r.Header.Get("X-GameFlex-Kind")}
 		peer.sessions++
 		peer.alive = fmt.Sprintf("session-%d", peer.sessions)
 		session := peer.alive
@@ -302,15 +311,22 @@ func TestUnJetonDeCompteSEchangeContreUneSession(t *testing.T) {
 	fake := newFakePeer(t, "bon-jeton")
 	server, _ := remote.New(fake.URL, accountToken)
 
-	session, err := server.OpenSession()
+	session, err := server.OpenSession(remote.Caller{Name: "mon-serveur", Member: "gino", Kind: "server"})
 	if err != nil || session.Token != "session-1" || session.Username != "marc" || len(session.Consoles) != 1 {
 		t.Fatalf("session = %+v (%v)", session, err)
+	}
+	// Il se présente sous son nom : l'ami le montre dans les connexions faites avec ce jeton (#781).
+	fake.mu.Lock()
+	caller := fake.caller
+	fake.mu.Unlock()
+	if caller != [3]string{"mon-serveur", "gino", "server"} {
+		t.Fatalf("appelant = %q, attendu mon-serveur, gino, server", caller)
 	}
 	// Vivante, et ce que son compte lance À L'INSTANT : relu chez lui.
 	if now, alive, err := server.SessionNow(session); err != nil || !alive || len(now.Consoles) != 2 {
 		t.Fatalf("la session qu'il vient de donner : %v, consoles %v (%v)", alive, now.Consoles, err)
 	}
-	if _, err := server.OpenSession(); err != nil {
+	if _, err := server.OpenSession(remote.Caller{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, alive, err := server.SessionNow(session); err != nil || alive {
@@ -318,7 +334,7 @@ func TestUnJetonDeCompteSEchangeContreUneSession(t *testing.T) {
 	}
 
 	link, _ := remote.New(fake.URL, "bon-jeton")
-	if _, err := link.OpenSession(); !errors.Is(err, remote.ErrDenied) {
+	if _, err := link.OpenSession(remote.Caller{}); !errors.Is(err, remote.ErrDenied) {
 		t.Fatalf("le jeton du lien = %v, attendu ErrDenied", err)
 	}
 

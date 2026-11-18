@@ -48,6 +48,8 @@ type fakeIdentityService struct {
 	members  map[string]string
 	down     bool
 	sessions int
+	// caller — qui la dernière session a présenté au service (#781) : le nom déclaré et l'adresse vue.
+	caller [4]string
 }
 
 func newFakeIdentity(t *testing.T, catalog map[string]string, known map[string]identityAccount) *fakeIdentityService {
@@ -72,7 +74,11 @@ func newFakeIdentity(t *testing.T, catalog map[string]string, known map[string]i
 			return
 		}
 		var body struct {
-			Token string `json:"token"`
+			Token   string `json:"token"`
+			From    string `json:"from"`
+			Member  string `json:"member"`
+			Kind    string `json:"kind"`
+			Address string `json:"address"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		switch r.URL.Path {
@@ -92,6 +98,7 @@ func newFakeIdentity(t *testing.T, catalog map[string]string, known map[string]i
 				return
 			}
 			identity.sessions++
+			identity.caller = [4]string{body.From, body.Member, body.Kind, body.Address}
 			signed := testToken(t, auth.Claims{
 				Username: account.Username, RoleLevel: accounts.RoleUser, Fed: body.Token[:8],
 				RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour))},
@@ -501,5 +508,28 @@ func TestUneSessionChezUnAmiSeGardeTantQuIlLAccepte(t *testing.T) {
 	lender.Close()
 	if status, body := ask(http.MethodGet, "/servers/3/session", marc, ""); status != http.StatusBadGateway || body["errorCode"] != "serverUnreachable" {
 		t.Fatalf("un ami éteint = %d %v, attendu 502 serverUnreachable", status, body)
+	}
+}
+
+// QUI PRÉSENTE UN JETON DE COMPTE (#781) : le kernel passe au service d'identité le nom que l'appelant se donne
+// (`X-GameFlex-From`) et l'adresse vue (celle du proxy, `X-Forwarded-For`) — la liste des connexions de ce jeton.
+func TestUneSessionDitQuiLaDemande(t *testing.T) {
+	surface, identity := federationSurface(t)
+	request, _ := http.NewRequest(http.MethodPost, surface.URL+"/api/v1/federation/session", nil)
+	request.Header.Set("Authorization", "Bearer "+marcAccount)
+	request.Header.Set("X-GameFlex-From", "Gamebox")
+	request.Header.Set("X-GameFlex-Member", "gino")
+	request.Header.Set("X-GameFlex-Kind", "server")
+	request.Header.Set("X-Forwarded-For", "203.0.113.7, 10.0.0.1")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	identity.mu.Lock()
+	caller := identity.caller
+	identity.mu.Unlock()
+	if response.StatusCode != http.StatusOK || caller != [4]string{"Gamebox", "gino", "server", "203.0.113.7"} {
+		t.Fatalf("session = %d, appelant transmis %q, attendu gino sur Gamebox, un serveur, depuis 203.0.113.7", response.StatusCode, caller)
 	}
 }

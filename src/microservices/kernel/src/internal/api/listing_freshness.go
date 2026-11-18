@@ -15,12 +15,18 @@ package api
 
 import (
 	"context"
+	"path/filepath"
 	"time"
 
+	"gameflex/kernel/internal/config"
 	"gameflex/kernel/internal/docker"
 	"gameflex/kernel/internal/retro_files"
 	"gameflex/storage/listing"
 )
+
+// listingCacheDir — où vivent les listings mis en cache : les copies de ceux des serveurs fédérés, le nôtre, et ce qu'ils
+// mémorisent de leurs sources.
+var listingCacheDir = filepath.Join(config.StorageDir, "cache", "listing")
 
 // listingUpdatedAt — la date du listing servi à un ami, sans rien lire sur un
 // disque ; faux tant que l'en-tête n'a jamais été lu.

@@ -37,7 +37,7 @@ const GRANT_RETRO = "retro";
 const TOKEN_DURATIONS = ["1d", "1w", "1m", "3m", "6m", "1y", "2y"];
 const MEMBERS = "/settings/members";
 
-const dateTime = (iso, language) => (iso ? new Date(iso).toLocaleString(language === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "—");
+export const dateTime = (iso, language) => (iso ? new Date(iso).toLocaleString(language === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "—");
 const day = (iso, language) => (iso ? new Date(iso).toLocaleDateString(language === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium" }) : "—");
 
 // LE MOT DE PASSE D'UN MEMBRE, CE QU'IL EN EST (chantier 55) : l'aide de sa ligne « Mot de passe », la même sur les deux
@@ -138,8 +138,8 @@ export function TokenDetails({ token, help = null, children = null }) {
     );
 }
 
-// LE JETON D'UN COMPTE : son détail (TokenDetails), et, actif, le lien et le jeton à copier ; puis l'activer (ou le
-// prolonger) pour la durée choisie — AUCUNE n'est choisie d'avance (« ••• » tant qu'on n'en a pas pris une), le bouton
+// LE JETON D'UN COMPTE : son détail (TokenDetails) ; l'activer (ou le prolonger) pour la durée choisie — AVANT le jeton
+// (le porteur, 2026-11-18 : « mettre la section extend avant la section token ») ; actif, le lien et le jeton à copier — AUCUNE n'est choisie d'avance (« ••• » tant qu'on n'en a pas pris une), le bouton
 // dans l'encadré de la durée ; `more` : les lignes de « Plus » (« Créer mon QR » dans Réglages › Jeton) ; puis
 // « Danger » — le désactiver (le porteur, 2026-11-14 : « "disable my token" dans danger avec une confirmation »), le
 // régénérer (l'ancien cesse de valoir). `locked` : pourquoi ce compte ne se gère pas d'ici — tout est grisé, la raison
@@ -179,14 +179,6 @@ export function MemberToken({ member, onChanged, locked = null, more = null }) {
     return (
         <>
             <TokenDetails token={state} help={locked} />
-            {isLive(state) && (
-                <Section title={t("members.tokenValue")}>
-                    <Rows>
-                        <CopyField id="mt-link" label={t("members.tokenLink")} help={t("members.tokenLinkHelp")} value={origin} />
-                        <CopyField id="mt-token" label={t("members.tokenValue")} help={t("members.tokenValueHelp")} value={state.token || ""} />
-                    </Rows>
-                </Section>
-            )}
             <Section title={t(state.enabled ? "members.tokenExtend" : "members.tokenEnable")} help={t(state.enabled ? "members.tokenExtendHelp" : "members.tokenEnableHelp")}>
                 <Rows>
                     <SelectRow id="mt-duration" label={t("members.tokenDuration")} help={t("members.tokenDurationHelp")} value={duration} onChange={(value) => setDuration(value || "")} disabled={disabled}
@@ -197,8 +189,16 @@ export function MemberToken({ member, onChanged, locked = null, more = null }) {
                     </SubmitRow>
                 </Rows>
             </Section>
+            {isLive(state) && (
+                <Section title={t("members.tokenValue")}>
+                    <Rows>
+                        <CopyField id="mt-link" label={t("members.tokenLink")} help={t("members.tokenLinkHelp")} value={origin} />
+                        <CopyField id="mt-token" label={t("members.tokenValue")} help={t("members.tokenValueHelp")} value={state.token || ""} />
+                    </Rows>
+                </Section>
+            )}
             {more && (
-                <Section title={t("more")}>
+                <Section title={t("settings.tokenAlternative")}>
                     <Rows>{more}</Rows>
                 </Section>
             )}

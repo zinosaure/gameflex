@@ -85,6 +85,11 @@ export const updateResource = (id, resource) => call("PUT", `/api/v1/admin/resou
 export const removeResource = (id) => call("DELETE", `/api/v1/admin/resources/${id}`);
 export const rescanResource = (id) => call("POST", `/api/v1/admin/resources/${id}/rescan`);
 
+// LES COMPTES DES FOURNISSEURS DE FICHES (P3) : `[{service, configured, fields, required}]`, jamais une valeur.
+export const listMetadataServices = () => call("GET", "/api/v1/admin/metadata");
+export const saveMetadataService = (service, fields) => call("PUT", `/api/v1/admin/metadata/${encodeURIComponent(service)}`, fields);
+export const removeMetadataService = (service) => call("DELETE", `/api/v1/admin/metadata/${encodeURIComponent(service)}`);
+
 export const listDisks = () => call("GET", "/api/v1/admin/disks");
 export const rescanDisk = (name) => call("POST", `/api/v1/admin/disks/${encodeURIComponent(name)}/rescan`);
 
@@ -92,16 +97,18 @@ export const pinResource = (id, pinned) => call("PUT", `/api/v1/admin/resources/
 export const pinDisk = (name, pinned) => call("PUT", `/api/v1/admin/disks/${encodeURIComponent(name)}/pin`, { pinned });
 
 export const listTokens = () => call("GET", "/api/v1/admin/tokens");
-export const issueToken = (label) => call("POST", "/api/v1/admin/tokens", { label });
+export const issueToken = (label, scopes = []) => call("POST", "/api/v1/admin/tokens", { label, scopes });
+export const updateTokenScopes = (id, scopes) => call("PATCH", `/api/v1/admin/tokens/${id}`, { scopes });
 export const revokeToken = (id) => call("DELETE", `/api/v1/admin/tokens/${id}`);
 
 export const listInvitations = () => call("GET", "/api/v1/admin/invitations");
-export const createInvitation = (label) => call("POST", "/api/v1/admin/invitations", { label });
+export const createInvitation = (label, scopes = []) => call("POST", "/api/v1/admin/invitations", { label, scopes });
 export const revokeInvitation = (id) => call("DELETE", `/api/v1/admin/invitations/${id}`);
 
 export const fetchPairing = () => call("GET", "/api/v1/admin/pairing");
 export const setDiscovery = (open) => call("POST", "/api/v1/admin/pairing/discovery", { open, link: location.origin });
-export const createPairingCode = (label) => call("POST", "/api/v1/admin/pairing/code", { label });
+export const createPairingCode = (label, scopes = []) => call("POST", "/api/v1/admin/pairing/code", { label, scopes });
+export const cancelPairingCode = (id) => call("DELETE", `/api/v1/admin/pairing/code/${id}`);
 
 export const fetchLogSettings = () => call("GET", "/api/v1/admin/logs/settings");
 export const saveLogSettings = (settings) => call("PUT", "/api/v1/admin/logs/settings", settings);

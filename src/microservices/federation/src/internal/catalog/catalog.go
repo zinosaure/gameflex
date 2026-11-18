@@ -34,10 +34,10 @@ import (
 	"gameflex/federation/internal/sources"
 	"gameflex/federation/internal/store"
 	"gameflex/storage"
-	"gameflex/storage/kdrive"
+	"gameflex/federation/internal/sources/kdrive"
 	"gameflex/storage/listing"
-	"gameflex/storage/smb"
-	"gameflex/storage/webdav"
+	"gameflex/federation/internal/sources/smb"
+	"gameflex/federation/internal/sources/webdav"
 )
 
 // State — ce que l'administration voit d'une source : son dernier parcours, et son débit mesuré.

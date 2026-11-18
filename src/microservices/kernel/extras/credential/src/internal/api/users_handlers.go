@@ -585,7 +585,7 @@ func (server *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request, p
 	// clés (`metadata_services.updated_by_id`) : il perd son auteur, jamais son réglage — il manquait ici, et
 	// supprimer un administrateur qui avait configuré un fournisseur échouait sur la clé étrangère (un 500).
 	authoredByUser := []struct{ table, column string }{
-		{"users", "created_by_id"}, {"federation_tokens", "created_by_id"}, {"remote_mounts", "created_by_id"},
+		{"users", "created_by_id"}, {"federation_tokens", "created_by_id"},
 		{"federation_servers", "created_by_id"}, {"metadata_services", "updated_by_id"},
 	}
 

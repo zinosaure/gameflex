@@ -50,8 +50,8 @@ type heldSession struct {
 // là-bas : celle qu'on garde, si elle vaut encore et que l'ami l'accepte
 // toujours ; sinon une nouvelle. ErrDenied si l'ami refuse ce jeton
 // (désactivé, échu, régénéré, compte supprimé) ; une autre erreur s'il ne
-// répond pas.
-func (sessions *Sessions) At(server int64, link, member, token string) (Session, error) {
+// répond pas. `caller` : qui nous sommes, que l'ami garde avec la connexion (#781).
+func (sessions *Sessions) At(server int64, link, member, token string, caller Caller) (Session, error) {
 	client, err := New(link, token)
 	if err != nil {
 		return Session{}, err
@@ -74,7 +74,7 @@ func (sessions *Sessions) At(server int64, link, member, token string) (Session,
 	}
 	delete(sessions.held, key)
 
-	session, err := client.OpenSession()
+	session, err := client.OpenSession(caller)
 	if err != nil {
 		return Session{}, err
 	}

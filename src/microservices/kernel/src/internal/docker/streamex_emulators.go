@@ -115,7 +115,6 @@ func StreamexParams(consoleID, core string) (string, bool) {
 // qu'elle sait déballer.
 const (
 	labelEmulatorFile    = "gameflex.emulator.file"
-	labelEmulatorURL     = "gameflex.emulator.url"
 	labelEmulatorPattern = "gameflex.emulator.pattern"
 	labelEmulatorTested  = "gameflex.emulator.tested"
 )
@@ -123,15 +122,16 @@ const (
 // RequiredEmulator — l'émulateur qu'une image installée attend. `Console` est
 // son dossier, `cores/<Console>/` : celui de la Switch pour Eden comme pour
 // Citron. Une partie prend le fichier qui répond à `Pattern` et qu'on a déposé
-// en dernier (le porteur, 2026-10-24) ; `File` et `URL` sont la plus récente des
-// versions éprouvées, celle qu'on télécharge quand il n'y en a aucune. `Tested`
+// en dernier (le porteur, 2026-10-24) ; `File` est la plus récente des versions
+// éprouvées, celle qu'on télécharge quand il n'y en a aucune — depuis le paquet
+// streamex qui la porte (chantier 63, api/streamex_packages.go), plus depuis
+// l'adresse de l'éditeur. `Tested`
 // les liste toutes : elle informe, elle ne bloque pas.
 type RequiredEmulator struct {
 	Console string
 	Core    string
 	Pattern string
 	File    string
-	URL     string
 	Tested  []string
 }
 
@@ -199,6 +199,6 @@ func requiredFromLabels(consoleID, core string, labels map[string]string) (Requi
 	}
 
 	return RequiredEmulator{
-		Console: consoleID, Core: core, Pattern: pattern, File: file, URL: labels[labelEmulatorURL], Tested: tested,
+		Console: consoleID, Core: core, Pattern: pattern, File: file, Tested: tested,
 	}, true
 }

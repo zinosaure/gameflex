@@ -18,9 +18,7 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -28,10 +26,8 @@ import (
 	"sync"
 	"time"
 
-	"gameflex/facade"
 	"gameflex/kernel/internal/docker"
 	"gameflex/kernel/internal/retro_files"
-	"gameflex/storage"
 )
 
 // requiredEmulators — les fichiers qu'attendent les images installées ici. Un
@@ -155,7 +151,7 @@ func (server *Server) requiredEmulatorItems(ctx context.Context, consoleID strin
 		if need.Console != consoleID {
 			continue
 		}
-		item := storeItem{Name: need.File, File: need.File, Scoped: true, Package: "server", Source: need.URL}
+		item := storeItem{Name: need.File, File: need.File, Scoped: true, Package: "server", Source: server.streamexIndexURL()}
 		if name, info, present := server.emulatorInUse(need); present {
 			item.Name, item.File, item.Installed, item.SizeBytes = name, name, true, info.Size()
 		}
@@ -220,13 +216,21 @@ func (server *Server) downloadRequiredEmulator(w http.ResponseWriter, r *http.Re
 
 		return true
 	}
-	if need.URL == "" {
-		writeErrorCode(w, http.StatusUnprocessableEntity, "emulator_no_source", "this console's image does not say where its emulator is published")
+	// LE PAQUET STREAMEX QUI PORTE CE FICHIER (chantier 63) : son index, lu maintenant, le désigne ; il apporte aussi,
+	// pour un émulateur que nous patchons, notre binaire posé par-dessus au lancement.
+	index, err := fetchStreamexIndex(r.Context(), server.streamexIndexURL())
+	if err != nil {
+		writeErrorCode(w, http.StatusBadGateway, "streamex_index_unreachable", err.Error())
 
 		return true
 	}
-	written, err := downloadEmulatorFile(r.Context(), need.URL,
-		filepath.Join(server.retroCoresRoot(), need.Console, need.File))
+	pkg, ok := index.packageFor(need.Console, need.File)
+	if !ok {
+		writeErrorCode(w, http.StatusUnprocessableEntity, "emulator_no_package", "no streamex package offers "+need.File)
+
+		return true
+	}
+	written, err := installStreamexPackage(r.Context(), pkg, filepath.Join(server.retroCoresRoot(), need.Console))
 	if err != nil {
 		writeErrorCode(w, http.StatusBadGateway, "download_failed", err.Error())
 
@@ -235,59 +239,6 @@ func (server *Server) downloadRequiredEmulator(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, map[string]any{"core": name, "consoleId": consoleID, "sizeBytes": written})
 
 	return true
-}
-
-// emulatorDownloadTimeout — les plus gros font une centaine de mégaoctets.
-const emulatorDownloadTimeout = 15 * time.Minute
-
-// downloadEmulatorFile — le fichier tel que l'éditeur le publie, sans le
-// déballer : c'est l'image qui le fera, à chaque partie. Un fichier partiel
-// d'abord, pour qu'une coupure ne laisse pas un fichier tronqué qui passerait
-// pour présent.
-func downloadEmulatorFile(ctx context.Context, url, target string) (int64, error) {
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return 0, fmt.Errorf("folder cannot be created: %w", err)
-	}
-	storage.AdoptParentOwner(filepath.Dir(target))
-
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return 0, err
-	}
-	response, err := (&http.Client{Timeout: emulatorDownloadTimeout}).Do(request)
-	if err != nil {
-		return 0, fmt.Errorf("the emulator's publisher did not answer: %w", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("the emulator's publisher answered %d for %s", response.StatusCode, url)
-	}
-
-	partial := target + ".part"
-	out, err := os.Create(partial)
-	if err != nil {
-		return 0, fmt.Errorf("cannot write: %w", err)
-	}
-	written, err := io.Copy(facade.ProgressWriter(ctx, out, response.ContentLength), response.Body)
-	if closeErr := out.Close(); err == nil {
-		err = closeErr
-	}
-	if err == nil && written == 0 {
-		err = errors.New("the emulator's publisher sent an empty file")
-	}
-	if err != nil {
-		os.Remove(partial)
-
-		return 0, fmt.Errorf("download interrupted: %w", err)
-	}
-	if err := os.Rename(partial, target); err != nil {
-		os.Remove(partial)
-
-		return 0, err
-	}
-	storage.AdoptParentOwner(target)
-
-	return written, nil
 }
 
 // markCoreVersions — la version d'un cœur libretro installé : la date de son

@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-18
+
+### Added
+
+- **The Android app updates its interface without a new app**: **About › Update › Interface** installs the latest
+  interface made for your version of the app (from the `edge-versions` release), or one of your own from a .zip file,
+  and goes back to the app's own interface.
+- **gameflex-federation makes the sheets of its games**: **More › Metadata providers** takes your IGDB and SteamGridDB
+  accounts. A game on a disk that already has its sheet keeps it; the games of a network share, and those of a disk
+  without a sheet, get one made by the service.
+- **Who uses your token**: **Settings › Profile › Federation › Connections with my token** lists each server or device
+  that opened a session with your account token: the name it gives itself, the account that pasted the token there,
+  whether it is a GameFlex server or the app, the address it came from (**From your current network** when it is
+  yours), and the first and last time. **Revoke the connections** regenerates the token, to cut someone who should not have it.
+
+### Changed
+
+- **gameflex-federation has the same Federation pages as GameFlex**: **Delivered accesses** (invitations with their QR
+  code, tokens, pairing codes in discovery mode, each access with when it was last used, and revoking it), with its
+  disks and shares under **Internal resources**. A pairing code can be cancelled, and its window says who used it.
+  **Also share my metadata providers** lends its IGDB and SteamGridDB accounts to an access, as in GameFlex.
+- **The recent consoles' emulators come in streamex packages**: **Settings › Emulators** installs the console's
+  package from the [gameflex-streamex](https://github.com/zinosaure/gameflex-streamex) releases (the version tested
+  with GameFlex, and for shadPS4 and KytyPS5 our build of it), after checking its fingerprint, instead of downloading
+  from each emulator's publisher. A publisher who removes a version or moves no longer breaks the download.
+- **A game's patch has an official source**: on its page, **Get it** offers GameFlex's streamex packages first, before
+  internal disks and federated servers, for the games whose settings we have tuned.
+- **Our builds of shadPS4 and KytyPS5 are patches on the official repositories**: `tools/shadps4/patches/` and
+  `tools/kyty/patches/` (`patches-phone/` for the phone), applied by `build.sh` to the official source at a pinned commit.
+- **The Android app learns its emulators' versions from the same index**: it reads the streamex packages' index when it
+  starts and before installing an emulator, installs the version listed there after checking its fingerprint, and keeps
+  the last one it knew when offline. A new emulator package no longer needs a new app.
+
+### Fixed
+
+- **The games of gameflex-federation only appear in the catalogue**: the service only lends its games and their files
+  to download, so its games no longer show as playable in the console menus or the home screen, and its patches,
+  settings, BIOS, emulators and sheets stay under **Catalogue**.
+
+### Removed
+
+- **Adding a network share directly to a GameFlex server or to the app** (WebDAV, kDrive, Samba), a feature without a
+  screen since the old interface left: shares go into **gameflex-federation**, which every device and server joins
+  like a friend's server. The shares registered the old way, and their cached listings, are deleted at startup.
+
 ## [0.13.1] - 2026-11-18
 
 ### Fixed
@@ -15,11 +60,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « GameFlex » line under the video, on phones whose visible screen is shorter (in the Android app, for one).
 - **The touchpad of the PlayStation controller in landscape is a little narrower** (345 px instead of 360): it no longer
   almost touches the buttons beside it.
-
-### Changed
-
-- **Our builds of shadPS4 and KytyPS5 are patches on the official repositories**: `tools/shadps4/patches/` and
-  `tools/kyty/patches/` (`patches-phone/` for the phone), applied by `build.sh` to the official source at a pinned commit.
 
 ## [0.13.0] - 2026-11-18
 

@@ -2,18 +2,24 @@
 #
 # Ce fichier se SOURCE depuis les scripts de l'hôte (launch.sh,
 # tools/publish.sh, tools/streamex-emulators.sh).
-# En shell et non en JSON parce que ses deux seuls lecteurs sont des scripts
-# shell : pas de python au milieu, et surtout des commentaires possibles — le
-# pourquoi d'une URL vaut d'être écrit à côté d'elle.
+# En shell et non en JSON parce que ses lecteurs sont des scripts shell, et
+# pour garder des commentaires : le pourquoi d'une version vaut d'être écrit à
+# côté d'elle.
+#
+# D'OÙ IL VIENT : UN PAQUET STREAMEX (chantier 63, 2026-11-18). Le porteur :
+# « Nous on ne fournit pas d'émulateurs, on fournit un moteur qui peut utiliser
+# les émulateurs. » La version validée de chaque image est dans un paquet de la
+# Release `streamex` de zinosaure/gameflex-streamex (tools/streamex-packages.sh),
+# listé dans son index `components.json` avec son sha256. Le kernel l'installe
+# depuis Réglages › Émulateurs ; `ensure_emulator`, plus bas, fait de même depuis
+# l'hôte. Plus d'adresse d'éditeur : une version retirée ou un éditeur parti
+# (Citron, 2026) ne casse plus rien.
 #
 # POURQUOI LE FICHIER VIT DANS LA BIBLIOTHÈQUE, ET PAS DANS L'IMAGE
 #
-#   - Licence. On ne redistribue pas un émulateur. C'était déjà écrit pour le
-#     téléphone : livrer la bibliothèque d'un émulateur (GPL-3.0) dans notre
-#     artefact « en ferait une œuvre combinée, et
-#     engagerait tout ce qu'il y a autour », là où « l'appareil qui va la
-#     chercher chez son éditeur ne distribue rien ». Une image de console ne
-#     se publie donc que SANS son émulateur (chantier 29).
+#   - L'image de la console reste le moteur seul : elle déballe l'émulateur au
+#     lancement depuis cores/<console>/ (chantier 29), et elle se publie telle
+#     quelle.
 #   - C'est GameFlex qui télécharge, jamais la personne : c'est ce qui garantit
 #     que le fichier atterrit sous le bon identifiant de console.
 #   - Parité. Le téléphone épingle ses versions sur celles d'ici pour que les
@@ -29,11 +35,11 @@
 # depuis un contexte nommé : l'image tenait l'émulateur, elle ne pouvait donc
 # pas se publier, ni se construire chez quelqu'un qui n'a pas les sources.
 #
-# L'image dit ce qu'elle attend par deux étiquettes, tirées des valeurs
+# L'image dit ce qu'elle attend par ses étiquettes, tirées des valeurs
 # ci-dessous (le test de tools/publicdist vérifie qu'elles concordent) :
-# `gameflex.emulator.file`, le nom du fichier, et `gameflex.emulator.url`, son
-# adresse chez l'éditeur. Le kernel les lit : il refuse une partie sans le
-# fichier, et Réglages › Émulateurs le télécharge à cette adresse.
+# `gameflex.emulator.file`, le nom du fichier. Le kernel la lit : il refuse une
+# partie sans le fichier, et Réglages › Émulateurs l'installe depuis le paquet
+# streamex qui le porte.
 #
 # `ensure_emulator` le dépose depuis l'hôte (launch.sh, tools/streamex-emulators.sh) : déjà là, rien ne se télécharge. Le kernel ne
 # remplace jamais un fichier présent. C'est la bibliothèque qui le garde — et
@@ -82,29 +88,6 @@ emulator_file() {
     esac
 }
 
-# emulator_url <image> — où l'éditeur le publie.
-emulator_url() {
-    case "$1" in
-        # Citron, sa release du 2026-04-27 : celle que le téléphone a jouée.
-        switch) echo "https://github.com/citron-neo/emulator/releases/download/2026-04-27/citron_nightly-0237a9b88-linux-x86_64_v3.AppImage" ;;
-        # La nocturne officielle d'Eden, épinglée par son étiquette (chantier 25) :
-        # la seule qui lit les jeux du firmware 22 (ZBIC).
-        switch-eden) echo "https://nightly.eden-emu.dev/v1794878467.d85bad8924/Eden-Linux-d85bad8924-amd64-clang-pgo.AppImage" ;;
-        # Lichii (#644), l'émulateur de la Switch 2, fork d'Eglantine : sa version
-        # build-316 (5a66c89, 2026-11-16), avec son profil PGO, épinglée par son
-        # étiquette.
-        switch2) echo "https://github.com/zortos293/Lichii/releases/download/build-316/lichii-linux-x86_64-pgo.AppImage" ;;
-        xbox)   echo "https://github.com/xemu-project/xemu/releases/download/v0.8.139/xemu-0.8.139-x86_64.AppImage" ;;
-        wiiu)   echo "https://github.com/cemu-project/Cemu/releases/download/v2.6/Cemu-2.6-x86_64.AppImage" ;;
-        ps3)    echo "https://github.com/RPCS3/rpcs3-binaries-linux/releases/download/build-fb6737b1c8306ceeccb53b7fa051acfc9e641cd7/rpcs3-v0.0.43-20607-fb6737b1_linux64.AppImage" ;;
-        ps4)    echo "https://github.com/shadps4-emu/shadPS4/releases/download/v.0.20.0/shadps4-linux-sdl-0.20.0.zip" ;;
-        ps5)    echo "https://github.com/KytyPS5/KytyPS5/releases/download/KytyPS5-2026-11-04-91c5820/KytyPS5-2026-11-04-91c5820-Linux-x86_64.tar.gz" ;;
-        xbox360) echo "https://github.com/xenia-canary/xenia-canary/releases/download/f9431eb/xenia_canary_linux.AppImage" ;;
-        ports-zelda64recomp) echo "https://github.com/Zelda64Recomp/Zelda64Recomp/releases/download/v1.2.2/Zelda64Recompiled-v1.2.2-Linux-X64.zip" ;;
-        *)      echo "" ;;
-    esac
-}
-
 # emulator_tested <image> — LES VERSIONS ÉPROUVÉES avec cette image, la plus
 # récente en dernier : emulator_file, celle qu'on télécharge, est toujours la
 # dernière de la liste.
@@ -141,17 +124,21 @@ emulator_console() {
     esac
 }
 
+# STREAMEX_INDEX — l'index des paquets streamex (chantier 63) ; surchargeable.
+STREAMEX_INDEX=${STREAMEX_INDEX:-https://github.com/zinosaure/gameflex-streamex/releases/download/streamex/components.json}
+
 # ensure_emulator <image> <racine de bibliothèque> — le fichier est-il là ?
-# Sinon, le déposer. Rend son dossier, cores/<console>/.
+# Sinon, installer le paquet streamex de l'image (`streamex-<image>`), comme le
+# fait le kernel : son empreinte vérifiée, ses fichiers déposés sans remplacer
+# ceux déjà là. Rend son dossier, cores/<console>/.
 #
 # Écrit sur la sortie d'ERREUR : sa sortie standard est le chemin, que
 # l'appelant capture.
 ensure_emulator() {
     local console=$1 library=$2
-    local file url dir
+    local file dir
     file=$(emulator_file "$console")
-    url=$(emulator_url "$console")
-    if [ -z "$file" ] || [ -z "$url" ]; then
+    if [ -z "$file" ]; then
         echo "ensure_emulator: console inconnue : $console" >&2
 
         return 1
@@ -163,16 +150,42 @@ ensure_emulator() {
 
         return 0
     fi
-    echo "   $console : $file absent, téléchargement" >&2
+    echo "   $console : $file absent, paquet streamex-$console" >&2
     mkdir -p "$dir" || return 1
-    # Fichier partiel d'abord : une coupure réseau ne doit pas laisser un
-    # fichier tronqué qui passerait pour présent à la prochaine partie.
-    if ! curl -fL --retry 3 -o "$dir/$file.part" "$url"; then
-        rm -f "$dir/$file.part"
-        echo "ensure_emulator: téléchargement impossible : $url" >&2
-
-        return 1
-    fi
-    mv "$dir/$file.part" "$dir/$file"
+    python3 - "$STREAMEX_INDEX" "streamex-$console" "$file" "$dir" <<'PY' >&2 || return 1
+import hashlib, json, os, sys, tempfile, urllib.request, zipfile
+index_url, image, wanted, folder = sys.argv[1:]
+# Un nom à nous : le proxy public de la staging refuse celui de Python (son filtre anti-robots).
+fetch = lambda url, timeout: urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "GameFlex-streamex-packages"}), timeout=timeout)
+index = json.load(fetch(index_url, 30))
+found = [p for p in index["packages"] if p.get("kind", "server") == "server" and p["image"] == image and wanted in p["files"]]
+if not found:
+    sys.exit(f"ensure_emulator: aucun paquet {image} ne porte {wanted} ({index_url})")
+package = found[0]
+with tempfile.NamedTemporaryFile(dir=folder, prefix=".streamex-package-", suffix=".zip.part", delete=False) as part:
+    digest = hashlib.sha256()
+    with fetch(package["url"], 1200) as response:
+        for block in iter(lambda: response.read(1 << 20), b""):
+            part.write(block)
+            digest.update(block)
+try:
+    if digest.hexdigest() != package["sha256"].lower():
+        sys.exit(f"ensure_emulator: {package['file']} ne correspond pas à son index (sha256) : rien d'installé")
+    with zipfile.ZipFile(part.name) as archive:
+        for name in package["files"]:
+            if name != os.path.basename(name) or name in ("", ".", ".."):
+                sys.exit(f"ensure_emulator: nom refusé {name!r}")
+            target = os.path.join(folder, name)
+            if os.path.exists(target):
+                continue
+            info = archive.getinfo(name)
+            with archive.open(info) as source, open(target + ".part", "wb") as out:
+                out.write(source.read())
+            os.chmod(target + ".part", (info.external_attr >> 16) & 0o777 or 0o644)
+            os.replace(target + ".part", target)
+            print(f"   → {name}")
+finally:
+    os.remove(part.name)
+PY
     echo "$dir"
 }

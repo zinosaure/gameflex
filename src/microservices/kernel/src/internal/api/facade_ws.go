@@ -12,8 +12,6 @@ package api
 //   - `status/<plateforme>/<session>` — l'état d'une partie, au rythme
 //     demandé (`every`) ;
 //   - `launch/<launchId>` — les étapes d'un lancement, l'histoire d'abord ;
-//   - `mount/<id>` — le résumé d'une ressource distante, à chaque début et
-//     chaque fin de parcours ;
 //   - `download/<id>` — l'état d'un téléchargement en tâche de fond, le
 //     dernier d'abord (gameflex/facade, downloads.go), pour le compte qui l'a
 //     lancé ;
@@ -48,7 +46,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -142,34 +139,6 @@ func (server *Server) facadeTopic(conn *facade.Conn, wanted facade.Subscription)
 
 		return func(ctx context.Context) {
 			facade.PushEvery(ctx, conn, facade.Push{Type: "status", Topic: wanted.Topic}, facade.Pace(wanted.Every), read)
-		}, 0, ""
-
-	case strings.HasPrefix(wanted.Topic, "mount/"):
-		// LE RÉSUMÉ D'UNE RESSOURCE DISTANTE, poussé à chaque début et chaque
-		// fin de parcours. La page le relisait en HTTP toutes les 4 s tant
-		// qu'un parcours tournait — plusieurs minutes sur un vrai drive.
-		id, err := strconv.ParseInt(strings.TrimPrefix(wanted.Topic, "mount/"), 10, 64)
-		if err != nil {
-			return nil, http.StatusBadRequest, "invalid mount id"
-		}
-		mount, found, err := server.findMount(id)
-		if err != nil {
-			return nil, http.StatusBadGateway, err.Error()
-		}
-		if !found {
-			return nil, http.StatusNotFound, "mount not found"
-		}
-		key := resourceKey(mount)
-
-		return func(ctx context.Context) {
-			signals := server.rescans.Subscribe()
-			defer server.rescans.Unsubscribe(signals)
-
-			facade.PushOnChange(ctx, conn, facade.Push{Type: "mount", Topic: wanted.Topic}, signals, func() any {
-				scanning, failure := server.rescans.State(key)
-
-				return listing.Summary(listingCacheDir, key, scanning, failure)
-			})
 		}, 0, ""
 
 	case strings.HasPrefix(wanted.Topic, "metadata-orphans/"):
@@ -503,8 +472,17 @@ func (server *Server) facadeDownload(conn *facade.Conn, request facade.Request) 
 		chiArgs["name"], chiArgs["section"] = command.Disk, command.Section
 		handler = adminOnly(server.refreshing(
 			func(r *http.Request) string { return chi.URLParam(r, "section") }, server.handleDiskStorageImport))
+	case "official":
+		// LA SOURCE OFFICIELLE (chantier 63, P6) : un correctif depuis le paquet `streamex-patches` de l'index.
+		if command.Section != listing.Patches {
+			conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "the official source offers patches only"))
+
+			return
+		}
+		path = "/api/v1/retrogaming/storage/official/patches"
+		handler = adminOnly(server.refreshing(sectionNamed(listing.Patches), server.handleOfficialPatchImport))
 	default:
-		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "route must be cores, server or disk"))
+		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "route must be cores, server, disk or official"))
 
 		return
 	}

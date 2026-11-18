@@ -70,7 +70,7 @@ func Load() Config {
 	// accepte serait une porte ouverte.
 	config.InternalSecret = os.Getenv("GAMEFLEX_INTERNAL_SECRET")
 	if config.InternalSecret == "" {
-		slog.Warn("GAMEFLEX_INTERNAL_SECRET not set — every /internal route (account tokens, mounts, federated servers) will refuse every call")
+		slog.Warn("GAMEFLEX_INTERNAL_SECRET not set — every /internal route (account tokens, federated servers) will refuse every call")
 	}
 
 	// The VAPID key: this one when provided, otherwise the one kept in the

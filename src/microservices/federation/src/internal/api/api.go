@@ -92,6 +92,11 @@ func (s *Server) Router() http.Handler {
 			router.Get("/params/{consoleId}/{emulator}/presets/{preset}", s.params)
 			router.Get("/patches/{consoleId}/{name}", s.patch)
 			router.Head("/patches/{consoleId}/{name}", s.patch)
+			// LES FOURNISSEURS PRÊTÉS (chantier 61, B ; ceux de GameFlex, federation_metadata.go du kernel) : sa
+			// recherche dans ses fiches, et avec la portée `metadata-providers` dans ses comptes ; le jeu d'un de ses
+			// fournisseurs, seulement avec elle. Un segment statique l'emporte sur `{ref}` chez chi.
+			router.Get("/metadata/{consoleId}/search", s.metadataSearch)
+			router.Get("/metadata/{consoleId}/providers/{service}/{externalId}", s.providerGame)
 			router.Get("/metadata/{consoleId}/{ref}", s.gameSheet)
 			router.Get("/metadata/{consoleId}/{ref}/images/{kind}", s.gameImage)
 			router.Get("/sessions", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, http.StatusOK, []any{}) })
@@ -112,8 +117,12 @@ func (s *Server) Router() http.Handler {
 		router.Post("/resources/{id}/rescan", s.rescanResource)
 		router.Get("/tokens", s.listTokens)
 		router.Post("/tokens", s.issueToken)
+		router.Patch("/tokens/{id}", s.updateToken)
 		router.Delete("/tokens/{id}", s.revokeToken)
 		router.Get("/settings", s.getSettings)
+		router.Get("/metadata", s.listMetadataServices)
+		router.Put("/metadata/{service}", s.saveMetadataService)
+		router.Delete("/metadata/{service}", s.removeMetadataService)
 		router.Put("/settings", s.putSettings)
 		router.Get("/invitations", s.listInvitations)
 		router.Post("/invitations", s.createInvitation)
@@ -121,6 +130,7 @@ func (s *Server) Router() http.Handler {
 		router.Get("/pairing", s.pairingState)
 		router.Post("/pairing/discovery", s.pairingDiscovery)
 		router.Post("/pairing/code", s.pairingCode)
+		router.Delete("/pairing/code/{id}", s.pairingCancel)
 		router.Get("/events", s.events)
 		router.Get("/disks", s.listDisks)
 		router.Post("/disks/{name}/rescan", s.rescanDisk)
@@ -206,7 +216,7 @@ func (s *Server) listing(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listingUpdated(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"updatedAt": s.Catalog.UpdatedAt(), "scopes": tokenOf(r).Scopes})
+	writeJSON(w, http.StatusOK, map[string]any{"updatedAt": s.Catalog.UpdatedAt(), "scopes": tokenOf(r).Scopes, "catalogOnly": true})
 }
 
 // zipFolder — le dossier d'un élément, zippé à la volée sans compression (des jeux déjà compressés pour la plupart),
@@ -446,14 +456,15 @@ func (s *Server) listTokens(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) issueToken(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Label string `json:"label"`
+		Label  string   `json:"label"`
+		Scopes []string `json:"scopes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 
 		return
 	}
-	token, value, err := s.Store.IssueToken(body.Label)
+	token, value, err := s.Store.IssueToken(body.Label, body.Scopes)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 
@@ -461,6 +472,36 @@ func (s *Server) issueToken(w http.ResponseWriter, r *http.Request) {
 	}
 	// La valeur n'est montrée qu'ici : la base n'en garde que l'empreinte.
 	writeJSON(w, http.StatusCreated, map[string]any{"token": token, "value": value})
+}
+
+// updateToken — PATCH /api/v1/admin/tokens/{id} {scopes} : ce qu'un accès partage, changé à l'instant.
+func (s *Server) updateToken(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "bad_request", "invalid id")
+
+		return
+	}
+	var body struct {
+		Scopes []string `json:"scopes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+
+		return
+	}
+	token, err := s.Store.UpdateTokenScopes(id, body.Scopes)
+	if errors.Is(err, os.ErrNotExist) {
+		writeError(w, http.StatusNotFound, "not_found", "no such token")
+
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "store_error", err.Error())
+
+		return
+	}
+	writeJSON(w, http.StatusOK, token)
 }
 
 func (s *Server) revokeToken(w http.ResponseWriter, r *http.Request) {

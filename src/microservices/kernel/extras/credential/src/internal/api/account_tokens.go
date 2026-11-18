@@ -23,6 +23,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"gameflex/consoles"
@@ -38,6 +39,43 @@ type accountTokenResponse struct {
 	CreatedAt  any    `json:"created_at"`
 	UseCount   int    `json:"use_count"`
 	LastUsedAt any    `json:"last_used_at"`
+	// Connections — qui s'en sert (#781) : les serveurs et appareils qui l'ont échangé, le plus récent d'abord.
+	Connections []tokenConnection `json:"connections"`
+}
+
+// tokenConnection — un serveur ou un appareil qui a ouvert une session avec ce jeton : le nom qu'il se donne, l'adresse
+// d'où il est venu, la première et la dernière fois, combien de fois.
+type tokenConnection struct {
+	Name string `json:"name"`
+	// Member, Kind — le compte qui a collé le jeton chez l'appelant, et ce qu'est l'appelant (`server`, `phone`) :
+	// déclarés par lui (#787), pour que le propriétaire reconnaisse les siens.
+	Member  string `json:"member"`
+	Kind    string `json:"kind"`
+	Address string `json:"address"`
+	// Here — l'adresse est celle d'où le propriétaire lit la page : ce que l'appelant ne peut pas inventer.
+	Here        bool `json:"here"`
+	FirstUsedAt any  `json:"first_used_at"`
+	LastUsedAt  any  `json:"last_used_at"`
+	UseCount    int  `json:"use_count"`
+}
+
+// TokenCaller — qui présente un jeton de compte : le nom qu'il déclare (`X-GameFlex-From`, vide pour un appelant qui
+// ne le dit pas) et l'adresse que le proxy a vue. Pour le montrer à son propriétaire, jamais pour autoriser.
+type TokenCaller struct {
+	Name    string
+	Member  string
+	Kind    string
+	Address string
+}
+
+// trimmedTo — une valeur venue d'ailleurs, sans espaces autour, coupée à `limit` caractères.
+func trimmedTo(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if runes := []rune(value); len(runes) > limit {
+		value = string(runes[:limit])
+	}
+
+	return value
 }
 
 // tokenDurations — les durées qu'on peut donner à un jeton, « 2 ans maximum »
@@ -110,8 +148,33 @@ func (server *Server) accountToken(userID int64, withValue bool) (accountTokenRe
 	if withValue {
 		response.Token = token
 	}
+	response.Connections, err = server.tokenConnections(userID)
 
-	return response, nil
+	return response, err
+}
+
+// tokenConnections — les connexions faites avec le jeton d'un compte, la plus récente d'abord.
+func (server *Server) tokenConnections(userID int64) ([]tokenConnection, error) {
+	rows, err := server.db.Query(`SELECT name, member, kind, address, first_used_at, last_used_at, use_count FROM account_token_connections
+		WHERE user_id = ? ORDER BY last_used_at DESC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	list := []tokenConnection{}
+	for rows.Next() {
+		var (
+			row         tokenConnection
+			first, last sql.NullString
+		)
+		if err := rows.Scan(&row.Name, &row.Member, &row.Kind, &row.Address, &first, &last, &row.UseCount); err != nil {
+			return nil, err
+		}
+		row.FirstUsedAt, row.LastUsedAt = isoDatetime(first), isoDatetime(last)
+		list = append(list, row)
+	}
+
+	return list, rows.Err()
 }
 
 // handleUpdateAccountToken — PATCH /api/v1/users/{id}/token
@@ -179,6 +242,8 @@ func (server *Server) handleRegenerateAccountToken(w http.ResponseWriter, r *htt
 		respondErrorCode(w, http.StatusNotFound, "not_found", "User not found.")
 		return
 	}
+	// Les connexions parlaient de l'ancien jeton.
+	_, _ = server.db.Exec(`DELETE FROM account_token_connections WHERE user_id = ?`, id)
 	server.respondAccountToken(w, id)
 }
 
@@ -213,6 +278,11 @@ func (server *Server) handleMyAccountToken(w http.ResponseWriter, r *http.Reques
 			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
+	}
+	// « Depuis votre réseau actuel » : la connexion vient de l'adresse d'où son propriétaire lit cette page.
+	viewer := claimedClientAddress(r)
+	for index := range token.Connections {
+		token.Connections[index].Here = viewer != "" && token.Connections[index].Address == viewer
 	}
 	var stored string
 	if err := server.db.QueryRow(`SELECT consoles FROM users WHERE id = ?`, principal.ID).Scan(&stored); err != nil {
@@ -305,12 +375,16 @@ func (server *Server) handleFederationSession(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var body struct {
-		Token string `json:"token"`
+		Token   string `json:"token"`
+		From    string `json:"from"`
+		Member  string `json:"member"`
+		Kind    string `json:"kind"`
+		Address string `json:"address"`
 	}
 	if !decodeBody(w, r, &body) {
 		return
 	}
-	session, account, err := server.FederatedSession(body.Token)
+	session, account, err := server.FederatedSession(body.Token, TokenCaller{Name: body.From, Member: body.Member, Kind: body.Kind, Address: body.Address})
 	if errors.Is(err, ErrTokenRefused) {
 		respondErrorCode(w, http.StatusUnauthorized, "auth_required", "Invalid token.")
 		return
@@ -332,9 +406,10 @@ func (server *Server) handleFederationSession(w http.ResponseWriter, r *http.Req
 
 // FederatedSession — une session au nom du compte de ce jeton, jamais
 // administrateur, qui ne dure pas plus que le jeton et porte sa génération ;
-// le compteur avance (« une connexion »). ErrTokenRefused si le jeton ne vaut
-// plus. La route interne du serveur et le téléphone (embed) passent par ici.
-func (server *Server) FederatedSession(token string) (string, TokenAccount, error) {
+// le compteur avance (« une connexion »), et la ligne de son appelant (#781).
+// ErrTokenRefused si le jeton ne vaut plus. La route interne du serveur et le
+// téléphone (embed) passent par ici.
+func (server *Server) FederatedSession(token string, caller TokenCaller) (string, TokenAccount, error) {
 	account, err := server.AccountByToken(token)
 	if err != nil {
 		return "", TokenAccount{}, err
@@ -348,8 +423,17 @@ func (server *Server) FederatedSession(token string) (string, TokenAccount, erro
 	if err != nil {
 		return "", TokenAccount{}, err
 	}
+	at := now()
 	_, _ = server.db.Exec(`UPDATE account_tokens SET use_count = use_count + 1, last_used_at = ? WHERE user_id = ?`,
-		now(), account.UserID)
+		at, account.UserID)
+	kind := caller.Kind
+	if kind != "server" && kind != "phone" {
+		kind = ""
+	}
+	_, _ = server.db.Exec(`INSERT INTO account_token_connections (user_id, name, member, kind, address, first_used_at, last_used_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (user_id, name, address)
+		DO UPDATE SET last_used_at = excluded.last_used_at, use_count = use_count + 1, member = excluded.member, kind = excluded.kind`,
+		account.UserID, trimmedTo(caller.Name, 100), trimmedTo(caller.Member, 64), kind, trimmedTo(caller.Address, 64), at, at)
 
 	return session, account, nil
 }

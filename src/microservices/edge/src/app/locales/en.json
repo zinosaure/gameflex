@@ -449,7 +449,8 @@
         "federatedServersTitle": "Federated servers",
         "federatedServersHelp": "The servers whose games and consoles you see, on all your devices. Turned off, a server stays in Settings › Games.",
         "federatedServersNone": "No federated server.",
-        "adminOnly": "Administrators only"
+        "adminOnly": "Administrators only",
+        "tokenAlternative": "Alternative"
     },
     "join": {
         "welcome": "Welcome, {{name}}",
@@ -1097,7 +1098,8 @@
         "metadataHelp": "Its games' sheets and images, always with them.",
         "scopeMetadata": "Metadata",
         "allowed": "Allowed",
-        "notAllowed": "Not allowed"
+        "notAllowed": "Not allowed",
+        "connectionHelpServeOnly": "What this service lends to your devices and to other GameFlex servers."
     },
     "invitations": {
         "create": "Create the invitation",
@@ -1160,7 +1162,7 @@
         "linkTitle": "Link",
         "shareHelp": "Through an app on this device.",
         "doneHelp": "Close the invitation.",
-        "myQRCreate": "Create my QR",
+        "myQRCreate": "Use a QR code instead",
         "pageLink": "Invitation link",
         "pageOpen": "Go to GameFlex"
     },
@@ -1273,7 +1275,6 @@
         "fetchConfirm": "{{name}} comes to this server from {{source}}.",
         "fetchConfirmSized": "{{name}} ({{size}}) comes to this server from {{source}}.",
         "noSource": "No source: a joined server (Settings › Federation) becomes one.",
-        "sourcePublisher": "Official source (the publisher)",
         "serverNamed": "Server {{id}}",
         "federatedServer": "Federated server",
         "sourceUnreachable": "Unreachable",
@@ -1306,7 +1307,8 @@
         "statusSaved": "Every game without a status of its own is now “{{status}}”.",
         "paramsFileState": "State",
         "paramsFileUnreadable": "Unreadable",
-        "paramsFileAbsent": "Missing"
+        "paramsFileAbsent": "Missing",
+        "sourceStreamex": "Official source (streamex packages)"
     },
     "gameAdmin": {
         "found_one": "{{count}} game",
@@ -1461,7 +1463,8 @@
             "kdrive": "kDrive",
             "ftp": "FTP",
             "sftp": "SFTP"
-        }
+        },
+        "officialKind": "GameFlex's streamex packages"
     },
     "layout": {
         "editorTitle": "Button positions",
@@ -2209,7 +2212,8 @@
             "denied": "{{server}} refuses our token: nothing can be downloaded.",
             "notLent": "{{server}} does not lend this game's metadata.",
             "unreachable": "{{server}} is not answering: try again in a moment.",
-            "failed": "The download could not start."
+            "failed": "The download could not start.",
+            "libraryCatalogOnly": "This server runs no game: download it to play it."
         },
         "saves": {
             "label": "See its saves",
@@ -2247,7 +2251,24 @@
         "serversHelp": "To play there with your account there.",
         "serversTitle": "Federated servers",
         "serversListHelp": "Add your account on one of them to play there.",
-        "serversEmpty": "No federated server."
+        "serversEmpty": "No federated server.",
+        "connections": "Connections with my token",
+        "connectionsHelp": "The servers and devices that use it.",
+        "connectionsTitle": "Connections",
+        "connectionsListHelp": "Each server or device that opened a session with your token. Its name, account and kind are the ones it gives; “From your current network” is not given: the connection comes from where you read this page.",
+        "connectionsEmpty": "Nobody has used your token yet.",
+        "connectionUnnamed": "No name",
+        "connectionNoAddress": "Unknown address",
+        "connectionWhen_one": "{{count}} connection, on {{last}}",
+        "connectionWhen_other": "{{count}} connections, from {{first}} to {{last}}",
+        "revoke": "Revoke the connections",
+        "revokeHelp": "Regenerates your token: all these connections are cut, your own devices included, which will need the new one.",
+        "revokeAdminOnly": "Only an administrator can regenerate your token: ask them.",
+        "revokeConfirm": "Revoke all the connections? Your token is regenerated: the old one stops working at once, on every device that uses it.",
+        "revoked": "Connections revoked: your token was regenerated.",
+        "connectionServer": "GameFlex server",
+        "connectionPhone": "App",
+        "connectionHere": "From your current network"
     },
     "invite": {
         "qrTitle": "Scan it",
@@ -2311,7 +2332,8 @@
             "invitationRefused": "Code refused: it was already used, has expired or does not exist. Create another one.",
             "notPairingCode": "A pairing code has 6 digits.",
             "invalidLink": "This address leads to no server. Check it, then try again."
-        }
+        },
+        "useInstead": "Use a pairing code instead"
     },
     "fedService": {
         "brand": "GameFlex Federation",
@@ -2323,7 +2345,6 @@
             "help": "Sign in with this service's administration account."
         },
         "connections": {
-            "title": "Connections",
             "help": "The disks and shares whose games are offered to linked devices.",
             "none": "No connection yet. Mount a disk, or add a share in “More” › “Resources”.",
             "scanning": "Reading…",
@@ -2352,60 +2373,8 @@
             "pin": "Pin first",
             "pinHelp": "This source serves first, whatever the item."
         },
-        "link": {
-            "title": "Connection",
-            "help": "Link a GameFlex device to this service.",
-            "token": "Token",
-            "tokenHelp": "A token to paste in the device, with the service address.",
-            "invitation": "Invitation link and QR code",
-            "invitationHelp": "A single-use link, or its QR code, to open in the device.",
-            "pairing": "Pairing code",
-            "pairingHelp": "Six digits to type in the device, in discovery mode.",
-            "device": "Device name",
-            "deviceHelp": "It helps you recognize this link later.",
-            "address": "Service address",
-            "addressHelp": "Paste it with the token in the device."
-        },
-        "token": {
-            "intro": "In the device, add a server and paste the address and the token.",
-            "create": "Create the token",
-            "issued": "Token for “{{name}}”",
-            "once": "Copy it now: it will not be shown again.",
-            "list": "Issued tokens",
-            "none": "No token.",
-            "used": "Used on {{when}}",
-            "unused": "Never used",
-            "created": "Created on {{when}}",
-            "revoke": "Revoke “{{name}}”",
-            "revokeHelp": "The device no longer sees this service's games.",
-            "revokeQuestion": "Revoke the token of “{{name}}”? This device will no longer see this service's games.",
-            "revoked": "Token revoked."
-        },
         "invitation": {
-            "intro": "Send the link or the QR code: the device pastes or scans it to link itself.",
-            "create": "Create the invitation",
-            "created": "Invitation for “{{name}}”",
-            "until": "Valid until {{when}}, once.",
-            "link": "Invitation link",
-            "qrAlt": "Invitation QR code",
-            "list": "Pending invitations",
-            "none": "No pending invitation.",
-            "revoke": "Cancel “{{name}}”",
-            "revokeQuestion": "Cancel the invitation of “{{name}}”?",
-            "revoked": "Invitation cancelled.",
             "openedHere": "Paste this link in GameFlex, under “Join a server”, on the device to link."
-        },
-        "pairing": {
-            "intro": "Open the discovery mode, then create a code and type it in the device.",
-            "discovery": "Discovery mode",
-            "discoveryHelp": "For five minutes, devices can link themselves with a code.",
-            "openUntil": "Open until {{when}}.",
-            "notAnnounced": "This service is not visible on the local network: type its address in the device.",
-            "code": "New code",
-            "create": "Create the code",
-            "yourCode": "Code to type",
-            "codeUntil": "Valid until {{when}}, once.",
-            "closedFirst": "Open the discovery mode first."
         },
         "more": {
             "title": "More",
@@ -2512,10 +2481,6 @@
             "removeQuestion": "Delete the log “{{path}}”?",
             "removed": "Log deleted."
         },
-        "join": {
-            "title": "Join the service",
-            "help": "Link a computer, a phone or a TV to this service."
-        },
         "resources": {
             "title": "Resources",
             "help": "This machine's disks and the shares that bring games.",
@@ -2526,6 +2491,11 @@
             "diskHelp": "A disk is declared in the compose: it is mounted, not added here.",
             "mount": "Mount",
             "rescanDiskHelp": "Reads everything the disk holds again."
+        },
+        "metadata": {
+            "title": "Metadata providers",
+            "help": "The accounts that make the sheets of games that have none.",
+            "listHelp": "A game on a disk that already has its sheet keeps it. For the others, the service makes the sheet with these accounts."
         }
     }
 }

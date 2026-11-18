@@ -6,17 +6,22 @@ import { ButtonPlace, MUTED } from "../libs/ui.js";
 import { qrImage } from "../libs/share-link.js";
 import { focusElement, useScreenInput } from "../libs/input.js";
 import { toast } from "../shell/Shell.jsx";
-import NavRow, { CopyField, DangerRow, EmptyRow, InfoRow, Note, PageHeader, Rows, Section, SelectRow, SubmitRow, SwitchRow, TextRow } from "../ui/Bricks.jsx";
+import NavRow, { CopyField, DangerRow, EmptyRow, InfoRow, Listing, Note, PageHeader, Rows, Section, SelectRow, SubmitRow, SwitchRow, TextRow } from "../ui/Bricks.jsx";
 import { formatSize } from "../libs/format.js";
 import { Form, formContext, FormButton } from "../ui/Forms.jsx";
+import { METADATA_SERVICES, MetadataKeysForm } from "../settings/server/Metadata.jsx";
+import { FederationRoutes } from "../settings/people/Federation.jsx";
+import { FederationHost, GAMEFLEX_HOST } from "../settings/people/federationHost.js";
 
 // L'INTERFACE DE gameflex-federation (chantier 61 ; le porteur, 2026-11-18 : « tu reprends la même design "settings" et
 // "login" de edge […] dans l'interface on voit les connexions rajoutées. Et dans section connexion on verra les liens
 // pour créer des tokens/connexion avec le serveur. Et ensuite la section more pour rajouter un Samba, WebDAV, kDrive,
 // FTP, SFTP ») : les briques, la connexion et le cadre des Réglages d'edge, autour des routes du service.
 //
-//   /                       l'accueil : ce service, les connexions, « Plus » (rejoindre, ressources, journaux), se déconnecter
+//   /                       l'accueil : ce service, les connexions, les jetons émis, « Plus » (rejoindre, ressources,
+//                           fournisseurs, journaux), se déconnecter
 //   /connections/<id>       une connexion : son état, la relire, la modifier, la retirer
+//   /tokens/<id>            un jeton émis (un appareil relié) : quand il s'en est servi, le révoquer
 //   /disks/<nom>            une ressource interne : son état, la relire
 //   /join                   rejoindre le service : jeton, invitation et QR, code d'appairage
 //   /resources              les ressources internes, et ajouter un Samba, WebDAV, kDrive, FTP, SFTP
@@ -24,6 +29,8 @@ import { Form, formContext, FormButton } from "../ui/Forms.jsx";
 //   /link/invitation        un lien d'invitation et son QR code
 //   /link/pairing           le mode découverte et le code d'appairage
 //   /more/<genre>           ajouter un partage Samba, WebDAV, kDrive, FTP ou SFTP
+//   /metadata               les fournisseurs de fiches : les comptes avec lesquels le service fait les fiches (P3)
+//   /metadata/<service>     les clés d'un fournisseur, et l'oublier
 //   /logs                   les journaux : ce qui s'écrit, et la liste
 //   /logs/view?path=        un journal : ses dernières lignes, le télécharger, le supprimer
 //   /invite/<code>          un lien d'invitation ouvert dans un navigateur : il se colle dans GameFlex
@@ -145,11 +152,15 @@ const stateText = (t, i18n, state) => {
     return t("fedService.connections.games", { count: state.games, when: when(state.scannedAt, i18n.language) });
 };
 
-function Home() {
-    const { t, i18n } = useTranslation();
-    const navigate = useNavigate();
-    const [resources] = useLive(api.listResources);
-    const [disks] = useLive(api.listDisks);
+// L'ACCUEIL DU SERVICE EST CELUI DE RÉGLAGES › FÉDÉRATION D'EDGE (chantier 61, option B ; le porteur, 2026-11-18 :
+// « prendre la même interface et fonctionnalités que dans /settings/federation […] la seule chose qui différencie c'est
+// le fait de pouvoir rajouter des ressources externes ») : ses pages (accès délivrés, invitations, jeton, code
+// d'appairage, mode découverte) viennent d'edge (FederationRoutes), servies par l'hôte du service (SERVICE_HOST). Le
+// service y ajoute, avant : son nom (« Ce service ») ; après : ses ressources internes (disques et partages), « Plus »
+// (Ressources, Fournisseurs de métadonnées, Journaux), se déconnecter. Rien pour rejoindre un serveur : le service ne
+// fait que prêter.
+function ServiceName() {
+    const { t } = useTranslation();
     const [settings, reloadSettings] = useLive(api.fetchSettings);
     const [name, setName] = useState({ "fs-name": "" });
     const [saving, setSaving] = useState(false);
@@ -168,22 +179,30 @@ function Home() {
         toast(result.ok ? t("fedService.server.saved") : result.errorMessage || t("fedService.failed"));
         reloadSettings();
     };
+
+    return (
+        <Section title={t("fedService.server.title")}>
+            <form onSubmit={saveName}>
+                <Rows>
+                    <TextRow id="fs-name" label={t("fedService.server.name")} help={t("fedService.server.nameHelp")} context={formContext(name, setName)} />
+                    <SubmitRow><FormButton id="fs-save" label={t("fedService.save")} isReplaced={Boolean(settings && name["fs-name"] && name["fs-name"] !== settings.serverName)} pending={saving} /></SubmitRow>
+                </Rows>
+            </form>
+        </Section>
+    );
+}
+
+function ServiceResources() {
+    const { t, i18n } = useTranslation();
+    const navigate = useNavigate();
+    const [resources] = useLive(api.listResources);
+    const [disks] = useLive(api.listDisks);
     const present = (disks || []).filter((disk) => disk.present);
     const loading = resources === undefined || disks === undefined;
 
-    // L'ORDRE (le porteur, 2026-11-18) : « 1. Ce service 2. Connexions 3. Section "Plus" avec : rejoindre le service, les
-    // ressources, logs 4. Déconnexion ».
     return (
-        <Page title={settings?.serverName || t("fedService.brand")} back={null}>
-            <Section title={t("fedService.server.title")}>
-                <form onSubmit={saveName}>
-                    <Rows>
-                        <TextRow id="fs-name" label={t("fedService.server.name")} help={t("fedService.server.nameHelp")} context={formContext(name, setName)} />
-                        <SubmitRow><FormButton id="fs-save" label={t("fedService.save")} isReplaced={Boolean(settings && name["fs-name"] && name["fs-name"] !== settings.serverName)} pending={saving} /></SubmitRow>
-                    </Rows>
-                </form>
-            </Section>
-            <Section title={t("fedService.connections.title")} help={t("fedService.connections.help")}>
+        <>
+            <Section title={t("fedService.resources.internal")} help={t("fedService.connections.help")}>
                 <Rows>
                     {loading && <EmptyRow icon="bi-hourglass" text={t("fedService.loading")} />}
                     {!loading && resources.length === 0 && present.length === 0 && <EmptyRow icon="bi-plug" text={t("fedService.connections.none")} />}
@@ -205,8 +224,8 @@ function Home() {
             </Section>
             <Section title={t("fedService.more.title")}>
                 <Rows>
-                    <NavRow id="fm-join" icon="bi-link-45deg" tone="indigo" label={t("fedService.join.title")} help={t("fedService.join.help")} onOpen={() => navigate("/join")} />
                     <NavRow id="fm-resources" icon="bi-hdd-stack" tone="teal" label={t("fedService.resources.title")} help={t("fedService.resources.help")} onOpen={() => navigate("/resources")} />
+                    <NavRow id="fm-metadata" icon="bi-card-text" tone="amber" label={t("fedService.metadata.title")} help={t("fedService.metadata.help")} onOpen={() => navigate("/metadata")} />
                     <NavRow id="fg-logs" icon="bi-journal-text" tone="slate" label={t("fedService.logs.title")} help={t("fedService.logs.help")} onOpen={() => navigate("/logs")} />
                 </Rows>
             </Section>
@@ -215,27 +234,69 @@ function Home() {
                     <NavRow id="fs-logout" icon="bi-box-arrow-right" tone="slate" label={t("fedService.logout")} opens="action" onOpen={() => api.logout()} />
                 </Rows>
             </Section>
-        </Page>
+        </>
     );
 }
 
-// REJOINDRE LE SERVICE : les trois façons de relier un appareil (l'ancienne section « Connexion »).
-function JoinPage() {
-    const { t } = useTranslation();
-    const navigate = useNavigate();
+// LE SUJET `pairing` DU SERVICE : son état, relu quand le flux d'événements le dit (jamais à intervalle).
+function useServicePairing() {
+    const [state] = useLive(api.fetchPairing);
 
-    return (
-        <Page title={t("fedService.join.title")}>
-            <Section help={t("fedService.link.help")}>
-                <Rows>
-                    <NavRow id="fl-token" icon="bi-key" tone="indigo" label={t("fedService.link.token")} help={t("fedService.link.tokenHelp")} onOpen={() => navigate("/link/token")} />
-                    <NavRow id="fl-invite" icon="bi-qr-code" tone="teal" label={t("fedService.link.invitation")} help={t("fedService.link.invitationHelp")} onOpen={() => navigate("/link/invitation")} />
-                    <NavRow id="fl-pairing" icon="bi-123" tone="violet" label={t("fedService.link.pairing")} help={t("fedService.link.pairingHelp")} onOpen={() => navigate("/link/pairing")} />
-                </Rows>
-            </Section>
-        </Page>
-    );
+    return state || null;
 }
+
+function useServiceName() {
+    const [settings] = useLive(api.fetchSettings);
+
+    return settings?.serverName || "";
+}
+
+// Le QR d'un lien, dessiné ici (le service n'a pas la route du kernel) : un Blob SVG.
+const serviceQR = (text) => fetch(qrImage(text)).then((response) => response.blob()).catch(() => null);
+
+// Les appels du service, aux formes d'edge (federationHost.js) : {ok, status, item | items, detail}.
+const answer = (result, shape = (data) => ({ item: data })) => ({ ok: result.ok, status: result.status, detail: result.errorMessage, ...(result.ok ? shape(result.data) : {}) });
+const used = (value) => (value && !String(value).startsWith("0001") ? value : null);
+const tokenView = (token) => ({ id: token.id, label: token.label, scopes: (token.scopes || []).join(","), last_used_at: used(token.lastUsedAt), created_at: token.createdAt });
+
+// L'HÔTE DES PAGES DE LA FÉDÉRATION, côté service : ses jetons — le catalogue, et, au choix, ses fournisseurs de
+// métadonnées (« Partager aussi mes fournisseurs de métadonnées », comme GameFlex) ; pas de consoles —, ses invitations,
+// son mode découverte et ses codes.
+const SERVICE_HOST = {
+    ...GAMEFLEX_HOST,
+    base: "/",
+    Page: ({ title, parent, children }) => <Page title={title} back={parent === null ? null : parent || "/"}>{children}</Page>,
+    joins: false,
+    offers: { devices: false, providers: true },
+    useIssues: () => true,
+    useServerName: useServiceName,
+    useOrigin: () => location.origin,
+    usePairing: useServicePairing,
+    useJoinedCount: () => 0,
+    useInApp: () => false,
+    invitationQR: serviceQR,
+    useHomeTitle: () => useServiceName() || null,
+    HomeBefore: ServiceName,
+    HomeAfter: ServiceResources,
+    api: {
+        listTokens: async () => answer(await api.listTokens(), (data) => ({ items: (data || []).map(tokenView) })),
+        createToken: async (label, scopes) => answer(await api.issueToken(label, scopes), (data) => ({ item: { ...tokenView(data.token), token: data.value } })),
+        updateTokenScopes: async (id, scopes) => answer(await api.updateTokenScopes(id, scopes), (data) => ({ item: tokenView(data) })),
+        revokeToken: async (id) => answer(await api.revokeToken(id)),
+        listInvitations: async () => answer(await api.listInvitations(), (data) => ({
+            items: (data || []).filter((entry) => !used(entry.usedAt) && Date.parse(entry.expiresAt) > Date.now())
+                .map((entry) => ({ id: entry.id, label: entry.label, kind: "federation", scopes: (entry.scopes || ["catalog"]).join(","), expires_at: entry.expiresAt })),
+        })),
+        createInvitation: async ({ label, scopes }) => answer(await api.createInvitation(label, scopes), (data) => ({
+            item: { id: data.invitation.id, code: data.code, label: data.invitation.label, kind: "federation", expires_at: data.invitation.expiresAt },
+        })),
+        revokeInvitation: async (id) => answer(await api.revokeInvitation(id)),
+        createPairingCode: async ({ label, scopes }) => answer(await api.createPairingCode(label, scopes)),
+        cancelPairingCode: async (id) => answer(await api.cancelPairingCode(id)),
+        openPairing: async () => answer(await api.setDiscovery(true)),
+        closePairing: async () => answer(await api.setDiscovery(false)),
+    },
+};
 
 // LES RESSOURCES : les disques montés dans le conteneur, puis les partages à ajouter (l'ancienne section « Plus »).
 function ResourcesPage() {
@@ -465,206 +526,83 @@ function ResourcePage() {
     );
 }
 
-// ── Relier un appareil ─────────────────────────────────────────────────────
+// ── Les fournisseurs de fiches (P3) ────────────────────────────────────────
+//
+// LES FICHES DES JEUX QUI N'EN ONT PAS (question 2 A) : un jeu d'un disque qui porte sa fiche la prête telle quelle ; les
+// autres — un jeu d'un partage, un jeu de disque sans fiche — ont celle que le service fait avec SES comptes. Les mêmes
+// fournisseurs et le même formulaire que Réglages › Fournisseur de métadonnées d'edge ; les valeurs entrent et ne
+// ressortent jamais.
+const ACCOUNT_SERVICES = METADATA_SERVICES.filter((service) => service.fields);
 
-// Le nom de l'appareil, et le bouton qui crée ce qui le reliera.
-function LabelForm({ id, button, onCreate }) {
+function MetadataPage() {
     const { t } = useTranslation();
-    const [values, setValues] = useState({ [id]: "" });
-    const [pending, setPending] = useState(false);
-
-    const submit = async (event) => {
-        event.preventDefault();
-        setPending(true);
-        const done = await onCreate(values[id].trim());
-        setPending(false);
-
-        if (done) {
-            setValues({ [id]: "" });
-        }
-    };
+    const navigate = useNavigate();
+    const [statuses] = useLive(api.listMetadataServices);
 
     return (
-        <form onSubmit={submit}>
-            <Rows>
-                <TextRow id={id} label={t("fedService.link.device")} help={t("fedService.link.deviceHelp")} context={formContext(values, setValues)} />
-                <SubmitRow><FormButton id={`${id}-create`} label={button} isReplaced={Boolean(values[id].trim())} pending={pending} /></SubmitRow>
-            </Rows>
-        </form>
+        <Page title={t("fedService.metadata.title")}>
+            <Section title={t("settings.metadataServices")} help={t("fedService.metadata.listHelp")}>
+                <Rows>
+                    {statuses === undefined && <EmptyRow icon="bi-hourglass" text={t("fedService.loading")} />}
+                    {statuses !== undefined && ACCOUNT_SERVICES.map((service) => {
+                        const status = (statuses || []).find((entry) => entry.service === service.key);
+
+                        return (
+                            <NavRow key={service.key} id={`fmd-${service.key}`} icon={service.icon} tone={service.tone} label={t(`settings.metadata.${service.key}.label`)}
+                                help={t(`settings.metadata.${service.key}.summary`)} value={status ? t(status.configured ? "settings.configured" : "settings.notConfigured") : null}
+                                onOpen={() => navigate(`/metadata/${service.key}`)} />
+                        );
+                    })}
+                </Rows>
+            </Section>
+        </Page>
     );
 }
 
-function TokenPage() {
-    const { t, i18n } = useTranslation();
-    const [tokens, reload] = useLive(api.listTokens);
-    const [issued, setIssued] = useState(null);
+function MetadataServicePage() {
+    const { t } = useTranslation();
+    const { service: key } = useParams();
+    const navigate = useNavigate();
+    const [statuses, reload] = useLive(api.listMetadataServices);
+    const service = ACCOUNT_SERVICES.find((entry) => entry.key === key);
+    const status = (statuses || []).find((entry) => entry.service === key) || null;
+    const name = service ? t(`settings.metadata.${service.key}.label`) : key;
+    const stored = (status?.fields || []).length > 0;
+    const save = async (serviceKey, fields) => {
+        const result = await api.saveMetadataService(serviceKey, fields);
 
-    const create = async (label) => {
-        const result = await api.issueToken(label);
-        if (!result.ok) {
-            toast(result.errorMessage || t("fedService.failed"));
-
-            return false;
-        }
-        setIssued(result.data);
-        reload();
-
-        return true;
+        return { ok: result.ok, items: result.data };
     };
 
+    if (!service) {
+        return <Navigate to="/metadata" replace />;
+    }
+
     return (
-        <Page title={t("fedService.link.token")} back="/join">
-            <Section help={t("fedService.token.intro")}>
-                <LabelForm id="ft-label" button={t("fedService.token.create")} onCreate={create} />
-            </Section>
-            {issued && (
-                <Section title={t("fedService.token.issued", { name: issued.token.label })} help={t("fedService.token.once")}>
-                    <Rows>
-                        <CopyField id="ft-link" label={t("fedService.link.address")} help={t("fedService.link.addressHelp")} value={location.origin} />
-                        <CopyField id="ft-value" label={t("fedService.link.token")} value={issued.value} />
-                    </Rows>
-                </Section>
-            )}
-            <Section title={t("fedService.token.list")}>
-                <Rows>
-                    {tokens?.length === 0 && <EmptyRow icon="bi-key" text={t("fedService.token.none")} />}
-                    {(tokens || []).map((token) => (
-                        <InfoRow key={token.id} icon="bi-key" tone="indigo" label={token.label}
-                            value={token.lastUsedAt && !token.lastUsedAt.startsWith("0001") ? t("fedService.token.used", { when: when(token.lastUsedAt, i18n.language) }) : t("fedService.token.unused")}
-                            help={t("fedService.token.created", { when: when(token.createdAt, i18n.language) })} />
-                    ))}
-                </Rows>
-            </Section>
-            {tokens?.length > 0 && (
-                <Section title={t("danger")}>
-                    <Rows>
-                        {tokens.map((token) => (
-                            <DangerRow key={token.id} id={`ft-revoke-${token.id}`} icon="bi-x-circle" label={t("fedService.token.revoke", { name: token.label })}
-                                help={t("fedService.token.revokeHelp")} question={t("fedService.token.revokeQuestion", { name: token.label })}
+        <Page title={name} back="/metadata">
+            {statuses === undefined ? <Section><Note className="mt-0">{t("fedService.loading")}</Note></Section> : (
+                <>
+                    <MetadataKeysForm service={service} status={status} save={save} onSaved={() => reload()} />
+                    <Section title={t("danger")}>
+                        <Rows>
+                            <DangerRow id="fmd-remove" label={t("settings.metadataRemove")} help={t(stored ? "settings.metadataRemoveHelp" : "settings.metadataNothingStored", { name })}
+                                question={t("settings.metadataRemoveConfirm", { name })} disabled={!stored}
                                 onConfirm={async () => {
-                                    const result = await api.revokeToken(token.id);
-                                    toast(result.ok ? t("fedService.token.revoked") : result.errorMessage || t("fedService.failed"));
-                                    reload();
+                                    const result = await api.removeMetadataService(service.key);
+                                    toast(result.ok ? t("settings.metadataRemoved", { name }) : result.errorMessage || t("fedService.failed"));
+                                    if (result.ok) {
+                                        navigate("/metadata", { replace: true });
+                                    }
                                 }} />
-                        ))}
-                    </Rows>
-                </Section>
+                        </Rows>
+                    </Section>
+                </>
             )}
         </Page>
     );
 }
 
-function InvitationPage() {
-    const { t, i18n } = useTranslation();
-    const [invitations, reload] = useLive(api.listInvitations);
-    const [created, setCreated] = useState(null);
-
-    const create = async (label) => {
-        const result = await api.createInvitation(label);
-        if (!result.ok) {
-            toast(result.errorMessage || t("fedService.failed"));
-
-            return false;
-        }
-        setCreated({ ...result.data, link: `${location.origin}/invite/${result.data.code}` });
-        reload();
-
-        return true;
-    };
-    const pending = (invitations || []).filter((item) => (!item.usedAt || item.usedAt.startsWith("0001")) && new Date(item.expiresAt) > new Date());
-
-    return (
-        <Page title={t("fedService.link.invitation")} back="/join">
-            <Section help={t("fedService.invitation.intro")}>
-                <LabelForm id="fi-label" button={t("fedService.invitation.create")} onCreate={create} />
-            </Section>
-            {created && (
-                <Section title={t("fedService.invitation.created", { name: created.invitation.label })}
-                    help={t("fedService.invitation.until", { when: when(created.invitation.expiresAt, i18n.language) })}>
-                    <div className="gf-qr mx-auto mb-3" style={{ maxWidth: 240 }}>
-                        <img className="d-block w-100 rounded bg-white p-2" src={qrImage(created.link)} alt={t("fedService.invitation.qrAlt")} />
-                    </div>
-                    <Rows>
-                        <CopyField id="fi-link" label={t("fedService.invitation.link")} value={created.link} />
-                    </Rows>
-                </Section>
-            )}
-            <Section title={t("fedService.invitation.list")}>
-                <Rows>
-                    {pending.length === 0 && <EmptyRow icon="bi-qr-code" text={t("fedService.invitation.none")} />}
-                    {pending.map((item) => (
-                        <InfoRow key={item.id} icon="bi-qr-code" tone="teal" label={item.label} value={t("fedService.invitation.until", { when: when(item.expiresAt, i18n.language) })} />
-                    ))}
-                </Rows>
-            </Section>
-            {pending.length > 0 && (
-                <Section title={t("danger")}>
-                    <Rows>
-                        {pending.map((item) => (
-                            <DangerRow key={item.id} id={`fi-revoke-${item.id}`} icon="bi-x-circle" label={t("fedService.invitation.revoke", { name: item.label })}
-                                question={t("fedService.invitation.revokeQuestion", { name: item.label })}
-                                onConfirm={async () => {
-                                    const result = await api.revokeInvitation(item.id);
-                                    toast(result.ok ? t("fedService.invitation.revoked") : result.errorMessage || t("fedService.failed"));
-                                    reload();
-                                }} />
-                        ))}
-                    </Rows>
-                </Section>
-            )}
-        </Page>
-    );
-}
-
-function PairingPage() {
-    const { t, i18n } = useTranslation();
-    const [pairing] = useLive(api.fetchPairing);
-    const [code, setCode] = useState(null);
-    const open = Boolean(pairing?.open);
-
-    useEffect(() => {
-        if (!open) {
-            setCode(null);
-        }
-    }, [open]);
-
-    const create = async (label) => {
-        const result = await api.createPairingCode(label);
-        if (!result.ok) {
-            toast(result.status === 423 ? t("fedService.pairing.closedFirst") : result.errorMessage || t("fedService.failed"));
-
-            return false;
-        }
-        setCode(result.data);
-
-        return true;
-    };
-
-    return (
-        <Page title={t("fedService.link.pairing")} back="/join">
-            <Section help={t("fedService.pairing.intro")}>
-                <Rows>
-                    <SwitchRow id="fp-discovery" label={t("fedService.pairing.discovery")}
-                        help={open ? t("fedService.pairing.openUntil", { when: when(pairing.until, i18n.language) }) : t("fedService.pairing.discoveryHelp")}
-                        checked={open} onChange={(checked) => api.setDiscovery(checked)} />
-                </Rows>
-                {open && !pairing?.announced && <Note>{t("fedService.pairing.notAnnounced")}</Note>}
-            </Section>
-            {open && (
-                <Section title={t("fedService.pairing.code")}>
-                    <LabelForm id="fp-label" button={t("fedService.pairing.create")} onCreate={create} />
-                </Section>
-            )}
-            {open && code && (
-                <Section title={t("fedService.pairing.yourCode")} help={t("fedService.pairing.codeUntil", { when: when(code.expiresAt, i18n.language) })}>
-                    <p className="display-5 fw-bold text-center font-monospace my-3" aria-live="polite">{`${code.code.slice(0, 3)} ${code.code.slice(3)}`}</p>
-                </Section>
-            )}
-        </Page>
-    );
-}
-
-// ── Les journaux ───────────────────────────────────────────────────────────
+// ── Relier un appareil ─────────────────────────────────────────────────────
 
 const LEVELS = ["debug", "info", "warn", "error"];
 
@@ -808,24 +746,23 @@ export default function App() {
     useEffect(() => api.onSessionChange(setSignedIn), []);
 
     return (
+        <FederationHost.Provider value={SERVICE_HOST}>
         <Routes>
             <Route path="/invite/:code" element={<InviteInfo />} />
             {!signedIn ? <Route path="*" element={<Login />} /> : (
                 <>
-                    <Route path="/" element={<Home />} />
                     <Route path="/connections/:id" element={<ResourcePage />} />
                     <Route path="/disks/:name" element={<DiskPage />} />
-                    <Route path="/join" element={<JoinPage />} />
                     <Route path="/resources" element={<ResourcesPage />} />
                     <Route path="/more/:kind" element={<AddResource />} />
-                    <Route path="/link/token" element={<TokenPage />} />
-                    <Route path="/link/invitation" element={<InvitationPage />} />
-                    <Route path="/link/pairing" element={<PairingPage />} />
+                    <Route path="/metadata" element={<MetadataPage />} />
+                    <Route path="/metadata/:service" element={<MetadataServicePage />} />
                     <Route path="/logs" element={<LogsPage />} />
                     <Route path="/logs/view" element={<LogView />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
+                    <Route path="/*" element={<FederationRoutes />} />
                 </>
             )}
         </Routes>
+        </FederationHost.Provider>
     );
 }

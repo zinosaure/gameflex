@@ -206,6 +206,22 @@ func (copies *Copies) fresh(peer Peer, now bool) (listing.Header, error) {
 				header.Scopes = fresh.Scopes
 			}
 		}
+		// UN SERVEUR QUI NE LANCE RIEN le dit de même (gameflex-federation, `catalogOnly`) : une copie prise avant
+		// l'apprend sans attendre que son catalogue change.
+		if fresh.CatalogOnly != nil && (header.Server == nil || header.Server.CatalogOnly != *fresh.CatalogOnly) {
+			only := *fresh.CatalogOnly
+			if err := listing.SaveHeader(copies.Dir, key, func(copied *listing.Header) {
+				if copied.Server == nil {
+					copied.Server = &listing.Server{}
+				}
+				copied.Server.CatalogOnly = only
+			}); err == nil {
+				if header.Server == nil {
+					header.Server = &listing.Server{}
+				}
+				header.Server.CatalogOnly = only
+			}
+		}
 		copies.remember(key, nil)
 
 		return header, nil

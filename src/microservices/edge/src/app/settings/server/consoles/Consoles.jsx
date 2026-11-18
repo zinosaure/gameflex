@@ -279,7 +279,7 @@ function ConsoleStatusPage() {
 
 // Une source de « Le récupérer », sa clé (celle du registre des téléchargements) et son nom.
 const sourceKey = (source) => (source.source === "official" ? "official" : `server:${source.serverId}`);
-const sourceLabel = (source, item, t) => (source.source === "official" ? t(item.package ? "consoles.sourcePublisher" : "consoles.sourceOfficial") : source.name || t("consoles.serverNamed", { id: source.serverId }));
+const sourceLabel = (source, item, t) => (source.source === "official" ? t(item.package ? "consoles.sourceStreamex" : "consoles.sourceOfficial") : source.name || t("consoles.serverNamed", { id: source.serverId }));
 // La raison d'une source qui ne l'a pas : injoignable, notre jeton refusé, ou elle ne l'a pas.
 const reasonOf = (reason, t) => t(reason === "unreachable" ? "consoles.sourceUnreachable" : reason === "denied" ? "consoles.sourceDenied" : "consoles.sourceLacks");
 const hostOf = (address) => {

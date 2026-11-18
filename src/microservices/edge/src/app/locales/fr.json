@@ -449,7 +449,8 @@
         "federatedServersTitle": "Serveurs fédérés",
         "federatedServersHelp": "Les serveurs dont vous voyez les jeux et les consoles, sur tous vos appareils. Éteint, un serveur reste dans Réglages › Jeux.",
         "federatedServersNone": "Aucun serveur fédéré.",
-        "adminOnly": "Réservé aux administrateurs"
+        "adminOnly": "Réservé aux administrateurs",
+        "tokenAlternative": "Alternative"
     },
     "join": {
         "welcome": "Bienvenue, {{name}}",
@@ -1097,7 +1098,8 @@
         "metadataHelp": "Les fiches et les images de ses jeux, toujours avec eux.",
         "scopeMetadata": "Métadonnées",
         "allowed": "Autorisé",
-        "notAllowed": "Pas autorisé"
+        "notAllowed": "Pas autorisé",
+        "connectionHelpServeOnly": "Ce que ce service prête à vos appareils et à d'autres serveurs GameFlex."
     },
     "invitations": {
         "create": "Créer l'invitation",
@@ -1160,7 +1162,7 @@
         "linkTitle": "Lien",
         "shareHelp": "Par une application de cet appareil.",
         "doneHelp": "Fermer l'invitation.",
-        "myQRCreate": "Créer mon QR",
+        "myQRCreate": "Utiliser un QR code à la place",
         "pageLink": "Lien de l'invitation",
         "pageOpen": "Aller à GameFlex"
     },
@@ -1273,7 +1275,6 @@
         "fetchConfirm": "{{name}} arrive sur ce serveur depuis {{source}}.",
         "fetchConfirmSized": "{{name}} ({{size}}) arrive sur ce serveur depuis {{source}}.",
         "noSource": "Aucune source : un serveur rejoint (Réglages › Fédération) en devient une.",
-        "sourcePublisher": "Source officielle (l'éditeur)",
         "serverNamed": "Serveur {{id}}",
         "federatedServer": "Serveur fédéré",
         "sourceUnreachable": "Injoignable",
@@ -1306,7 +1307,8 @@
         "statusSaved": "Tout jeu sans statut à lui est maintenant « {{status}} ».",
         "paramsFileState": "État",
         "paramsFileUnreadable": "Illisible",
-        "paramsFileAbsent": "Absent"
+        "paramsFileAbsent": "Absent",
+        "sourceStreamex": "Source officielle (paquets streamex)"
     },
     "gameAdmin": {
         "found_one": "{{count}} jeu",
@@ -1461,7 +1463,8 @@
             "kdrive": "kDrive",
             "ftp": "FTP",
             "sftp": "SFTP"
-        }
+        },
+        "officialKind": "Paquets streamex de GameFlex"
     },
     "layout": {
         "editorTitle": "Position des boutons",
@@ -2209,7 +2212,8 @@
             "denied": "{{server}} refuse notre jeton : rien ne se télécharge.",
             "notLent": "{{server}} ne prête pas les métadonnées de ce jeu.",
             "unreachable": "{{server}} ne répond pas : réessayez dans un moment.",
-            "failed": "Le téléchargement n'a pas pu partir."
+            "failed": "Le téléchargement n'a pas pu partir.",
+            "libraryCatalogOnly": "Ce serveur ne lance pas de jeu : téléchargez-le pour le jouer."
         },
         "saves": {
             "label": "Voir ses sauvegardes",
@@ -2247,7 +2251,24 @@
         "serversHelp": "Pour y jouer avec votre compte de là-bas.",
         "serversTitle": "Serveurs fédérés",
         "serversListHelp": "Ajoutez votre compte de l'un d'eux pour y jouer.",
-        "serversEmpty": "Aucun serveur fédéré."
+        "serversEmpty": "Aucun serveur fédéré.",
+        "connections": "Connexions avec mon jeton",
+        "connectionsHelp": "Les serveurs et appareils qui s'en servent.",
+        "connectionsTitle": "Connexions",
+        "connectionsListHelp": "Chaque serveur ou appareil qui a ouvert une session avec votre jeton. Son nom, son compte et son genre sont ceux qu'il donne ; « Depuis votre réseau actuel » ne se donne pas : la connexion vient d'où vous lisez cette page.",
+        "connectionsEmpty": "Personne ne s'est encore servi de votre jeton.",
+        "connectionUnnamed": "Sans nom",
+        "connectionNoAddress": "Adresse inconnue",
+        "connectionWhen_one": "{{count}} connexion, le {{last}}",
+        "connectionWhen_other": "{{count}} connexions, du {{first}} au {{last}}",
+        "revoke": "Révoquer les connexions",
+        "revokeHelp": "Régénère votre jeton : toutes ces connexions sont coupées, vos appareils compris, qui devront coller le nouveau.",
+        "revokeAdminOnly": "Seul un administrateur peut régénérer votre jeton : demandez-le-lui.",
+        "revokeConfirm": "Révoquer toutes les connexions ? Votre jeton est régénéré : l'ancien cesse aussitôt de valoir, sur tous les appareils qui s'en servent.",
+        "revoked": "Connexions révoquées : votre jeton a été régénéré.",
+        "connectionServer": "Serveur GameFlex",
+        "connectionPhone": "Application",
+        "connectionHere": "Depuis votre réseau actuel"
     },
     "invite": {
         "qrTitle": "À scanner",
@@ -2311,7 +2332,8 @@
             "invitationRefused": "Code refusé : il a déjà servi, a expiré ou n'existe pas. Créez-en un autre.",
             "notPairingCode": "Un code d'appairage a 6 chiffres.",
             "invalidLink": "Cette adresse ne mène à aucun serveur. Vérifiez-la, puis réessayez."
-        }
+        },
+        "useInstead": "Utiliser un code d'appairage à la place"
     },
     "fedService": {
         "brand": "GameFlex Federation",
@@ -2323,7 +2345,6 @@
             "help": "Connectez-vous avec le compte d'administration de ce service."
         },
         "connections": {
-            "title": "Connexions",
             "help": "Les disques et les partages dont les jeux sont proposés aux appareils reliés.",
             "none": "Aucune connexion. Montez un disque, ou ajoutez un partage dans « Plus » › « Ressources ».",
             "scanning": "Lecture en cours…",
@@ -2352,60 +2373,8 @@
             "pin": "Épingler en tête",
             "pinHelp": "Cette source sert en premier, quel que soit l'élément."
         },
-        "link": {
-            "title": "Connexion",
-            "help": "Relier un appareil GameFlex à ce service.",
-            "token": "Jeton",
-            "tokenHelp": "Un jeton à coller dans l'appareil, avec l'adresse du service.",
-            "invitation": "Lien d'invitation et QR code",
-            "invitationHelp": "Un lien à usage unique, ou son QR code, à ouvrir dans l'appareil.",
-            "pairing": "Code d'appairage",
-            "pairingHelp": "Six chiffres à taper dans l'appareil, en mode découverte.",
-            "device": "Nom de l'appareil",
-            "deviceHelp": "Il vous aidera à reconnaître ce lien plus tard.",
-            "address": "Adresse du service",
-            "addressHelp": "À coller avec le jeton dans l'appareil."
-        },
-        "token": {
-            "intro": "Dans l'appareil, ajoutez un serveur et collez l'adresse et le jeton.",
-            "create": "Créer le jeton",
-            "issued": "Jeton de « {{name}} »",
-            "once": "Copiez-le maintenant : il ne sera plus affiché.",
-            "list": "Jetons émis",
-            "none": "Aucun jeton.",
-            "used": "Utilisé le {{when}}",
-            "unused": "Jamais utilisé",
-            "created": "Créé le {{when}}",
-            "revoke": "Révoquer « {{name}} »",
-            "revokeHelp": "L'appareil ne voit plus les jeux de ce service.",
-            "revokeQuestion": "Révoquer le jeton de « {{name}} » ? Cet appareil ne verra plus les jeux de ce service.",
-            "revoked": "Jeton révoqué."
-        },
         "invitation": {
-            "intro": "Envoyez le lien ou le QR code : l'appareil le colle ou le scanne pour se relier.",
-            "create": "Créer l'invitation",
-            "created": "Invitation de « {{name}} »",
-            "until": "Valable jusqu'au {{when}}, une seule fois.",
-            "link": "Lien d'invitation",
-            "qrAlt": "QR code de l'invitation",
-            "list": "Invitations en attente",
-            "none": "Aucune invitation en attente.",
-            "revoke": "Annuler « {{name}} »",
-            "revokeQuestion": "Annuler l'invitation de « {{name}} » ?",
-            "revoked": "Invitation annulée.",
             "openedHere": "Ce lien se colle dans GameFlex, dans « Rejoindre un serveur », sur l'appareil à relier."
-        },
-        "pairing": {
-            "intro": "Ouvrez le mode découverte, puis créez un code et tapez-le dans l'appareil.",
-            "discovery": "Mode découverte",
-            "discoveryHelp": "Pendant cinq minutes, les appareils peuvent se relier avec un code.",
-            "openUntil": "Ouvert jusqu'à {{when}}.",
-            "notAnnounced": "Ce service n'est pas visible sur le réseau local : dans l'appareil, tapez son adresse.",
-            "code": "Nouveau code",
-            "create": "Créer le code",
-            "yourCode": "Code à taper",
-            "codeUntil": "Valable jusqu'à {{when}}, une seule fois.",
-            "closedFirst": "Ouvrez d'abord le mode découverte."
         },
         "more": {
             "title": "Plus",
@@ -2512,10 +2481,6 @@
             "removeQuestion": "Supprimer le journal « {{path}} » ?",
             "removed": "Journal supprimé."
         },
-        "join": {
-            "title": "Rejoindre le service",
-            "help": "Relier un ordinateur, un téléphone ou une télévision à ce service."
-        },
         "resources": {
             "title": "Ressources",
             "help": "Les disques de cette machine et les partages qui apportent des jeux.",
@@ -2526,6 +2491,11 @@
             "diskHelp": "Un disque se déclare dans le compose : il se monte, il ne s'ajoute pas ici.",
             "mount": "Montage",
             "rescanDiskHelp": "Relit tout ce que le disque porte."
+        },
+        "metadata": {
+            "title": "Fournisseurs de métadonnées",
+            "help": "Les comptes qui font les fiches des jeux qui n'en ont pas.",
+            "listHelp": "Un jeu d'un disque qui a déjà sa fiche la garde. Pour les autres, le service fait la fiche avec ces comptes."
         }
     }
 }

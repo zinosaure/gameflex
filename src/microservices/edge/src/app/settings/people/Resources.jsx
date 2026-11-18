@@ -13,10 +13,8 @@ import NavRow, { EmptyState, GuideSection, InfoRow, Listing, Note, Rows, Section
 // (`/mnt/<nom>`) ; un disque s'ouvre sur sa page (/settings/resources/disks/<nom>) — son nombre de jeux en sous-titre,
 // ses jeux par console, le relire.
 //
-// LES RESSOURCES DISTANTES (Samba, WebDAV, kDrive) NE SONT PLUS ICI : elles reviendront au service
-// gameflex-federation. Leur code serveur reste, il a encore des appelants — le registre des montages du service des
-// comptes (`/api/v1/mount-registry`), leur lecture par le kernel (`/api/v1/mounts/…`, le sujet `mount/<id>`) : la
-// webapp (RemoteServers.jsx, ResourceContents.jsx, l'import de storage-admin.js) ; le kernel du téléphone a les siens.
+// LES RESSOURCES DISTANTES (Samba, WebDAV, kDrive, FTP, SFTP) NE SONT PAS ICI : gameflex-federation les lit, et un
+// appareil le rejoint comme un serveur fédéré (chantier 61). Le montage par appareil est parti (P6).
 //
 // Les pages se composent des briques de la direction C (Bricks.jsx) ; relire un disque est une ligne de « Plus ».
 

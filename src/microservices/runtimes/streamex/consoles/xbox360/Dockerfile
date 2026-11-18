@@ -90,14 +90,13 @@ RUN groupadd -f pulse-access && usermod -aG pulse-access root && usermod -aG pul
 # Xenia publie son AppImage sous un nom SANS version : celui rangé dans la
 # bibliothèque la porte (emulators.sh), et le téléchargement de l'écran
 # Émulateurs l'enregistre sous ce nom-là.
-ARG XENIA_URL=https://github.com/xenia-canary/xenia-canary/releases/download/f9431eb/xenia_canary_linux.AppImage
 # Les versions éprouvées avec cette image (emulator_tested) : la liste informe,
 # elle ne bloque pas — toute version que reconnaît le motif se lance.
 ARG XENIA_TESTED="${XENIA_FILE}"
 ENV GAMEFLEX_EMULATOR_FILE=${XENIA_FILE} GAMEFLEX_EMULATOR_DIR=/gameflex/cores/xbox360 \
     GAMEFLEX_EMULATOR_PATTERN="xenia_canary_linux-*.AppImage" GAMEFLEX_EMULATOR_NAME="Xenia Canary" \
     GAMEFLEX_EMULATOR_TESTED="${XENIA_TESTED}"
-LABEL gameflex.emulator.file=${XENIA_FILE} gameflex.emulator.url=${XENIA_URL} \
+LABEL gameflex.emulator.file=${XENIA_FILE} \
     gameflex.emulator.pattern="xenia_canary_linux-*.AppImage" \
     gameflex.emulator.tested="${XENIA_TESTED}"
 COPY src/microservices/runtimes/streamex/consoles/unpack-emulator.sh /usr/local/bin/unpack-emulator

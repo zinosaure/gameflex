@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, Route, Routes, useParams } from "react-router-dom";
-import { useData } from "../../libs/data.jsx";
+import { fetchMyToken, regenerateUserToken } from "../../libs/api.js";
+import { useAuth, useData } from "../../libs/data.jsx";
+import { toast } from "../../shell/Shell.jsx";
 import { useFederationSession } from "../../libs/federation.js";
 import { FederatedAccount, FederatedRefusal, FederatedTokenForm } from "../../screens/access/FederatedAccount.jsx";
 import { MyPairingPage, TokenPage } from "./Token.jsx";
+import { dateTime } from "../people/Members.jsx";
 import SettingsPage, { NotFound, PROFILE, useSettingsNavigation } from "../SettingsPage.jsx";
-import NavRow, { GuideSection, Listing, Note, Rows, Section } from "../../ui/Bricks.jsx";
+import NavRow, { atUsername, DangerSection, GuideSection, InfoRow, Listing, Note, Rows, Section } from "../../ui/Bricks.jsx";
 
 // RÉGLAGES › PROFIL › FÉDÉRATION (le porteur, 2026-11-16, 2.1 : « dans profile, remplace token par fédération. Il y aura
 // 2 liens dans celui-ci : créer mon token et s'authentifier chez les serveurs fédérés ») :
@@ -14,6 +17,9 @@ import NavRow, { GuideSection, Listing, Note, Rows, Section } from "../../ui/Bri
 //   /settings/profile/federation                    les deux liens, et le guide ;
 //   …/federation/token                              « Créer mon jeton » : la page du jeton d'avant (Token.jsx) ;
 //   …/federation/pairing                            « Code d'appairage » : mon mode compte et mon code (chantier 60) ;
+//   …/federation/connections                        « Connexions avec mon jeton » (#781) : les serveurs et appareils qui
+//                                                   s'en servent — le nom qu'ils se donnent, l'adresse d'où ils sont
+//                                                   venus, la première et la dernière fois ;
 //   …/federation/servers                            « M'authentifier chez les serveurs fédérés » : les serveurs fédérés
 //                                                   de ce GameFlex (`GET /servers`, ouvert à tout compte d'ici) ;
 //   …/federation/servers/<id>                       un serveur : MON COMPTE FÉDÉRÉ chez lui — le formulaire où je colle
@@ -56,10 +62,79 @@ function FederationPage() {
                 <Rows>
                     <NavRow id="mf-token" icon="bi-key" tone="amber" label={t("settings.items.token.label")} help={t("settings.items.token.help")}
                         onOpen={() => open(`${FEDERATION}/token`, "mf-token")} />
+                    <NavRow id="mf-connections" icon="bi-plug" tone="sky" label={t("myFed.connections")} help={t("myFed.connectionsHelp")}
+                        onOpen={() => open(`${FEDERATION}/connections`, "mf-connections")} />
                     <NavRow id="mf-servers" icon="bi-person-check" tone="green" label={t("myFed.servers")} help={t("myFed.serversHelp")}
                         onOpen={() => open(SERVERS, "mf-servers")} />
                 </Rows>
             </Section>
+            <GuideSection guides={FEDERATION_GUIDES} />
+        </SettingsPage>
+    );
+}
+
+// /settings/profile/federation/connections : QUI SE SERT DE MON JETON (#781 ; le porteur, 2026-11-18 : « on peut voir
+// l'état d'un token mais on ne sait pas sur quel lien/appareils c'est utilisé ») — une ligne par serveur ou appareil
+// qui l'a échangé contre une session, le plus récent d'abord : le nom qu'il se donne, l'adresse d'où il est venu, et
+// quand. Régénérer le jeton vide la liste.
+//
+// EST-CE MOI ? (#787 ; le porteur, 2026-11-18 : « ce qui est important c'est de voir les connexions et savoir si c'est
+// bien l'utilisateur qui l'a faite ou pas ») : chaque ligne dit aussi le compte qui a collé le jeton là-bas et ce
+// qu'est l'appelant (un serveur GameFlex, l'application) — déclarés par lui —, et « Depuis votre réseau actuel » quand
+// la connexion vient de l'adresse d'où on lit la page, la seule marque que l'appelant ne peut pas inventer (verte).
+//
+// RÉVOQUER (#787 ; le porteur, 2026-11-18 : « pour savoir si en cas d'autres personnes utilisent le token sans le
+// savoir ») : le nom se déclare et l'adresse change, seule la régénération du jeton coupe sûrement quelqu'un — c'est
+// donc ce que fait « Révoquer les connexions » (décision du porteur) : tout le monde est coupé, mes appareils compris,
+// qui recollent le nouveau jeton. Le serveur réserve ce geste aux administrateurs (chantier 20) : grisé pour un membre,
+// la raison dans son aide.
+function ConnectionsPage() {
+    const { t, i18n } = useTranslation();
+    const { isAdmin, user } = useAuth();
+    const [items, setItems] = useState(undefined);
+    const [reread, setReread] = useState(0);
+
+    useEffect(() => {
+        let cancelled = false;
+        fetchMyToken().then((result) => {
+            if (!cancelled) {
+                setItems(result.ok ? result.item?.token?.connections || [] : []);
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [reread]);
+
+    const revoke = async () => {
+        const answer = await regenerateUserToken(user.id);
+
+        toast(answer.ok ? t("myFed.revoked") : answer.detail || t("settings.actionFailed"));
+        if (answer.ok) {
+            setReread((count) => count + 1);
+        }
+    };
+
+    return (
+        <SettingsPage title={t("myFed.connections")} parent={FEDERATION}>
+            <Section title={t("myFed.connectionsTitle")} help={t("myFed.connectionsListHelp")}>
+                <Listing items={items || []} loading={items === undefined} empty={t("myFed.connectionsEmpty")}
+                    render={(row) => {
+                        const kind = row.kind === "server" ? t("myFed.connectionServer") : row.kind === "phone" ? t("myFed.connectionPhone") : "";
+                        const who = [row.member ? atUsername(row.member) : "", kind].filter(Boolean).join(" · ");
+                        const where = [row.here ? t("myFed.connectionHere") : "", row.address || t("myFed.connectionNoAddress")].filter(Boolean).join(" · ");
+                        const when = t("myFed.connectionWhen", { count: row.use_count, first: dateTime(row.first_used_at, i18n.language), last: dateTime(row.last_used_at, i18n.language) });
+
+                        return (
+                            <InfoRow key={`${row.name}|${row.address}`} icon={row.here ? "bi-house-check" : row.kind === "phone" ? "bi-phone" : row.kind === "server" ? "bi-hdd-network" : "bi-plug"}
+                                tone={row.here ? "green" : "sky"} label={row.name || t("myFed.connectionUnnamed")} value={who || where}
+                                help={who ? `${where} · ${when}` : when} />
+                        );
+                    }} />
+            </Section>
+            <DangerSection id="mf-revoke" icon="bi-x-circle" label={t("myFed.revoke")} help={t(isAdmin ? "myFed.revokeHelp" : "myFed.revokeAdminOnly")}
+                question={t("myFed.revokeConfirm")} disabled={!isAdmin || !user?.id || !(items || []).length} onConfirm={revoke} />
             <GuideSection guides={FEDERATION_GUIDES} />
         </SettingsPage>
     );
@@ -128,6 +203,7 @@ export function MyFederationRoutes() {
             <Route index element={<FederationPage />} />
             <Route path="token" element={<TokenPage />} />
             <Route path="pairing" element={<MyPairingPage />} />
+            <Route path="connections" element={<ConnectionsPage />} />
             <Route path="servers" element={<ServersPage />} />
             <Route path="servers/:serverId" element={<ServerAccountPage />} />
             <Route path="*" element={<Navigate to={FEDERATION} replace />} />

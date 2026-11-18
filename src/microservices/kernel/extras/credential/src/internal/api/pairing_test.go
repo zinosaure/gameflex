@@ -34,7 +34,9 @@ type fakeTimer struct {
 }
 
 func newFakeClock() *fakeClock {
-	return &fakeClock{now: time.Date(2026, 11, 17, 14, 0, 0, 0, time.UTC)}
+	// À L'HEURE D'AUJOURD'HUI, à la seconde : la purge des invitations échues lit l'horloge réelle (invitationClock).
+	// Une date fixe a fait passer les codes pour échus dès que le jour réel l'a dépassée (2026-11-18).
+	return &fakeClock{now: time.Now().UTC().Truncate(time.Second)}
 }
 
 func (clock *fakeClock) Now() time.Time {

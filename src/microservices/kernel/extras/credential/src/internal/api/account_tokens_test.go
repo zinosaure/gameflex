@@ -408,3 +408,68 @@ func TestDeletingAnAdminKeepsTheMetadataProviderItConfigured(t *testing.T) {
 		t.Fatalf("fournisseur après suppression : %q, auteur %v", fields, author)
 	}
 }
+
+// QUI SE SERT DU JETON (#781) : une ligne par appelant — le nom qu'il se donne et l'adresse vue —, la première et la
+// dernière fois, combien ; le plus récent d'abord dans le jeton que la page lit. Régénérer la vide.
+func TestTheTokenListsItsConnections(t *testing.T) {
+	server, db := tokenServer(t)
+	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1w"}`)
+	token := tokenOf(t, db, 2)
+	open := func(from, member, kind, address string) {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(
+			`{"token":"`+token+`","from":"`+from+`","member":"`+member+`","kind":"`+kind+`","address":"`+address+`"}`))
+		request.Header.Set("X-Internal-Secret", testInternalSecret)
+		server.handleFederationSession(recorder, request)
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("session de %s : %d %s", from, recorder.Code, recorder.Body.String())
+		}
+	}
+	open("Gamebox", "marc", "server", "192.168.1.20")
+	open("Gamebox", "marc", "server", "192.168.1.20")
+	time.Sleep(5 * time.Millisecond)
+	open("  Téléphone de Marc  ", "marc", "inventé", "198.51.100.7")
+
+	state, err := server.accountToken(2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Connections) != 2 {
+		t.Fatalf("connexions : %+v, attendu 2 lignes", state.Connections)
+	}
+	latest, gamebox := state.Connections[0], state.Connections[1]
+	if latest.Name != "Téléphone de Marc" || latest.Address != "198.51.100.7" || latest.UseCount != 1 || latest.Kind != "" {
+		t.Fatalf("la plus récente : %+v", latest)
+	}
+	if gamebox.Name != "Gamebox" || gamebox.Member != "marc" || gamebox.Kind != "server" || gamebox.UseCount != 2 ||
+		gamebox.FirstUsedAt == nil || gamebox.LastUsedAt == nil {
+		t.Fatalf("Gamebox : %+v", gamebox)
+	}
+
+	// « Depuis votre réseau actuel » (#787) : la page lue depuis l'adresse d'une connexion la marque, et elle seule.
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("X-Forwarded-For", "192.168.1.20")
+	server.handleMyAccountToken(recorder, request, auth.Principal{ID: 2, Username: "marc", RoleLevel: auth.RoleUser})
+	var mine struct {
+		Item struct {
+			Token struct {
+				Connections []tokenConnection `json:"connections"`
+			} `json:"token"`
+		} `json:"item"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &mine); err != nil || len(mine.Item.Token.Connections) != 2 {
+		t.Fatalf("mon jeton : %s (%v)", recorder.Body.String(), err)
+	}
+	for _, row := range mine.Item.Token.Connections {
+		if row.Here != (row.Address == "192.168.1.20") {
+			t.Fatalf("« ici » mal posé : %+v", row)
+		}
+	}
+
+	adminCall(server, server.handleRegenerateAccountToken, http.MethodPost, "2", "")
+	if state, err := server.accountToken(2, false); err != nil || len(state.Connections) != 0 {
+		t.Fatalf("après régénération : %+v (%v), attendu aucune", state.Connections, err)
+	}
+}

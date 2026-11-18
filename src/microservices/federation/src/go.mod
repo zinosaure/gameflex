@@ -10,6 +10,7 @@ require (
 	gameflex/metadata v0.0.0
 	gameflex/storage v0.0.0
 	github.com/go-chi/chi/v5 v5.3.1
+	github.com/hirochachacha/go-smb2 v1.1.0
 	github.com/jlaffaye/ftp v0.2.4
 	github.com/pkg/sftp v1.13.12
 	golang.org/x/crypto v0.54.0
@@ -20,7 +21,6 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/geoffgarside/ber v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hirochachacha/go-smb2 v1.1.0 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/makiuchi-d/gozxing v0.1.1 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect

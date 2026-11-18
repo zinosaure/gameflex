@@ -115,8 +115,9 @@ Open **Settings › Consoles**, then the console. Its page lists:
 
 - **Official source**: for a retro console, the core from the
   [libretro buildbot](https://buildbot.libretro.com/); for a recent console (PlayStation 3 to 5,
-  Switch, Wii U, Xbox, Xbox 360), the version tested with your version of GameFlex, from the
-  emulator's publisher;
+  Switch, Wii U, Xbox, Xbox 360), the console's streamex package, from the
+  [gameflex-streamex](https://github.com/zinosaure/gameflex-streamex) releases: the version tested
+  with your version of GameFlex, checked against its published fingerprint before it is installed;
 - **a federated server** that has it (see [Federation](federation.md)). A server that does not have
   it is greyed out, with the reason.
 

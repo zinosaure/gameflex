@@ -72,18 +72,18 @@ func TestTheSwitchRunsEdenFirstAndCitronOnRequest(t *testing.T) {
 }
 
 // UNE IMAGE DIT L'ÉMULATEUR QU'ELLE ATTEND (chantier 29) : le motif de ses
-// versions, et la version testée — son nom et son adresse chez l'éditeur —,
-// par trois étiquettes. Sans étiquette — keytest, qui n'a pas d'émulateur —,
+// versions, et la version testée — son nom ; le paquet streamex qui la porte
+// se trouve dans l'index (chantier 63), plus dans une étiquette —, par trois
+// étiquettes. Sans étiquette — keytest, qui n'a pas d'émulateur —,
 // elle n'attend rien.
 func TestAnImageSaysWhichEmulatorFileItWants(t *testing.T) {
 	need, ok := requiredFromLabels("switch", "Eden (streamex)", map[string]string{
 		labelEmulatorFile:    "Eden-Linux-de7e6e01d4-amd64-clang-pgo.AppImage",
-		labelEmulatorURL:     "https://nightly.eden-emu.dev/eden.AppImage",
 		labelEmulatorPattern: "Eden-Linux-*-amd64-clang-pgo.AppImage",
 		labelEmulatorTested:  "Eden-Linux-0000000000-amd64-clang-pgo.AppImage Eden-Linux-de7e6e01d4-amd64-clang-pgo.AppImage",
 	})
 	if !ok || need.Console != "switch" || need.File != "Eden-Linux-de7e6e01d4-amd64-clang-pgo.AppImage" ||
-		need.URL != "https://nightly.eden-emu.dev/eden.AppImage" || need.Core != "Eden (streamex)" ||
+		need.Core != "Eden (streamex)" ||
 		need.Pattern != "Eden-Linux-*-amd64-clang-pgo.AppImage" || len(need.Tested) != 2 {
 		t.Fatalf("étiquettes lues : %+v %v", need, ok)
 	}

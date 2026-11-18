@@ -11,11 +11,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gameflex/credential/internal/api"
 	"gameflex/credential/internal/auth"
 	"gameflex/credential/internal/config"
 	"gameflex/credential/internal/database"
-	"gameflex/credential/internal/secretbox"
 )
 
 // withRoot ouvre une base neuve où root est né avec le mot de passe donné —
@@ -83,34 +81,5 @@ func TestResetImposesTheEnvPassword(t *testing.T) {
 	}
 	if err := resetRootPassword(db, config.Config{RootUsername: "root", RootPassword: ""}); err == nil {
 		t.Fatal("une remise sans valeur doit être refusée")
-	}
-}
-
-// LES IDENTIFIANTS DE PARTAGE EN CLAIR SONT SCELLÉS AU DÉMARRAGE (#459), et
-// s'ouvrent avec le même secret ; un partage invité, sans mot de passe, reste
-// vide.
-func TestShareCredentialsAreSealedAtStart(t *testing.T) {
-	db := withRoot(t, "root")
-	for _, row := range []struct{ name, password string }{{"nas", "mot-de-passe-en-clair"}, {"invite", ""}} {
-		if _, err := db.Exec(`INSERT INTO remote_mounts (name, kind, base_url, folder, username, password, created_at, created_by_id)
-			VALUES (?, 'smb', 'smb://nas/jeux', '', 'gino', ?, '2026-10-24', 1)`, row.name, row.password); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	api.SealRemoteMounts(db, "le-secret")
-
-	var stored string
-	if err := db.QueryRow(`SELECT password FROM remote_mounts WHERE name = 'nas'`).Scan(&stored); err != nil {
-		t.Fatal(err)
-	}
-	if !secretbox.Sealed(stored) || stored == "mot-de-passe-en-clair" {
-		t.Fatalf("toujours en clair : %q", stored)
-	}
-	if plain, err := secretbox.Open("le-secret", stored); err != nil || plain != "mot-de-passe-en-clair" {
-		t.Fatalf("ouvert : %q %v", plain, err)
-	}
-	if err := db.QueryRow(`SELECT password FROM remote_mounts WHERE name = 'invite'`).Scan(&stored); err != nil || stored != "" {
-		t.Fatalf("le partage invité : %q %v", stored, err)
 	}
 }

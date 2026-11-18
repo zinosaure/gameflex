@@ -86,7 +86,9 @@ export default (env = {}, argv = {}) => ({
     entry: FEDERATION(env) ? './app/federation/index.js' : './app/index.js',
     output: {
         path: path.resolve(DIRNAME, FEDERATION(env) ? 'dist-federation' : 'dist'),
-        filename: 'bundle.js',
+        // Le service de fédération sert son interface lui-même, en cache une journée : un nom par contenu, pour qu'une
+        // nouvelle version ne soit jamais masquée par l'ancienne (le porteur l'a vue le 2026-11-18). edge garde le sien.
+        filename: FEDERATION(env) ? 'bundle.[contenthash].js' : 'bundle.js',
         publicPath: '/',
         chunkFilename: '[name].[contenthash].bundle.js',
         clean: true,

@@ -187,7 +187,7 @@ func (c *Catalog) Listing(scopes []string) listing.Listing {
 	defer c.mu.Unlock()
 
 	served := listing.New(listing.PeerSource, c.name())
-	served.Header.Server = &listing.Server{Hostname: c.name(), Version: os.Getenv("GAMEFLEX_VERSION")}
+	served.Header.Server = &listing.Server{Hostname: c.name(), Version: os.Getenv("GAMEFLEX_VERSION"), CatalogOnly: true}
 	served.Header.Scopes = scopes
 	at := c.data.UpdatedAt
 	for _, section := range []string{listing.Roms, listing.Bios, listing.Cores, listing.Patches} {

@@ -560,16 +560,20 @@ function GamePage() {
 function PatchSources({ consoleId, view, gameTitle, running }) {
     const { t } = useTranslation();
     const confirm = useConfirm();
-    const keyOf = (source) => (source.source === "disk" ? `disk:${source.disk}` : `server:${source.serverId}`);
-    const labelOf = (source) => (source.source === "disk" ? source.disk : serverName({ hostname: source.name }, source.serverId, t));
+    // LA SOURCE OFFICIELLE (chantier 63, P6) : le paquet des correctifs de l'index des paquets streamex.
+    const keyOf = (source) => (source.source === "official" ? "official" : source.source === "disk" ? `disk:${source.disk}` : `server:${source.serverId}`);
+    const labelOf = (source) => (source.source === "official" ? t("consoles.sourceStreamex")
+        : source.source === "disk" ? source.disk : serverName({ hostname: source.name }, source.serverId, t));
     // La raison d'un serveur qui ne répond pas comme il faut est le message de son refus (remote.Refusal) : notre jeton
     // refusé (« does not allow access »), ou le serveur muet.
-    const reasonOf = (source) => (!source.reason ? t("consoles.sourceLacks") : t(/allow/i.test(source.reason) ? "consoles.sourceDenied" : "consoles.sourceUnreachable"));
+    const reasonOf = (source) => (!source.reason ? t("consoles.sourceLacks")
+        : t(source.source !== "official" && /allow/i.test(source.reason) ? "consoles.sourceDenied" : "consoles.sourceUnreachable"));
 
     const start = async (source) => {
-        const command = source.source === "disk"
-            ? { route: "disk", disk: source.disk, section: "patches", body: { consoleId, name: view.gameId } }
-            : { route: "server", server: String(source.serverId), section: "patches", body: { consoleId, name: view.gameId } };
+        const body = { consoleId, name: view.gameId };
+        const command = source.source === "official" ? { route: "official", section: "patches", body }
+            : source.source === "disk" ? { route: "disk", disk: source.disk, section: "patches", body }
+                : { route: "server", server: String(source.serverId), section: "patches", body };
         const answer = await runDownload({ key: `patches/${consoleId}/${view.gameId}`, label: gameTitle || view.gameId, source: keyOf(source),
             command: { ...command, ...(source.sizeBytes ? { total: source.sizeBytes } : {}) } });
         toast(downloadOutcome(answer, view.gameId, t));
@@ -590,12 +594,14 @@ function PatchSources({ consoleId, view, gameTitle, running }) {
     const row = (source) => {
         const own = running?.source === keyOf(source);
         const disk = source.source === "disk";
-        const facts = [t(disk ? "gameAdmin.diskKind" : "consoles.federatedServer"), source.available ? formatMegabytes(source.sizeBytes) : reasonOf(source)];
+        const official = source.source === "official";
+        const facts = [t(official ? "gameAdmin.officialKind" : disk ? "gameAdmin.diskKind" : "consoles.federatedServer"),
+            source.available ? formatMegabytes(source.sizeBytes) : reasonOf(source)];
 
         return (
             own ? <DownloadRow key={keyOf(source)} entry={running} id={`gp-source-${keyOf(source)}`} label={labelOf(source)} />
-                : <NavRow key={keyOf(source)} id={`gp-source-${keyOf(source)}`} icon={disk ? "bi-hdd" : "bi-arrow-left-right"}
-                    tone={!source.available || running ? "slate" : disk ? "indigo" : "green"} label={labelOf(source)}
+                : <NavRow key={keyOf(source)} id={`gp-source-${keyOf(source)}`} icon={official ? "bi-patch-check" : disk ? "bi-hdd" : "bi-arrow-left-right"}
+                    tone={!source.available || running ? "slate" : official ? "teal" : disk ? "indigo" : "green"} label={labelOf(source)}
                     help={facts.filter(Boolean).join(" · ")}
                     disabled={!source.available || Boolean(running)} opens="confirm" onOpen={() => ask(source)} />
         );

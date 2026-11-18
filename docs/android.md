@@ -37,6 +37,13 @@ The app updates itself: on the home screen, **About** › **Update** › **Check
 checks when it opens, and when you come back to it after a few hours: an orange exclamation mark at
 the end of the **Update** line means a newer version is ready to install.
 
+The interface (GameFlex's pages) can be updated without a new app: **About** › **Update** ›
+**Interface** › **Check for a new interface** installs the latest interface made for your version of
+the app, from the same place as the app's updates. **Install from a .zip file** installs an
+interface of your own, built from GameFlex's sources (`src/microservices/edge`); one made for another
+version of the app asks before installing, since some screens may not work. **Back to the APK's
+interface** returns to the one the app came with, and so does installing a new version of the app.
+
 ## The home screen
 
 The app opens on its home screen, in English, or in French on a phone set to French. It looks like
@@ -50,7 +57,7 @@ opens its own page; the Back button comes back.
 | **Storage › Location** | Where your library is, and how much space is left. **Change location** uses another folder: accounts, saves and logs are copied there; games, BIOS files and cores are not. **How it works**, in its Guide section, explains the folders. |
 | **Storage › External disk** | SD cards and USB keys with games. **Add a disk**; a disk's page removes it. |
 | **Root account** | The root username, how many administrator and player accounts the server has, and **Reset the root password**, shown once in a window with **Copy**. With no administrator yet, it asks you to sign in as root first to create one. |
-| **About › Update** | The app's version and build date, and installs the latest version; an orange exclamation mark means one is available. |
+| **About › Update** | The app's version and build date, and installs the latest version; an orange exclamation mark means one is available. Its **Interface** section updates GameFlex's pages without a new app. |
 | **About › Phone** | The phone's model, Android, processor, memory and GPU, and whether it can run the recent consoles. |
 
 ## First start

@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { createInvitation, invitationQR, readInvitationImage } from "../../libs/api.js";
-import { can, useData } from "../../libs/data.jsx";
+import { createInvitation, readInvitationImage } from "../../libs/api.js";
+import { useData } from "../../libs/data.jsx";
 import { toast } from "../../shell/Shell.jsx";
 import { Ruleset } from "../../ui/Forms.jsx";
+import { useFederationHost } from "../../settings/people/federationHost.js";
 import NavRow, { CopyField, FileRow, Note, Rows, Section, TextRow } from "../../ui/Bricks.jsx";
 
 // LES INVITATIONS (shared/Invitation.jsx de la webapp, chantier 33) : un lien, ou son QR, que
@@ -41,14 +42,14 @@ export const useMemberLink = () => {
 // place de celle d'un serveur — comment elle sert, et combien de temps elle vaut (une clé, qui reçoit `at`).
 export function InvitationReveal({ link, expiresAt, title, onDone, canShare = true, help = null, validity = null }) {
     const { t, i18n } = useTranslation();
-    const { capabilities } = useData();
+    const host = useFederationHost();
     const [image, setImage] = useState(null);
-    const inApp = can(capabilities, "appHome") || can(capabilities, "appHomeLink");
+    const inApp = host.useInApp();
 
     useEffect(() => {
         let url = null;
         let cancelled = false;
-        invitationQR(link).then((blob) => {
+        host.invitationQR(link).then((blob) => {
             if (!cancelled && blob) {
                 url = URL.createObjectURL(blob);
                 setImage({ url, blob });

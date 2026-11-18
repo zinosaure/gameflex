@@ -15,7 +15,6 @@ import (
 	"gameflex/kernel/internal/auth"
 	"gameflex/kernel/internal/config"
 	"gameflex/kernel/internal/registry"
-	"gameflex/storage/listing"
 )
 
 const facadeTestSecret = "secret-de-test"
@@ -247,72 +246,6 @@ func TestTheMessageCentreAnswersWhatItCannotDo(t *testing.T) {
 		if reply.Status != entry.status {
 			t.Errorf("%v : statut %d, attendu %d (%s)", entry.message, reply.Status, entry.status, reply.Data)
 		}
-	}
-}
-
-// Le résumé d'une ressource distante part à l'abonnement, puis au début et à
-// la fin d'un parcours — plus jamais relu par la page toutes les 4 s.
-func TestAMountSummaryIsPushedWhenAScanStartsAndEnds(t *testing.T) {
-	registryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"items":[{"id":7,"name":"Drive","kind":"webdav","base_url":"http://drive.invalid","folder":"games"}]}`))
-	}))
-	t.Cleanup(registryServer.Close)
-
-	previous := listingCacheDir
-	listingCacheDir = t.TempDir()
-	t.Cleanup(func() { listingCacheDir = previous })
-
-	server, httpServer := facadeTestServer(t)
-	server.config.CredentialURL = registryServer.URL
-	server.config.InternalSecret = "interne"
-
-	connection, _, err := facadeTestDial(t, httpServer, facadeTestToken(t, "root"))
-	if err != nil {
-		t.Fatalf("poignée de main : %v", err)
-	}
-	defer connection.Close()
-
-	summary := func() map[string]any {
-		push := facadeTestNext(t, connection, func(push facadeTestPush) bool { return push.Type == "mount" })
-		if push.Topic != "mount/7" {
-			t.Fatalf("sujet %q, attendu mount/7", push.Topic)
-		}
-		var value map[string]any
-		if err := json.Unmarshal(push.Data, &value); err != nil {
-			t.Fatalf("résumé illisible : %s", push.Data)
-		}
-
-		return value
-	}
-
-	facadeTestSend(t, connection, map[string]any{"type": "subscribe", "id": "1", "data": map[string]any{"topic": "mount/7"}})
-	if first := summary(); first["scanned"] != false || first["scanning"] != false {
-		t.Fatalf("premier instantané : %v", first)
-	}
-
-	key := resourceKey(mountedShare{ID: 7, Kind: "webdav", BaseURL: "http://drive.invalid", Folder: "games"})
-	server.rescans.Start(key)
-	if started := summary(); started["scanning"] != true {
-		t.Fatalf("début de parcours : %v", started)
-	}
-
-	built := listing.New("webdav", "drive")
-	built.SetSection(listing.Roms, map[string][]listing.Item{"nes": {{Name: "Zelda"}}}, time.Now())
-	if err := listing.Save(listingCacheDir, key, built); err != nil {
-		t.Fatalf("catalogue : %v", err)
-	}
-	server.rescans.Finish(key, nil)
-	finished := summary()
-	consoles, _ := finished["consoles"].([]any)
-	if finished["scanned"] != true || finished["scanning"] != false || len(consoles) != 1 {
-		t.Fatalf("fin de parcours : %v", finished)
-	}
-
-	// Une ressource inconnue est refusée, pas suivie dans le vide.
-	facadeTestSend(t, connection, map[string]any{"type": "subscribe", "id": "2", "data": map[string]any{"topic": "mount/99"}})
-	refused := facadeTestNext(t, connection, func(push facadeTestPush) bool { return push.ID == "2" })
-	if refused.Status != http.StatusNotFound {
-		t.Fatalf("ressource inconnue : %+v", refused)
 	}
 }
 

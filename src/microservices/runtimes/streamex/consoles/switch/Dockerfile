@@ -88,14 +88,13 @@ RUN groupadd -f pulse-access && usermod -aG pulse-access root && usermod -aG pul
 # l'exécution, et l'entrypoint déballe la DERNIÈRE DÉPOSÉE dans /opt/citron/squashfs-root
 # (voir consoles/unpack-emulator.sh).
 # /opt/citron/AppRun, le lien posé ci-dessous, pointe dans cet arbre.
-ARG CITRON_URL=https://github.com/citron-neo/emulator/releases/download/2026-04-27/citron_nightly-0237a9b88-linux-x86_64_v3.AppImage
 # Les versions éprouvées avec cette image (emulator_tested) : la liste informe,
 # elle ne bloque pas — toute version que reconnaît le motif se lance.
 ARG CITRON_TESTED="${CITRON_FILE}"
 ENV GAMEFLEX_EMULATOR_FILE=${CITRON_FILE} GAMEFLEX_EMULATOR_DIR=/gameflex/cores/switch \
     GAMEFLEX_EMULATOR_PATTERN="citron_nightly-*-linux-x86_64_v3.AppImage" GAMEFLEX_EMULATOR_NAME="Citron nightly" \
     GAMEFLEX_EMULATOR_TESTED="${CITRON_TESTED}"
-LABEL gameflex.emulator.file=${CITRON_FILE} gameflex.emulator.url=${CITRON_URL} \
+LABEL gameflex.emulator.file=${CITRON_FILE} \
     gameflex.emulator.pattern="citron_nightly-*-linux-x86_64_v3.AppImage" \
     gameflex.emulator.tested="${CITRON_TESTED}"
 COPY src/microservices/runtimes/streamex/consoles/unpack-emulator.sh /usr/local/bin/unpack-emulator

@@ -54,7 +54,6 @@ func main() {
 		return
 	}
 	seedRoot(db, cfg)
-	api.SealRemoteMounts(db, cfg.JWTSecret)
 
 	// La clé VAPID : celle fournie par l'environnement, sinon celle gardée
 	// dans la base — jamais une clé du seul processus, qui casserait chaque

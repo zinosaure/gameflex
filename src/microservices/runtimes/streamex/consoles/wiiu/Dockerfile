@@ -97,14 +97,13 @@ RUN groupadd -f pulse-access && usermod -aG pulse-access root && usermod -aG pul
 # (voir consoles/unpack-emulator.sh).
 # AppRun doit rester dans squashfs-root, sinon sa résolution d'APPDIR casse.
 ARG CEMU_FILE=Cemu-${CEMU_VERSION}-x86_64.AppImage
-ARG CEMU_URL=https://github.com/cemu-project/Cemu/releases/download/v2.6/Cemu-2.6-x86_64.AppImage
 # Les versions éprouvées avec cette image (emulator_tested) : la liste informe,
 # elle ne bloque pas — toute version que reconnaît le motif se lance.
 ARG CEMU_TESTED="${CEMU_FILE}"
 ENV GAMEFLEX_EMULATOR_FILE=${CEMU_FILE} GAMEFLEX_EMULATOR_DIR=/gameflex/cores/wiiu \
     GAMEFLEX_EMULATOR_PATTERN="Cemu-*-x86_64.AppImage" GAMEFLEX_EMULATOR_NAME="Cemu" \
     GAMEFLEX_EMULATOR_TESTED="${CEMU_TESTED}"
-LABEL gameflex.emulator.file=${CEMU_FILE} gameflex.emulator.url=${CEMU_URL} \
+LABEL gameflex.emulator.file=${CEMU_FILE} \
     gameflex.emulator.pattern="Cemu-*-x86_64.AppImage" \
     gameflex.emulator.tested="${CEMU_TESTED}"
 COPY src/microservices/runtimes/streamex/consoles/unpack-emulator.sh /usr/local/bin/unpack-emulator

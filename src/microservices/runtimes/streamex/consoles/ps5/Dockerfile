@@ -203,7 +203,6 @@ ARG KYTY_RELEASE=KytyPS5-2026-11-04-91c5820
 # même, avec nos patchs pour le serveur (#431, tools/kyty/README.md).
 # Sans lui, celui de l'éditeur — et le journal de la partie le dit.
 ARG KYTY_FILE=${KYTY_RELEASE}-Linux-x86_64.tar.gz
-ARG KYTY_URL=https://github.com/KytyPS5/KytyPS5/releases/download/KytyPS5-2026-11-04-91c5820/KytyPS5-2026-11-04-91c5820-Linux-x86_64.tar.gz
 # Les versions éprouvées avec cette image (emulator_tested) : la liste informe,
 # elle ne bloque pas — toute version que reconnaît le motif se lance.
 ARG KYTY_TESTED="${KYTY_FILE}"
@@ -212,7 +211,7 @@ ENV GAMEFLEX_EMULATOR_FILE=${KYTY_FILE} GAMEFLEX_EMULATOR_DIR=/gameflex/cores/ps
     GAMEFLEX_EMULATOR_TESTED="${KYTY_TESTED}" \
     GAMEFLEX_EMULATOR_BUILD="kyty_emulator-gameflex-KytyPS5-*" \
     GAMEFLEX_EMULATOR_BUILD_TARGET=/opt/kyty/kyty_emulator
-LABEL gameflex.emulator.file=${KYTY_FILE} gameflex.emulator.url=${KYTY_URL} \
+LABEL gameflex.emulator.file=${KYTY_FILE} \
     gameflex.emulator.pattern="KytyPS5-*-Linux-x86_64.tar.gz" \
     gameflex.emulator.tested="${KYTY_TESTED}"
 COPY src/microservices/runtimes/streamex/consoles/unpack-emulator.sh /usr/local/bin/unpack-emulator

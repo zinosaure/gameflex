@@ -76,16 +76,17 @@ func (server *Server) handleStorageAvailability(w http.ResponseWriter, r *http.R
 }
 
 // officialURL — où la source officielle le publie : un cœur du registre chez
-// le buildbot, le fichier qu'une image attend chez son éditeur. Vide pour un
-// BIOS (personne ne les distribue) et pour tout autre fichier.
+// le buildbot, le fichier qu'une image attend dans l'index des paquets streamex
+// (chantier 63 : plus chez son éditeur). Vide pour un BIOS (personne ne les
+// distribue) et pour tout autre fichier.
 func (server *Server) officialURL(ctx context.Context, consoleID, section, name string) string {
 	if section != "cores" {
 		return ""
 	}
 	if retro_files.IsEmulatorFile(consoleID, name) {
 		for _, need := range server.requiredEmulators(ctx) {
-			if need.Console == consoleID && need.File == name && need.URL != "" {
-				return need.URL
+			if need.Console == consoleID && need.File == name {
+				return server.streamexIndexURL()
 			}
 		}
 

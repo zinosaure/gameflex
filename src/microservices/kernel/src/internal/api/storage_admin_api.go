@@ -1120,7 +1120,7 @@ func (server *Server) deleteSavesInBackground(user, dir string) bool {
 // session chez un troisième avec les jetons rangés ici, lire nos partages ou
 // faire sonder une adresse (revue de sécurité du kernel, 2026-10-28, #598).
 // Posée sur tout ce qui n'est pas « jouer » : /api/v1/servers/*, le QR des
-// invitations, les partages montés.
+// invitations.
 func localOnly(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if auth.Federated(r.Context()) {

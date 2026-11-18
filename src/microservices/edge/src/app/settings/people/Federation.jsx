@@ -2,17 +2,17 @@ import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import {
-    addServerRegistry, cancelPairingCode, checkFederationServer, createCatalogToken, createInvitation, createPairingCode, listCatalogTokens, listInvitations,
-    listServerRegistry, redeemServerCode, redeemServerInvitation, removeServerRegistry, rescanServer, revokeCatalogToken, revokeInvitation, updateCatalogTokenScopes,
+    addServerRegistry, checkFederationServer, listServerRegistry, redeemServerCode, redeemServerInvitation, removeServerRegistry, rescanServer,
 } from "../../libs/api.js";
-import { can, useData } from "../../libs/data.jsx";
-import { invitationLink, InvitationField, InvitationReveal, useShareOrigin } from "../../screens/access/Invitation.jsx";
-import { DiscoveryModeSection, LocalServersSection, PairingReveal, pairingRefusal, usePairing } from "../../screens/access/Pairing.jsx";
+import { useData } from "../../libs/data.jsx";
+import { invitationLink, InvitationField, InvitationReveal } from "../../screens/access/Invitation.jsx";
+import { DiscoveryModeSection, LocalServersSection, PairingReveal, pairingRefusal } from "../../screens/access/Pairing.jsx";
 import { FEDERATION_GUIDES } from "../account/MyFederation.jsx";
 import { openExternal } from "../../libs/links.js";
 import { toast } from "../../shell/Shell.jsx";
 import { Form, formContext, FormButton } from "../../ui/Forms.jsx";
-import SettingsPage, { NotFound, useQueryState, useSettingsNavigation } from "../SettingsPage.jsx";
+import { NotFound, useQueryState, useSettingsNavigation } from "../SettingsPage.jsx";
+import { useFederationHost, useFederationPaths } from "./federationHost.js";
 import NavRow, { ChoiceRow, CopyField, DangerSection, GuideSection, InfoRow, Listing, Note, Rows, Section, SubmitRow, SwitchRow, TextRow } from "../../ui/Bricks.jsx";
 
 // LA FÉDÉRATION, CÔTÉ ADMINISTRATEUR : CRÉER LA CONNEXION ENTRE SERVEURS, ET RIEN D'AUTRE (le porteur, 2026-11-16 :
@@ -52,14 +52,18 @@ import NavRow, { ChoiceRow, CopyField, DangerSection, GuideSection, InfoRow, Lis
 // LES LISTES LUES EN ASYNCHRONE se feuillettent (Listing ; le porteur, 2026-11-14 : « Rajouter des pagination pour les
 // listes asynchrone ») : les serveurs, les jetons, et les invitations en attente.
 
-const FEDERATION = "/settings/federation";
-const ACCESSES = `${FEDERATION}/access`;
-const PENDING = `${FEDERATION}/pending`;
-const JOINED = `${FEDERATION}/servers`;
+// LE CADRE D'UNE PAGE : celui de l'hôte (federationHost.js) — SettingsPage chez GameFlex, la page du service chez
+// gameflex-federation.
+function Frame(props) {
+    const { Page } = useFederationHost();
+
+    return <Page {...props} />;
+}
 
 // Les niveaux sous la Fédération, nommés pour le fil d'Ariane même par un lien direct (SettingsPage, `levels`).
 function useLevels() {
     const { t } = useTranslation();
+    const { ACCESSES, PENDING, JOINED } = useFederationPaths();
 
     return { [ACCESSES]: t("fed.accessesTitle"), [PENDING]: t("fed.pendingTitle"), [JOINED]: t("fed.joinedTitle") };
 }
@@ -91,6 +95,9 @@ const scopesOf = (item) => String(item.scopes || "").split(",").map((scope) => s
 // d'ici interroge aussi nos comptes IGDB et SteamGridDB pour son porteur ; nos clés ne sortent jamais. Coupées par défaut.
 const PROVIDERS = "metadata-providers";
 const scopesFor = ({ devices, providers }) => ["catalog", ...(devices ? ["devices"] : []), ...(providers ? [PROVIDERS] : [])];
+// Ce qu'ouvre une invitation (« Jeux · Consoles »), sous elle dans la liste des invitations en attente. Retiré par erreur
+// avec les sous-titres des accès (f786ab1d) : la liste des invitations s'effondrait dès qu'une attendait.
+const grantsOf = (item, t) => scopesOf(item).map((scope) => t(`fed.scope.${scope}`, { defaultValue: scope })).join(" · ");
 // Le sous-titre d'un accès dans la liste : sa date de dernière utilisation, seule (le porteur, 2026-11-16 : « les
 // sous-titres des serveurs fédérés ou accès délivrés sont trop verbeux. Mets juste la date ça suffit »).
 const lastUseOf = (item, t, language) => (item.last_used_at ? dateTime(item.last_used_at, language) : t("fed.neverUsed"));
@@ -124,9 +131,9 @@ function Waiting({ item, title, parent }) {
     const levels = useLevels();
 
     return (
-        <SettingsPage title={title} parent={parent} levels={levels}>
+        <Frame title={title} parent={parent} levels={levels}>
             {item === false ? <NotFound /> : <Section><Note className="mt-0">{t("settings.loading")}</Note></Section>}
-        </SettingsPage>
+        </Frame>
     );
 }
 
@@ -134,6 +141,7 @@ function Waiting({ item, title, parent }) {
 // serveurs du réseau local en mode découverte, et l'adresse, toujours tapable), ou son lien et son jeton — le choix de
 // la méthode est un choix segmenté (ChoiceRow), plus des onglets.
 function AddServerPage() {
+    const { JOINED } = useFederationPaths();
     const { t } = useTranslation();
     const levels = useLevels();
     const { refreshServers } = useData();
@@ -226,7 +234,7 @@ function AddServerPage() {
 
     // La méthode, puis l'invitation (son champ, Invitation.jsx) et le nom ; ou le nom, le lien et le jeton.
     return (
-        <SettingsPage title={t("fed.join")} parent={JOINED} levels={levels}>
+        <Frame title={t("fed.join")} parent={JOINED} levels={levels}>
             <Form props={{ onSubmit: (event) => {
                 event.preventDefault();
 
@@ -277,7 +285,7 @@ function AddServerPage() {
                     </Section>
                 )}
             </Form>
-        </SettingsPage>
+        </Frame>
     );
 }
 
@@ -294,6 +302,7 @@ const loadServers = (refreshServers, t, language) => Promise.all([listServerRegi
 // et son adresse, rien d'autre (le porteur, 2026-11-16 : « Pas besoin des longs sous-titre. Juste l'adresse suffira. Dans
 // la fiche on aura toutes les info ») ; puis « Plus » : en rejoindre un ; puis le guide.
 function JoinedPage() {
+    const { FEDERATION, JOINED } = useFederationPaths();
     const { t, i18n } = useTranslation();
     const { refreshServers } = useData();
     const { open } = useSettingsNavigation();
@@ -313,7 +322,7 @@ function JoinedPage() {
     const filtered = needle ? items.filter((item) => `${item.label} ${item.link} ${item.listing}`.toLowerCase().includes(needle)) : items;
 
     return (
-        <SettingsPage title={t("fed.joinedTitle")} parent={FEDERATION}>
+        <Frame title={t("fed.joinedTitle")} parent={FEDERATION}>
             <Section title={t("fed.serversTitle")} help={t("fed.serversHelp")}>
                 <Listing items={filtered} loading={loading} search={search} onSearch={setSearch} placeholder={t("fed.serversSearch")} searchKey="fd-srv-search"
                     found={t("fed.serversFound", { count: filtered.length })} empty={t("fed.serversEmpty")}
@@ -328,7 +337,7 @@ function JoinedPage() {
                 </Rows>
             </Section>
             <GuideSection guides={FEDERATION_GUIDES} />
-        </SettingsPage>
+        </Frame>
     );
 }
 
@@ -339,6 +348,7 @@ function JoinedPage() {
 // métadonnées). Pas de ligne par console : jouer demande toujours un compte chez lui, l'affaire de chaque utilisateur
 // dans Réglages › Profil › Fédération (le porteur, 2026-11-16). Le retirer (« Danger »), puis le guide, en dernier.
 function ServerPage() {
+    const { JOINED } = useFederationPaths();
     const { t, i18n } = useTranslation();
     const { serverId } = useParams();
     const { refreshServers } = useData();
@@ -358,7 +368,7 @@ function ServerPage() {
     const opened = (scope) => t(scopes.includes(scope) ? "fed.allowed" : "fed.notAllowed");
 
     return (
-        <SettingsPage title={server.label} parent={JOINED} levels={levels}>
+        <Frame title={server.label} parent={JOINED} levels={levels}>
             <Section title={t("fed.serverTitle")} help={t("fed.serverHelp")}>
                 <Rows>
                     {/* SON ADRESSE S'OUVRE dans un autre onglet (le porteur, 2026-11-16 : « rend le lien cliquable pour ouvrir
@@ -408,7 +418,7 @@ function ServerPage() {
                     }
                 }} />
             <GuideSection guides={FEDERATION_GUIDES} />
-        </SettingsPage>
+        </Frame>
     );
 }
 
@@ -416,14 +426,15 @@ function ServerPage() {
 // partager aussi les consoles, partager aussi les fournisseurs de métadonnées.
 function AccessFields({ form, values, setValues }) {
     const { t } = useTranslation();
+    const { offers } = useFederationHost();
 
     return (
         <>
             <TextRow id="label" context={form} label={t("fed.forWho")} help={t("fed.forWhoHelp")} props={{ placeholder: t("fed.forWhoPlaceholder"), "data-key": "fd-label" }} />
-            <SwitchRow id="fd-devices" label={t("fed.devicesLabel")} help={t("fed.devicesHelp")} checked={values.devices}
-                onChange={(devices) => setValues((previous) => ({ ...previous, devices }))} />
-            <SwitchRow id="fd-providers" label={t("fed.providersLabel")} help={t("fed.providersHelp")} checked={values.providers}
-                onChange={(providers) => setValues((previous) => ({ ...previous, providers }))} />
+            {offers.devices && <SwitchRow id="fd-devices" label={t("fed.devicesLabel")} help={t("fed.devicesHelp")} checked={values.devices}
+                onChange={(devices) => setValues((previous) => ({ ...previous, devices }))} />}
+            {offers.providers && <SwitchRow id="fd-providers" label={t("fed.providersLabel")} help={t("fed.providersHelp")} checked={values.providers}
+                onChange={(providers) => setValues((previous) => ({ ...previous, providers }))} />}
         </>
     );
 }
@@ -435,9 +446,11 @@ function AccessFields({ form, values, setValues }) {
 // restent sur la page jusqu'à « J'ai copié ». UN bouton, dont le libellé suit l'interrupteur (« Créer l'invitation »,
 // « Créer le jeton ») : il dit ce qu'on obtiendra.
 function NewTokenPage() {
+    const { ACCESSES } = useFederationPaths();
     const { t } = useTranslation();
     const levels = useLevels();
-    const origin = useShareOrigin();
+    const host = useFederationHost();
+    const origin = host.useOrigin();
     const { back } = useSettingsNavigation();
     const [values, setValues] = useState({ label: "", devices: false, providers: false, tokenInstead: false });
     const [pending, setPending] = useState(false);
@@ -450,7 +463,7 @@ function NewTokenPage() {
 
     const invite = async () => {
         setPending(true);
-        const answer = await createInvitation({ kind: "federation", label, scopes: scopes() });
+        const answer = await host.api.createInvitation({ kind: "federation", label, scopes: scopes() });
         setPending(false);
 
         if (!answer.ok || !answer.item) {
@@ -463,7 +476,7 @@ function NewTokenPage() {
 
     const create = async () => {
         setPending(true);
-        const answer = await createCatalogToken(label, scopes());
+        const answer = await host.api.createToken(label, scopes());
         setPending(false);
 
         if (!answer.ok || !answer.item) {
@@ -475,7 +488,7 @@ function NewTokenPage() {
     };
 
     return (
-        <SettingsPage title={t("fed.newAccess")} parent={ACCESSES} levels={levels}>
+        <Frame title={t("fed.newAccess")} parent={ACCESSES} levels={levels}>
             {invited ? (
                 <InvitationReveal link={invitationLink(origin, invited.code)} expiresAt={invited.expires_at} title={t("invitations.federationTitle", { label: invited.label })} onDone={done} />
             ) : created ? (
@@ -514,7 +527,7 @@ function NewTokenPage() {
                     </Section>
                 </Form>
             )}
-        </SettingsPage>
+        </Frame>
     );
 }
 
@@ -522,9 +535,11 @@ function NewTokenPage() {
 // « Créer le code », grisé tant que le mode serveur est fermé. Le code créé prend la page (PairingReveal) ; servi, la
 // page revient à la liste des accès, où le nouvel accès apparaît.
 function NewPairingPage() {
+    const { ACCESSES } = useFederationPaths();
     const { t } = useTranslation();
     const levels = useLevels();
-    const pairing = usePairing();
+    const host = useFederationHost();
+    const pairing = host.usePairing();
     const { back } = useSettingsNavigation();
     const [values, setValues] = useState({ label: "", devices: false, providers: false });
     const [pending, setPending] = useState(false);
@@ -535,7 +550,7 @@ function NewPairingPage() {
 
     const create = async () => {
         setPending(true);
-        const answer = await createPairingCode({ kind: "federation", label, scopes: scopesFor(values) });
+        const answer = await host.api.createPairingCode({ kind: "federation", label, scopes: scopesFor(values) });
         setPending(false);
 
         if (!answer.ok || !answer.item) {
@@ -552,9 +567,9 @@ function NewPairingPage() {
     };
 
     return (
-        <SettingsPage title={t("pairing.code")} parent={ACCESSES} levels={levels}>
+        <Frame title={t("pairing.code")} parent={ACCESSES} levels={levels}>
             {created ? (
-                <PairingReveal created={created} pairing={pairing} onDone={finish} onCancel={() => cancelPairingCode(created.id)} />
+                <PairingReveal created={created} pairing={pairing} onDone={finish} onCancel={() => host.api.cancelPairingCode(created.id)} />
             ) : (
                 <>
                     <DiscoveryModeSection scope="server" pairing={pairing} />
@@ -577,18 +592,20 @@ function NewPairingPage() {
                     <GuideSection guides={FEDERATION_GUIDES} />
                 </>
             )}
-        </SettingsPage>
+        </Frame>
     );
 }
 
 // LES JETONS ÉMIS ICI, et les invitations en attente : une ligne chacun, qui ouvre sa page.
-const loadTokens = () => listCatalogTokens().then((answer) => (answer.ok ? answer.items || [] : []));
-const loadInvitations = () => listInvitations().then((answer) => (answer.ok ? answer.items || [] : []));
+const loadTokens = (api) => api.listTokens().then((answer) => (answer.ok ? answer.items || [] : []));
+const loadInvitations = (api) => api.listInvitations().then((answer) => (answer.ok ? answer.items || [] : []));
 const invitationKind = (item, t) => (item.kind === "account" ? t("invitations.kindAccount") : grantsOf(item, t));
 
 // /settings/federation/access : LES ACCÈS DÉLIVRÉS — les jetons émis ici —, puis « Plus » : en créer un, et ceux qui
 // attendent encore d'être échangés ; puis le guide.
 function AccessesPage() {
+    const { FEDERATION, PENDING } = useFederationPaths();
+    const { api } = useFederationHost();
     const { t, i18n } = useTranslation();
     const { open } = useSettingsNavigation();
     const [items, setItems] = useState([]);
@@ -597,7 +614,7 @@ function AccessesPage() {
     const [search, setSearch] = useState("");
 
     useEffect(() => {
-        Promise.all([loadTokens(), loadInvitations()]).then(([tokens, invitations]) => {
+        Promise.all([loadTokens(api), loadInvitations(api)]).then(([tokens, invitations]) => {
             setItems(tokens);
             setPending(invitations.length);
             setLoading(false);
@@ -608,7 +625,7 @@ function AccessesPage() {
     const filtered = needle ? items.filter((item) => String(item.label || "").toLowerCase().includes(needle)) : items;
 
     return (
-        <SettingsPage title={t("fed.accessesTitle")} parent={FEDERATION}>
+        <Frame title={t("fed.accessesTitle")} parent={FEDERATION}>
             <Section title={t("fed.tokensTitle")} help={t("fed.tokensHelp")}>
                 <Listing items={filtered} loading={loading} search={search} onSearch={setSearch} placeholder={t("fed.search")} searchKey="fd-tok-search"
                     found={t("fed.found", { count: filtered.length })} empty={t("fed.empty")}
@@ -626,13 +643,15 @@ function AccessesPage() {
                 </Rows>
             </Section>
             <GuideSection guides={FEDERATION_GUIDES} />
-        </SettingsPage>
+        </Frame>
     );
 }
 
 // /settings/federation/pending : LES ACCÈS DÉLIVRÉS EN ATTENTE — les invitations créées ici et pas encore échangées
 // (valables 12 heures, une seule fois) ; une ligne ouvre sa page.
 function PendingPage() {
+    const { FEDERATION, ACCESSES } = useFederationPaths();
+    const { api } = useFederationHost();
     const { t, i18n } = useTranslation();
     const { open } = useSettingsNavigation();
     const [read, update] = useQueryState({ page: "1" });
@@ -641,14 +660,14 @@ function PendingPage() {
     const levels = useLevels();
 
     useEffect(() => {
-        loadInvitations().then((invitations) => {
+        loadInvitations(api).then((invitations) => {
             setItems(invitations);
             setLoading(false);
         });
     }, []);
 
     return (
-        <SettingsPage title={t("fed.pendingTitle")} parent={ACCESSES} levels={levels}>
+        <Frame title={t("fed.pendingTitle")} parent={ACCESSES} levels={levels}>
             <Section title={t("invitations.pendingTitle")} help={t("invitations.pendingHelp")}>
                 <Listing items={items} loading={loading} empty={t("fed.pendingEmpty")} page={read("page")} onPage={(page) => update({ page })}
                     render={(item) => (
@@ -658,16 +677,18 @@ function PendingPage() {
                     )} />
             </Section>
             <GuideSection guides={FEDERATION_GUIDES} />
-        </SettingsPage>
+        </Frame>
     );
 }
 
 // UNE INVITATION EN ATTENTE : pour qui, ce qu'elle ouvre, jusqu'à quand ; la révoquer.
 function InvitationPage() {
+    const { PENDING } = useFederationPaths();
     const { t, i18n } = useTranslation();
     const { invitationId } = useParams();
     const { back } = useSettingsNavigation();
-    const invitation = usePassed("invitation", invitationId, loadInvitations);
+    const { api } = useFederationHost();
+    const invitation = usePassed("invitation", invitationId, () => loadInvitations(api));
     const levels = useLevels();
 
     if (!invitation) {
@@ -676,7 +697,7 @@ function InvitationPage() {
     const label = invitation.label || t("invitations.kindAccount");
 
     return (
-        <SettingsPage title={label} parent={PENDING} levels={levels}>
+        <Frame title={label} parent={PENDING} levels={levels}>
             <Section title={t("invitations.detailTitle")}>
                 <Rows>
                     <InfoRow icon="bi-person" tone="indigo" label={t("fed.forWho")} value={invitation.label} />
@@ -686,39 +707,35 @@ function InvitationPage() {
             </Section>
             <DangerSection id={`fd-inv-revoke-${invitation.id}`} help={t("invitations.revokeHelp")} label={t("invitations.revokeTitle")} confirmLabel={t("fed.revoke")}
                 question={`${t("invitations.revokeConfirm")} ${invitation.label || ""}`} onConfirm={async () => {
-                    const answer = await revokeInvitation(invitation.id);
+                    const answer = await api.revokeInvitation(invitation.id);
                     toast(answer.ok ? t("invitations.revoked", { name: invitation.label }) : answer.detail || t("settings.actionFailed"));
 
                     if (answer.ok) {
                         back(PENDING);
                     }
                 }} />
-        </SettingsPage>
+        </Frame>
     );
 }
 
-// UN JETON ÉMIS ICI : ce qu'il ouvre, sa dernière utilisation ; partager aussi les consoles, partager aussi les
-// fournisseurs de métadonnées (chacun appliqué à l'instant, comme avant) ; le révoquer.
-function TokenPage() {
+// UN JETON ÉMIS : ce qu'il ouvre, sa dernière utilisation ; partager aussi les consoles, partager aussi les fournisseurs
+// de métadonnées (chacun appliqué à l'instant, comme avant) ; le révoquer. LA MÊME PAGE POUR gameflex-federation (le
+// porteur, 2026-11-18 : « Utilise la même page de Issued token […] car il manque des infos ») : ses sections, sans son
+// cadre. `offers` : ce que l'hôte peut prêter en plus de ses jeux — le service de fédération n'a ni consoles ni prêt de
+// ses fournisseurs : ni leurs lignes ni leurs interrupteurs. `onScopes(scopes)` → {ok, item, detail} ; `onRevoke()` →
+// {ok, detail} ; `onRevoked`, après. Le jeton : `{id, label, scopes: "a,b", last_used_at}`.
+export function IssuedTokenSections({ token, offers = { devices: true, providers: true }, onScopes = null, onRevoke, onRevoked }) {
     const { t, i18n } = useTranslation();
-    const { tokenId } = useParams();
-    const { back } = useSettingsNavigation();
-    const passed = usePassed("token", tokenId, loadTokens);
-    const levels = useLevels();
-    const [token, setToken] = useState(null);
+    const [current, setCurrent] = useState(null);
     const [pending, setPending] = useState(false);
-    const shown = token || passed;
-
-    if (!shown) {
-        return <Waiting item={passed} title={t("fed.accessesTitle")} parent={ACCESSES} />;
-    }
+    const shown = current || token;
     const shared = { devices: scopesOf(shown).includes("devices"), providers: scopesOf(shown).includes(PROVIDERS) };
 
     // Un partage de plus ou de moins (`name` : devices, providers) ; les autres restent ce qu'ils sont.
     const setShared = async (name, next) => {
         const scopes = scopesFor({ ...shared, [name]: next });
         setPending(true);
-        const answer = await updateCatalogTokenScopes(shown.id, scopes);
+        const answer = await onScopes(scopes);
         setPending(false);
 
         if (!answer.ok) {
@@ -727,11 +744,14 @@ function TokenPage() {
             return;
         }
         toast(t(`fed.${name}${next ? "Shared" : "Unshared"}`, { label: shown.label }));
-        setToken({ ...shown, scopes: answer.item?.scopes || scopes.join(",") });
+        setCurrent({ ...shown, scopes: answer.item?.scopes || scopes.join(",") });
     };
+    const rows = [["catalog", "bi-collection", t("fed.scope.catalog")], ["catalog", "bi-card-text", t("fed.scopeMetadata")],
+        ...(offers.devices ? [["devices", "bi-playstation", t("fed.scope.devices")]] : []),
+        ...(offers.providers ? [[PROVIDERS, "bi-images", t("fed.scopeProviders")]] : [])];
 
     return (
-        <SettingsPage title={shown.label} parent={ACCESSES} levels={levels}>
+        <>
             <Section title={t("fed.tokenTitle")}>
                 <Rows>
                     {/* CE QU'IL OUVRE, UNE LIGNE PAR PORTÉE (le porteur, 2026-11-16 : « change la ligne "ce qu'il ouvre" pour le
@@ -740,8 +760,7 @@ function TokenPage() {
                         métadonnées vont toujours ensemble, par `catalog` (« La métadonnée vient toujours du serveur. C'est
                         toujours autorisé comme les jeux. C'est l'utilisation des fournisseurs metadata du serveur qui doit être
                         autorisée ») : seuls les consoles et les fournisseurs se règlent. */}
-                    {[["catalog", "bi-collection", t("fed.scope.catalog")], ["catalog", "bi-card-text", t("fed.scopeMetadata")], ["devices", "bi-playstation", t("fed.scope.devices")],
-                        [PROVIDERS, "bi-images", t("fed.scopeProviders")]].map(([scope, icon, label]) => {
+                    {rows.map(([scope, icon, label]) => {
                         const allowed = scopesOf(shown).includes(scope);
 
                         return <InfoRow key={`${scope}-${icon}`} icon={icon} tone={allowed ? "green" : "slate"} label={label} value={t(allowed ? "fed.allowed" : "fed.notAllowed")} />;
@@ -752,28 +771,53 @@ function TokenPage() {
                         value={shown.last_used_at ? dateTime(shown.last_used_at, i18n.language) : t("members.tokenNever")} />
                 </Rows>
             </Section>
-            <Section title={t("fed.scope.devices")}>
-                <Rows>
-                    <SwitchRow id={`fd-dev-${shown.id}`} label={t("fed.devicesLabel")} help={t("fed.devicesHelp")} checked={shared.devices} disabled={pending}
-                        onChange={(next) => setShared("devices", next)} />
-                </Rows>
-            </Section>
-            <Section title={t(`fed.scope.${PROVIDERS}`)}>
-                <Rows>
-                    <SwitchRow id={`fd-prov-${shown.id}`} label={t("fed.providersLabel")} help={t("fed.providersHelp")} checked={shared.providers} disabled={pending}
-                        onChange={(next) => setShared("providers", next)} />
-                </Rows>
-            </Section>
+            {offers.devices && onScopes && (
+                <Section title={t("fed.scope.devices")}>
+                    <Rows>
+                        <SwitchRow id={`fd-dev-${shown.id}`} label={t("fed.devicesLabel")} help={t("fed.devicesHelp")} checked={shared.devices} disabled={pending}
+                            onChange={(next) => setShared("devices", next)} />
+                    </Rows>
+                </Section>
+            )}
+            {offers.providers && onScopes && (
+                <Section title={t(`fed.scope.${PROVIDERS}`)}>
+                    <Rows>
+                        <SwitchRow id={`fd-prov-${shown.id}`} label={t("fed.providersLabel")} help={t("fed.providersHelp")} checked={shared.providers} disabled={pending}
+                            onChange={(next) => setShared("providers", next)} />
+                    </Rows>
+                </Section>
+            )}
             <DangerSection id={`fd-rev-${shown.id}`} help={t("fed.revokeHelp")} label={t("fed.revokeTitle")} confirmLabel={t("fed.revoke")} question={`${t("fed.revokeConfirm")} ${shown.label}`}
                 onConfirm={async () => {
-                    const answer = await revokeCatalogToken(shown.id);
+                    const answer = await onRevoke();
                     toast(answer.ok ? t("fed.revoked", { name: shown.label }) : answer.detail || t("settings.actionFailed"));
 
                     if (answer.ok) {
-                        back(ACCESSES);
+                        onRevoked();
                     }
                 }} />
-        </SettingsPage>
+        </>
+    );
+}
+
+function TokenPage() {
+    const { ACCESSES } = useFederationPaths();
+    const { t } = useTranslation();
+    const { tokenId } = useParams();
+    const { back } = useSettingsNavigation();
+    const { api, offers } = useFederationHost();
+    const passed = usePassed("token", tokenId, () => loadTokens(api));
+    const levels = useLevels();
+
+    if (!passed) {
+        return <Waiting item={passed} title={t("fed.accessesTitle")} parent={ACCESSES} />;
+    }
+
+    return (
+        <Frame title={passed.label} parent={ACCESSES} levels={levels}>
+            <IssuedTokenSections token={passed} offers={offers} onScopes={(scopes) => api.updateTokenScopes(passed.id, scopes)}
+                onRevoke={() => api.revokeToken(passed.id)} onRevoked={() => back(ACCESSES)} />
+        </Frame>
     );
 }
 
@@ -782,18 +826,20 @@ function TokenPage() {
 // nous ont partagé leurs jeux et consoles ») — les accès délivrés (si l'hôte en émet : un serveur, un téléphone aussi depuis `#756`), les
 // serveurs rejoints —, chacune avec son nombre ; puis le guide. Rien sur le jeu chez un ami : c'est le Profil.
 function FederationPage() {
+    const { ACCESSES, JOINED } = useFederationPaths();
     const { t } = useTranslation();
-    const { capabilities, servers } = useData();
+    const host = useFederationHost();
     const { open } = useSettingsNavigation();
-    const issues = can(capabilities, "issuesCatalogTokens");
+    const issues = host.useIssues();
+    const joined = host.useJoinedCount();
     const [delivered, setDelivered] = useState(null);
-    const pairing = usePairing();
+    const pairing = host.usePairing();
 
     useEffect(() => {
         let cancelled = false;
 
         if (issues) {
-            loadTokens().then((tokens) => !cancelled && setDelivered(tokens.length));
+            loadTokens(host.api).then((tokens) => !cancelled && setDelivered(tokens.length));
         }
 
         return () => {
@@ -802,13 +848,16 @@ function FederationPage() {
     }, [issues]);
 
     return (
-        <SettingsPage title={t("settings.items.federation.label")}>
-            <Section title={t("fed.connectionTitle")} help={t(issues ? "fed.connectionHelp" : "fed.connectionHelpJoinOnly")}>
+        <Frame title={host.useHomeTitle() || t("settings.items.federation.label")} parent={host.joins ? undefined : null}>
+            {host.HomeBefore && <host.HomeBefore />}
+            <Section title={t("fed.connectionTitle")} help={t(!issues ? "fed.connectionHelpJoinOnly" : host.joins ? "fed.connectionHelp" : "fed.connectionHelpServeOnly")}>
                 <Rows>
                     {issues && <NavRow id="fd-accesses" icon="bi-key" tone="amber" label={t("fed.accessesTitle")} help={t("fed.accessesHelp")} value={delivered}
                         onOpen={() => open(ACCESSES, "fd-accesses")} />}
-                    <NavRow id="fd-joined" icon="bi-lightning-charge" tone="amber" label={t("fed.joinedTitle")} help={t("fed.joinedHelp")} value={(servers || []).length}
-                        onOpen={() => open(JOINED, "fd-joined")} />
+                    {/* REJOINDRE, SEULEMENT CHEZ UN HÔTE QUI REJOINT : gameflex-federation ne fait que prêter (le porteur,
+                        2026-11-18 : « On fait que du output et non du input par fédération »). */}
+                    {host.joins && <NavRow id="fd-joined" icon="bi-lightning-charge" tone="amber" label={t("fed.joinedTitle")} help={t("fed.joinedHelp")} value={joined}
+                        onOpen={() => open(JOINED, "fd-joined")} />}
                 </Rows>
             </Section>
             {/* LE MODE SERVEUR (chantier 60) : un hôte qui émet des accès, serveur ou téléphone (`#756`). */}
@@ -816,22 +865,26 @@ function FederationPage() {
             {/* JOUER SUR LES CONSOLES D'UN AMI N'EST PAS ICI (le porteur, 2026-11-16 : « Dans fédération (admin) retire la
                 section plus. On n'a pas besoin ça ici. C'est dans profile qu'il le faut ») : ni ligne, ni formulaire de
                 compte côté administrateur — Réglages › Profil › Fédération (MyFederation.jsx). */}
+            {host.HomeAfter && <host.HomeAfter />}
             <GuideSection guides={FEDERATION_GUIDES} />
-        </SettingsPage>
+        </Frame>
     );
 }
 
 export function FederationRoutes() {
+    const { FEDERATION } = useFederationPaths();
+    const { joins } = useFederationHost();
+
     return (
         <Routes>
             <Route index element={<FederationPage />} />
             <Route path="access" element={<AccessesPage />} />
             <Route path="pending" element={<PendingPage />} />
-            <Route path="add" element={<AddServerPage />} />
             <Route path="new-token" element={<NewTokenPage />} />
             <Route path="new-pairing" element={<NewPairingPage />} />
-            <Route path="servers" element={<JoinedPage />} />
-            <Route path="servers/:serverId" element={<ServerPage />} />
+            {joins && <Route path="add" element={<AddServerPage />} />}
+            {joins && <Route path="servers" element={<JoinedPage />} />}
+            {joins && <Route path="servers/:serverId" element={<ServerPage />} />}
             <Route path="invitations/:invitationId" element={<InvitationPage />} />
             <Route path="tokens/:tokenId" element={<TokenPage />} />
             <Route path="*" element={<Navigate to={FEDERATION} replace />} />

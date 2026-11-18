@@ -306,7 +306,11 @@ func (server *Server) handleFederationSession(w http.ResponseWriter, r *http.Req
 
 		return
 	}
-	response, err := server.identityRelay("/internal/federation/session", token)
+	// QUI LE PRÉSENTE (#781) : le nom qu'il se donne et l'adresse vue — la liste des connexions faites avec ce jeton.
+	response, err := server.identityPost("/internal/federation/session", map[string]string{
+		"token": token, "from": r.Header.Get("X-GameFlex-From"), "member": r.Header.Get("X-GameFlex-Member"),
+		"kind": r.Header.Get("X-GameFlex-Kind"), "address": claimedAddress(r),
+	})
 	if err != nil {
 		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "cannot open a session: "+err.Error())
 

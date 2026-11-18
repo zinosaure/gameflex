@@ -92,17 +92,37 @@ On a phone or a tablet, the same interface: the consoles, their games, and a gam
 | ![The Streamex tab on a tablet: the PlayStation 5](docs/images/tablet-ps5.jpg) | ![The Streamex tab on a tablet: the PlayStation 4](docs/images/tablet-ps4.jpg) |
 | ![A PlayStation 4 game page on a tablet](docs/images/tablet-ps4-ff15.jpg) | ![A PlayStation 4 game page on a tablet, with Continue](docs/images/tablet-ps4-ff7-remake.jpg) |
 | ![A PlayStation 4 game page on a tablet](docs/images/tablet-ps4-octopath.jpg) | ![A PlayStation 4 game page on a tablet](docs/images/tablet-ps4-gta5.jpg) |
+| ![Live on a tablet: a Switch 2 game in progress, ready to join or watch](docs/images/tablet-live.jpg) | ![My favorites on a tablet: games from every console and every server, on all your devices](docs/images/tablet-favorites.jpg) |
 | ![The Remote Play tab on a tablet: a PlayStation 5 in rest mode](docs/images/tablet-remoteplay-ps5.jpg) | |
 
 <p align="center">
   <img src="docs/images/phone-ps5-astro-bot.jpg" alt="A PlayStation 5 game page on a phone" width="200">
   <img src="docs/images/phone-ps5-ff7-rebirth.jpg" alt="A PlayStation 5 game page on a phone" width="200">
   <img src="docs/images/phone-playing-ps5.jpg" alt="A PlayStation 5 game playing on a phone, with the on-screen controller" width="200">
+  <img src="docs/images/phone-playing-ps5-ff7-remake.jpg" alt="Final Fantasy VII Remake Intergrade on the PlayStation 5 (KytyPS5), played on a phone with the on-screen controller and the compact performance view" width="200">
 </p>
 
-**Remote Play in action** — a PlayStation 5 played from a phone (13 s video):
+**Recent consoles in game, with Streamex** — on a phone held sideways, each with its own on-screen controller:
 
-<p align="center"><a href="docs/images/remoteplay-demo.mp4"><img src="docs/images/remoteplay-demo.jpg" alt="Remote Play: a PlayStation 5 played from a phone — open the video" width="540"></a></p>
+| | |
+|---|---|
+| ![Astro Bot on the PlayStation 5 (KytyPS5), with the PlayStation on-screen controller](docs/images/playing-ps5-astro-bot.jpg) | ![Final Fantasy VII Remake on the PlayStation 4 (shadPS4): Midgar at night](docs/images/playing-ps4-ff7-remake.jpg) |
+| ![The Legend of Zelda: Ocarina of Time on the Switch 2 (Lichii): Link in the Kokiri Forest, with the Nintendo on-screen controller](docs/images/playing-switch2-ocarina.jpg) | ![EA Sports FC 27 on the Switch (Citron)](docs/images/playing-switch-fc27.jpg) |
+| ![Final Fantasy XIII on the PlayStation 3 (RPCS3)](docs/images/playing-ps3-ff13.jpg) | |
+
+**Remote Play in action** — a PlayStation 5 woken from rest mode and played from a phone, *Black Myth: Wukong*
+with the on-screen controller (1 min 13 s video):
+
+<p align="center"><a href="docs/images/remoteplay-demo.mp4"><img src="docs/images/remoteplay-demo.jpg" alt="Remote Play: Black Myth: Wukong on a PlayStation 5, played from a phone — open the video" width="540"></a></p>
+
+**The same game, emulated** — *Black Myth: Wukong* running on the server itself in KytyPS5, the PlayStation 5
+emulator, and played from a phone with the on-screen controller and its floating stick (1 min 10 s video). No
+console here: the emulator is still experimental, and this shows how far it has come. It was recorded on a modest
+mini PC, far below a gaming computer: an **AMD Ryzen 7 255** (8 cores, 16 threads) with its integrated **Radeon 780M**
+graphics, **8 GB of VRAM** taken from its **48 GB of RAM**, and no dedicated graphics card. A more powerful computer
+runs it faster.
+
+<p align="center"><a href="docs/images/kytyps5-wukong-demo.mp4"><img src="docs/images/kytyps5-wukong-demo.jpg" alt="Black Myth: Wukong emulated on the server by KytyPS5, played from a phone — open the video" width="540"></a></p>
 
 ## What it can play
 
@@ -127,7 +147,8 @@ the same skeleton.
 
 ## Good to know before you start
 
-- **GameFlex ships no game, no BIOS and no emulator.** It plays the files you put in your library.
+- **GameFlex ships no game, no BIOS and no firmware.** It plays the files you put in your library. The recent
+  consoles' emulators come inside streamex packages, which GameFlex installs from **Settings › Emulators**.
 - **All you need to install is Docker,** with Compose, on an x86-64 computer. A recent graphics card
   is recommended for the recent consoles. [Install GameFlex](docs/install.md) lists what you need.
 - **It is made for your home network.** To play away from home, turn on its WireGuard VPN, or put
@@ -147,11 +168,21 @@ should work, but has not been tried.
   the video (VA-API). NVIDIA and Intel graphics have not been tried, nor Windows and macOS (Docker
   Desktop).
 - **The browser:** Google Chrome, on Linux and on Android.
-- **Recent consoles,** a few games each, played past their title screen: PlayStation 3 (Final
-  Fantasy XIII), PlayStation 4 (Sonic Mania Plus), PlayStation 5 (Final Fantasy VII Remake,
-  Richman 11), Switch (Mini Metro, EA Sports FC 27), Wii U (New Super Mario Bros. U, as a disc
-  image and extracted), Xbox (Dead or Alive 3), Xbox 360 (Halo 3). Every game is different: see
-  the known limitations in [Consoles](docs/consoles.md).
+- **Recent consoles,** games played in game on the server, with the on-screen controller or a real one:
+  - **PlayStation 5:** Astro Bot, Black Myth: Wukong, Clair Obscur: Expedition 33, Final Fantasy VII
+    Remake Intergrade, Kingdom Hearts III, Tekken 8, Richman 11. They run at about 15 to 30 frames per
+    second at 540p, depending on the game; big games take a few minutes to start the first time (their
+    shaders compile).
+  - **PlayStation 4:** Final Fantasy VII Remake, Kingdom Hearts HD 2.8 Final Chapter Prologue,
+    Driveclub, FIFA 22 (with graphical glitches on the pitch), Sonic Mania Plus.
+  - **PlayStation 3:** Final Fantasy XIII. **Switch:** Mini Metro, EA Sports FC 27. **Switch 2:** The
+    Legend of Zelda: Ocarina of Time, with its saves. **Wii U:** New Super Mario Bros. U (as a disc
+    image and extracted). **Xbox:** Dead or Alive 3. **Xbox 360:** Halo 3.
+  - **PC Ports:** The Legend of Zelda: Majora's Mask (Zelda 64: Recompiled).
+
+  Not yet playable: EA Sports FC 27 on PlayStation 4 (it stops after its title screen), Final
+  Fantasy XVI (it stays on its loading screen), the Marvel games. Every game is different: see the
+  known limitations in [Consoles](docs/consoles.md).
 - **Remote Play:** with a PlayStation 5 (Black Myth: Wukong), from a phone. The PlayStation 4 has
   not been tried: we have none.
 - **A friend's server (federation):** Final Fantasy VII Remake in 720p, played smoothly from a phone
@@ -159,10 +190,10 @@ should work, but has not been tried.
 - **The WireGuard VPN:** a retro game played through it, from a client on the same computer. Not
   yet from a phone on mobile data.
 - **The Android app:** on a Samsung Galaxy S25 (Snapdragon 8 Elite, Adreno 830 graphics, 12 GB of
-  RAM). The recent consoles on the phone need a Snapdragon (Adreno) graphics chip. PlayStation 4 and
-  PlayStation 5 games start and play on the S25 itself — Sonic Mania Plus and Kingdom Hearts III
-  (PS4), Richman 11 (PS5) — but this is not finished: they run well below full speed, and none has
-  been played through.
+  RAM). The recent consoles on the phone need a Snapdragon (Adreno) graphics chip. On the phone
+  itself, PlayStation 4 and PlayStation 5 games start and play — Sonic Mania Plus and Kingdom Hearts
+  III (PS4), Richman 11 (PS5) — but well below full speed: the big ones are not playable there yet.
+  Played from the phone on the server, or on a friend's server, they run like in a browser.
 - **Not tried yet:** playing with friends over the phone's own hotspot, without Internet.
 
 ## Quick start
@@ -215,8 +246,14 @@ The GameFlex app turns an Android phone or tablet into a GameFlex of its own:
 
 Download the latest `gameflex.apk` from the
 [Releases page](https://github.com/zinosaure/gameflex/releases/latest). The app checks the same
-page for updates and installs them itself. Everything else is in
-[GameFlex on Android](docs/android.md).
+page for updates and installs them itself.
+
+Its interface (GameFlex's pages) also updates **without a new app**: **About › Update › Interface**
+checks the official source for the latest interface made for your version of the app, or installs
+one of your own from a **.zip file** — built from GameFlex's open sources (`src/microservices/edge`).
+**Back to the APK's interface** returns to the one the app came with.
+
+Everything else is in [GameFlex on Android](docs/android.md).
 
 ## Source code
 

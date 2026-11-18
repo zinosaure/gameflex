@@ -93,14 +93,13 @@ RUN groupadd -f pulse-access && usermod -aG pulse-access root && usermod -aG pul
 # L'AppImage d'Eden (uruntime, DwarFS) s'extrait dans `AppDir`, et
 # `squashfs-root` n'en est qu'un lien : le déballage prend l'arbre réel.
 # Son fichier se range sous la Switch, à côté de celui de Citron.
-ARG EDEN_URL=https://nightly.eden-emu.dev/v1794878467.d85bad8924/Eden-Linux-d85bad8924-amd64-clang-pgo.AppImage
 # Les versions éprouvées avec cette image (emulator_tested) : la liste informe,
 # elle ne bloque pas — toute version que reconnaît le motif se lance.
 ARG EDEN_TESTED="${EDEN_FILE}"
 ENV GAMEFLEX_EMULATOR_FILE=${EDEN_FILE} GAMEFLEX_EMULATOR_DIR=/gameflex/cores/switch \
     GAMEFLEX_EMULATOR_PATTERN="Eden-Linux-*-amd64-clang-pgo.AppImage" GAMEFLEX_EMULATOR_NAME="Eden nightly" \
     GAMEFLEX_EMULATOR_TESTED="${EDEN_TESTED}"
-LABEL gameflex.emulator.file=${EDEN_FILE} gameflex.emulator.url=${EDEN_URL} \
+LABEL gameflex.emulator.file=${EDEN_FILE} \
     gameflex.emulator.pattern="Eden-Linux-*-amd64-clang-pgo.AppImage" \
     gameflex.emulator.tested="${EDEN_TESTED}"
 COPY src/microservices/runtimes/streamex/consoles/unpack-emulator.sh /usr/local/bin/unpack-emulator

@@ -1,7 +1,11 @@
 package api
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -19,19 +23,63 @@ import (
 
 const kytyFile = "KytyPS5-2026-10-23-6aaa533-Linux-x86_64.tar.gz"
 
-// requiringKyty — un serveur dont l'image PS5 attend l'archive de Kyty, publiée
-// à `url`.
-func requiringKyty(t *testing.T, url string) (*Server, string) {
+// requiringKyty — un serveur dont l'image PS5 attend l'archive de Kyty, que
+// l'index des paquets streamex `index` offre (vide : l'index du projet).
+func requiringKyty(t *testing.T, index string) (*Server, string) {
 	t.Helper()
 	server, root := listingServer(t)
+	server.streamexIndex = index
 	server.emulatorsRequired = func(context.Context) []docker.RequiredEmulator {
 		return []docker.RequiredEmulator{{
 			Console: "ps5", Core: "KytyPS5 (streamex)", Pattern: "KytyPS5-*-Linux-x86_64.tar.gz",
-			File: kytyFile, URL: url, Tested: []string{kytyFile},
+			File: kytyFile, Tested: []string{kytyFile},
 		}}
 	}
 
 	return server, root
+}
+
+// streamexRelease — un faux dépôt de paquets streamex : un paquet PS5 qui porte
+// l'archive de Kyty et notre binaire, et son index. `sum` remplace l'empreinte
+// annoncée (vide : la vraie).
+func streamexRelease(t *testing.T, sum string) *httptest.Server {
+	t.Helper()
+	var packaged bytes.Buffer
+	writer := zip.NewWriter(&packaged)
+	for name, content := range map[string]string{kytyFile: "the publisher's archive", "kyty_emulator-gameflex-test": "our build"} {
+		header := &zip.FileHeader{Name: name, Method: zip.Store}
+		header.SetMode(0o755)
+		entry, err := writer.CreateHeader(header)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = entry.Write([]byte(content))
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(packaged.Bytes())
+	if sum == "" {
+		sum = hex.EncodeToString(digest[:])
+	}
+	var release *httptest.Server
+	release = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/components.json":
+			_ = json.NewEncoder(w).Encode(map[string]any{"format": 1, "packages": []map[string]any{{
+				"kind": "server", "console": "ps5", "image": "streamex-ps5", "version": "test",
+				"files": []string{kytyFile, "kyty_emulator-gameflex-test"}, "file": "streamex-ps5-test.zip",
+				"sizeBytes": packaged.Len(), "sha256": sum, "url": release.URL + "/streamex-ps5-test.zip",
+			}}})
+		case "/streamex-ps5-test.zip":
+			_, _ = w.Write(packaged.Bytes())
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(release.Close)
+
+	return release
 }
 
 // UNE CONSOLE RÉCENTE SANS SON ÉMULATEUR NE LANCE RIEN (chantier 29) : l'image
@@ -56,15 +104,13 @@ func TestARecentConsoleWithoutItsEmulatorIsRefused(t *testing.T) {
 	}
 }
 
-// L'ÉCRAN ÉMULATEURS MONTRE LE FICHIER QU'ATTEND L'IMAGE, et le télécharge chez
-// son éditeur, sous le nom que l'image attend. Un second téléchargement est
+// L'ÉCRAN ÉMULATEURS MONTRE LE FICHIER QU'ATTEND L'IMAGE, et l'installe depuis
+// le paquet streamex qui le porte (chantier 63) : ses fichiers sous les noms que
+// l'image attend, notre binaire avec, exécutable. Un second téléchargement est
 // refusé, comme pour un cœur (#143).
 func TestTheEmulatorAnImageWantsIsShownAndDownloaded(t *testing.T) {
-	publisher := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("the publisher's archive"))
-	}))
-	defer publisher.Close()
-	server, root := requiringKyty(t, publisher.URL+"/kyty.tar.gz")
+	release := streamexRelease(t, "")
+	server, root := requiringKyty(t, release.URL+"/components.json")
 
 	router := chi.NewRouter()
 	router.Get("/storage/cores", server.handleStorageCores)
@@ -112,8 +158,11 @@ func TestTheEmulatorAnImageWantsIsShownAndDownloaded(t *testing.T) {
 	if err != nil || string(content) != "the publisher's archive" {
 		t.Fatalf("le fichier rangé : %q %v", content, err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "cores", "ps5", kytyFile+".part")); err == nil {
-		t.Fatal("le fichier partiel est resté")
+	if info, err := os.Stat(filepath.Join(root, "cores", "ps5", "kyty_emulator-gameflex-test")); err != nil || info.Mode().Perm()&0o100 == 0 {
+		t.Fatalf("notre binaire, du même paquet : %v %v", info, err)
+	}
+	if leftovers, _ := filepath.Glob(filepath.Join(root, "cores", "ps5", "*.part")); len(leftovers) > 0 {
+		t.Fatalf("des fichiers partiels sont restés : %v", leftovers)
 	}
 	if item, count := kyty(); count != 1 || !item.Installed {
 		t.Fatalf("après : %d ligne(s), %+v — attendu une seule, présente", count, item)
@@ -121,6 +170,23 @@ func TestTheEmulatorAnImageWantsIsShownAndDownloaded(t *testing.T) {
 
 	if again := call(http.MethodPost, `{"consoleId":"ps5","core":"`+kytyFile+`"}`); again.Code != http.StatusConflict {
 		t.Fatalf("un second téléchargement : %d %s", again.Code, again.Body.String())
+	}
+}
+
+// UN PAQUET QUI NE CORRESPOND PAS À SON INDEX N'INSTALLE RIEN (chantier 63) :
+// l'empreinte se vérifie avant de déballer.
+func TestAStreamexPackageThatDoesNotMatchItsIndexInstallsNothing(t *testing.T) {
+	release := streamexRelease(t, strings.Repeat("0", 64))
+	server, root := requiringKyty(t, release.URL+"/components.json")
+	router := chi.NewRouter()
+	router.Post("/storage/cores", server.refreshing(sectionNamed(listing.Cores), server.handleStorageCoreDownload))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/storage/cores", strings.NewReader(`{"consoleId":"ps5","core":"`+kytyFile+`"}`)))
+	if response.Code != http.StatusBadGateway || !strings.Contains(response.Body.String(), "sha256") {
+		t.Fatalf("empreinte fausse : %d %s", response.Code, response.Body.String())
+	}
+	if entries, _ := os.ReadDir(filepath.Join(root, "cores", "ps5")); len(entries) > 0 {
+		t.Fatalf("rien ne devait être déposé : %v", entries)
 	}
 }
 

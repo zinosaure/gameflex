@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -293,6 +294,12 @@ func TestFederationSurfaceServesSharesAsOneServer(t *testing.T) {
 		t.Fatalf("OpenRom : %q", got)
 	}
 
+	// LA FICHE D'UN JEU D'UN PARTAGE (P3) : faite par le service, dans son volume ; sa clé est la référence du listing.
+	status, body, _ = f.do("GET", "/api/v1/federation/metadata/nes/"+nes[0].ID, value, nil)
+	if sheet, _ := body["data"].(map[string]any); status != 200 || sheet == nil || sheet["gameId"] != nes[0].ID {
+		t.Fatalf("fiche d'un jeu de partage : %d %v", status, body)
+	}
+
 	// La date du listing : elle n'avance que si le contenu change.
 	before := f.cat.UpdatedAt()
 	f.do("POST", "/api/v1/admin/resources/1/rescan", "admin", nil)
@@ -397,9 +404,25 @@ func TestInvitationsAndPairingCodesGiveADeviceItsToken(t *testing.T) {
 	if _, err := client.Redeem(pin, remote.InvitationFederation, "S25"); !errors.Is(err, remote.ErrInvitationRefused) {
 		t.Fatalf("un code déjà servi : %v", err)
 	}
+	// LA FORME DU SUJET DE GAMEFLEX (B2) : le code a son numéro, et sa fin dit qui l'a servi.
+	codeID := body["data"].(map[string]any)["id"].(float64)
+	_, state, _ := f.do("GET", "/api/v1/admin/pairing", "admin", nil)
+	ended := state["data"].(map[string]any)["ended"].([]any)
+	if last := ended[len(ended)-1].(map[string]any); last["id"] != codeID || last["reason"] != "used" || last["by"] != "S25" {
+		t.Fatalf("la fin du code : %v", ended)
+	}
+	// Un code annulé ne vaut plus, et le dit.
+	_, body, _ = f.do("POST", "/api/v1/admin/pairing/code", "admin", map[string]string{"label": "TV"})
+	cancelled := body["data"].(map[string]any)
+	if status, _, _ := f.do("DELETE", fmt.Sprintf("/api/v1/admin/pairing/code/%v", cancelled["id"]), "admin", nil); status != 204 {
+		t.Fatalf("annuler : %d", status)
+	}
+	if _, err := client.Redeem(cancelled["code"].(string), remote.InvitationFederation, "TV"); err == nil {
+		t.Fatal("un code annulé a servi")
+	}
 
-	// Au cinquième code faux (le servi compte), le mode se ferme.
-	for i := 0; i < 3; i++ {
+	// Au cinquième code faux (le servi et l'annulé comptent), le mode se ferme.
+	for i := 0; i < 2; i++ {
 		_, _ = client.Redeem("000000", remote.InvitationFederation, "S25")
 	}
 	if !f.serverPairingOpen() {
@@ -409,12 +432,17 @@ func TestInvitationsAndPairingCodesGiveADeviceItsToken(t *testing.T) {
 	if f.serverPairingOpen() {
 		t.Fatal("au cinquième code faux, le mode doit se fermer")
 	}
+	_, state, _ = f.do("GET", "/api/v1/admin/pairing", "admin", nil)
+	closed := state["data"].(map[string]any)["closed"].([]any)
+	if last := closed[len(closed)-1].(map[string]any); last["reason"] != "too_many_failures" || last["scope"] != "server" {
+		t.Fatalf("la fermeture : %v", closed)
+	}
 }
 
 func (f *fixture) serverPairingOpen() bool {
 	_, body, _ := f.do("GET", "/api/v1/admin/pairing", "admin", nil)
 
-	return body["data"].(map[string]any)["open"] == true
+	return body["data"].(map[string]any)["server"] != nil
 }
 
 func TestLogsAreListedReadAndRedacted(t *testing.T) {
@@ -608,5 +636,89 @@ func TestOneLinePerItemWithItsSourcesInOrder(t *testing.T) {
 	copied, _ = client.Listing()
 	if names := sourcesOf(copied.Roms["nes"]); names[0] != "Samba" || !copied.Roms["nes"][0].Sources[1].Unavailable {
 		t.Fatalf("une source tombée passe derrière : %v %+v", names, copied.Roms["nes"][0].Sources)
+	}
+}
+
+// LES COMPTES DES FOURNISSEURS (P3) : ils entrent, se scellent, ne ressortent jamais — seuls les noms des champs remplis
+// se lisent ; « configuré » quand tous les champs requis le sont ; oubliés d'un geste.
+func TestMetadataAccountsGoInAndNeverComeOut(t *testing.T) {
+	f := newFixture(t)
+	if status, _, _ := f.do("GET", "/api/v1/admin/metadata", "", nil); status != 401 {
+		t.Fatalf("sans session : %d", status)
+	}
+	status, _, raw := f.do("PUT", "/api/v1/admin/metadata/igdb", "admin", map[string]string{"client_id": "mon-client", "client_secret": "  "})
+	if status != 200 || strings.Contains(string(raw), "mon-client") {
+		t.Fatalf("enregistrer : %d %s", status, raw)
+	}
+	var listed struct {
+		Data []struct {
+			Service    string   `json:"service"`
+			Configured bool     `json:"configured"`
+			Fields     []string `json:"fields"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(raw, &listed)
+	if len(listed.Data) != 2 || listed.Data[0].Service != "igdb" || listed.Data[0].Configured || strings.Join(listed.Data[0].Fields, ",") != "client_id" {
+		t.Fatalf("liste après un champ : %+v", listed.Data)
+	}
+	f.do("PUT", "/api/v1/admin/metadata/igdb", "admin", map[string]string{"client_secret": "mon-secret"})
+	accounts, err := f.store.MetadataAccounts()
+	if err != nil || accounts["igdb"]["client_id"] != "mon-client" || accounts["igdb"]["client_secret"] != "mon-secret" {
+		t.Fatalf("comptes : %v %v", accounts, err)
+	}
+	_, _, raw = f.do("GET", "/api/v1/admin/metadata", "admin", nil)
+	_ = json.Unmarshal(raw, &listed)
+	if !listed.Data[0].Configured || strings.Contains(string(raw), "mon-secret") {
+		t.Fatalf("configuré : %s", raw)
+	}
+	if status, _, _ := f.do("PUT", "/api/v1/admin/metadata/inconnu", "admin", map[string]string{"x": "y"}); status != 404 {
+		t.Fatalf("service inconnu : %d", status)
+	}
+	f.do("DELETE", "/api/v1/admin/metadata/igdb", "admin", nil)
+	if accounts, _ := f.store.MetadataAccounts(); len(accounts["igdb"]) != 0 {
+		t.Fatalf("après l'oubli : %v", accounts)
+	}
+}
+
+// LE PARTAGE DES FOURNISSEURS (chantier 61, B) : la portée `metadata-providers` se choisit à la création (un jeton, une
+// invitation qui la transmet), se change ensuite ; sans elle, le jeu d'un fournisseur est refusé, avec elle il est
+// demandé à ses comptes (aucun ici : « pas configuré », jamais une clé) ; la recherche dans ses fiches répond toujours.
+func TestTheMetadataProvidersAreSharedOnlyWithTheirScope(t *testing.T) {
+	f := newFixture(t)
+	_, body, _ := f.do("POST", "/api/v1/admin/tokens", "admin", map[string]any{"label": "Gamebox", "scopes": []string{"catalog", "metadata-providers", "devices"}})
+	created := body["data"].(map[string]any)
+	value, token := created["value"].(string), created["token"].(map[string]any)
+	if scopes := fmt.Sprint(token["scopes"]); scopes != "[catalog metadata-providers]" {
+		t.Fatalf("portées à la création : %s", scopes)
+	}
+	if status, body, _ := f.do("GET", "/api/v1/federation/metadata/nes/providers/igdb/1022", value, nil); status != 409 || body["errorCode"] != "service_not_configured" {
+		t.Fatalf("un fournisseur partagé, sans compte : %d %v", status, body)
+	}
+	if status, _, _ := f.do("GET", "/api/v1/federation/metadata/nes/search?q=Zelda", value, nil); status != 200 {
+		t.Fatalf("la recherche dans ses fiches : %d", status)
+	}
+	id := fmt.Sprint(token["id"])
+	if status, body, _ := f.do("PATCH", "/api/v1/admin/tokens/"+id, "admin", map[string]any{"scopes": []string{"catalog"}}); status != 200 ||
+		fmt.Sprint(body["data"].(map[string]any)["scopes"]) != "[catalog]" {
+		t.Fatalf("retirer le partage : %d %v", status, body)
+	}
+	if status, _, _ := f.do("GET", "/api/v1/federation/metadata/nes/providers/igdb/1022", value, nil); status != 403 {
+		t.Fatalf("un fournisseur non partagé : %d", status)
+	}
+	if status, _, _ := f.do("PATCH", "/api/v1/admin/tokens/999", "admin", map[string]any{"scopes": []string{"catalog"}}); status != 404 {
+		t.Fatalf("un jeton inconnu : %d", status)
+	}
+
+	// L'invitation transmet ses portées au jeton qu'elle donne.
+	_, body, _ = f.do("POST", "/api/v1/admin/invitations", "admin", map[string]any{"label": "S25", "scopes": []string{"catalog", "metadata-providers"}})
+	code := body["data"].(map[string]any)["code"].(string)
+	client, _ := remote.New(f.server.URL, "")
+	redeemed, err := client.Redeem(code, remote.InvitationFederation, "S25")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, body, _ := f.do("GET", "/api/v1/federation/identity", redeemed.Token, nil); status != 200 ||
+		fmt.Sprint(body["data"].(map[string]any)["scopes"]) != "[catalog metadata-providers]" {
+		t.Fatalf("les portées de l'invitation : %d %v", status, body)
 	}
 }

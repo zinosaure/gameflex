@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { can, useData } from "../../libs/data.jsx";
+import { can, catalogOnly, useData } from "../../libs/data.jsx";
 import { setLanguage } from "../../i18n.js";
 import { playSound, setSoundsEnabled, soundsEnabled } from "../../libs/sounds.js";
 import { PushSection, usePush } from "./Push.jsx";
@@ -65,7 +65,9 @@ function useFullscreen() {
 // Sans serveur, la boîte reste, et sa ligne grisée le dit.
 function FederatedServers() {
     const { t } = useTranslation();
-    const { servers, hiddenServers, setServerShown } = useData();
+    const { servers: all, hiddenServers, setServerShown } = useData();
+    // Un serveur qui ne lance rien n'a pas de jeux dans la bibliothèque : rien à y montrer ou à cacher.
+    const servers = all.filter((server) => !catalogOnly(server));
     const change = async (server, on) => {
         const answer = await setServerShown(server.id, on);
 

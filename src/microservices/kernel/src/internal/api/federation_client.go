@@ -28,6 +28,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -35,6 +36,7 @@ import (
 	"time"
 
 	"gameflex/kernel/internal/auth"
+	"gameflex/storage/listing"
 	"gameflex/storage/remote"
 )
 
@@ -116,7 +118,7 @@ func (server *Server) handleServerSession(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	session, err := server.peerSessions.At(entry.ID, entry.Link, member, token)
+	session, err := server.peerSessions.At(entry.ID, entry.Link, member, token, remote.Caller{Name: server.federationHostname(), Member: member, Kind: "server"})
 	if errors.Is(err, remote.ErrDenied) {
 		writeErrorCode(w, http.StatusForbidden, "accountRefused", "this server refused your token")
 
@@ -190,7 +192,7 @@ func (server *Server) handleSetServerAccount(w http.ResponseWriter, r *http.Requ
 
 		return
 	}
-	session, err := client.OpenSession()
+	session, err := client.OpenSession(remote.Caller{Name: server.federationHostname(), Member: auth.Username(r.Context()), Kind: "server"})
 	if errors.Is(err, remote.ErrDenied) {
 		writeErrorCode(w, http.StatusForbidden, "accountRefused", "this server refused this token")
 
@@ -374,6 +376,22 @@ func (server *Server) fetchRegisteredServers() ([]registeredServer, error) {
 		peers = append(peers, peerOf(entry))
 	}
 	server.copies().Prune(peers)
+	// AU PREMIER RELEVÉ DU REGISTRE, chaque copie relue en fond : ce qui a changé chez un ami sans changer la date de
+	// son listing (une portée, un serveur qui ne lance rien — `catalogOnly`) se sait avant le premier affichage.
+	server.peerCopiesRefreshed.Do(func() {
+		go func() {
+			for _, peer := range peers {
+				_, _ = server.copies().Check(peer)
+			}
+		}()
+	})
+	// LES LISTINGS DES PARTAGES MONTÉS D'AVANT partent aussi (chantier 61, P6 : gameflex-federation les a remplacés) —
+	// tout ce qui n'est ni le nôtre ni la copie d'un ami.
+	for _, key := range listing.Prune(listingCacheDir, nil, func(header listing.Header) bool {
+		return header.Source != listing.SelfSource && header.Source != listing.PeerSource
+	}) {
+		slog.Info("listing of a former mounted share removed", "key", key)
+	}
 
 	return envelope.Items, nil
 }

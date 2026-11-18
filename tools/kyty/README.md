@@ -8,7 +8,7 @@ une série ne s'y rejoue pas). `tools/kyty/build.sh` clone le dépôt officiel �
 
 **Plus de fourche depuis le 2026-11-18** (chantier 63 ; le porteur : « on travaille que par des patchs […] Ce que je
 ne veux pas c'est d'avoir des repos avec le code source des émulateurs »). Les patchs ont été tirés de l'ancienne
-fourche `zinosaure/KytyPS5` (`gameflex` à `4e516772`, `gameflex-phone-2` à `54976526`) : appliqués à `91c5820`, ils
+fourche `zinosaure/KytyPS5`, supprimée de GitHub le 2026-11-18 (`gameflex` à `4e516772`, `gameflex-phone-2` à `54976526`) : appliqués à `91c5820`, ils
 redonnent leurs arbres, fichier pour fichier. Le code se change dans un clone de travail local du dépôt officiel
 (`~/Github/KytyPS5`, branches `gameflex` et `gameflex-phone-2`, jamais poussées), puis les patchs se réexportent
 (`tools/emulator-patches.sh export kyty`). Le lot 2 de l'amont (12 commits, pas encore construit) attend dans ce clone,

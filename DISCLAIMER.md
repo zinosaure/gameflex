@@ -2,8 +2,8 @@
 
 ## What GameFlex is, and is not
 
-GameFlex is **self-hosted game streaming software**. It provides no game, no BIOS, no firmware and
-no emulator. It plays the files you put in your own library.
+GameFlex is **self-hosted game streaming software**. It provides no game, no BIOS and no firmware.
+It plays the files you put in your own library.
 
 **Still in development.** GameFlex is a work in progress. Features may be incomplete, change or
 disappear between versions, and some consoles are experimental. Back up your library and your
@@ -47,15 +47,24 @@ between machines that their owners have deliberately connected.
 Opening your catalog to someone is a decision, made with an explicit access token. The authors of
 GameFlex see, host and broker no content: there is no central catalog.
 
-## Emulators do not come from GameFlex
+## Where emulators come from
 
-GameFlex does not distribute emulators or cores. Your server downloads them from their publishers,
-or you bring them yourself, from a federated server or a mirror. Each one keeps its own license and
-terms. Emulation projects are named in the documentation to tell you where to find them; none of
-them is associated with GameFlex.
+GameFlex provides an engine, **streamex**, that runs a console's emulator and streams it. The recent
+consoles come as **streamex packages**, published in the
+[gameflex-streamex](https://github.com/zinosaure/gameflex-streamex) repository: streamex's files
+for a console, with that console's emulator inside, already built, in a version tested with
+GameFlex. Your server installs them from **Settings › Emulators**. Retro consoles' libretro cores
+come from the libretro buildbot. You can also bring an emulator yourself, from a federated server
+or a mirror.
+
+Each emulator keeps its own license and terms, and its authors' copyright; the licence notices list
+each one with its official repository. Emulation projects are named in the documentation to tell you
+where they come from; none of them is associated with GameFlex.
 
 **Our patched builds are ours.** The builds of shadPS4, KytyPS5, Eden and Box64 made with the
-patches in `tools/` are not those of their projects, which neither made nor support them. Report
+patches in `tools/` are not those of their projects, which neither made nor support them. Each
+package of a patched emulator names its official repository, the commit our patches apply to, and
+the patches. Report
 their problems to GameFlex, not to the upstream projects.
 
 **Remote Play** talks to a PlayStation console you own, registered with your own account, the way

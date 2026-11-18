@@ -168,6 +168,10 @@ type Server struct {
 	Hostname string `json:"hostname"`
 	Version  string `json:"version,omitempty"`
 	Commit   string `json:"commit,omitempty"`
+	// CatalogOnly — ce serveur ne lance rien : gameflex-federation (le porteur, 2026-11-18 : « les jeux de
+	// Gameflex-Federation ne doivent apparaître que dans catalogue/jeux »). Ses jeux se téléchargent, ils ne se jouent
+	// pas chez lui : les bibliothèques ne les montrent pas, le catalogue si.
+	CatalogOnly bool `json:"catalogOnly,omitempty"`
 }
 
 // Les natures de source qui ne sont pas un genre de ressource.

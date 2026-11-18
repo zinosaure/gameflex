@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"gameflex/facade"
 	"gameflex/kernel/internal/accounts"
@@ -51,6 +52,13 @@ type Server struct {
 	// emulatorsRequired — les fichiers d'émulateur qu'attendent les images
 	// (chantier 29), quand un test les donne ; nil, le manager lit les images.
 	emulatorsRequired func(context.Context) []docker.RequiredEmulator
+	// streamexIndex — l'index des paquets streamex que ce serveur suit (chantier 63) ; vide : GAMEFLEX_STREAMEX_INDEX, ou
+	// celui du projet (streamexIndexURL). Un test y met le sien.
+	streamexIndex string
+	// L'index lu par la page d'un jeu, gardé dix minutes (cachedStreamexIndex).
+	streamexIndexMu    sync.Mutex
+	streamexIndexAt    time.Time
+	streamexIndexValue streamexIndex
 	// mirrors holds what child-managed sessions report about themselves
 	// (chantier-4). The kernel SHOWS these and never decides from them.
 	mirrors *registry.Mirrors
@@ -58,12 +66,10 @@ type Server struct {
 	// (chantier 15), dans le cache des listings : voir copies().
 	peerCopies remote.Copies
 	copiesOnce sync.Once
-	// rescans — les parcours de ressource en cours. Un scan complet dépasse
-	// les deux minutes : il tourne en fond, son état se lit ici, et ses débuts
-	// et fins réveillent le sujet `mount/<id>` du centre de messages.
-	rescans listing.Rescans
+	// peerCopiesRefreshed — la relecture des copies des amis, une fois, au premier relevé du registre.
+	peerCopiesRefreshed sync.Once
 	// launches — la progression des lancements en cours (#191), avant qu'une
-	// session existe. Zéro-valeur utilisable, comme `rescans` juste au-dessus :
+	// session existe. Zéro-valeur utilisable :
 	// rien à initialiser dans NewServer, donc rien à y oublier.
 	launches launchProgress
 	// downloads — les téléchargements en tâche de fond, leur progression et la
@@ -81,13 +87,10 @@ type Server struct {
 	// launching — les comptes dont un lancement est en cours : un seul à la
 	// fois par compte (voir facadeLaunch). Zéro-valeur utilisable.
 	launching sync.Map
-	// serverRegistry / mountRegistry — les deux listes que le service
-	// d'identité tient, mémorisées dix secondes (#190). Elles étaient
-	// redemandées à CHAQUE affichage de jeux, avant même de lire le moindre
-	// cache : deux allers-retours HTTP pour une donnée qui ne bouge que
-	// lorsqu'on ajoute un serveur ou un partage.
+	// serverRegistry — la liste des serveurs que le service d'identité tient, mémorisée dix secondes (#190). Elle était
+	// redemandée à CHAQUE affichage de jeux, avant même de lire le moindre cache : un aller-retour HTTP pour une donnée
+	// qui ne bouge que lorsqu'on ajoute un serveur.
 	serverRegistry listCache[registeredServer]
-	mountRegistry  listCache[mountedShare]
 	// accounts — la copie des comptes que le service d'identité pousse
 	// (chantier 20) : qui existe encore, son rang, ses consoles, son jeton.
 	// Voir accounts_cut.go.
@@ -308,12 +311,6 @@ func (server *Server) Routes() http.Handler {
 	// (chantier 20). Son propre préfixe : ce qui est ouvert à quelqu'un qui
 	// n'a pas de compte ici doit se lire d'un coup d'oeil, pas se déduire
 	// d'une liste de middlewares.
-	// Le CONTENU d'une ressource distante — voir, relire, récupérer. Son
-	// propre préfixe : /api/v1/mount-registry appartient au service d'identité
-	// (qui détient les mots de passe), celui-ci au kernel (qui lit les
-	// fichiers). Deux services, deux préfixes, aucune règle d'ordre à
-	// retenir.
-	mux.Handle("/api/v1/mounts/", http.StripPrefix("/api/v1/mounts", server.mountsRouter()))
 	mux.Handle("/api/v1/federation/", http.StripPrefix("/api/v1/federation", server.federationRouter()))
 	mux.Handle("/api/v1/remoteplay/", http.StripPrefix("/api/v1/remoteplay", server.remoteplayRouter()))
 	mux.Handle("/api/v1/streamex/", http.StripPrefix("/api/v1/streamex", server.streamexRouter()))
@@ -369,8 +366,7 @@ func (server *Server) Routes() http.Handler {
 	// du centre de messages (facadeDownload, route `server`), qui rejoue
 	// handleRemoteStorageImport en comptant les octets. Le POST d'avant est
 	// parti (chantier 53 ; le porteur, 2026-11-14 : « On peut déjà le faire »).
-	// Remettre en cache ce qu'un pair annonce — même nom que pour un montage
-	// (POST /api/v1/mounts/{id}/rescan), parce que c'est le même geste.
+	// Remettre en cache ce qu'un pair annonce.
 	mux.HandleFunc("POST /api/v1/servers/{id}/rescan",
 		auth.Middleware(server.config.JWTSecret, adminOnly(server.handleRemoteRescan)))
 	// Où joindre un serveur enregistré (C9-P4). Sans jeton dans la réponse :

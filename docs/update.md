@@ -57,7 +57,9 @@ files of that version.
 
 ## The Android app
 
-The app updates itself: on its home screen, **About** › **Update** › **Check for an update**. It also checks on its own when it opens; an orange exclamation mark at the end of the **Update** line means a newer version is available. See [GameFlex on Android](android.md).
+The app updates itself: on its home screen, **About** › **Update** › **Check for an update**. It also checks on its own when it opens; an orange exclamation mark at the end of the **Update** line means a newer version is available.
+
+Its interface (GameFlex's pages) updates without a new app, in the **Interface** section of the same screen: **Check for a new interface** installs the latest one published for your version of the app, from the official source; **Install from a .zip file** installs one of your own, built from GameFlex's sources (`src/microservices/edge`); **Back to the APK's interface** returns to the one the app came with. See [GameFlex on Android](android.md#install-the-app).
 
 ## If something goes wrong
 

@@ -157,14 +157,13 @@ ARG LICHII_FILE=Lichii-build-316-x86_64-pgo.AppImage
 # télécharger quand le dossier n'en a aucune. Le kernel monte `cores/` à
 # l'exécution, et l'entrypoint déballe la DERNIÈRE DÉPOSÉE dans /opt/lichii
 # (voir consoles/unpack-emulator.sh). Son fichier se range sous cores/switch2/.
-ARG LICHII_URL=https://github.com/zortos293/Lichii/releases/download/build-316/lichii-linux-x86_64-pgo.AppImage
 # Les versions éprouvées avec cette image (emulator_tested) : la liste informe,
 # elle ne bloque pas — toute version que reconnaît le motif se lance.
 ARG LICHII_TESTED="${LICHII_FILE}"
 ENV GAMEFLEX_EMULATOR_FILE=${LICHII_FILE} GAMEFLEX_EMULATOR_DIR=/gameflex/cores/switch2 \
     GAMEFLEX_EMULATOR_PATTERN="Lichii-*.AppImage" GAMEFLEX_EMULATOR_NAME="Lichii" \
     GAMEFLEX_EMULATOR_TESTED="${LICHII_TESTED}"
-LABEL gameflex.emulator.file=${LICHII_FILE} gameflex.emulator.url=${LICHII_URL} \
+LABEL gameflex.emulator.file=${LICHII_FILE} \
     gameflex.emulator.pattern="Lichii-*.AppImage" \
     gameflex.emulator.tested="${LICHII_TESTED}"
 COPY src/microservices/runtimes/streamex/consoles/unpack-emulator.sh /usr/local/bin/unpack-emulator

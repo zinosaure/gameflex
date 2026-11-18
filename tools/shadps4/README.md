@@ -7,7 +7,7 @@ la série. Chaque entrée ci-dessous décrit un patch, par son numéro.
 
 **Plus de fourche depuis le 2026-11-18** (chantier 63 ; le porteur : « on travaille que par des patchs […] Ce que
 je ne veux pas c'est d'avoir des repos avec le code source des émulateurs »). La série a été tirée de l'ancienne
-fourche `zinosaure/shadPS4` (branche `gameflex`, `e441ba5d`) : appliquée à `7c0b846d`, elle redonne son arbre, fichier
+fourche `zinosaure/shadPS4`, supprimée de GitHub le 2026-11-18 (branche `gameflex`, `e441ba5d`) : appliquée à `7c0b846d`, elle redonne son arbre, fichier
 pour fichier. Le code se change dans un clone de travail local du dépôt officiel (`~/Github/shadPS4`, branche
 `gameflex`, jamais poussée), puis la série se réexporte (`tools/emulator-patches.sh export shadps4`). Pas de pull
 request vers l'éditeur. Les commits de 2026-11-11 (« plus de fichiers de patch, du vrai changement de code ») restent

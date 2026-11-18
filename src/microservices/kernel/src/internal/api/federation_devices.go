@@ -455,7 +455,7 @@ func (server *Server) serveRemoteStorage(
 }
 
 // registeredByID résout UN pair par son identifiant, et répond lui-même en cas
-// d'échec — même forme que mountByID pour les partages montés.
+// d'échec.
 //
 // Extrait parce que trois routes le faisaient déjà à la main : un registre
 // illisible et un identifiant inconnu ne doivent pas avoir trois nuances de
@@ -511,18 +511,9 @@ func biosBelongsTo(consoleID, name string) bool {
 	return false
 }
 
-// handleRemoteRescan — POST /api/v1/servers/{id}/rescan.
-//
-// LE MÊME NOM QUE POUR UN MONTAGE, et c'est voulu : `POST /api/v1/mounts/
-// {id}/rescan` fait déjà ce geste sur l'autre famille de source. Un lecteur
-// n'a donc qu'un vocabulaire à apprendre.
-//
-// Mais pas le même travail derrière : un montage se PARCOURT (des minutes sur
-// un vrai kDrive, donc en tâche de fond), alors qu'un pair a déjà fait son
-// listing — « le bouton rescan qui en vérité ne va que re-télécharger la
-// dernière version de ce fichier » (le porteur, chantier 15). La page
-// l'appelle aussi juste après avoir ajouté le serveur : c'est la copie prise à
-// l'ajout.
+// handleRemoteRescan — POST /api/v1/servers/{id}/rescan : un pair a déjà fait son listing — « le bouton rescan qui en
+// vérité ne va que re-télécharger la dernière version de ce fichier » (le porteur, chantier 15). La page l'appelle aussi
+// juste après avoir ajouté le serveur : c'est la copie prise à l'ajout.
 func (server *Server) handleRemoteRescan(w http.ResponseWriter, r *http.Request) {
 	entry, ok := server.registeredByID(w, r)
 	if !ok {

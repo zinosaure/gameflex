@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { downloadTicket, listRoms, listStreamexSaves, listUserStates, metadataArchiveTicket, metadataArchiveUrl, romSource, ticketDownloadUrl } from "../../libs/api.js";
-import { useData } from "../../libs/data.jsx";
+import { catalogOnly, useData } from "../../libs/data.jsx";
 import { browserDownload } from "../../libs/downloads.js";
 import { favoriteKey, isFavorite, setFavorite, useFavorites } from "../../libs/favorites.js";
 import { useFederationSession } from "../../libs/federation.js";
@@ -424,6 +424,8 @@ export function GameSheet({ console, game, onRemoved = null }) {
     // data.jsx) : la fiche du jeu n'y serait pas, la ligne le dit au lieu d'ouvrir celle d'un autre jeu. Le Catalogue,
     // lui, les montre tous.
     const hiddenThere = game.peer != null && Boolean(hiddenServers?.has?.(String(game.peer)));
+    // UN SERVEUR QUI NE LANCE RIEN (gameflex-federation) : son jeu n'est dans aucune bibliothèque — il se télécharge.
+    const servedOnly = game.peer != null && catalogOnly((servers || []).find((server) => String(server.id) === String(game.peer)));
 
     // LE JEU OU SES MÉTADONNÉES, PAR LE NAVIGATEUR : le ticket, puis l'adresse qu'il suit (browserDownload) — au
     // téléphone, Chrome, qui le dit.
@@ -507,8 +509,9 @@ export function GameSheet({ console, game, onRemoved = null }) {
                 il n'en a pas ou qu'on ne peut pas les lire —, mes favoris. */}
             <Section title={t("more")}>
                 <Rows>
-                    <NavRow id="cg-library" icon="bi-collection-play" tone={hiddenThere ? "slate" : "green"} label={t("catalog.download.library")}
-                        help={hiddenThere ? t("catalog.download.libraryHidden") : t("catalog.download.libraryHelp", { console: console.name })} disabled={hiddenThere} onOpen={openLibrary} />
+                    <NavRow id="cg-library" icon="bi-collection-play" tone={hiddenThere || servedOnly ? "slate" : "green"} label={t("catalog.download.library")}
+                        help={servedOnly ? t("catalog.download.libraryCatalogOnly") : hiddenThere ? t("catalog.download.libraryHidden")
+                            : t("catalog.download.libraryHelp", { console: console.name })} disabled={hiddenThere || servedOnly} onOpen={openLibrary} />
                     <NavRow id="cg-saves" icon="bi-shield-check" tone={saves?.path ? "teal" : "slate"} label={t("catalog.saves.label")}
                         help={saves === undefined ? t("settings.loading") : saves.path ? saves.help : saves.reason} pending={saves === undefined} disabled={!saves?.path}
                         onOpen={() => open(saves.path, "cg-saves")} />

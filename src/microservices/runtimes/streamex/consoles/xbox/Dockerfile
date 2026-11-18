@@ -88,14 +88,13 @@ RUN groupadd -f pulse-access && usermod -aG pulse-access root && usermod -aG pul
 # l'exécution, et l'entrypoint déballe la DERNIÈRE DÉPOSÉE dans /opt/xemu/squashfs-root
 # (voir consoles/unpack-emulator.sh).
 # AppRun must stay inside squashfs-root or its APPDIR resolution breaks.
-ARG XEMU_URL=https://github.com/xemu-project/xemu/releases/download/v0.8.139/xemu-0.8.139-x86_64.AppImage
 # Les versions éprouvées avec cette image (emulator_tested) : la liste informe,
 # elle ne bloque pas — toute version que reconnaît le motif se lance.
 ARG XEMU_TESTED="${XEMU_APPIMAGE}"
 ENV GAMEFLEX_EMULATOR_FILE=${XEMU_APPIMAGE} GAMEFLEX_EMULATOR_DIR=/gameflex/cores/xbox \
     GAMEFLEX_EMULATOR_PATTERN="xemu-*-x86_64.AppImage" GAMEFLEX_EMULATOR_NAME="xemu" \
     GAMEFLEX_EMULATOR_TESTED="${XEMU_TESTED}"
-LABEL gameflex.emulator.file=${XEMU_APPIMAGE} gameflex.emulator.url=${XEMU_URL} \
+LABEL gameflex.emulator.file=${XEMU_APPIMAGE} \
     gameflex.emulator.pattern="xemu-*-x86_64.AppImage" \
     gameflex.emulator.tested="${XEMU_TESTED}"
 COPY src/microservices/runtimes/streamex/consoles/unpack-emulator.sh /usr/local/bin/unpack-emulator

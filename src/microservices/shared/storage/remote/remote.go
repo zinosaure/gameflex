@@ -68,6 +68,18 @@ type Server struct {
 	relay *http.Client
 	// source — la source demandée pour les fichiers (PreferSource) ; vide : celle que le serveur choisit.
 	source string
+	// caller — qui l'on est (#781, #787) : ce que l'ami montre au propriétaire du jeton, dans la liste des connexions
+	// faites avec lui. Vide : on ne se présente pas.
+	caller Caller
+}
+
+// Caller — qui présente un jeton de compte chez un ami : notre nom (`X-GameFlex-From`), le compte d'ici qui l'a collé
+// (`X-GameFlex-Member`), et ce que nous sommes (`X-GameFlex-Kind` : `server` ou `phone`). Pour que son propriétaire
+// reconnaisse les siens ; jamais pour autoriser.
+type Caller struct {
+	Name   string
+	Member string
+	Kind   string
 }
 
 // Identity est ce qu'un serveur dit de lui-même.
@@ -158,6 +170,13 @@ func (server *Server) send(ctx context.Context, method, path string, client *htt
 		return nil, err
 	}
 	request.Header.Set("Authorization", "Bearer "+server.token)
+	for header, value := range map[string]string{
+		"X-GameFlex-From": server.caller.Name, "X-GameFlex-Member": server.caller.Member, "X-GameFlex-Kind": server.caller.Kind,
+	} {
+		if value != "" {
+			request.Header.Set(header, value)
+		}
+	}
 
 	response, err := client.Do(request)
 	if err != nil {
@@ -236,9 +255,12 @@ type Session struct {
 // OpenSession — échanger le jeton de ce client contre une session chez lui :
 // le jeton d'un COMPTE de chez lui, jamais celui du lien, qui n'ouvre que le
 // catalogue. ErrDenied s'il le refuse (désactivé, échu, régénéré, compte
-// supprimé). Chaque échange compte « une connexion » chez lui.
-func (server *Server) OpenSession() (Session, error) {
-	response, err := server.send(context.Background(), http.MethodPost, "/api/v1/federation/session", server.lister)
+// supprimé). Chaque échange compte « une connexion » chez lui, au nom de
+// `caller` (nous) — sa liste des connexions faites avec ce jeton (#781).
+func (server *Server) OpenSession(caller Caller) (Session, error) {
+	named := *server
+	named.caller = caller
+	response, err := named.send(context.Background(), http.MethodPost, "/api/v1/federation/session", server.lister)
 	if err != nil {
 		return Session{}, err
 	}
@@ -364,6 +386,9 @@ func (server *Server) Listing() (listing.Listing, error) {
 type Freshness struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 	Scopes    []string  `json:"scopes"`
+	// CatalogOnly — dit par un serveur qui ne lance rien (gameflex-federation) ; absent chez un GameFlex. Comme les
+	// portées, il ne change pas la date du listing : la copie le prend sans tout re-télécharger.
+	CatalogOnly *bool `json:"catalogOnly,omitempty"`
 }
 
 // ListingUpdated — sa Freshness. Une LISTE, bornée court : un ami éteint ne

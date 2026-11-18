@@ -153,7 +153,7 @@ there (see [Federated servers and federated accounts](#federated-servers-and-fed
 **On your side:**
 
 3. Sign in on your friend's GameFlex page with that account. In **Settings › Profile ›
-   Federation › Create my token**, open **Create my QR**: GameFlex shows an invitation for your
+   Federation › Create my token**, open **Use a QR code instead**: GameFlex shows an invitation for your
    account, valid once within 12 hours. Copy its link, or download or share its QR.
 
    ![Settings › Profile › Federation › Create my token, on the friend's server](images/federation-my-token.png)
@@ -172,6 +172,14 @@ The game starts on their server and plays in your page, like any other game.
 The token stays with your account here, on all your devices: every game of that server now starts
 with **Play**. To play there under another account, press **Forget my token** on that server's page
 in **Settings › Profile › Federation**.
+
+To see who uses your token, open **Settings › Profile › Federation › Connections with my token**:
+each server or device that opened a session with it, under the name it gives itself, the account
+that pasted your token there and whether it is a GameFlex server or the app, the address it came
+from, and the first and last time. **From your current network** marks a connection that came from
+where you are reading the page: unlike the rest, the caller cannot make that up. If one of them is not yours, **Revoke the
+connections** regenerates your token: every connection is cut, your own devices included, which
+then need the new token. Only an administrator can do it.
 
 ## What you should see
 
@@ -204,10 +212,18 @@ can run it alone: `./launch.sh federation`.
 2. **More › Resources** lists what it shares. Your library folder is there from the start. Add a
    network share there, or another folder of this computer: one line in the volumes of
    `gameflex-federation`, such as `- /media/games:/mnt/games:ro`.
-3. **More › Join the service** links a device or a server: a token, an invitation link with its QR
-   code, or a pairing code while discovery mode is on. In GameFlex, add it like a friend's server
-   ([Add a friend's server](#add-a-friends-server)).
-4. **Connections** lists the devices and servers linked, and **More › Logs** what the service did.
+3. Its home page works like **Settings › Federation** in GameFlex, for what it lends:
+   **Delivered accesses** creates an access for a device or a server (an invitation with its QR
+   code, or the address and a token) or a pairing code while **Discovery mode** is on, lists the
+   accesses with when each was last used, and revokes them. **Also share my metadata providers**,
+   on an access or when you create it, lets that device or server search sheets and images with
+   the service's IGDB and SteamGridDB accounts (step 5), without seeing the keys. In GameFlex, add it
+   like a friend's server ([Add a friend's server](#add-a-friends-server)). It joins no server itself.
+4. **Internal resources** lists its disks and shares, and **More › Logs** shows what the service
+   did.
+5. **More › Metadata providers** takes your IGDB and SteamGridDB accounts. A game on a disk that
+   already has its sheet (a GameFlex library) keeps it; for the others, such as the games of a
+   network share, the service makes the sheet with these accounts.
 
 When the same game, patch or file is on several of its resources, the list shows it once. The
 game's page in GameFlex then shows its **Sources**, the recommended one first, and you can choose

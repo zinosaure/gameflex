@@ -1,0 +1,9 @@
+# LES CORRECTIFS QUE LE DÉPÔT PUBLIC OFFRE (chantier 63, P6) : `patches/<console>/<identifiant>/` de la bibliothèque de la
+# dev, une ligne par correctif, dans le paquet `streamex-patches` de tools/streamex-packages.sh. Seulement les nôtres :
+# rien de ce qu'on trouve facilement ailleurs (le porteur, 2026-11-18 : le pack Cemu « CrashFix » de NSMBU reste dehors).
+ps4/CUSA00003
+ps5/PPSA10594
+ps5/PPSA17599
+ps5/PPSA21567
+ps5/PPSA23226
+ps5/PPSA35999

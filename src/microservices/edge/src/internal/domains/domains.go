@@ -1,5 +1,5 @@
 // Package domains lit la table des domaines de l'API : `api-domains.json`, la
-// même que lit le serveur de développement (`src/webapp/src/webpack.config.js`).
+// même que lit le serveur de développement d'edge (`webpack.config.js`, à côté).
 //
 // Une seule table pour les deux : deux listes de domaines tenues à la main
 // finiraient par diverger, et un domaine oublié d'un côté ne se verrait qu'en

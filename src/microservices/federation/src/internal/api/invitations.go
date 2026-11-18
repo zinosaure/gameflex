@@ -95,7 +95,7 @@ func (s *Server) redeem(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	token, value, err := s.redeemCode(strings.TrimSpace(body.Code))
+	token, value, err := s.redeemCode(strings.TrimSpace(body.Code), strings.TrimSpace(body.From), address)
 	if errors.Is(err, store.ErrInvitationRefused) || errors.Is(err, errPairingRefused) {
 		s.throttle.fail(address)
 		writeError(w, http.StatusUnauthorized, "invitation_refused", "invitation already used, expired or unknown")
@@ -118,9 +118,9 @@ func (s *Server) redeem(w http.ResponseWriter, r *http.Request) {
 }
 
 // redeemCode — un code de six chiffres est un code d'appairage (pairing.go), tout autre une invitation.
-func (s *Server) redeemCode(code string) (store.Token, string, error) {
+func (s *Server) redeemCode(code, by, from string) (store.Token, string, error) {
 	if isPairingCode(code) {
-		return s.pairing.redeem(s.Store, code)
+		return s.pairing.redeem(s.Store, code, by, from)
 	}
 
 	return s.Store.RedeemInvitation(code)
@@ -138,14 +138,15 @@ func (s *Server) listInvitations(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) createInvitation(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Label string `json:"label"`
+		Label  string   `json:"label"`
+		Scopes []string `json:"scopes"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 
 		return
 	}
-	invitation, code, err := s.Store.CreateInvitation(body.Label)
+	invitation, code, err := s.Store.CreateInvitation(body.Label, body.Scopes)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
 

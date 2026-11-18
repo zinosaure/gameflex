@@ -106,10 +106,6 @@ func New(options Options) (*Service, error) {
 		return nil, err
 	}
 
-	// Les identifiants de partage encore en clair, scellés avec le secret de
-	// l'appareil (#459), comme sur le serveur.
-	api.SealRemoteMounts(db, cfg.JWTSecret)
-
 	// L'INSCRIPTION LIBRE EST PARTIE (chantier 55) : un administrateur crée le
 	// compte et la personne choisit son mot de passe par son lien, comme sur un
 	// serveur. Son interrupteur ne reste pas en base. La table peut ne pas
@@ -203,51 +199,6 @@ const ownerAccount = `SELECT id, username, role_level FROM users
 	ORDER BY CASE role_level WHEN 1 THEN 0 ELSE 1 END, id
 	LIMIT 1`
 
-// Mount — un partage enregistré, mot de passe COMPRIS.
-//
-// Sur le serveur, le kernel va chercher la même liste par une route interne
-// (`/internal/storage/mounts`) parce qu'il vit dans un autre processus. Ici il
-// n'y a qu'un processus : passer par HTTP pour se parler à soi-même
-// ajouterait un port, un secret et une panne possible, sans rien garantir de
-// plus.
-type Mount struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	Kind    string `json:"kind"`
-	BaseURL string `json:"base_url"`
-	// Folder — le sous-dossier à parcourir. Vide = la racine du partage.
-	Folder   string `json:"folder"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-// Mounts rend les partages enregistrés. Une base sans la table (une version
-// antérieure du schéma) rend une liste vide, pas une erreur : un montage
-// absent n'est pas une raison de refuser de lister la bibliothèque.
-func (service *Service) Mounts() ([]Mount, error) {
-	rows, err := service.DB.Query(
-		`SELECT id, name, kind, base_url, folder, username, password FROM remote_mounts ORDER BY name`,
-	)
-	if err != nil {
-		return nil, nil
-	}
-	defer rows.Close()
-
-	mounts := []Mount{}
-	for rows.Next() {
-		var mount Mount
-		if err := rows.Scan(
-			&mount.ID, &mount.Name, &mount.Kind, &mount.BaseURL, &mount.Folder,
-			&mount.Username, &mount.Password,
-		); err != nil {
-			return nil, fmt.Errorf("embed: read mounts: %w", err)
-		}
-		mounts = append(mounts, mount)
-	}
-
-	return mounts, rows.Err()
-}
-
 // FederationServer — un serveur enregistré, JETON COMPRIS.
 //
 // Le jeton ne sort jamais par l'API d'administration : c'est délibéré, il
@@ -262,7 +213,7 @@ type FederationServer struct {
 	Identity string `json:"identity"`
 }
 
-// FederationServers rend les serveurs enregistrés. Comme Mounts, une base sans
+// FederationServers rend les serveurs enregistrés. Une base sans
 // la table rend une liste vide plutôt qu'une erreur.
 func (service *Service) FederationServers() ([]FederationServer, error) {
 	rows, err := service.DB.Query(
@@ -508,8 +459,11 @@ func tokenAccount(account api.TokenAccount) TokenAccount {
 // OpenFederatedSession — une session au nom du compte de ce jeton, pour son
 // propriétaire qui joue ici depuis son serveur : jamais administrateur, pas
 // plus longue que le jeton. ErrTokenRefused s'il ne vaut pas.
-func (service *Service) OpenFederatedSession(token string) (string, TokenAccount, error) {
-	session, account, err := service.api.FederatedSession(token)
+// Caller — qui présente le jeton (#781, #787) : le nom, le compte et le genre qu'il déclare, l'adresse vue.
+type Caller = api.TokenCaller
+
+func (service *Service) OpenFederatedSession(token string, caller Caller) (string, TokenAccount, error) {
+	session, account, err := service.api.FederatedSession(token, caller)
 	if err != nil {
 		return "", TokenAccount{}, err
 	}

@@ -194,14 +194,9 @@ func (server *Server) routes() {
 	// Les montages distants (WebDAV, kDrive) — chantier « ressources
 	// externes ». La liste d'administration ne rend JAMAIS les mots de
 	// passe ; le kernel a sa propre route interne pour ça.
-	server.mux.HandleFunc("GET /api/v1/mount-registry", server.withUser(server.withAdmin(server.handleListRemoteMounts)))
-	server.mux.HandleFunc("POST /api/v1/mount-registry", server.withUser(server.withAdmin(server.handleAddRemoteMount)))
-	server.mux.HandleFunc("POST /api/v1/mount-registry/check", server.withUser(server.withAdmin(server.handleCheckRemoteMount)))
-	server.mux.HandleFunc("DELETE /api/v1/mount-registry/{id}", server.withUser(server.withAdmin(server.handleRemoveRemoteMount)))
 	server.mux.HandleFunc("GET /internal/federation/servers", server.handleInternalFederationServers)
 	// Les montages distants, mots de passe compris : le kernel monte les
 	// partages, il ne peut pas le faire avec un mot de passe qu'on lui cache.
-	server.mux.HandleFunc("GET /internal/storage/mounts", server.handleInternalRemoteMounts)
 	// Les comptes des services de métadonnées (chantier 49) : même règle —
 	// la liste d'administration ne rend jamais les valeurs.
 	server.mux.HandleFunc("GET /api/v1/metadata-services", server.withUser(server.withAdmin(server.handleListMetadataServices)))

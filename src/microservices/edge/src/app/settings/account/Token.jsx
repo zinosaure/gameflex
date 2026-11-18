@@ -13,7 +13,8 @@ import NavRow, { CopyField, GuideSection, Note, Rows, Section } from "../../ui/B
 // (chantier 20, Profile.jsx de la webapp) : un administrateur l'active pour une
 // durée ; actif, il se copie avec le lien de ce serveur, à coller sur son propre serveur. Son
 // détail d'abord — sa vraie échéance, lue sur le serveur (TokenDetails ; le porteur, 2026-11-14) —,
-// puis le lien et le jeton, puis « Plus » : « Créer mon QR » (MyInvitation ; « "create my QR" doit
+// puis le lien et le jeton, puis « Alternative » (le porteur, 2026-11-18 : le QR et le code d'appairage sont des
+// alternatives au jeton) : « Utiliser un QR code à la place » (MyInvitation ; « "create my QR" doit
 // passer dans more ») et « Code d'appairage » (chantier 60, MyPairingPage), grisés tant que le jeton n'est pas actif. Un administrateur gère son propre jeton comme celui d'un membre (MemberToken,
 // Profile.jsx de la webapp) : sa durée, puis « Danger » — le désactiver (« "disable my token" dans
 // danger avec une confirmation »), le régénérer. Un joueur n'a pas ces gestes : le serveur les
@@ -47,7 +48,7 @@ export function TokenPage() {
         const qr = (
             <>
                 {mine}
-                <NavRow id="tk-pairing" icon="bi-123" tone={live ? "indigo" : "slate"} label={t("pairing.code")} help={live ? t("pairing.myCodeRowHelp") : t("invitations.myQRNeedsToken")}
+                <NavRow id="tk-pairing" icon="bi-123" tone={live ? "indigo" : "slate"} label={t("pairing.useInstead")} help={live ? t("pairing.myCodeRowHelp") : t("invitations.myQRNeedsToken")}
                     disabled={!live} onOpen={() => open(`${PROFILE}/federation/pairing`, "tk-pairing")} />
             </>
         );
@@ -79,7 +80,7 @@ export function TokenPage() {
                         </Rows>
                     </Section>
                 )}
-                <Section title={t("more")}>
+                <Section title={t("settings.tokenAlternative")}>
                     <Rows>{qr}</Rows>
                 </Section>
                 <GuideSection guides={TOKEN_GUIDES} />

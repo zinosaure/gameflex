@@ -28,8 +28,13 @@ func Handler() http.Handler {
 			return
 		}
 		if info, err := fs.Stat(root, name); err == nil && !info.IsDir() {
-			if strings.HasSuffix(name, ".js") || strings.HasSuffix(name, ".css") || strings.HasPrefix(name, "fonts/") {
-				w.Header().Set("Cache-Control", "public, max-age=86400")
+			// LES SCRIPTS PORTENT LEUR EMPREINTE dans leur nom (bundle.<contenthash>.js) : une nouvelle version change de
+			// nom, et l'ancienne peut rester en cache. Le reste se revalide : un nom fixe gardé une journée a caché une
+			// nouvelle interface au porteur (2026-11-18).
+			if strings.HasSuffix(name, ".js") || strings.HasPrefix(name, "fonts/") {
+				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			} else {
+				w.Header().Set("Cache-Control", "no-cache")
 			}
 			static.ServeHTTP(w, r)
 

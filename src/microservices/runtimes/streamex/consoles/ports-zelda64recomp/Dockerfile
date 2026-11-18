@@ -63,12 +63,11 @@ RUN groupadd -f pulse-access && usermod -aG pulse-access root && usermod -aG pul
 # l'exécution, et l'entrypoint déballe le dernier déposé dans /opt/zelda64
 # (voir consoles/unpack-emulator.sh). Son dossier est celui de la console,
 # cores/ports/, que les autres ports partageront.
-ARG ZELDA64_URL=https://github.com/Zelda64Recomp/Zelda64Recomp/releases/download/v1.2.2/Zelda64Recompiled-v1.2.2-Linux-X64.zip
 ARG ZELDA64_TESTED="${ZELDA64_FILE}"
 ENV GAMEFLEX_EMULATOR_FILE=${ZELDA64_FILE} GAMEFLEX_EMULATOR_DIR=/gameflex/cores/ports \
     GAMEFLEX_EMULATOR_PATTERN="Zelda64Recompiled-*-Linux-X64.zip" GAMEFLEX_EMULATOR_NAME="Zelda 64: Recompiled" \
     GAMEFLEX_EMULATOR_TESTED="${ZELDA64_TESTED}"
-LABEL gameflex.emulator.file=${ZELDA64_FILE} gameflex.emulator.url=${ZELDA64_URL} \
+LABEL gameflex.emulator.file=${ZELDA64_FILE} \
     gameflex.emulator.pattern="Zelda64Recompiled-*-Linux-X64.zip" \
     gameflex.emulator.tested="${ZELDA64_TESTED}"
 COPY src/microservices/runtimes/streamex/consoles/unpack-emulator.sh /usr/local/bin/unpack-emulator

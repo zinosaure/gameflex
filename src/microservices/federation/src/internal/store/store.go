@@ -85,7 +85,8 @@ CREATE TABLE IF NOT EXISTS invitations (
 	label      TEXT NOT NULL,
 	hash       TEXT NOT NULL UNIQUE,
 	expires_at TEXT NOT NULL,
-	used_at    TEXT NOT NULL DEFAULT ''
+	used_at    TEXT NOT NULL DEFAULT '',
+	scopes     TEXT NOT NULL DEFAULT 'catalog'
 );
 CREATE TABLE IF NOT EXISTS admin_sessions (
 	hash       TEXT PRIMARY KEY,
@@ -94,6 +95,12 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
 CREATE TABLE IF NOT EXISTS settings (
 	key   TEXT PRIMARY KEY,
 	value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS metadata_accounts (
+	service TEXT NOT NULL,
+	field   TEXT NOT NULL,
+	value   TEXT NOT NULL,
+	PRIMARY KEY (service, field)
 );
 `
 
@@ -112,6 +119,12 @@ func Open(dir string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(schema); err != nil {
+		db.Close()
+
+		return nil, err
+	}
+	// Les portées d'une invitation (chantier 61, B) : une base d'avant n'a pas la colonne.
+	if err := ensureColumn(db, "invitations", "scopes", "TEXT NOT NULL DEFAULT 'catalog'"); err != nil {
 		db.Close()
 
 		return nil, err
@@ -284,8 +297,53 @@ func (s *Store) Resources() ([]Resource, error) {
 
 // ── Les jetons de catalogue ─────────────────────────────────────────────────
 
-// ScopeCatalog — la seule portée du service : son catalogue et ses fiches. Il n'a ni consoles ni appareils à prêter.
-const ScopeCatalog = "catalog"
+// LES PORTÉES D'UN JETON, celles de GameFlex moins les consoles (le service n'en a pas) : `catalog`, toujours — son
+// catalogue et ses fiches —, et `metadata-providers` — ses comptes IGDB et SteamGridDB prêtés à la recherche de
+// l'appareil (chantier 61, B ; le porteur, 2026-11-18 : « Il manque le partage […] C'est ça le plus important »).
+const (
+	ScopeCatalog           = "catalog"
+	ScopeMetadataProviders = "metadata-providers"
+)
+
+// Scopes — les portées demandées, ramenées à celles du service : `catalog` en tête, toujours, puis les fournisseurs
+// s'ils sont demandés ; le reste (des consoles, une faute de frappe) est ignoré.
+func Scopes(asked []string) []string {
+	scopes := []string{ScopeCatalog}
+	for _, scope := range asked {
+		if strings.TrimSpace(scope) == ScopeMetadataProviders {
+			return append(scopes, ScopeMetadataProviders)
+		}
+	}
+
+	return scopes
+}
+
+// ensureColumn — ajoute une colonne à une table qui ne l'a pas encore.
+func ensureColumn(db *sql.DB, table, column, definition string) error {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, kind string
+		var fallback any
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &fallback, &pk); err != nil {
+			rows.Close()
+
+			return err
+		}
+		found = found || name == column
+	}
+	rows.Close()
+	if found {
+		return nil
+	}
+	_, err = db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, definition))
+
+	return err
+}
 
 func hashToken(value string) string {
 	sum := sha256.Sum256([]byte(value))
@@ -293,8 +351,9 @@ func hashToken(value string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// IssueToken — un jeton neuf pour `label` ; sa valeur n'est rendue qu'ici, la base n'en garde que l'empreinte.
-func (s *Store) IssueToken(label string) (Token, string, error) {
+// IssueToken — un jeton neuf pour `label`, à ces portées (Scopes) ; sa valeur n'est rendue qu'ici, la base n'en garde
+// que l'empreinte.
+func (s *Store) IssueToken(label string, asked []string) (Token, string, error) {
 	label = strings.TrimSpace(label)
 	if label == "" {
 		return Token{}, "", errors.New("un jeton demande un nom (l'appareil qui le recevra)")
@@ -305,14 +364,38 @@ func (s *Store) IssueToken(label string) (Token, string, error) {
 	}
 	value := "gff_" + base64.RawURLEncoding.EncodeToString(raw)
 	now := time.Now().UTC()
+	scopes := Scopes(asked)
 	result, err := s.db.Exec(`INSERT INTO tokens (label, hash, scopes, created_at) VALUES (?, ?, ?, ?)`,
-		label, hashToken(value), ScopeCatalog, now.Format(time.RFC3339))
+		label, hashToken(value), strings.Join(scopes, ","), now.Format(time.RFC3339))
 	if err != nil {
 		return Token{}, "", err
 	}
 	id, _ := result.LastInsertId()
 
-	return Token{ID: id, Label: label, Scopes: []string{ScopeCatalog}, CreatedAt: now}, value, nil
+	return Token{ID: id, Label: label, Scopes: scopes, CreatedAt: now}, value, nil
+}
+
+// UpdateTokenScopes — ce qu'un jeton partage, changé à l'instant (« Partager aussi mes fournisseurs de métadonnées »).
+func (s *Store) UpdateTokenScopes(id int64, asked []string) (Token, error) {
+	scopes := Scopes(asked)
+	result, err := s.db.Exec(`UPDATE tokens SET scopes = ? WHERE id = ?`, strings.Join(scopes, ","), id)
+	if err != nil {
+		return Token{}, err
+	}
+	if n, _ := result.RowsAffected(); n == 0 {
+		return Token{}, os.ErrNotExist
+	}
+	var t Token
+	var stored, created, used string
+	if err := s.db.QueryRow(`SELECT id, label, scopes, created_at, last_used_at FROM tokens WHERE id = ?`, id).
+		Scan(&t.ID, &t.Label, &stored, &created, &used); err != nil {
+		return Token{}, err
+	}
+	t.Scopes = strings.Split(stored, ",")
+	t.CreatedAt, _ = time.Parse(time.RFC3339, created)
+	t.LastUsed, _ = time.Parse(time.RFC3339, used)
+
+	return t, nil
 }
 
 // VerifyToken — le jeton de cette valeur, s'il existe ; sa dernière utilisation est notée (à la minute près).
@@ -380,6 +463,7 @@ const InvitationLifetime = 12 * time.Hour
 type Invitation struct {
 	ID        int64     `json:"id"`
 	Label     string    `json:"label"`
+	Scopes    []string  `json:"scopes"`
 	ExpiresAt time.Time `json:"expiresAt"`
 	UsedAt    time.Time `json:"usedAt,omitzero"`
 }
@@ -390,7 +474,7 @@ var ErrInvitationRefused = errors.New("invitation refusée")
 // CreateInvitation — une invitation pour `label` : un code de 22 caractères (128 bits), à usage unique, rendu
 // seulement ici. C'est lui qui voyage par une messagerie, dans un lien `<service>/invite/<code>` ou son QR, et non le
 // jeton durable, que l'appareil reçoit en l'échangeant.
-func (s *Store) CreateInvitation(label string) (Invitation, string, error) {
+func (s *Store) CreateInvitation(label string, asked []string) (Invitation, string, error) {
 	label = strings.TrimSpace(label)
 	if label == "" {
 		return Invitation{}, "", errors.New("une invitation demande un nom (l'appareil qui la recevra)")
@@ -401,22 +485,23 @@ func (s *Store) CreateInvitation(label string) (Invitation, string, error) {
 	}
 	code := base64.RawURLEncoding.EncodeToString(raw)
 	expires := time.Now().UTC().Add(InvitationLifetime)
-	result, err := s.db.Exec(`INSERT INTO invitations (label, hash, expires_at) VALUES (?, ?, ?)`,
-		label, hashToken(code), expires.Format(time.RFC3339))
+	scopes := Scopes(asked)
+	result, err := s.db.Exec(`INSERT INTO invitations (label, hash, expires_at, scopes) VALUES (?, ?, ?, ?)`,
+		label, hashToken(code), expires.Format(time.RFC3339), strings.Join(scopes, ","))
 	if err != nil {
 		return Invitation{}, "", err
 	}
 	id, _ := result.LastInsertId()
 
-	return Invitation{ID: id, Label: label, ExpiresAt: expires}, code, nil
+	return Invitation{ID: id, Label: label, Scopes: scopes, ExpiresAt: expires}, code, nil
 }
 
 // RedeemInvitation — consomme l'invitation de ce code et émet le jeton de l'appareil qui la présente.
 func (s *Store) RedeemInvitation(code string) (Token, string, error) {
 	var id int64
-	var label, expires, used string
-	err := s.db.QueryRow(`SELECT id, label, expires_at, used_at FROM invitations WHERE hash = ?`, hashToken(code)).
-		Scan(&id, &label, &expires, &used)
+	var label, expires, used, scopes string
+	err := s.db.QueryRow(`SELECT id, label, expires_at, used_at, scopes FROM invitations WHERE hash = ?`, hashToken(code)).
+		Scan(&id, &label, &expires, &used, &scopes)
 	if err != nil {
 		return Token{}, "", ErrInvitationRefused
 	}
@@ -434,12 +519,12 @@ func (s *Store) RedeemInvitation(code string) (Token, string, error) {
 		return Token{}, "", ErrInvitationRefused
 	}
 
-	return s.IssueToken(label)
+	return s.IssueToken(label, strings.Split(scopes, ","))
 }
 
 // Invitations — les invitations encore utilisables ou servies, les plus récentes d'abord.
 func (s *Store) Invitations() ([]Invitation, error) {
-	rows, err := s.db.Query(`SELECT id, label, expires_at, used_at FROM invitations ORDER BY id DESC LIMIT 50`)
+	rows, err := s.db.Query(`SELECT id, label, expires_at, used_at, scopes FROM invitations ORDER BY id DESC LIMIT 50`)
 	if err != nil {
 		return nil, err
 	}
@@ -447,10 +532,11 @@ func (s *Store) Invitations() ([]Invitation, error) {
 	list := []Invitation{}
 	for rows.Next() {
 		var i Invitation
-		var expires, used string
-		if err := rows.Scan(&i.ID, &i.Label, &expires, &used); err != nil {
+		var expires, used, scopes string
+		if err := rows.Scan(&i.ID, &i.Label, &expires, &used, &scopes); err != nil {
 			return nil, err
 		}
+		i.Scopes = strings.Split(scopes, ",")
 		i.ExpiresAt, _ = time.Parse(time.RFC3339, expires)
 		i.UsedAt, _ = time.Parse(time.RFC3339, used)
 		list = append(list, i)
@@ -505,6 +591,61 @@ func (s *Store) ValidSession(value string) bool {
 // CloseSession — la déconnexion.
 func (s *Store) CloseSession(value string) {
 	_, _ = s.db.Exec(`DELETE FROM admin_sessions WHERE hash = ?`, hashToken(value))
+}
+
+// ── Les comptes des fournisseurs de fiches ──────────────────────────────────
+//
+// LES FICHES DES JEUX SANS FICHE (chantier 61, P3, question 2 A) : le service les fait lui-même, avec SES comptes
+// (IGDB, SteamGridDB), gardés scellés dans sa base comme les mots de passe des ressources. Les valeurs entrent et ne
+// ressortent jamais par l'API : seuls les noms des champs remplis se lisent.
+
+// MetadataAccounts — les comptes, en clair, tels que gameflex/metadata les attend (service → champ → valeur).
+func (s *Store) MetadataAccounts() (map[string]map[string]string, error) {
+	rows, err := s.db.Query(`SELECT service, field, value FROM metadata_accounts`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	accounts := map[string]map[string]string{}
+	for rows.Next() {
+		var service, field, sealed string
+		if err := rows.Scan(&service, &field, &sealed); err != nil {
+			return nil, err
+		}
+		plain, err := s.unseal(sealed)
+		if err != nil {
+			return nil, err
+		}
+		if accounts[service] == nil {
+			accounts[service] = map[string]string{}
+		}
+		accounts[service][field] = plain
+	}
+
+	return accounts, rows.Err()
+}
+
+// SetMetadataFields — les champs donnés d'un service, scellés ; les autres gardent leur valeur.
+func (s *Store) SetMetadataFields(service string, fields map[string]string) error {
+	for field, value := range fields {
+		sealed, err := s.seal(value)
+		if err != nil {
+			return err
+		}
+		if _, err := s.db.Exec(`INSERT INTO metadata_accounts (service, field, value) VALUES (?, ?, ?)
+			ON CONFLICT(service, field) DO UPDATE SET value = excluded.value`, service, field, sealed); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// RemoveMetadataService — oublie le compte d'un service.
+func (s *Store) RemoveMetadataService(service string) error {
+	_, err := s.db.Exec(`DELETE FROM metadata_accounts WHERE service = ?`, service)
+
+	return err
 }
 
 // ── Les réglages ────────────────────────────────────────────────────────────

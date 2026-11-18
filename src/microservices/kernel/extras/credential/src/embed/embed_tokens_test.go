@@ -48,7 +48,7 @@ func TestTheDeviceJudgesAccountTokensLikeAServer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, _, err := service.OpenFederatedSession(token); !errors.Is(err, ErrTokenRefused) {
+	if _, _, err := service.OpenFederatedSession(token, Caller{}); !errors.Is(err, ErrTokenRefused) {
 		t.Fatalf("un jeton désactivé : %v, attendu ErrTokenRefused", err)
 	}
 	enabled := call(t, service, http.MethodPatch, "/api/v1/users/2/token", root, map[string]any{"enabled": true, "duration": "1w"})
@@ -56,7 +56,7 @@ func TestTheDeviceJudgesAccountTokensLikeAServer(t *testing.T) {
 		t.Fatalf("activation : %d %s", enabled.Code, enabled.Body.String())
 	}
 	waitChange("activation")
-	session, account, err := service.OpenFederatedSession(token)
+	session, account, err := service.OpenFederatedSession(token, Caller{})
 	if err != nil || account.Username != "marc" || len(account.Consoles) != 1 || account.Consoles[0] != "*" {
 		t.Fatalf("le compte du jeton : %+v (%v)", account, err)
 	}
@@ -71,7 +71,7 @@ func TestTheDeviceJudgesAccountTokensLikeAServer(t *testing.T) {
 	if _, err := service.RoleOf(session); err == nil {
 		t.Fatal("la session d'un compte supprimé a encore un rang")
 	}
-	if _, _, err := service.OpenFederatedSession(token); !errors.Is(err, ErrTokenRefused) {
+	if _, _, err := service.OpenFederatedSession(token, Caller{}); !errors.Is(err, ErrTokenRefused) {
 		t.Fatalf("le jeton d'un compte supprimé : %v", err)
 	}
 }

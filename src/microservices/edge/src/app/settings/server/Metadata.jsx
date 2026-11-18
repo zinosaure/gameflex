@@ -38,7 +38,7 @@ import NavRow, { DangerSection, InfoRow, Listing, Note, PlaceholderRow, Rows, Se
 // VALEURS ENTRENT ET NE RESSORTENT JAMAIS : un champ déjà enregistré s'affiche vide, « Enregistré » en indication ; le
 // laisser vide garde sa valeur, le remplir la remplace, et seuls les champs remplis partent.
 const METADATA = "/settings/metadata";
-const METADATA_SERVICES = [
+export const METADATA_SERVICES = [
     { key: "igdb", icon: "bi-joystick", tone: "indigo", fields: [["client_id", false], ["client_secret", true]] },
     { key: "steamgriddb", icon: "bi-grid-3x3-gap", tone: "indigo", fields: [["api_key", true]] },
     { key: "libretroDatabase", icon: "bi-database", tone: "slate" },
@@ -146,7 +146,9 @@ function MetadataStorage() {
 // LES CLÉS D'UN SERVICE : un champ par clé, « Enregistrer » dans l'encadré. Rien de tapé, rien de changé
 // (CODE_CONVENTIONS.md, `isReplaced`) : un champ vide garde sa valeur. Une clé exigée qui n'est ni enregistrée ni tapée
 // garde le bouton au repos — le service des comptes refuserait (422).
-function MetadataKeysForm({ service, status, onSaved }) {
+// `save` (service, champs) → {ok, items} : le service des comptes ici ; gameflex-federation passe le sien (chantier 61,
+// P3 : ses propres comptes, dans sa base).
+export function MetadataKeysForm({ service, status, onSaved, save: store = saveMetadataService }) {
     const { t } = useTranslation();
     const blank = () => Object.fromEntries(service.fields.map(([name]) => [name, ""]));
     const [values, setValues] = useState(blank);
@@ -159,7 +161,7 @@ function MetadataKeysForm({ service, status, onSaved }) {
 
     const save = async () => {
         setPending(true);
-        const answer = await saveMetadataService(service.key, typed);
+        const answer = await store(service.key, typed);
         setPending(false);
 
         if (answer.ok) {

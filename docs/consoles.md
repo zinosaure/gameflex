@@ -71,9 +71,10 @@ in `bios/`:
 
 ## Recent consoles
 
-Recent consoles run on a full emulator, in `cores/<ID>/`: the file its publisher releases, under
-the name GameFlex expects (**Settings › Consoles** shows it). The simplest is **Get it** on the emulator's
-page in **Settings › Consoles**, with the **Official source**: the version tested with your version of GameFlex. A friend's server and the
+Recent consoles run on a full emulator, in `cores/<ID>/`, under the name GameFlex expects
+(**Settings › Consoles** shows it). The simplest is **Get it** on the emulator's page in
+**Settings › Consoles**, with the **Official source**: the console's streamex package, with the
+version tested with your version of GameFlex (for shadPS4 and KytyPS5, our build of it as well). A friend's server and the
 [mirror](../README.md#the-mirror) have them too. If `cores/<ID>/` holds several versions, a game
 starts with the one chosen with **Use this version**, or else the file added last (see [Organize your library](library.md#3-get-the-emulators)).
 

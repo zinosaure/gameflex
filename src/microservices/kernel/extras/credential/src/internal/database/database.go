@@ -160,6 +160,21 @@ CREATE TABLE IF NOT EXISTS account_tokens (
     use_count    INTEGER NOT NULL DEFAULT 0,
     last_used_at DATETIME
 );
+-- LES CONNEXIONS FAITES AVEC CE JETON (#781, le porteur, 2026-11-18 : « on peut voir l'état d'un token mais on ne sait
+-- pas sur quel lien/appareils c'est utilisé ») : une ligne par serveur ou appareil qui l'a échangé contre une session —
+-- le nom qu'il se donne (from, déclaré par lui) et l'adresse d'où il est venu (celle que le proxy a vue) —, la première
+-- et la dernière fois, et combien. Régénérer le jeton les efface : elles parlaient de l'ancien.
+CREATE TABLE IF NOT EXISTS account_token_connections (
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name          TEXT NOT NULL,
+    address       TEXT NOT NULL,
+    first_used_at DATETIME NOT NULL,
+    last_used_at  DATETIME NOT NULL,
+    use_count     INTEGER NOT NULL DEFAULT 1,
+    member        TEXT NOT NULL DEFAULT '',
+    kind          TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (user_id, name, address)
+);
 CREATE TRIGGER IF NOT EXISTS users_account_token AFTER INSERT ON users
 BEGIN
     INSERT OR IGNORE INTO account_tokens (user_id, token, created_at)
@@ -175,31 +190,6 @@ END;
 -- Elle n'est pas chiffrée au repos, et c'est un choix : ce que ce jeton
 -- ouvre est la lecture du catalogue de quelqu'un d'autre, et lui peut le
 -- révoquer d'un clic.
--- Les montages distants : un partage WebDAV (ou kDrive, qui EST du WebDAV)
--- monté comme une source de la bibliothèque.
---
--- Table à part des federation_servers, et ce n'est pas de la duplication :
--- un serveur GameFlex a déjà classé ses jeux et rend un catalogue, un
--- partage est un arbre de dossiers qu'on scanne. Les deux n'ont ni les
--- mêmes champs, ni le même client, ni la même façon d'échouer.
---
--- La colonne kind distingue « webdav » de « kdrive » POUR LE FORMULAIRE
--- seulement (pas d'accent grave ici : ce SQL vit dans un littéral Go
--- délimité par des accents graves, et un seul refermerait la chaîne) :
--- l'un demande une adresse, l'autre un identifiant de drive dont on
--- construit l'adresse. Le client est le même.
-CREATE TABLE IF NOT EXISTS remote_mounts (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    name          VARCHAR(100) NOT NULL UNIQUE,
-    kind          VARCHAR(20)  NOT NULL,
-    base_url      VARCHAR(500) NOT NULL,
-    -- Le sous-dossier à parcourir. Vide = la racine du partage.
-    folder        VARCHAR(255) NOT NULL DEFAULT '',
-    username      VARCHAR(255) NOT NULL,
-    password      VARCHAR(255) NOT NULL,
-    created_at    DATETIME,
-    created_by_id INTEGER REFERENCES users(id)
-);
 
 -- LES COMPTES DES SERVICES DE MÉTADONNÉES (chantier 49, décision du porteur
 -- du 2026-11-11 : « dans la base de données on peut mettre les comptes ») —
@@ -372,22 +362,18 @@ func Open() (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
+	// LES PARTAGES MONTÉS PAR APPAREIL SONT PARTIS (chantier 61, P6) : gameflex-federation les a remplacés — un appareil
+	// le rejoint comme un serveur fédéré. La table et ses identifiants partent avec eux, sans rien garder.
+	if _, err := db.Exec(`DROP TABLE IF EXISTS remote_mounts`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("drop remote_mounts: %w", err)
+	}
 	// Un jeton pour chaque compte d'avant le déclencheur.
 	if _, err := db.Exec(`INSERT INTO account_tokens (user_id, token, created_at)
 		SELECT id, lower(hex(randomblob(32))), strftime('%Y-%m-%d %H:%M:%f', 'now', 'localtime')
 		FROM users WHERE id NOT IN (SELECT user_id FROM account_tokens)`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("seed account tokens: %w", err)
-	}
-	// LE DOSSIER À PARCOURIR sur un partage.
-	//
-	// Sans lui, le scan partait de la racine du drive — chez quelqu'un qui y
-	// range aussi ses photos et ses documents, c'est très long pour ne rien
-	// trouver, et rien ne disait où chercher. Vide = la racine, le
-	// comportement d'avant.
-	if err := ensureColumn(db, "remote_mounts", "folder", "VARCHAR(255) NOT NULL DEFAULT ''"); err != nil {
-		db.Close()
-		return nil, err
 	}
 	// Invite list sorting — existing databases predate the column.
 	if err := ensureColumn(db, "users", "last_login", "DATETIME"); err != nil {
@@ -427,6 +413,13 @@ func Open() (*sql.DB, error) {
 	// LES CODES D'APPAIRAGE (chantier 60, api/pairing.go) : six chiffres, deux
 	// minutes, dans la table des invitations. Leurs modes ne vivent qu'en
 	// mémoire : un démarrage les a tous fermés, et les codes restants partent.
+	// QUI A COLLÉ LE JETON, ET SUR QUOI (#787) : le compte de l'appelant et son genre (serveur ou application).
+	for _, column := range []string{"member", "kind"} {
+		if err := ensureColumn(db, "account_token_connections", column, "TEXT NOT NULL DEFAULT ''"); err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
 	if err := ensureColumn(db, "invitations", "pairing", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		db.Close()
 		return nil, err

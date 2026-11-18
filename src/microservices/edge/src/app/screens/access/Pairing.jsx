@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { closePairing, openPairing, readToken } from "../../libs/api.js";
+import { readToken } from "../../libs/api.js";
 import { kernelReachable, kernelTarget, useKernelChannel, useKernelTopic } from "../../libs/kernelChannel.js";
-import { useData } from "../../libs/data.jsx";
-import { useShareOrigin } from "./Invitation.jsx";
+import { useFederationHost } from "../../settings/people/federationHost.js";
 import { toast } from "../../shell/Shell.jsx";
 import NavRow, { EmptyRow, InfoRow, Note, Rows, Section, SwitchRow, useConfirm } from "../../ui/Bricks.jsx";
 
@@ -66,13 +65,14 @@ const closureOf = (pairing, scope) => [...(pairing?.closed || [])].reverse().fin
 export function DiscoveryModeSection({ scope, pairing }) {
     const { t, i18n } = useTranslation();
     const confirm = useConfirm();
+    const { api } = useFederationHost();
     const [pending, setPending] = useState(false);
     const mode = modeOf(pairing, scope);
     const closure = closureOf(pairing, scope);
 
     const open = async () => {
         setPending(true);
-        const answer = await openPairing(scope);
+        const answer = await api.openPairing(scope);
         setPending(false);
 
         if (!answer.ok) {
@@ -81,7 +81,7 @@ export function DiscoveryModeSection({ scope, pairing }) {
     };
     const close = async () => {
         setPending(true);
-        const answer = await closePairing(scope);
+        const answer = await api.closePairing(scope);
         setPending(false);
 
         if (!answer.ok && answer.status !== 204) {
@@ -150,8 +150,9 @@ const leftText = (t, milliseconds) => {
 // annulé — `onDone(texte)` dit pourquoi.
 export function PairingReveal({ created, pairing, onCancel, onDone }) {
     const { t } = useTranslation();
-    const origin = useShareOrigin();
-    const { capabilities } = useData();
+    const host = useFederationHost();
+    const origin = host.useOrigin();
+    const serverName = host.useServerName();
     const [now, setNow] = useState(Date.now());
     const seen = useRef(false);
     const finished = useRef(false);
@@ -185,7 +186,7 @@ export function PairingReveal({ created, pairing, onCancel, onDone }) {
             </Section>
             <Section title={t("fed.serverTitle")}>
                 <Rows>
-                    <InfoRow icon="bi-hdd-network" tone="amber" label={capabilities.serverName || t("fed.urlLabel")} value={origin} help={t("pairing.thisServerHelp")} />
+                    <InfoRow icon="bi-hdd-network" tone="amber" label={serverName || t("fed.urlLabel")} value={origin} help={t("pairing.thisServerHelp")} />
                 </Rows>
             </Section>
             <Section title={t("more")}>
