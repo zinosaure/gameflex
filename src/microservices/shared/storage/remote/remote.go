@@ -66,6 +66,8 @@ type Server struct {
 	// gigaoctets ne se borne pas d'avance, et c'est le contexte de l'appelant
 	// — la requête du navigateur — qui l'arrête s'il abandonne.
 	relay *http.Client
+	// source — la source demandée pour les fichiers (PreferSource) ; vide : celle que le serveur choisit.
+	source string
 }
 
 // Identity est ce qu'un serveur dit de lui-même.
@@ -133,7 +135,24 @@ func (server *Server) doContext(ctx context.Context, path string, client *http.C
 	return server.send(ctx, http.MethodGet, path, client)
 }
 
+// PreferSource — une copie du client qui demande ses fichiers à une source précise (`?source=<id>`, chantier 61) :
+// gameflex-federation rassemble plusieurs partages, et un élément peut être dans plusieurs (listing.Item.Sources).
+// Vide : la source que le serveur juge la meilleure. Un serveur GameFlex ordinaire ignore le paramètre.
+func (server *Server) PreferSource(id string) *Server {
+	copied := *server
+	copied.source = strings.TrimSpace(id)
+
+	return &copied
+}
+
 func (server *Server) send(ctx context.Context, method, path string, client *http.Client) (*http.Response, error) {
+	if server.source != "" {
+		separator := "?"
+		if strings.Contains(path, "?") {
+			separator = "&"
+		}
+		path += separator + "source=" + url.QueryEscape(server.source)
+	}
 	request, err := http.NewRequestWithContext(ctx, method, server.link+path, nil)
 	if err != nil {
 		return nil, err

@@ -28,9 +28,10 @@ chmod +x launch.sh
 ./launch.sh
 ```
 
-The script checks your computer, then asks four questions: your library folder, the address of
-this computer (it suggests one), an administrator password (or makes one up and shows it once), and the recent
-consoles you want. It keeps your answers in `.env`, downloads GameFlex and starts it. At the end it
+The script checks your computer, then asks five questions: your library folder, the address of
+this computer (it suggests one), an administrator password, a user name and a password for
+gameflex-federation (it can make up each password and show it once), and the recent consoles you
+want. It keeps your answers in `.env`, downloads GameFlex and starts it. At the end it
 gives you the address to open.
 
 Afterwards, the same script runs GameFlex for you:
@@ -42,7 +43,8 @@ Afterwards, the same script runs GameFlex for you:
 | `./launch.sh update` | Downloads the latest version, with its `docker-compose.yml` (your disks kept) and `launch.sh`, and restarts (see [Update GameFlex](update.md)). |
 | `./launch.sh stop` | Stops GameFlex. Your library and settings stay. |
 | `./launch.sh status` | Shows what is running. |
-| `./launch.sh logs kernel` | Follows the log of a service: `edge`, `kernel`, `credential`, `gateway`, `remoteplay` or `wireguard`. |
+| `./launch.sh logs kernel` | Follows the log of a service: `edge`, `kernel`, `credential`, `gateway`, `remoteplay`, `federation` or `wireguard`. |
+| `./launch.sh federation` | Starts only gameflex-federation, which shares your library and runs no game: for a computer without a graphics card, such as a NAS (see [Federation](federation.md#gameflex-federation-one-address-for-all-your-devices)). |
 | `./launch.sh wireguard` | Turns on the optional WireGuard VPN, to play away from home (see [Play away from home](remote-access.md)). |
 | `./launch.sh setup` | Asks the questions again. |
 
@@ -66,7 +68,7 @@ the end of this page.
 
 ### 3. Fill in `.env`
 
-Open `.env` in a text editor and fill in the four required values:
+Open `.env` in a text editor and fill in the five required values:
 
 | Setting | What to put |
 |---|---|
@@ -74,6 +76,7 @@ Open `.env` in a text editor and fill in the four required values:
 | `GAMEFLEX_PUBLIC_HOST` | The address of this computer on your home network. `ip -4 route get 1.1.1.1` shows it after `src`, such as `192.168.1.50`. |
 | `GAMEFLEX_ROOT_PASSWORD` | The password of the administrator account, `root`. |
 | `GAMEFLEX_SECRET` | A random secret. Make one with `openssl rand -hex 32` and paste it. |
+| `GAMEFLEX_FEDERATION_ROOT_PASSWORD` | The password of gameflex-federation's account, on its own page. Choose another one than the administrator's. |
 
 ### 4. Start GameFlex
 
@@ -113,7 +116,7 @@ own account: create it in **Settings › Members**.
 ## What you should see
 
 - `docker compose ps` lists `gameflex-edge`, `gameflex-kernel`, `gameflex-credential`,
-  `gameflex-gateway`, `gameflex-remoteplay` and `gameflex-retrogaming` as running.
+  `gameflex-gateway`, `gameflex-remoteplay`, `gameflex-federation` and `gameflex-retrogaming` as running.
   (`gameflex-retrogaming` only keeps its image at hand: after a reboot it stays stopped, and that is
   fine.)
 - The sign-in page opens, and then the GameFlex home page.
@@ -125,7 +128,7 @@ Next: [organize your library](library.md).
 
 | What you see | What to do |
 |---|---|
-| `required variable … is missing a value` | One of the four required settings is empty in `.env`. |
+| `required variable … is missing a value` | One of the five required settings is empty in `.env`. |
 | A service keeps restarting | Read its log: `docker compose logs gameflex-kernel` (or `gameflex-edge`, `gameflex-credential`, `gameflex-gateway`, `gameflex-remoteplay`). |
 | The page does not open from another device | A firewall blocks port 10200 on this computer. |
 | The game page stays black, or says it cannot connect | The video goes through UDP ports 9201 to 9300: let them through the firewall. If this computer has several network cards, set `GAMEFLEX_ICE_INTERFACE`. |
@@ -143,12 +146,14 @@ All settings live in `.env`.
 | `GAMEFLEX_LIBRARY` | yes | | Your library folder on this computer. |
 | `GAMEFLEX_PUBLIC_HOST` | yes | | The address of this computer on your home network. Players and the services reach GameFlex through it. |
 | `GAMEFLEX_ROOT_PASSWORD` | yes | | The administrator's password. GameFlex does not start without it (`launch.sh` can make one up). It only creates the administrator account, at the first start: change the password afterwards in GameFlex (**Settings › Profile**). Lost it? `./launch.sh reset-password` sets it back to this one. |
+| `GAMEFLEX_FEDERATION_ROOT_PASSWORD` | yes | | The password of gameflex-federation's account, on its page (port `10206`). It is read at every start: change it here, then run `./launch.sh federation` (or `docker compose up -d`). `launch.sh` can make one up, and gives one to a `.env` that has none. |
 | `GAMEFLEX_SECRET` | yes | | The secret the services share to sign sessions; it also encrypts the passwords of network shares. Changing it signs everyone out, and those passwords must be entered again. |
 | `GAMEFLEX_VERSION` | no | `latest` | The version of the images, such as `0.3.0`. |
 | `GAMEFLEX_PORT` | no | `10200` | The port of the web page, also announced on the local network while discovery mode is on. |
 | `GAMEFLEX_SERVER_NAME` | no | its address | The name of this server, that federated servers and the local network discovery show. |
 | `GAMEFLEX_ICE_INTERFACE` | no | every physical interface | The network interfaces the video may use, such as `eth0`, separated by commas. Empty, Docker bridges and VPN tunnels (`wg0`, `tun0`) are skipped. |
 | `GAMEFLEX_ROOT_USERNAME` | no | `root` | The administrator's user name. |
+| `GAMEFLEX_FEDERATION_ROOT_USERNAME` | no | `root` | The user name of gameflex-federation's account. Another name than `root` is one more thing to guess. Read at every start, like its password. |
 | `GAMEFLEX_MAX_PLAYERS` | no | `4` | Virtual controllers created for a recent console's game, never fewer than the console's own player count. How many play is set per console (see [Consoles](consoles.md)). |
 | `GAMEFLEX_CONSOLE_LIMITS` | no | one of each | How many games of each recent console can run at once, as `console:number` pairs. |
 | `GAMEFLEX_GPU` | no | the first one | The graphics card games run on, when the machine has several (a chip in the processor and a card added over OCuLink, for example): its PCI address, such as `0000:03:00.0`. `ls /dev/dri/by-path` lists them, and the kernel log says at start-up which one games use. |
@@ -166,6 +171,8 @@ All settings live in `.env`.
 | `GAMEFLEX_LIBRARY/cache/profiles` | `/profiles` (gameflex-kernel) | Controller layouts, written by GameFlex when it starts. |
 | `/var/run/docker.sock` | same (gameflex-kernel) | Lets GameFlex start a container for each game. |
 | any other disk | `/mnt/<name>` (gameflex-kernel) | More games: add one line per disk to the volumes of `gameflex-kernel`. |
+| `GAMEFLEX_LIBRARY`, and any other folder | `/mnt/library`, `/mnt/<name>`, read only (gameflex-federation) | What gameflex-federation shares: add one line per folder to its volumes. |
+| the Docker volume `gameflex_federation` | `/data` (gameflex-federation) | gameflex-federation's shares, accesses and logs. |
 | the Docker volume `gameflex_wireguard` | `/etc/wireguard` (gameflex-wireguard) | The optional VPN's keys and devices, once you turn it on. |
 
 **Back up `GAMEFLEX_LIBRARY`**: it holds everything that is yours, saves and accounts included.
@@ -178,6 +185,7 @@ Docker on this computer. Run GameFlex on a machine you trust, and don't expose p
 | Port | Protocol | Used for | Open it to |
 |---|---|---|---|
 | `10200` | TCP | the web page | your network (or your HTTPS proxy) |
+| `10206` | TCP | gameflex-federation: its page and what it shares | your network (or your HTTPS proxy) |
 | `9201`–`9300` | UDP | the game video | your network; the Internet only to play away from home without the VPN |
 | `10201` | TCP | the server, for the game containers | nobody: this computer only |
 | `10202`, `10205` | TCP | the video gateway and Remote Play | nobody on the Internet: never forward them on your router. If you firewall this computer, let the web container reach them |
@@ -273,6 +281,32 @@ services:
             - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}/cache/profiles:/profiles
             # More disks with games: one line each, <folder on this machine>:/mnt/<name>.
             # - /media/games:/mnt/games
+
+    # gameflex-federation: shares your library with every device and every
+    # GameFlex from one address, and gathers other shares (Samba, WebDAV,
+    # kDrive, FTP, SFTP) into it. It runs games nowhere: a computer without a
+    # graphics card, a NAS for one, can run it on its own (./launch.sh federation).
+    # Its page: http://<GAMEFLEX_PUBLIC_HOST>:10206. The guide:
+    # docs/federation.md.
+    gameflex-federation:
+        image: zinosaure/gameflex-federation:${GAMEFLEX_VERSION:-latest}
+        container_name: ${GAMEFLEX_NAME:-gameflex}-federation
+        restart: unless-stopped
+        # The host network: the local network discovery (pairing code) needs it.
+        network_mode: host
+        environment:
+            - FEDERATION_PORT=10206
+            - FEDERATION_ADMIN_USERNAME=${GAMEFLEX_FEDERATION_ROOT_USERNAME:-root}
+            - FEDERATION_ADMIN_PASSWORD=${GAMEFLEX_FEDERATION_ROOT_PASSWORD:?set GAMEFLEX_FEDERATION_ROOT_PASSWORD in .env}
+            # Its name the first time; change it afterwards on its page.
+            - FEDERATION_NAME=${GAMEFLEX_SERVER_NAME:-GameFlex} Federation
+            - GAMEFLEX_VERSION=${GAMEFLEX_VERSION:-latest}
+        volumes:
+            # Its own settings: shares, accesses, logs.
+            - federation:/data
+            # What it shares, read only: one line each, <folder>:/mnt/<name>:ro.
+            - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}:/mnt/library:ro
+            # - /media/games:/mnt/games:ro
 
     # Accounts and sign-in.
     gameflex-credential:
@@ -431,6 +465,8 @@ services:
               exec docker-entrypoint.sh /usr/bin/dumb-init node server/index.mjs
 
 volumes:
+    # The settings of gameflex-federation.
+    federation:
     # The VPN's keys and devices.
     wireguard:
 ```
@@ -439,7 +475,7 @@ volumes:
 
 ```bash
 # GameFlex settings. Copy this file to `.env`, next to docker-compose.yml, and
-# fill in the four required values. Every setting is explained in
+# fill in the five required values. Every setting is explained in
 # docs/install.md.
 
 # ── Required ─────────────────────────────────────────────────────────
@@ -462,6 +498,11 @@ GAMEFLEX_ROOT_PASSWORD=
 # Keep it: changing it signs everyone out.
 GAMEFLEX_SECRET=
 
+# The password of gameflex-federation's account, on its own page. Not the
+# administrator's: choose another one, between single quotes if it holds spaces
+# or signs such as $ or #.
+GAMEFLEX_FEDERATION_ROOT_PASSWORD=
+
 # ── Optional ─────────────────────────────────────────────────────────
 
 # The GameFlex version to run, such as 0.3.0. "latest" follows new releases.
@@ -481,6 +522,10 @@ GAMEFLEX_ICE_INTERFACE=
 
 # The administrator's user name.
 GAMEFLEX_ROOT_USERNAME=root
+
+# The user name of gameflex-federation's account. Another name than root is
+# one more thing to guess.
+GAMEFLEX_FEDERATION_ROOT_USERNAME=root
 
 # Virtual controllers created for a recent console's game (never fewer than the
 # console's own player count). How many play is set per console.

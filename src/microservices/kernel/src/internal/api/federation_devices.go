@@ -603,6 +603,8 @@ func (server *Server) handleRemoteStorageImport(w http.ResponseWriter, r *http.R
 		Reference string   `json:"reference"`
 		Title     string   `json:"title"`
 		Files     []string `json:"files"`
+		// Source — la source choisie, quand le serveur en propose plusieurs (chantier 61, listing.Item.Sources).
+		Source string `json:"source"`
 		// Folder — le pair l'annonce en dossier : il arrivera zippé et se
 		// dépliera, même avec un seul fichier à sa racine (un `.iso` PSP).
 		Folder bool `json:"folder"`
@@ -669,6 +671,7 @@ func (server *Server) handleRemoteStorageImport(w http.ResponseWriter, r *http.R
 
 		return
 	}
+	client = client.PreferSource(body.Source)
 
 	// Le nom devient un chemin : il passe par le registre, jamais tel quel.
 	var target string

@@ -1448,7 +1448,20 @@
         "copySheetHere": "Il est déjà ici : sa fiche se règle sur la page de votre jeu.",
         "copySheetConfirm": "La fiche de {{name}} est copiée depuis {{source}}, sans le jeu. Le jeu, téléchargé plus tard, la retrouvera.",
         "copySheetDo": "Copier la fiche",
-        "sheetCopied": "Fiche de {{name}} copiée dans vos métadonnées."
+        "sheetCopied": "Fiche de {{name}} copiée dans vos métadonnées.",
+        "sourcesTitle": "Sources",
+        "sourcesHelp": "Ce jeu est sur plusieurs sources de ce serveur. La première est la plus disponible, la plus adaptée et la plus rapide.",
+        "sourceBest": "conseillée",
+        "sourcePinned": "épinglée",
+        "sourceUnavailable": "injoignable à la dernière tentative",
+        "sourceKinds": {
+            "disk": "Disque",
+            "smb": "Samba",
+            "webdav": "WebDAV",
+            "kdrive": "kDrive",
+            "ftp": "FTP",
+            "sftp": "SFTP"
+        }
     },
     "layout": {
         "editorTitle": "Position des boutons",
@@ -2298,6 +2311,221 @@
             "invitationRefused": "Code refusé : il a déjà servi, a expiré ou n'existe pas. Créez-en un autre.",
             "notPairingCode": "Un code d'appairage a 6 chiffres.",
             "invalidLink": "Cette adresse ne mène à aucun serveur. Vérifiez-la, puis réessayez."
+        }
+    },
+    "fedService": {
+        "brand": "GameFlex Federation",
+        "loading": "Chargement…",
+        "failed": "L'opération a échoué.",
+        "save": "Enregistrer",
+        "logout": "Se déconnecter",
+        "login": {
+            "help": "Connectez-vous avec le compte d'administration de ce service."
+        },
+        "connections": {
+            "title": "Connexions",
+            "help": "Les disques et les partages dont les jeux sont proposés aux appareils reliés.",
+            "none": "Aucune connexion. Montez un disque, ou ajoutez un partage dans « Plus » › « Ressources ».",
+            "scanning": "Lecture en cours…",
+            "failed": "Injoignable : {{error}}",
+            "never": "Pas encore lue.",
+            "add": "Ajouter",
+            "added": "Connexion ajoutée, lecture en cours.",
+            "saved": "Connexion enregistrée, relue.",
+            "edit": "Modifier",
+            "gamesFound": "Jeux trouvés",
+            "lastScan": "Dernière lecture",
+            "error": "Erreur",
+            "rescan": "Relire",
+            "rescanHelp": "Relit le partage pour y trouver les jeux ajoutés ou retirés.",
+            "remove": "Retirer la connexion",
+            "removeHelp": "Ses jeux ne sont plus proposés aux appareils.",
+            "removeQuestion": "Retirer « {{name}} » ? Ses jeux ne seront plus proposés.",
+            "removed": "Connexion retirée.",
+            "games_one": "{{count}} jeu · dernière lecture le {{when}}",
+            "games_other": "{{count}} jeux · dernière lecture le {{when}}",
+            "order": "Ordre des sources",
+            "orderHelp": "Quand un élément est dans plusieurs sources, la plus disponible, la plus adaptée et la plus rapide sert en premier.",
+            "speed": "Débit mesuré",
+            "speedValue": "{{speed}}/s",
+            "speedNone": "Pas encore mesuré : rien n'a encore été servi.",
+            "pin": "Épingler en tête",
+            "pinHelp": "Cette source sert en premier, quel que soit l'élément."
+        },
+        "link": {
+            "title": "Connexion",
+            "help": "Relier un appareil GameFlex à ce service.",
+            "token": "Jeton",
+            "tokenHelp": "Un jeton à coller dans l'appareil, avec l'adresse du service.",
+            "invitation": "Lien d'invitation et QR code",
+            "invitationHelp": "Un lien à usage unique, ou son QR code, à ouvrir dans l'appareil.",
+            "pairing": "Code d'appairage",
+            "pairingHelp": "Six chiffres à taper dans l'appareil, en mode découverte.",
+            "device": "Nom de l'appareil",
+            "deviceHelp": "Il vous aidera à reconnaître ce lien plus tard.",
+            "address": "Adresse du service",
+            "addressHelp": "À coller avec le jeton dans l'appareil."
+        },
+        "token": {
+            "intro": "Dans l'appareil, ajoutez un serveur et collez l'adresse et le jeton.",
+            "create": "Créer le jeton",
+            "issued": "Jeton de « {{name}} »",
+            "once": "Copiez-le maintenant : il ne sera plus affiché.",
+            "list": "Jetons émis",
+            "none": "Aucun jeton.",
+            "used": "Utilisé le {{when}}",
+            "unused": "Jamais utilisé",
+            "created": "Créé le {{when}}",
+            "revoke": "Révoquer « {{name}} »",
+            "revokeHelp": "L'appareil ne voit plus les jeux de ce service.",
+            "revokeQuestion": "Révoquer le jeton de « {{name}} » ? Cet appareil ne verra plus les jeux de ce service.",
+            "revoked": "Jeton révoqué."
+        },
+        "invitation": {
+            "intro": "Envoyez le lien ou le QR code : l'appareil le colle ou le scanne pour se relier.",
+            "create": "Créer l'invitation",
+            "created": "Invitation de « {{name}} »",
+            "until": "Valable jusqu'au {{when}}, une seule fois.",
+            "link": "Lien d'invitation",
+            "qrAlt": "QR code de l'invitation",
+            "list": "Invitations en attente",
+            "none": "Aucune invitation en attente.",
+            "revoke": "Annuler « {{name}} »",
+            "revokeQuestion": "Annuler l'invitation de « {{name}} » ?",
+            "revoked": "Invitation annulée.",
+            "openedHere": "Ce lien se colle dans GameFlex, dans « Rejoindre un serveur », sur l'appareil à relier."
+        },
+        "pairing": {
+            "intro": "Ouvrez le mode découverte, puis créez un code et tapez-le dans l'appareil.",
+            "discovery": "Mode découverte",
+            "discoveryHelp": "Pendant cinq minutes, les appareils peuvent se relier avec un code.",
+            "openUntil": "Ouvert jusqu'à {{when}}.",
+            "notAnnounced": "Ce service n'est pas visible sur le réseau local : dans l'appareil, tapez son adresse.",
+            "code": "Nouveau code",
+            "create": "Créer le code",
+            "yourCode": "Code à taper",
+            "codeUntil": "Valable jusqu'à {{when}}, une seule fois.",
+            "closedFirst": "Ouvrez d'abord le mode découverte."
+        },
+        "more": {
+            "title": "Plus",
+            "help": "Ajouter un partage dont les jeux seront proposés aux appareils."
+        },
+        "server": {
+            "title": "Ce service",
+            "name": "Nom du service",
+            "nameHelp": "Le nom que les appareils affichent.",
+            "saved": "Nom enregistré."
+        },
+        "fields": {
+            "kind": "Type",
+            "name": "Nom",
+            "nameHelp": "Le nom affiché pour cette connexion.",
+            "folder": "Dossier",
+            "folderHelp": "Le dossier qui contient « roms », vide pour la racine du partage.",
+            "username": "Nom d'utilisateur",
+            "password": "Mot de passe",
+            "passwordKeep": "Laissez vide pour garder le mot de passe enregistré."
+        },
+        "kinds": {
+            "smb": {
+                "label": "Samba",
+                "add": "Ajouter un partage Samba",
+                "help": "Un dossier partagé sur le réseau local (Windows, NAS).",
+                "intro": "Le partage doit contenir un dossier « roms », rangé par console.",
+                "address": "Adresse",
+                "addressHelp": "smb://serveur/partage",
+                "usernameHelp": "Vide pour une connexion invité.",
+                "passwordHelp": "Le mot de passe de ce compte."
+            },
+            "webdav": {
+                "label": "WebDAV",
+                "add": "Ajouter un partage WebDAV",
+                "help": "Un dossier en ligne accessible en WebDAV (Nextcloud, NAS).",
+                "intro": "Le dossier doit contenir un dossier « roms », rangé par console.",
+                "address": "Adresse WebDAV",
+                "addressHelp": "L'adresse WebDAV complète, par exemple https://cloud.example.com/remote.php/dav/files/nom/.",
+                "usernameHelp": "Le compte du service en ligne.",
+                "passwordHelp": "Le mot de passe, ou un mot de passe d'application."
+            },
+            "kdrive": {
+                "label": "kDrive",
+                "add": "Ajouter un kDrive",
+                "help": "Un kDrive d'Infomaniak, par son API.",
+                "intro": "Le dossier doit contenir un dossier « roms », rangé par console.",
+                "address": "Numéro du kDrive",
+                "addressHelp": "Le numéro qui suit /app/drive/ dans l'adresse de votre kDrive.",
+                "usernameHelp": "",
+                "passwordHelp": "Un jeton d'API kDrive.",
+                "token": "Jeton d'API"
+            },
+            "ftp": {
+                "label": "FTP",
+                "add": "Ajouter un serveur FTP",
+                "help": "Un serveur de fichiers FTP.",
+                "intro": "Le dossier doit contenir un dossier « roms », rangé par console.",
+                "address": "Adresse",
+                "addressHelp": "ftp://serveur ou ftp://serveur:port",
+                "usernameHelp": "Vide pour une connexion anonyme.",
+                "passwordHelp": "Le mot de passe de ce compte."
+            },
+            "sftp": {
+                "label": "SFTP",
+                "add": "Ajouter un serveur SFTP",
+                "help": "Un serveur de fichiers par SSH.",
+                "intro": "Le dossier doit contenir un dossier « roms », rangé par console. La clé du serveur est retenue à la première connexion.",
+                "address": "Adresse",
+                "addressHelp": "sftp://serveur ou sftp://serveur:port",
+                "usernameHelp": "Le compte SSH, obligatoire.",
+                "passwordHelp": "Le mot de passe de ce compte."
+            },
+            "disk": {
+                "label": "Disque"
+            }
+        },
+        "logs": {
+            "title": "Journaux",
+            "help": "Ce que le service écrit, et ses journaux à relire.",
+            "writing": "Ce qui s'écrit",
+            "writingHelp": "Le journal du jour, dans le dossier de données du service.",
+            "enabled": "Écrire le journal",
+            "enabledHelp": "Éteint, plus rien ne s'écrit sur le disque.",
+            "http": "Requêtes HTTP",
+            "httpHelp": "Chaque requête reçue, les secrets masqués.",
+            "levels": {
+                "debug": "Débogage",
+                "info": "Informations",
+                "warn": "Avertissements",
+                "error": "Erreurs"
+            },
+            "files": "Journaux",
+            "none": "Aucun journal.",
+            "size": "{{size}} · modifié le {{when}}",
+            "filter": "Niveau",
+            "allLevels": "Tous les niveaux",
+            "lines": "Dernières lignes",
+            "linesHelp": "Les plus récentes en premier, les secrets masqués.",
+            "empty": "Aucune ligne à ce niveau.",
+            "download": "Télécharger",
+            "downloadHelp": "Le journal entier, les secrets masqués.",
+            "remove": "Supprimer ce journal",
+            "removeQuestion": "Supprimer le journal « {{path}} » ?",
+            "removed": "Journal supprimé."
+        },
+        "join": {
+            "title": "Rejoindre le service",
+            "help": "Relier un ordinateur, un téléphone ou une télévision à ce service."
+        },
+        "resources": {
+            "title": "Ressources",
+            "help": "Les disques de cette machine et les partages qui apportent des jeux.",
+            "internal": "Ressources internes",
+            "internalHelp": "Les disques montés dans le conteneur, sous /mnt. Ils apportent jeux, fiches, correctifs, paramètres, cœurs et BIOS.",
+            "noDisk": "Aucun disque monté sous /mnt.",
+            "diskEmpty": "Ni roms, ni bios, ni cores, ni patches, ni params, ni metadata.",
+            "diskHelp": "Un disque se déclare dans le compose : il se monte, il ne s'ajoute pas ici.",
+            "mount": "Montage",
+            "rescanDiskHelp": "Relit tout ce que le disque porte."
         }
     }
 }

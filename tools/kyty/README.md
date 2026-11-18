@@ -643,6 +643,18 @@ l'espace compact, appliqués tels quels. Au banc, par le chemin du téléphone
 | `build.sh` | clone la fourche à `FORK_REV` et construit `kyty_emulator` sans lanceur Qt, dans un conteneur trixie gardé ; `--server` : la branche `gameflex`, sans l'espace compact |
 | `bench.sh`, `bench/` | l'essai sur x86_64 dans l'image PS5 du serveur : notre construction contre le Kyty officiel. Le banc a le RADV de `streamex-ps5:latest`, corrigé (`consoles/ps5/mesa/`, journal 505) : sa construction s'arrête si la base ne le porte pas, ou si son apt remet celui du paquet. `bench.sh` le reconstruit à chaque appel |
 
+**Le lot 1 de l'amont** (2026-11-18, `#771`, [rapport](../../docs/reports/2026-11-17-correctifs-amont/README.md)) : 51
+commits de compatibilité de `KytyPS5/KytyPS5` repris par `cherry-pick -x` au-dessus de 0099 (instructions de shaders,
+textures 1D, cubes et cibles Standard256B/64KB, `rmdir`, `fsync`, `stat`, sémaphores, Opus et MP3, sauvegardes
+agrandies, `/app0` en lecture seule, *GT7*, *NHL 27*, la barre lumineuse d'*Astro Bot*, le verrou TTAS de
+*Cyberpunk*), six écartés (le détail dans le rapport), et quatre commits `gameflex` de raccord : le code PM4 `0x3A`
+renommé dans le compteur de 0056, la liste `--compile-only` des réductions de vague, l'hôte des cibles de rendu dans les
+tests, un cas de l'amont qui contredit 0031. La redirection de l'`engine.ini` des jeux Unreal vers `/download0` est
+gardée sous le montage en lecture seule. **L'empreinte du magasin de shaders change** : le premier lancement de chaque
+jeu recompile. Au banc contre 0099 : jardin d'*Astro Bot* 23,2 contre 22,9 images/s (caches chauds), *FF7 Remake* et
+*KH3* à 30 avec la même charge GPU, images identiques, sans perte du GPU. `gameflex` avancé à `4e516772` (une avance
+simple) ; livré sur la dev le 2026-11-18 (0099 reste sur Gamebox sous le nom de base) ; téléphone pas encore fusionné.
+
 ## Mettre à jour quand l'éditeur publie une version
 
 1. **La version** : `ARG KYTY_RELEASE=…` dans

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Construit shadPS4 depuis NOTRE FOURCHE — https://github.com/zinosaure/shadPS4 —, branche
 # `gameflex`, à la révision épinglée ci-dessous (FORK_REV) : un commit de `main` de l'amont
-# (ce7643c, du 2026-11-04 — plus récent que la dernière version publiée : le porteur, 2026-10-27,
+# (7c0b846d, du 2026-11-17 — plus récent que la dernière version publiée : le porteur, 2026-10-27,
 # le rendu de la 0.20 arrêtait FIFA 22), plus nos commits `gameflex 00NN: …`, chacun décrit dans
 # README.md par son numéro. Une seule branche : le serveur et le téléphone (sous Box64,
 # tools/box64/bundle.sh) prennent le même binaire, les réglages du téléphone sont des réglages
@@ -29,7 +29,7 @@ set -euo pipefail
 FORK=https://github.com/zinosaure/shadPS4.git
 BRANCH=gameflex
 # La révision construite ; à avancer avec la fourche (README.md).
-FORK_REV=3caec584ba4f6548ca19b4de7b8efd1339d6e996
+FORK_REV=e441ba5de6d2d16641ee6701ac1bcc8516439170
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)

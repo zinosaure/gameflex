@@ -99,6 +99,29 @@ type Item struct {
 	// absent s'il n'est pas reconnu. Il voyage avec le jeu : un téléphone sait
 	// ainsi, avant de lancer, qu'un jeu d'un ami ne peut pas tourner chez lui.
 	Engine string `json:"engine,omitempty"`
+	// Sources — les endroits d'où le serveur peut servir cet élément, du
+	// meilleur au moins bon (chantier 61 : gameflex-federation rassemble
+	// plusieurs partages, et un même élément peut être dans plusieurs).
+	// Absent : une seule source, le serveur lui-même. Un appareil prend la
+	// première, ou en demande une autre (`?source=<id>`).
+	Sources []Source `json:"sources,omitempty"`
+}
+
+// Source — un endroit d'où un élément peut être servi (chantier 61).
+type Source struct {
+	// ID — ce que l'appareil passe en `?source=` pour la demander.
+	ID string `json:"id"`
+	// Name, Kind — le nom de la ressource et son genre (« disk », « smb »,
+	// « webdav », « kdrive », « ftp », « sftp »).
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	Size int64  `json:"sizeBytes,omitempty"`
+	// ModifiedAt — la date de l'élément dans cette source, quand elle la donne.
+	ModifiedAt time.Time `json:"modifiedAt,omitzero"`
+	// Pinned — l'administrateur l'a mise en tête ; Unavailable — sa dernière
+	// connexion a échoué.
+	Pinned      bool `json:"pinned,omitempty"`
+	Unavailable bool `json:"unavailable,omitempty"`
 }
 
 // Preset — un préréglage perso, tel qu'un autre serveur le voit.

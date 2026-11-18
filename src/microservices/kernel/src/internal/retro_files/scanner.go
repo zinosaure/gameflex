@@ -15,6 +15,7 @@ import (
 	"gameflex/metadata"
 	"gameflex/storage"
 	"gameflex/storage/gamestatus"
+	"gameflex/storage/listing"
 )
 
 // ConsoleSummary is one top-level folder under the ROMs root (its name is
@@ -68,6 +69,9 @@ type RomEntry struct {
 	Identity string `json:"identity,omitempty"`
 	// ServerID désigne l'entrée du registre d'où il vient.
 	ServerID int64 `json:"serverId,omitempty"`
+	// Sources — pour un jeu d'un serveur fédéré qui l'a dans plusieurs sources (gameflex-federation, chantier 61) :
+	// ses sources, de la meilleure à la moins bonne ; la page en choisit une (`source`).
+	Sources []listing.Source `json:"sources,omitempty"`
 	// Here — un jeu d'un serveur fédéré qui est DÉJÀ ICI, par son identifiant
 	// (la bibliothèque ou un disque interne ; chantier 53, #674).
 	Here bool `json:"here,omitempty"`

@@ -89,6 +89,13 @@ services:
 
     # The consoles: their recipe is here, their skeleton is streamex-bin, and no
     # image carries an emulator (it is unpacked from the library at launch).
+    gameflex-federation:
+        image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-federation:${GAMEFLEX_VERSION}
+        build:
+            context: .
+            dockerfile: src/microservices/federation/Dockerfile
+            args: *arguments
+
     gameflex-ps3:
         image: ${GAMEFLEX_NAMESPACE:-zinosaure}/gameflex-ps3:${GAMEFLEX_VERSION}
         build: { context: ., dockerfile: src/microservices/runtimes/streamex/consoles/ps3/Dockerfile, args: *console-arguments }

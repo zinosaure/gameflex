@@ -191,6 +191,28 @@ GameFlex keeps a copy of their list, and fetches it again when their list change
 - **Remove a friend's server:** open it in **Settings › Federation › Joined servers** and choose
   **Remove this server**. What you copied from it stays in your library.
 
+## gameflex-federation: one address for all your devices
+
+gameflex-federation is a service of its own, in the same `docker-compose.yml`. It runs no game: it
+shares a library (games, BIOS files, emulators, patches, emulator settings) with every device and
+every GameFlex you link to it, from one address. It can also gather other shares (Samba, WebDAV,
+kDrive, FTP, SFTP) and show them as one list. A computer without a graphics card, such as a NAS,
+can run it alone: `./launch.sh federation`.
+
+1. Open `http://<GAMEFLEX_PUBLIC_HOST>:10206` and sign in with the
+   `GAMEFLEX_FEDERATION_ROOT_USERNAME` and `GAMEFLEX_FEDERATION_ROOT_PASSWORD` of your `.env`.
+2. **More › Resources** lists what it shares. Your library folder is there from the start. Add a
+   network share there, or another folder of this computer: one line in the volumes of
+   `gameflex-federation`, such as `- /media/games:/mnt/games:ro`.
+3. **More › Join the service** links a device or a server: a token, an invitation link with its QR
+   code, or a pairing code while discovery mode is on. In GameFlex, add it like a friend's server
+   ([Add a friend's server](#add-a-friends-server)).
+4. **Connections** lists the devices and servers linked, and **More › Logs** what the service did.
+
+When the same game, patch or file is on several of its resources, the list shows it once. The
+game's page in GameFlex then shows its **Sources**, the recommended one first, and you can choose
+another one before you download it.
+
 ## If something goes wrong
 
 | What you see | What to check |

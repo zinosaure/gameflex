@@ -43,6 +43,7 @@ any later version", and so on.
 |---|---|
 | `zinosaure/gameflex-edge` | Debian 12 base (91 packages), Go standard library, web interface (31 npm packages) |
 | `zinosaure/gameflex-kernel`, `-credential`, `-gateway-webrtc`, `-remoteplay` | Debian 12 base (93 packages), Go modules (13 to 26 per binary) |
+| `zinosaure/gameflex-federation` | Debian 12 base (93 packages), 20 Go modules, the web interface (from the npm packages of `gameflex-edge`) |
 | `zinosaure/gameflex-retrogaming` | Debian 12 base (293 packages, including FFmpeg and Mesa), 2 Go modules, `libretro.h` |
 | `zinosaure/gameflex-ps3`, `-ps4`, `-ps5`, `-switch`, `-switch-eden`, `-switch2`, `-wiiu`, `-xbox`, `-xbox360` | Debian 13 base (411 to 436 packages, Mesa from trixie-backports), 4 Go modules, FFmpeg 9.0.2 (shared libraries, LGPL, with its source), `pkgextract` (PS4 image only). **No emulator.** |
 | `gameflex.apk` | AndroidX, Kotlin, ZXing (Apache-2.0), 35 Go modules, the web interface, the glibc dynamic loader (LGPL), `xkbcomp` (MIT) |
@@ -67,7 +68,7 @@ not part of the published images.
 | Image | Debian packages | Added on top of the base system |
 |---|---|---|
 | `gameflex-edge` | 91 | `ca-certificates`, `tzdata` |
-| `gameflex-kernel`, `gameflex-credential`, `gameflex-gateway-webrtc`, `gameflex-remoteplay` | 93 | `ca-certificates`, `tzdata`, `wget` |
+| `gameflex-kernel`, `gameflex-credential`, `gameflex-gateway-webrtc`, `gameflex-remoteplay`, `gameflex-federation` | 93 | `ca-certificates`, `tzdata`, `wget` |
 | `gameflex-retrogaming` | 293 | `ca-certificates`, `tzdata`, `ffmpeg`, `libegl1`, `libgles2`, `libgbm1`, `libegl-mesa0`, `libgl1-mesa-dri` and their dependencies |
 
 Notable components (Debian source package and version):
@@ -79,8 +80,8 @@ Notable components (Debian source package and version):
 | OpenSSL | 3.0.22-1~deb12u1 | Apache-2.0 | all |
 | `ca-certificates` | 20250419~deb12u2 | MPL-2.0 (certificate data), GPL-2+ (scripts) | all |
 | `tzdata` | 2026e-0+deb12u1 | public domain | all |
-| GNU Wget | 1.21.3-1+deb12u1 | GPL-3+ | kernel, credential, gateway-webrtc, remoteplay |
-| GnuTLS | 3.7.9-2+deb12u7 | LGPL-2.1+ | kernel, credential, gateway-webrtc, remoteplay, retrogaming |
+| GNU Wget | 1.21.3-1+deb12u1 | GPL-3+ | kernel, credential, gateway-webrtc, remoteplay, federation |
+| GnuTLS | 3.7.9-2+deb12u7 | LGPL-2.1+ | kernel, credential, gateway-webrtc, remoteplay, federation, retrogaming |
 | FFmpeg (Debian build, configured with `--enable-gpl`) | 7:5.1.9-0+deb12u1 | GPL-2+ as built | retrogaming |
 | x264 / x265 / Xvid / Rubber Band / vid.stab (FFmpeg dependencies) | 2:0.164.3095+gitbaee400-3 / 3.5-2 / 2:1.3.7-1 / 3.1.2+dfsg0-1 / 1.1.0-2 | GPL-2+ | retrogaming |
 | Mesa | 22.3.6-1+deb12u2 | MIT | retrogaming |
@@ -105,6 +106,7 @@ the same version, see [below](#finding-the-licenses-and-sources-yourself).
 | `gameflex-gateway-webrtc` | `/app/gatewaywebrtc` | 23 |
 | `gameflex-remoteplay` | `/app/remoteplay` | 13 |
 | `gameflex-retrogaming` | `/app/retrogaming` | 2, plus `libretro.h` (see below) |
+| `gameflex-federation` | `/app/federation` | 20 (listed [on their own](#gameflex-federation)) |
 
 52 distinct modules in total: 22 MIT, 14 Apache-2.0, 12 BSD-3-Clause, 3 BSD-2-Clause, 1 ISC.
 
@@ -150,6 +152,37 @@ the same version, see [below](#finding-the-licenses-and-sources-yourself).
 [`libretro.h`](https://github.com/libretro/RetroArch/blob/master/libretro-common/include/libretro.h)
 (Copyright The RetroArch team, MIT) and links dynamically to Mesa's EGL/GBM and libglvnd from the
 Debian packages listed above.
+
+### `gameflex-federation`
+
+`/app/federation` links these 20 modules (its open source is in this repository, under
+`src/microservices/federation/`):
+
+| Module | Version | License |
+|---|---|---|
+| [github.com/dustin/go-humanize](https://github.com/dustin/go-humanize) | v1.0.1 | MIT |
+| [github.com/go-chi/chi/v5](https://github.com/go-chi/chi) | v5.3.1 | MIT |
+| [github.com/makiuchi-d/gozxing](https://github.com/makiuchi-d/gozxing) | v0.1.1 | MIT |
+| [github.com/geoffgarside/ber](https://github.com/geoffgarside/ber) | v1.1.0 | BSD-3-Clause |
+| [github.com/google/uuid](https://github.com/google/uuid) | v1.6.0 | BSD-3-Clause |
+| [github.com/kr/fs](https://github.com/kr/fs) | v0.1.0 | BSD-3-Clause |
+| [github.com/remyoudompheng/bigfft](https://github.com/remyoudompheng/bigfft) | v0.0.0-20230129092748-24d4a6f8daec | BSD-3-Clause |
+| [github.com/wlynxg/anet](https://github.com/wlynxg/anet) | v0.0.5 | BSD-3-Clause |
+| [golang.org/x/crypto](https://go.googlesource.com/crypto) | v0.54.0 | BSD-3-Clause |
+| [golang.org/x/net](https://go.googlesource.com/net) | v0.56.0 | BSD-3-Clause |
+| [golang.org/x/sys](https://go.googlesource.com/sys) | v0.47.0 | BSD-3-Clause |
+| [golang.org/x/text](https://go.googlesource.com/text) | v0.40.0 | BSD-3-Clause |
+| [golang.org/x/xerrors](https://go.googlesource.com/xerrors) | v0.0.0-20200804184101-5ec99f83aff1 | BSD-3-Clause |
+| [modernc.org/libc](https://gitlab.com/cznic/libc) | v1.74.4 | BSD-3-Clause; contains code derived from musl libc (MIT) and Go (BSD-3-Clause) |
+| [modernc.org/mathutil](https://gitlab.com/cznic/mathutil) | v1.7.1 | BSD-3-Clause |
+| [modernc.org/memory](https://gitlab.com/cznic/memory) | v1.11.0 | BSD-3-Clause |
+| [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) | v1.57.0 | BSD-3-Clause; contains SQLite (public domain) |
+| [github.com/hirochachacha/go-smb2](https://github.com/hirochachacha/go-smb2) | v1.1.0 | BSD-2-Clause |
+| [github.com/pkg/sftp](https://github.com/pkg/sftp) | v1.13.12 | BSD-2-Clause |
+| [github.com/jlaffaye/ftp](https://github.com/jlaffaye/ftp) | v0.2.4 | ISC |
+
+It embeds its own page, built from the sources of the web interface below (the same npm
+packages), in the binary.
 
 ### Web interface (`gameflex-edge`)
 

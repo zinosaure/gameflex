@@ -1,7 +1,7 @@
 # shadPS4 construit par GameFlex
 
 **Notre fourche** : [`zinosaure/shadPS4`](https://github.com/zinosaure/shadPS4), branche `gameflex` — le shadPS4
-de l'éditeur à un commit de `main` (`ce7643c`, du 2026-11-04), plus nos commits, un par correctif
+de l'éditeur à un commit de `main` (`7c0b846d`, du 2026-11-17 ; `ce7643c` du 2026-11-04 jusque-là), plus nos commits, un par correctif
 (`gameflex 00NN: …`). `tools/shadps4/build.sh` la clone à la révision épinglée dans le script (`FORK_REV`).
 Chaque entrée ci-dessous décrit un commit, par son numéro.
 
@@ -90,6 +90,13 @@ Unreal. Sa ligne de commande (`ue4commandline.txt`) n'a aucun effet sur PS4 ; il
 dans le dossier de shadPS4 et monté sur `<projet>/saved` (le plus long préfixe l'emporte). *FF7 Remake*, même
 scène à 30 images/s : GPU 69 → 37 % à 540p.
 
+**0014 — les tables de caractères de la libc** (`#770`, `libc_internal_str.cpp`). `_Getpctype`, `_Getptolower` et
+`_Getptoupper` n'étaient que des bouchons qui rendaient zéro. Depuis que l'amont émule `sceLibcMspaceCreate` (`#5425`,
+venu avec le passage à `main` du 2026-11-17), la bibliothèque réseau de *Final Fantasy VII Remake* et de *Kingdom
+Hearts III* ne renonce plus à son démarrage : elle lance son fil, classe un caractère par `_Getpctype` et lisait
+l'adresse 2 × c (`0xc4` pour « b »), et shadPS4 s'arrêtait avant l'écran-titre. Chaque fonction rend désormais l'entrée
+0 d'une table Dinkumware de 257 `short`, dont l'entrée -1 est EOF. Au banc, les deux jeux retrouvent leur écran-titre.
+
 ## Les fichiers
 
 | Fichier | Rôle |
@@ -117,6 +124,16 @@ scène à 30 images/s : GPU 69 → 37 % à 540p.
 6. **Sa source** : une ligne dans `tools/gpl-sources/manifest.tsv` (la fourche à sa révision, le commit de ce
    dépôt qui l'a construit). Le registre part dans le dépôt public `gameflex`, le code de shadPS4 dans la
    fourche : pas de `src/` dans les bibliothèques (chantier 34, `#640`).
+
+**Le passage à `main` du 2026-11-17** (`#770`, [rapport](../../docs/reports/2026-11-17-correctifs-amont/README.md)) :
+la branche rebasée sur `7c0b846d`, 50 commits de l'amont de plus (instructions de shaders, `CarvePhysArea`, le TSC de
+l'invité, fichiers et sauvegardes, son). Onze commits passent tels quels, et 0014 s'ajoute (sans lui, *FF7 Remake* et *KH3* s'arrêtent avant leur
+écran-titre) ; 0010 seul entre en conflit, avec la fonction
+`FindSubrectView` que l'amont ajoute juste avant (`#4953`) : les deux gardées, le défaut des 128 Mo est toujours chez
+eux. 0003 reste juste : le nouveau patch `RDTSC` (`#5715`) passe par `PrePatchInstructions`, que 0003 ne saute pas.
+0007 et 0011 inchangés (l'amont n'a corrigé ni l'un ni l'autre), 0012 reste (`#5580` toujours ouverte). La branche
+d'avant reste joignable par sa révision (`3caec584`) ; la nouvelle est d'abord poussée sous `gameflex-2026-11-17`,
+le temps des épreuves.
 
 **Le passage à la 0.20.0** (2026-10-26, `#487`) : 0001 rebasé — `shad_net_enabled` avait quitté
 `GeneralSettings` pour une section réseau ; le réglage et sa borne inchangés. Sur la dev, *Kingdom Hearts III*

@@ -109,6 +109,7 @@ func peerRomEntry(entry registeredServer, source, consoleID, consoleStatus strin
 		ServerID:  entry.ID,
 		Status:    &view,
 		Engine:    item.Engine,
+		Sources:   item.Sources,
 	}
 }
 

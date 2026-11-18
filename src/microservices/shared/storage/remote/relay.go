@@ -64,7 +64,8 @@ func Relay(w http.ResponseWriter, r *http.Request, peer Peer, consoleID string, 
 	if err != nil {
 		return notAnswering
 	}
-	response, err := client.StreamRom(r.Context(), consoleID, game.ID)
+	// La source choisie par la page, quand le serveur en propose plusieurs (chantier 61, listing.Item.Sources).
+	response, err := client.PreferSource(r.URL.Query().Get("source")).StreamRom(r.Context(), consoleID, game.ID)
 	if err != nil {
 		return Refusal(err)
 	}

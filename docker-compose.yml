@@ -84,6 +84,32 @@ services:
             # More disks with games: one line each, <folder on this machine>:/mnt/<name>.
             # - /media/games:/mnt/games
 
+    # gameflex-federation: shares your library with every device and every
+    # GameFlex from one address, and gathers other shares (Samba, WebDAV,
+    # kDrive, FTP, SFTP) into it. It runs games nowhere: a computer without a
+    # graphics card, a NAS for one, can run it on its own (./launch.sh federation).
+    # Its page: http://<GAMEFLEX_PUBLIC_HOST>:10206. The guide:
+    # docs/federation.md.
+    gameflex-federation:
+        image: zinosaure/gameflex-federation:${GAMEFLEX_VERSION:-latest}
+        container_name: ${GAMEFLEX_NAME:-gameflex}-federation
+        restart: unless-stopped
+        # The host network: the local network discovery (pairing code) needs it.
+        network_mode: host
+        environment:
+            - FEDERATION_PORT=10206
+            - FEDERATION_ADMIN_USERNAME=${GAMEFLEX_FEDERATION_ROOT_USERNAME:-root}
+            - FEDERATION_ADMIN_PASSWORD=${GAMEFLEX_FEDERATION_ROOT_PASSWORD:?set GAMEFLEX_FEDERATION_ROOT_PASSWORD in .env}
+            # Its name the first time; change it afterwards on its page.
+            - FEDERATION_NAME=${GAMEFLEX_SERVER_NAME:-GameFlex} Federation
+            - GAMEFLEX_VERSION=${GAMEFLEX_VERSION:-latest}
+        volumes:
+            # Its own settings: shares, accesses, logs.
+            - federation:/data
+            # What it shares, read only: one line each, <folder>:/mnt/<name>:ro.
+            - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}:/mnt/library:ro
+            # - /media/games:/mnt/games:ro
+
     # Accounts and sign-in.
     gameflex-credential:
         image: zinosaure/gameflex-credential:${GAMEFLEX_VERSION:-latest}
@@ -241,5 +267,7 @@ services:
               exec docker-entrypoint.sh /usr/bin/dumb-init node server/index.mjs
 
 volumes:
+    # The settings of gameflex-federation.
+    federation:
     # The VPN's keys and devices.
     wireguard:

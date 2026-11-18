@@ -75,12 +75,17 @@ const emitBuildInfo = {
 // développement ET le frontal de la release (cmd/edge, /app/api-domains.json) — jamais recopiée :
 // deux copies de la liste finiraient par diverger (règle des images de production,
 // CODE_CONVENTIONS.md).
+// LA SECONDE CIBLE, `--env target=federation` (`npm run build:federation`, chantier 61) : l'interface de gameflex-federation,
+// faite des briques, de la connexion et du cadre des Réglages d'edge (app/federation/), dans dist-federation/ — le service
+// l'embarque et la sert lui-même. Pas de service worker, ni de manifeste, ni de récepteur Chromecast : seulement les images.
+const FEDERATION = (env) => env.target === 'federation';
+
 export default (env = {}, argv = {}) => ({
     // `--mode production` de `npm run build` décide ; sinon l'environnement du conteneur.
     mode: argv.mode || process.env.NODE_ENV || 'development',
-    entry: './app/index.js',
+    entry: FEDERATION(env) ? './app/federation/index.js' : './app/index.js',
     output: {
-        path: path.resolve(DIRNAME, 'dist'),
+        path: path.resolve(DIRNAME, FEDERATION(env) ? 'dist-federation' : 'dist'),
         filename: 'bundle.js',
         publicPath: '/',
         chunkFilename: '[name].[contenthash].bundle.js',
@@ -157,7 +162,7 @@ export default (env = {}, argv = {}) => ({
         // depuis public/ — une page qui s'embarque dans l'APK ne doit pas l'embarquer elle-même
         // (src/mobileapp/docker-entrypoint.sh).
         new CopyWebpackPlugin({
-            patterns: [
+            patterns: FEDERATION(env) ? [{ from: 'public/images', to: 'images' }] : [
                 { from: 'public/images', to: 'images' },
                 { from: 'public/service-worker.js', to: 'service-worker.js' },
                 { from: 'public/manifest.json', to: 'manifest.json' },

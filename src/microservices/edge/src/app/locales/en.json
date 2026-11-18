@@ -1448,7 +1448,20 @@
         "copySheetHere": "It is already here: its sheet is set on your game's page.",
         "copySheetConfirm": "The sheet of {{name}} is copied from {{source}}, without the game. The game, downloaded later, will find it.",
         "copySheetDo": "Copy the sheet",
-        "sheetCopied": "Sheet of {{name}} copied into your metadata."
+        "sheetCopied": "Sheet of {{name}} copied into your metadata.",
+        "sourcesTitle": "Sources",
+        "sourcesHelp": "This game is on several sources of this server. The first one is the most available, the best suited and the fastest.",
+        "sourceBest": "recommended",
+        "sourcePinned": "pinned",
+        "sourceUnavailable": "unreachable at the last attempt",
+        "sourceKinds": {
+            "disk": "Disk",
+            "smb": "Samba",
+            "webdav": "WebDAV",
+            "kdrive": "kDrive",
+            "ftp": "FTP",
+            "sftp": "SFTP"
+        }
     },
     "layout": {
         "editorTitle": "Button positions",
@@ -2298,6 +2311,221 @@
             "invitationRefused": "Code refused: it was already used, has expired or does not exist. Create another one.",
             "notPairingCode": "A pairing code has 6 digits.",
             "invalidLink": "This address leads to no server. Check it, then try again."
+        }
+    },
+    "fedService": {
+        "brand": "GameFlex Federation",
+        "loading": "Loading…",
+        "failed": "The operation failed.",
+        "save": "Save",
+        "logout": "Sign out",
+        "login": {
+            "help": "Sign in with this service's administration account."
+        },
+        "connections": {
+            "title": "Connections",
+            "help": "The disks and shares whose games are offered to linked devices.",
+            "none": "No connection yet. Mount a disk, or add a share in “More” › “Resources”.",
+            "scanning": "Reading…",
+            "failed": "Unreachable: {{error}}",
+            "never": "Not read yet.",
+            "add": "Add",
+            "added": "Connection added, reading it now.",
+            "saved": "Connection saved, reading it again.",
+            "edit": "Edit",
+            "gamesFound": "Games found",
+            "lastScan": "Last read",
+            "error": "Error",
+            "rescan": "Read again",
+            "rescanHelp": "Reads the share again to find added or removed games.",
+            "remove": "Remove the connection",
+            "removeHelp": "Its games are no longer offered to devices.",
+            "removeQuestion": "Remove “{{name}}”? Its games will no longer be offered.",
+            "removed": "Connection removed.",
+            "games_one": "{{count}} game · last read on {{when}}",
+            "games_other": "{{count}} games · last read on {{when}}",
+            "order": "Source order",
+            "orderHelp": "When an item is in several sources, the most available, the best suited and the fastest serves first.",
+            "speed": "Measured speed",
+            "speedValue": "{{speed}}/s",
+            "speedNone": "Not measured yet: nothing has been served.",
+            "pin": "Pin first",
+            "pinHelp": "This source serves first, whatever the item."
+        },
+        "link": {
+            "title": "Connection",
+            "help": "Link a GameFlex device to this service.",
+            "token": "Token",
+            "tokenHelp": "A token to paste in the device, with the service address.",
+            "invitation": "Invitation link and QR code",
+            "invitationHelp": "A single-use link, or its QR code, to open in the device.",
+            "pairing": "Pairing code",
+            "pairingHelp": "Six digits to type in the device, in discovery mode.",
+            "device": "Device name",
+            "deviceHelp": "It helps you recognize this link later.",
+            "address": "Service address",
+            "addressHelp": "Paste it with the token in the device."
+        },
+        "token": {
+            "intro": "In the device, add a server and paste the address and the token.",
+            "create": "Create the token",
+            "issued": "Token for “{{name}}”",
+            "once": "Copy it now: it will not be shown again.",
+            "list": "Issued tokens",
+            "none": "No token.",
+            "used": "Used on {{when}}",
+            "unused": "Never used",
+            "created": "Created on {{when}}",
+            "revoke": "Revoke “{{name}}”",
+            "revokeHelp": "The device no longer sees this service's games.",
+            "revokeQuestion": "Revoke the token of “{{name}}”? This device will no longer see this service's games.",
+            "revoked": "Token revoked."
+        },
+        "invitation": {
+            "intro": "Send the link or the QR code: the device pastes or scans it to link itself.",
+            "create": "Create the invitation",
+            "created": "Invitation for “{{name}}”",
+            "until": "Valid until {{when}}, once.",
+            "link": "Invitation link",
+            "qrAlt": "Invitation QR code",
+            "list": "Pending invitations",
+            "none": "No pending invitation.",
+            "revoke": "Cancel “{{name}}”",
+            "revokeQuestion": "Cancel the invitation of “{{name}}”?",
+            "revoked": "Invitation cancelled.",
+            "openedHere": "Paste this link in GameFlex, under “Join a server”, on the device to link."
+        },
+        "pairing": {
+            "intro": "Open the discovery mode, then create a code and type it in the device.",
+            "discovery": "Discovery mode",
+            "discoveryHelp": "For five minutes, devices can link themselves with a code.",
+            "openUntil": "Open until {{when}}.",
+            "notAnnounced": "This service is not visible on the local network: type its address in the device.",
+            "code": "New code",
+            "create": "Create the code",
+            "yourCode": "Code to type",
+            "codeUntil": "Valid until {{when}}, once.",
+            "closedFirst": "Open the discovery mode first."
+        },
+        "more": {
+            "title": "More",
+            "help": "Add a share whose games will be offered to devices."
+        },
+        "server": {
+            "title": "This service",
+            "name": "Service name",
+            "nameHelp": "The name devices display.",
+            "saved": "Name saved."
+        },
+        "fields": {
+            "kind": "Type",
+            "name": "Name",
+            "nameHelp": "The name shown for this connection.",
+            "folder": "Folder",
+            "folderHelp": "The folder that holds “roms”, empty for the root of the share.",
+            "username": "Username",
+            "password": "Password",
+            "passwordKeep": "Leave empty to keep the saved password."
+        },
+        "kinds": {
+            "smb": {
+                "label": "Samba",
+                "add": "Add a Samba share",
+                "help": "A shared folder on the local network (Windows, NAS).",
+                "intro": "The share must hold a “roms” folder, sorted by console.",
+                "address": "Address",
+                "addressHelp": "smb://server/share",
+                "usernameHelp": "Empty for a guest connection.",
+                "passwordHelp": "This account's password."
+            },
+            "webdav": {
+                "label": "WebDAV",
+                "add": "Add a WebDAV share",
+                "help": "An online folder reachable over WebDAV (Nextcloud, NAS).",
+                "intro": "The folder must hold a “roms” folder, sorted by console.",
+                "address": "WebDAV address",
+                "addressHelp": "The full WebDAV address, for example https://cloud.example.com/remote.php/dav/files/name/.",
+                "usernameHelp": "The online service account.",
+                "passwordHelp": "The password, or an app password."
+            },
+            "kdrive": {
+                "label": "kDrive",
+                "add": "Add a kDrive",
+                "help": "An Infomaniak kDrive, through its API.",
+                "intro": "The folder must hold a “roms” folder, sorted by console.",
+                "address": "kDrive number",
+                "addressHelp": "The number after /app/drive/ in your kDrive address.",
+                "usernameHelp": "",
+                "passwordHelp": "A kDrive API token.",
+                "token": "API token"
+            },
+            "ftp": {
+                "label": "FTP",
+                "add": "Add an FTP server",
+                "help": "An FTP file server.",
+                "intro": "The folder must hold a “roms” folder, sorted by console.",
+                "address": "Address",
+                "addressHelp": "ftp://server or ftp://server:port",
+                "usernameHelp": "Empty for an anonymous connection.",
+                "passwordHelp": "This account's password."
+            },
+            "sftp": {
+                "label": "SFTP",
+                "add": "Add an SFTP server",
+                "help": "A file server over SSH.",
+                "intro": "The folder must hold a “roms” folder, sorted by console. The server key is remembered on the first connection.",
+                "address": "Address",
+                "addressHelp": "sftp://server or sftp://server:port",
+                "usernameHelp": "The SSH account, required.",
+                "passwordHelp": "This account's password."
+            },
+            "disk": {
+                "label": "Disk"
+            }
+        },
+        "logs": {
+            "title": "Logs",
+            "help": "What the service writes, and its logs to read.",
+            "writing": "What gets written",
+            "writingHelp": "Today's log, in the service's data folder.",
+            "enabled": "Write the log",
+            "enabledHelp": "Off, nothing is written to disk anymore.",
+            "http": "HTTP requests",
+            "httpHelp": "Every request received, secrets hidden.",
+            "levels": {
+                "debug": "Debug",
+                "info": "Information",
+                "warn": "Warnings",
+                "error": "Errors"
+            },
+            "files": "Logs",
+            "none": "No log.",
+            "size": "{{size}} · modified on {{when}}",
+            "filter": "Level",
+            "allLevels": "All levels",
+            "lines": "Last lines",
+            "linesHelp": "Newest first, secrets hidden.",
+            "empty": "No line at this level.",
+            "download": "Download",
+            "downloadHelp": "The whole log, secrets hidden.",
+            "remove": "Delete this log",
+            "removeQuestion": "Delete the log “{{path}}”?",
+            "removed": "Log deleted."
+        },
+        "join": {
+            "title": "Join the service",
+            "help": "Link a computer, a phone or a TV to this service."
+        },
+        "resources": {
+            "title": "Resources",
+            "help": "This machine's disks and the shares that bring games.",
+            "internal": "Internal resources",
+            "internalHelp": "The disks mounted in the container, under /mnt. They bring games, sheets, patches, parameters, cores and BIOS.",
+            "noDisk": "No disk mounted under /mnt.",
+            "diskEmpty": "No roms, bios, cores, patches, params or metadata.",
+            "diskHelp": "A disk is declared in the compose: it is mounted, not added here.",
+            "mount": "Mount",
+            "rescanDiskHelp": "Reads everything the disk holds again."
         }
     }
 }

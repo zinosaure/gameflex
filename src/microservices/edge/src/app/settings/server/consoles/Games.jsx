@@ -10,7 +10,7 @@ import { toast } from "../../../shell/Shell.jsx";
 import { GameCover } from "../../../screens/library/HeroArt.jsx";
 import { GameAppearance, GameForget, GameImage, GameImageSearch, GameInfoForm, GameMatch, GameReset, IMAGE_KINDS } from "./GameMetadata.jsx";
 import SettingsPage, { NotFound, useQueryState, useSettingsNavigation } from "../../SettingsPage.jsx";
-import NavRow, { DangerRow, DangerSection, DownloadRow, EmptyRow, InfoRow, Listing, Note, PlaceholderRow, RangeRow, Rows, Section, SwitchRow, useConfirm } from "../../../ui/Bricks.jsx";
+import NavRow, { DangerRow, DangerSection, DownloadRow, EmptyRow, InfoRow, Listing, Note, PlaceholderRow, RadioRow, RangeRow, Rows, Section, SwitchRow, useConfirm } from "../../../ui/Bricks.jsx";
 
 // LES JEUX D'UNE CONSOLE (Réglages › Consoles › une console › « Jeux de la console ») — chantier 53, P8 (#677), sur les
 // modèles 21 à 29 validés par le porteur le 2026-11-13 (docs/reports/2026-11-13-launcher-modeles/) :
@@ -427,6 +427,9 @@ function LocalGame({ consoleId, slug, source, game }) {
 // `gameId` (copyFederatedSheet) — le jeu téléchargé plus tard la retrouve ; d'ici là, elle est une des « Métadonnées
 // sans jeu » de la console. Grisée pour un jeu déjà ici (sa fiche se règle sur sa page) ou quand le serveur ne la prête
 // pas.
+// L'icône du genre d'une source (chantier 61), celles de gameflex-federation.
+const SOURCE_ICONS = { disk: "bi-device-hdd", smb: "bi-hdd-network", webdav: "bi-cloud", kdrive: "bi-cloud-fill", ftp: "bi-folder-symlink", sftp: "bi-shield-lock" };
+
 function PeerGame({ consoleId, source, from, game, reload }) {
     const { t } = useTranslation();
     const { refreshCounts } = useData();
@@ -439,6 +442,11 @@ function PeerGame({ consoleId, source, from, game, reload }) {
     const running = useDownloads().find((entry) => entry.key === key) || null;
     const wasRunning = useRef(Boolean(running));
     const size = formatSize(game.sizeBytes);
+    // LES SOURCES D'UN JEU (chantier 61) : un serveur gameflex-federation rassemble plusieurs partages, et un jeu peut
+    // être dans plusieurs — ses sources arrivent de la meilleure à la moins bonne (disponibilité, adéquation, débit).
+    // La première est choisie ; la page en prend une autre, que le téléchargement demande (`source`).
+    const sources = game.sources || [];
+    const [chosen, setChosen] = useState(sources[0]?.id || "");
     const [copying, setCopying] = useState(false);
 
     useEffect(() => {
@@ -453,7 +461,8 @@ function PeerGame({ consoleId, source, from, game, reload }) {
     const start = async () => {
         const answer = await runDownload({ key, label: game.title, source: `server:${source.id}`, onQueued: (position) => toast(queuedNotice(game.title, position, t)), command: {
             route: "server", server: source.id, section: "roms",
-            body: { consoleId, reference: peerReference(game.reference), title: game.title, files: game.files || [], folder: Boolean(game.folder) },
+            body: { consoleId, reference: peerReference(game.reference), title: game.title, files: game.files || [], folder: Boolean(game.folder),
+                ...(sources.length > 1 && chosen ? { source: chosen } : {}) },
             ...(game.sizeBytes ? { total: game.sizeBytes } : {}),
         } });
         toast(downloadOutcome(answer, game.title, t));
@@ -497,6 +506,20 @@ function PeerGame({ consoleId, source, from, game, reload }) {
                     <InfoRow icon="bi-upc" label={t("gameAdmin.fields.gameId")} value={metadata?.gameId} />
                 </Rows>
             </Section>
+            {sources.length > 1 && (
+                <Section title={t("gameAdmin.sourcesTitle")} help={t("gameAdmin.sourcesHelp")}>
+                    <Rows>
+                        <RadioRow id="gm-source" value={chosen} onChange={setChosen} options={sources.map((option, index) => ({
+                            value: option.id,
+                            icon: SOURCE_ICONS[option.kind] || "bi-hdd-network",
+                            label: option.name,
+                            help: [t(`gameAdmin.sourceKinds.${option.kind}`, { defaultValue: option.kind }), option.sizeBytes ? formatSize(option.sizeBytes) : "",
+                                index === 0 ? t("gameAdmin.sourceBest") : "", option.pinned ? t("gameAdmin.sourcePinned") : "",
+                                option.unavailable ? t("gameAdmin.sourceUnavailable") : ""].filter(Boolean).join(" · "),
+                        }))} />
+                    </Rows>
+                </Section>
+            )}
             <Section title={t("more")}>
                 <Rows>
                     {running ? <DownloadRow entry={running} id="gm-download" label={t("gameAdmin.download")} />

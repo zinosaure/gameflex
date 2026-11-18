@@ -57,6 +57,11 @@ GameFlex on the phone, which plays its own games and streams them to the screens
 - **Emulators, BIOS files and settings.** A friend's server is also where you find the emulator
   versions, firmware, patches and emulator settings they use.
 - **Your PlayStation, too.** Let a friend play your PS4 or PS5 through your server.
+- **One address for all your devices.** gameflex-federation shares a library without running any
+  game, so a NAS or a small computer can host it. It gathers your disks and network shares (Samba,
+  WebDAV, kDrive, FTP, SFTP) into one list, and every phone, computer and GameFlex you link to it
+  sees the same games, emulators, BIOS files, patches and settings
+  ([gameflex-federation](docs/federation.md#gameflex-federation-one-address-for-all-your-devices)).
 
 ### Never lose your progress
 
@@ -190,7 +195,8 @@ check, troubleshoot and report an issue on your behalf, and what to ask you firs
    router, and keeping it safe.
 7. [Remote Play](docs/remote-play.md): your own PS4 or PS5.
 8. [Share with friends: federation](docs/federation.md): give a friend access to your server, add
-   theirs, copy their games or play them on their server, step by step with screenshots.
+   theirs, copy their games or play them on their server, step by step with screenshots; and
+   gameflex-federation, one address that shares your library with all your devices.
 9. [Emulator settings](docs/emulator-settings.md): tune the recent consoles' emulators, keep and
    share presets.
 10. [Storage](docs/storage.md): more disks, network shares, saves, cache and logs.
@@ -218,7 +224,8 @@ Most of GameFlex is open source, in this repository, under the [MIT License](LIC
 
 - **the services:** the kernel that runs the sessions (`src/microservices/kernel/`), the accounts
   service (`kernel/extras/credential/`), the retro engine (`runtimes/retrogaming/`), the front
-  server and the web interface (`edge/`) and the modules they share (`shared/`);
+  server and the web interface (`edge/`), gameflex-federation (`federation/`) and the modules they
+  share (`shared/`);
 - **the console recipes:** each recent console's Dockerfile, entry point and settings
   (`runtimes/streamex/consoles/`, `profiles/`);
 - **our emulator builds:** the patches and build scripts for shadPS4, KytyPS5, Eden and Box64

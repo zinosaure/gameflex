@@ -91,7 +91,7 @@ behalf.
 | Update | `./launch.sh update` |
 | Stop (data stays) | `./launch.sh stop` |
 | What runs | `./launch.sh status` |
-| Read a log | `docker compose logs --tail 200 gameflex-kernel` (services: `gameflex-edge`, `gameflex-kernel`, `gameflex-credential`, `gameflex-gateway`, `gameflex-remoteplay`, `gameflex-wireguard`) |
+| Read a log | `docker compose logs --tail 200 gameflex-kernel` (services: `gameflex-edge`, `gameflex-kernel`, `gameflex-credential`, `gameflex-gateway`, `gameflex-remoteplay`, `gameflex-federation`, `gameflex-wireguard`) |
 | Change a setting | edit `.env`, then `docker compose up -d` |
 
 `./launch.sh logs` follows the log forever: prefer `docker compose logs --tail` in a script.

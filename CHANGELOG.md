@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-18
+
+### Added
+
+- **gameflex-federation**, a new service in `docker-compose.yml` (port 10206): one address that shares a library with
+  every device and every GameFlex linked to it — games, emulators, BIOS files, patches and emulator settings. It runs no
+  game, so a NAS or a small computer can host it, on its own with `./launch.sh federation`. It shares your library
+  folder, other folders you add to its volumes, and network shares (Samba, WebDAV, kDrive, FTP, SFTP); its page lists
+  them under **More › Resources**. Devices join it with a token, an invitation link and its QR code, or a pairing code
+  in discovery mode; **Connections** lists them, and **More › Logs** shows what it did. Its code is open source, under
+  `src/microservices/federation/`.
+- **A game found in several places shows its sources**: on a federated game's page, **Sources** lists where it is, the
+  recommended one first (an internal disk before a network share; Samba or WebDAV for a big game, FTP or SFTP for a
+  small file; then the fastest), and you can choose another one before you copy it.
+
+### Changed
+
+- **Two new settings in `.env`**: `GAMEFLEX_FEDERATION_ROOT_PASSWORD` (required) and `GAMEFLEX_FEDERATION_ROOT_USERNAME`
+  (default `root`), the account of gameflex-federation's page. `./launch.sh setup` asks for them, and `./launch.sh` or
+  `./launch.sh update` makes up the password, and shows it once, for a `.env` that has none.
+- `./launch.sh update` keeps the disks you added to gameflex-federation, as it keeps those of the kernel.
+- **The Android app downloads its emulator packages from their own repository**,
+  [gameflex-streamex](https://github.com/zinosaure/gameflex-streamex/releases/tag/phone-emulators), the same packages
+  as before.
+
 ## [0.12.0] - 2026-11-17
 
 ### Added

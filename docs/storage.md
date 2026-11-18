@@ -119,7 +119,8 @@ A report stays on your server: to send it to us, attach it to an issue (see
 [Troubleshooting](troubleshooting.md)).
 
 The other services (`gameflex-edge`, `gameflex-credential`, `gameflex-gateway`,
-`gameflex-remoteplay`) log to Docker: `./launch.sh logs <service>`.
+`gameflex-remoteplay`) log to Docker: `./launch.sh logs <service>`. gameflex-federation shows its
+own on its page, under **More › Logs**.
 
 ## Back up
 
