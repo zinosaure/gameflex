@@ -168,7 +168,7 @@ services:
     # Recent consoles: one image each, downloaded only when you ask for it,
     # for example `docker compose --profile ps3 pull`. These never run on their
     # own: GameFlex starts them for each game. They hold no emulator: download
-    # it from Settings › Emulators, into cores/<console>/.
+    # it from Settings › Consoles › <console>, into cores/<console>/.
     gameflex-ps3:
         image: zinosaure/gameflex-ps3:${GAMEFLEX_VERSION:-latest}
         profiles: [ "ps3" ]

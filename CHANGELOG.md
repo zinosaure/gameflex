@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-11-18
+
+### Fixed
+
+- **The documentation follows the interface again**: the recent consoles' emulators are installed from **Settings ›
+  Consoles**, on each console's page (there is no **Settings › Emulators** anymore); `GAMEFLEX_SECRET` encrypts the
+  metadata providers' keys, no longer network shares; gameflex-federation's games show only in the catalog.
+
 ## [0.14.1] - 2026-11-18
 
 ### Fixed
@@ -36,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   code, tokens, pairing codes in discovery mode, each access with when it was last used, and revoking it), with its
   disks and shares under **Internal resources**. A pairing code can be cancelled, and its window says who used it.
   **Also share my metadata providers** lends its IGDB and SteamGridDB accounts to an access, as in GameFlex.
-- **The recent consoles' emulators come in streamex packages**: **Settings › Emulators** installs the console's
+- **The recent consoles' emulators come in streamex packages**: **Settings › Consoles** installs the console's
   package from the [gameflex-streamex](https://github.com/zinosaure/gameflex-streamex) releases (the version tested
   with GameFlex, and for shadPS4 and KytyPS5 our build of it), after checking its fingerprint, instead of downloading
   from each emulator's publisher. A publisher who removes a version or moves no longer breaks the download.
@@ -50,9 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **The games of gameflex-federation only appear in the catalogue**: the service only lends its games and their files
+- **The games of gameflex-federation only appear in the catalog**: the service only lends its games and their files
   to download, so its games no longer show as playable in the console menus or the home screen, and its patches,
-  settings, BIOS, emulators and sheets stay under **Catalogue**.
+  settings, BIOS, emulators and sheets stay in the catalog (**Settings › Games**).
 
 ### Removed
 

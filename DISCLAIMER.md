@@ -53,7 +53,7 @@ GameFlex provides an engine, **streamex**, that runs a console's emulator and st
 consoles come as **streamex packages**, published in the
 [gameflex-streamex](https://github.com/zinosaure/gameflex-streamex) repository: streamex's files
 for a console, with that console's emulator inside, already built, in a version tested with
-GameFlex. Your server installs them from **Settings › Emulators**. Retro consoles' libretro cores
+GameFlex. Your server installs them from **Settings › Consoles**, on each console's page. Retro consoles' libretro cores
 come from the libretro buildbot. You can also bring an emulator yourself, from a federated server
 or a mirror.
 

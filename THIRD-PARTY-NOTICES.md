@@ -11,7 +11,7 @@ notices are in [THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt).
 contain no emulator either: they unpack, when a game is launched, the emulator file in
 `cores/<console>/`. That file comes from a **streamex package** of the
 [gameflex-streamex](https://github.com/zinosaure/gameflex-streamex) releases, which GameFlex installs
-from Settings › Emulators, or from the user ([5. Streamex packages](#5-streamex-packages)). Cores,
+from Settings › Consoles (each console's page), or from the user ([5. Streamex packages](#5-streamex-packages)). Cores,
 BIOS files and games are always supplied by the user.
 
 **The optional WireGuard VPN is not a GameFlex artifact either.** `docker-compose.yml` names the

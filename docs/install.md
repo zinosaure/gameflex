@@ -147,7 +147,7 @@ All settings live in `.env`.
 | `GAMEFLEX_PUBLIC_HOST` | yes | | The address of this computer on your home network. Players and the services reach GameFlex through it. |
 | `GAMEFLEX_ROOT_PASSWORD` | yes | | The administrator's password. GameFlex does not start without it (`launch.sh` can make one up). It only creates the administrator account, at the first start: change the password afterwards in GameFlex (**Settings › Profile**). Lost it? `./launch.sh reset-password` sets it back to this one. |
 | `GAMEFLEX_FEDERATION_ROOT_PASSWORD` | yes | | The password of gameflex-federation's account, on its page (port `10206`). It is read at every start: change it here, then run `./launch.sh federation` (or `docker compose up -d`). `launch.sh` can make one up, and gives one to a `.env` that has none. |
-| `GAMEFLEX_SECRET` | yes | | The secret the services share to sign sessions; it also encrypts the passwords of network shares. Changing it signs everyone out, and those passwords must be entered again. |
+| `GAMEFLEX_SECRET` | yes | | The secret the services share to sign sessions; it also encrypts the metadata providers' keys (IGDB, SteamGridDB). Changing it signs everyone out, and those keys must be entered again. |
 | `GAMEFLEX_VERSION` | no | `latest` | The version of the images, such as `0.3.0`. |
 | `GAMEFLEX_PORT` | no | `10200` | The port of the web page, also announced on the local network while discovery mode is on. |
 | `GAMEFLEX_SERVER_NAME` | no | its address | The name of this server, that federated servers and the local network discovery show. |
@@ -366,7 +366,7 @@ services:
     # Recent consoles: one image each, downloaded only when you ask for it,
     # for example `docker compose --profile ps3 pull`. These never run on their
     # own: GameFlex starts them for each game. They hold no emulator: download
-    # it from Settings › Emulators, into cores/<console>/.
+    # it from Settings › Consoles › <console>, into cores/<console>/.
     gameflex-ps3:
         image: zinosaure/gameflex-ps3:${GAMEFLEX_VERSION:-latest}
         profiles: [ "ps3" ]

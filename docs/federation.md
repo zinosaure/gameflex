@@ -219,6 +219,9 @@ can run it alone: `./launch.sh federation`.
    on an access or when you create it, lets that device or server search sheets and images with
    the service's IGDB and SteamGridDB accounts (step 5), without seeing the keys. In GameFlex, add it
    like a friend's server ([Add a friend's server](#add-a-friends-server)). It joins no server itself.
+   Since it runs no game, its games show only in the catalog (**Settings › Games**), to copy into a
+   library, never as playable in the console menus; its BIOS files, emulators, patches and settings
+   are offered on each console's page.
 4. **Internal resources** lists its disks and shares, and **More › Logs** shows what the service
    did.
 5. **More › Metadata providers** takes your IGDB and SteamGridDB accounts. A game on a disk that

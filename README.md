@@ -148,7 +148,8 @@ the same skeleton.
 ## Good to know before you start
 
 - **GameFlex ships no game, no BIOS and no firmware.** It plays the files you put in your library. The recent
-  consoles' emulators come inside streamex packages, which GameFlex installs from **Settings › Emulators**.
+  consoles' emulators come inside streamex packages, which GameFlex installs from **Settings › Consoles**,
+  on each console's page (**Emulators**, then **Get it**).
 - **All you need to install is Docker,** with Compose, on an x86-64 computer. A recent graphics card
   is recommended for the recent consoles. [Install GameFlex](docs/install.md) lists what you need.
 - **It is made for your home network.** To play away from home, turn on its WireGuard VPN, or put
@@ -303,8 +304,8 @@ and what you download from them is your responsibility.
   cores it needs from there for you, from **Settings › Consoles**.
 - **BIOS and firmware:** [RetroBIOS](https://abdess.github.io/retrobios/). Use the files from its
   RetroArch pack, under the names listed in [Consoles](docs/consoles.md).
-- **Emulators for the recent consoles:** GameFlex installs them for you too, in **Settings ›
-  Emulators**: the version tested with GameFlex, from the
+- **Emulators for the recent consoles:** GameFlex installs them for you too, from **Settings ›
+  Consoles**, on each console's page: the version tested with GameFlex, from the
   [gameflex-streamex](https://github.com/zinosaure/gameflex-streamex/releases) packages. Each
   emulator's website is linked from [Consoles](docs/consoles.md).
 - **All of the above, laid out like a GameFlex library:** the mirror below.
