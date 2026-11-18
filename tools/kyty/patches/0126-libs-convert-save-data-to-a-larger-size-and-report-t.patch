@@ -1,0 +1,94 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Senaxx <michelbeld@gmail.com>
+Date: Mon, 16 Nov 2026 21:13:55 +0100
+Subject: [PATCH] libs: convert save data to a larger size and report the end
+ in an event
+
+(cherry picked from commit 39ae1c27b88869d78adbba5a9ff37a98f001fe31)
+---
+ src/libs/libSaveData.cpp      | 24 ++++++++++++++++++++++--
+ tests/SaveDataMemoryTests.cpp | 22 ++++++++++++++++++++++
+ 2 files changed, 44 insertions(+), 2 deletions(-)
+
+diff --git a/src/libs/libSaveData.cpp b/src/libs/libSaveData.cpp
+index 02809b32..f3021db6 100644
+--- a/src/libs/libSaveData.cpp
++++ b/src/libs/libSaveData.cpp
+@@ -266,6 +266,7 @@ static constexpr uint32_t SAVE_DATA_EVENT_TYPE_UMOUNT_BACKUP_END = 1u;
+ static constexpr uint32_t SAVE_DATA_EVENT_TYPE_BACKUP_END        = 2u;
+ static constexpr uint32_t SAVE_DATA_EVENT_TYPE_MEMORY_SYNC_END   = 3u;
+ static constexpr uint32_t SAVE_DATA_EVENT_TYPE_COMMIT_BACKUP_END = 4u;
++static constexpr uint32_t SAVE_DATA_EVENT_TYPE_CONVERT_END       = 5u;
+ 
+ static constexpr size_t   SAVE_DATA_MEMORY_MAX_SIZE      = 32 * 1024 * 1024;
+ static constexpr uint32_t SAVE_DATA_MEMORY_SET_PARAM     = 1u;
+@@ -1246,15 +1247,34 @@ int KYTY_SYSV_ABI SaveDataConvert(const SaveDataConvert* convert) {
+ 		return SAVE_DATA_ERROR_EXISTS;
+ 	}
+ 	uint64_t blocks = 0;
+-	if (read_save_blocks(source, &blocks) == OK) {
++	int      status = read_save_blocks(source, &blocks);
++	if (status == OK) {
+ 		if (convert->dst_blocks == blocks) {
+ 			return SAVE_DATA_ERROR_NO_NEED_CONVERT;
+ 		}
+ 		if (convert->dst_blocks < blocks) {
+ 			return SAVE_DATA_ERROR_BLOCKS_FEWER_THAN_SRC;
+ 		}
++		status = write_save_file(source / "sce_sys" / "blocks.bin", &convert->dst_blocks,
++		                         sizeof(convert->dst_blocks));
++	}
++	const auto* dir_name = convert->src_dir_name;
++	if (status == OK && convert->dst_dir_name != nullptr) {
++		std::error_code error;
++		std::filesystem::rename(
++		    source, save_directory(get_title_id(), convert->dst_dir_name->data, convert->user_id),
++		    error);
++		if (error) {
++			status = SAVE_DATA_ERROR_INTERNAL;
++		} else {
++			dir_name = convert->dst_dir_name;
++		}
+ 	}
+-	EXIT("save data conversion of %s is not implemented\n", convert->src_dir_name->data);
++	SceSaveDataTitleId title {};
++	std::snprintf(title.data, sizeof(title.data), "%s", get_title_id().c_str());
++	queue_save_data_event(SAVE_DATA_EVENT_TYPE_CONVERT_END, convert->user_id, &title, dir_name,
++	                      status);
++	return OK;
+ }
+ 
+ int KYTY_SYSV_ABI SaveDataBackup(const SaveDataBackup* backup) {
+diff --git a/tests/SaveDataMemoryTests.cpp b/tests/SaveDataMemoryTests.cpp
+index 87efb67e..5f215a62 100644
+--- a/tests/SaveDataMemoryTests.cpp
++++ b/tests/SaveDataMemoryTests.cpp
+@@ -446,6 +446,28 @@ void TestConvert() {
+ 		convert.dst_blocks = blocks;
+ 		CHECK(SaveDataConvert(&convert) == SAVE_DATA_ERROR_PARAMETER);
+ 	}
++	// A larger size converts before the call returns, and its event reports the result.
++	SaveDataEvent event {};
++	convert.dst_dir_name = nullptr;
++	convert.dst_blocks   = 128;
++	CHECK(SaveDataConvert(&convert) == OK);
++	CHECK(SaveDataGetEventResult(nullptr, &event) == OK);
++	CHECK(event.type == 5 && event.error_code == OK && event.user_id == 1 &&
++	      std::string(event.title_id.data) == "CONVERT" &&
++	      std::string(event.dir_name.data) == "save");
++	CHECK(SaveDataConvert(&convert) == SAVE_DATA_ERROR_NO_NEED_CONVERT);
++	// A new name renames the converted save, and the event names it.
++	const auto renamed   = DirName("renamed");
++	convert.dst_dir_name = &renamed;
++	convert.dst_blocks   = 256;
++	CHECK(SaveDataConvert(&convert) == OK);
++	CHECK(SaveDataGetEventResult(nullptr, &event) == OK);
++	CHECK(event.type == 5 && event.error_code == OK &&
++	      std::string(event.dir_name.data) == "renamed");
++	CHECK(SaveDataConvert(&convert) == SAVE_DATA_ERROR_NOT_FOUND);
++	convert.src_dir_name = &renamed;
++	convert.dst_dir_name = nullptr;
++	CHECK(SaveDataConvert(&convert) == SAVE_DATA_ERROR_NO_NEED_CONVERT);
+ }
+ 
+ void TestGuestSaveIsolation() {

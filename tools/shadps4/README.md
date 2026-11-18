@@ -1,15 +1,17 @@
 # shadPS4 construit par GameFlex
 
-**Notre fourche** : [`zinosaure/shadPS4`](https://github.com/zinosaure/shadPS4), branche `gameflex` — le shadPS4
-de l'éditeur à un commit de `main` (`7c0b846d`, du 2026-11-17 ; `ce7643c` du 2026-11-04 jusque-là), plus nos commits, un par correctif
-(`gameflex 00NN: …`). `tools/shadps4/build.sh` la clone à la révision épinglée dans le script (`FORK_REV`).
-Chaque entrée ci-dessous décrit un commit, par son numéro.
+**Le dépôt officiel plus nos patchs** : [`shadps4-emu/shadPS4`](https://github.com/shadps4-emu/shadPS4) à un
+commit de `main` (`BASE` dans `build.sh` : `7c0b846d`, du 2026-11-17), plus les patchs de `patches/`, un par
+correctif (`00NN-gameflex-00NN-….patch`). `tools/shadps4/build.sh` clone le dépôt officiel à ce commit et applique
+la série. Chaque entrée ci-dessous décrit un patch, par son numéro.
 
-**Plus de fichiers de patch depuis le 2026-11-11**, comme pour Kyty (`tools/kyty/README.md` ; le porteur : « il
-faut du vrai changement de code »). Les treize anciens patchs de ce dossier sont devenus ces commits, au même
-numéro, sur le même commit de l'amont : l'arbre de la branche est celui de « l'amont plus les patchs », fichier
-pour fichier. Changer shadPS4, c'est un commit sur la branche, poussé sur la fourche, puis `FORK_REV` avancé —
-et son entrée ici. Pas de pull request vers l'éditeur.
+**Plus de fourche depuis le 2026-11-18** (chantier 63 ; le porteur : « on travaille que par des patchs […] Ce que
+je ne veux pas c'est d'avoir des repos avec le code source des émulateurs »). La série a été tirée de l'ancienne
+fourche `zinosaure/shadPS4` (branche `gameflex`, `e441ba5d`) : appliquée à `7c0b846d`, elle redonne son arbre, fichier
+pour fichier. Le code se change dans un clone de travail local du dépôt officiel (`~/Github/shadPS4`, branche
+`gameflex`, jamais poussée), puis la série se réexporte (`tools/emulator-patches.sh export shadps4`). Pas de pull
+request vers l'éditeur. Les commits de 2026-11-11 (« plus de fichiers de patch, du vrai changement de code ») restent
+le fond : ce sont toujours de vrais changements, seule leur forme de livraison change.
 
 **Une seule branche** : le serveur et le téléphone prennent le même binaire x86_64 (le téléphone sous Box64,
 `tools/box64/bundle.sh`). Ce qui ne vaut que pour le téléphone se règle à l'exécution : la plage d'adresses
@@ -18,8 +20,9 @@ et son entrée ici. Pas de pull request vers l'éditeur.
 **La source est un commit de `main`** depuis le 2026-10-27 (le porteur : le rendu de la 0.20 arrêtait
 *FIFA 22*, et l'amont en a corrigé une partie depuis). Le binaire garde le nom de la version du serveur
 (`SHADPS4_VERSION` dans `consoles/ps4/Dockerfile`, `shadps4-gameflex-0.20.0`) : il remplace celui de son
-AppImage. Le journal d'une partie dit désormais la révision de la fourche (`Revision`, `Remote`), et le
-titre de la fenêtre `shadPS4 v… zinosaure/gameflex <révision> | …` (streamex la trouve par `shadPS4`).
+AppImage. Le journal d'une partie dit la révision construite (`Revision`) : `build.sh` applique la série en
+commits d'une identité et à des dates fixes, si bien que la même série donne toujours la même révision. Le titre de
+la fenêtre commence par `shadPS4` (streamex la trouve par là).
 
 **Le passage aux commits ne change pas le code** (vérifié le 2026-11-11, à `3caec58`) : l'arbre de la branche
 est celui de `ce7643c` plus les treize patchs ; sur 2 293 objets construits, 2 284 sont identiques à ceux de
@@ -101,19 +104,20 @@ l'adresse 2 × c (`0xc4` pour « b »), et shadPS4 s'arrêtait avant l'écran-ti
 
 | Fichier | Rôle |
 |---|---|
-| `build.sh` | construit la fourche à `FORK_REV`, dans un conteneur trixie gardé |
+| `build.sh` | construit le dépôt officiel à `BASE` plus `patches/`, dans un conteneur trixie gardé |
+| `patches/` | nos correctifs, un patch par numéro, réexportés par `tools/emulator-patches.sh export shadps4` |
 | `bench.sh`, `bench/` | l'essai sur x86_64 dans l'image PS4 du serveur : plage du téléphone (320 Gio) contre témoin, ou les plages de `RUNS` ; le jeu déballé, ou son `.pkg` |
 
 ## Changer shadPS4
 
-1. **Un correctif** : un commit sur la branche `gameflex` de la fourche (titre `gameflex 00NN: …`, message en
-   anglais qui dit pourquoi), poussé ; puis `FORK_REV` dans `build.sh`, et son entrée ici.
-2. **Une nouvelle source de l'amont** : rebaser la branche sur le nouveau commit de `main` (ou une étiquette),
-   commit par commit — un conflit se règle dans le commit concerné. Pour 0001 : ses deux idées (le
-   `Setting<int>` à côté de `extra_fmem_in_mbytes`, la borne de `user_size` dans le constructeur POSIX de
-   `AddressSpace::Impl`). Un commit que l'amont a repris disparaît, et son numéro avec (comme 0008). La branche
-   rebasée se pousse de force : `FORK_REV` reste la trace de l'ancienne, à garder sous une étiquette
-   (`gameflex-<date>`) pour qu'elle reste joignable.
+1. **Un correctif** : un commit sur la branche `gameflex` du clone de travail (titre `gameflex 00NN: …`, message
+   en anglais qui dit pourquoi), puis `tools/emulator-patches.sh export shadps4` (la série dans `patches/`,
+   vérifiée), et son entrée ici.
+2. **Une nouvelle source de l'amont** : dans le clone, `git fetch upstream`, rebaser la branche sur le nouveau commit
+   de `main` (ou une étiquette), commit par commit — un conflit se règle dans le commit concerné. Pour 0001 : ses
+   deux idées (le `Setting<int>` à côté de `extra_fmem_in_mbytes`, la borne de `user_size` dans le constructeur
+   POSIX de `AddressSpace::Impl`). Un commit que l'amont a repris disparaît, et son numéro avec (comme 0008). Puis
+   `BASE` dans `build.sh`, et l'export.
 3. **Construire** : `tools/shadps4/build.sh <sortie>`.
 4. **Essayer** : `tools/shadps4/bench.sh <sortie>/shadps4 "<bibliothèque>/roms/ps4/Sonic Mania Plus"`
    — même écran et même journal à 256 qu'au témoin.
@@ -121,9 +125,9 @@ l'adresse 2 × c (`0xc4` pour « b »), et shadPS4 s'arrêtait avant l'écran-ti
    `shadps4-gameflex-<version>`, puis relancer une partie : l'image le pose au lancement par-dessus
    celui de l'éditeur s'il est là (`consoles/unpack-emulator.sh`), et le journal de la partie le
    dit. Aucune reconstruction (chantier 29).
-6. **Sa source** : une ligne dans `tools/gpl-sources/manifest.tsv` (la fourche à sa révision, le commit de ce
-   dépôt qui l'a construit). Le registre part dans le dépôt public `gameflex`, le code de shadPS4 dans la
-   fourche : pas de `src/` dans les bibliothèques (chantier 34, `#640`).
+6. **Sa source** : une ligne dans `tools/gpl-sources/manifest.tsv` (le dépôt officiel à `BASE`, et le commit de
+   ce dépôt dont `patches/` l'a construit). Le registre et les patchs partent dans le dépôt public `gameflex` ;
+   le code de shadPS4 reste chez l'éditeur : aucun dépôt à nous ne le porte (chantier 63).
 
 **Le passage à `main` du 2026-11-17** (`#770`, [rapport](../../docs/reports/2026-11-17-correctifs-amont/README.md)) :
 la branche rebasée sur `7c0b846d`, 50 commits de l'amont de plus (instructions de shaders, `CarvePhysArea`, le TSC de
@@ -139,6 +143,6 @@ le temps des épreuves.
 `GeneralSettings` pour une section réseau ; le réglage et sa borne inchangés. Sur la dev, *Kingdom Hearts III*
 jusqu'à son premier écran ; au banc, à 320 Gio (la plage du téléphone), le même écran.
 
-Le conteneur de build (`gameflex-shadps4-build`) garde dépendances, sources et objets : une nouvelle révision se
-reconstruit en quelques minutes. Un `/src` qui n'est pas un clone de la fourche (l'ancien clone de l'éditeur et
-ses patchs) est recloné. `docker rm -f gameflex-shadps4-build` pour repartir de zéro.
+Le conteneur de build (`gameflex-shadps4-build`) garde dépendances, sources et objets : une nouvelle série se
+reconstruit en quelques minutes. Un `/src` qui n'est pas un clone du dépôt officiel (l'ancien clone de la
+fourche) est recloné. `docker rm -f gameflex-shadps4-build` pour repartir de zéro.

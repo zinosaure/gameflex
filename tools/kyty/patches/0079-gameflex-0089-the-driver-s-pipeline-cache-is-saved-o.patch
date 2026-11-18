@@ -1,0 +1,135 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Tue, 10 Nov 2026 05:11:58 +0000
+Subject: [PATCH] gameflex 0089: the driver's pipeline cache is saved on a
+ thread of its own
+
+CheckpointDriverCache saved the driver's pipeline cache on the command thread every five minutes: reading
+~40 MB out of the driver (vkGetPipelineCacheData), hashing and writing it. In an Astro Bot session each save
+sat between two frames 150-280 ms apart, once per five minutes.
+
+- The periodic save runs on a std::async thread, one at a time; the driver's cache is internally
+  synchronized, the aside builders already create pipelines in it while the command thread does.
+- The dirty flag is atomic and cleared before the read: a pipeline added during a save marks the cache for
+  the next one; a failed save marks it again.
+- Save() (shutdown) waits for a save in flight, then saves what is left.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../renderer/pipeline/pipelineCache.cpp       | 28 +++++++++++++++----
+ .../renderer/pipeline/pipelineCache.h         | 10 ++++++-
+ 2 files changed, 32 insertions(+), 6 deletions(-)
+
+diff --git a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
+index 639d8eaa..4399bff4 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
+@@ -659,16 +659,32 @@ void PipelineCache::CheckpointDriverCache() {
+ 		return;
+ 	}
+ 	m_driver_cache_dirty = true;
+-	if (std::chrono::steady_clock::now() >= m_next_driver_cache_save) {
+-		Save();
++	if (std::chrono::steady_clock::now() < m_next_driver_cache_save) {
++		return;
++	}
++	// One save at a time; the next checkpoint starts another once this one is done.
++	if (m_driver_cache_saving.valid() &&
++	    m_driver_cache_saving.wait_for(std::chrono::seconds {0}) != std::future_status::ready) {
++		return;
+ 	}
++	m_next_driver_cache_save = std::chrono::steady_clock::now() + DriverCacheSaveInterval;
++	// The driver's cache is internally synchronized: the aside builders already create pipelines in it
++	// while the command thread does.
++	m_driver_cache_saving = std::async(std::launch::async, [this] { SaveDriverCache(); });
+ }
+ 
+ void PipelineCache::Save() {
+-	if (m_driver_cache == nullptr || !m_driver_cache_dirty) {
++	if (m_driver_cache_saving.valid()) {
++		m_driver_cache_saving.wait();
++	}
++	SaveDriverCache();
++}
++
++void PipelineCache::SaveDriverCache() {
++	// Cleared before the read: a pipeline added while saving marks the cache for the next save.
++	if (m_driver_cache == nullptr || !m_driver_cache_dirty.exchange(false)) {
+ 		return;
+ 	}
+-	m_next_driver_cache_save = std::chrono::steady_clock::now() + DriverCacheSaveInterval;
+ 
+ 	size_t               size = 0;
+ 	vk::Result           result;
+@@ -690,6 +706,7 @@ void PipelineCache::Save() {
+ 	    size > std::numeric_limits<uint32_t>::max()) {
+ 		PipelineCacheLog("Vulkan pipeline cache: save failed ({}, {:.2f} MB)",
+ 		                 vk::to_string(result), static_cast<double>(size) / 1'000'000.0);
++		m_driver_cache_dirty = true;
+ 		return;
+ 	}
+ 	payload.resize(size);
+@@ -698,6 +715,7 @@ void PipelineCache::Save() {
+ 	prefix.append(reinterpret_cast<const char*>(&payload_hash), sizeof(payload_hash));
+ 	if (!Common::File::CreateDirectories(m_driver_cache_path.parent_path())) {
+ 		PipelineCacheLog("Vulkan pipeline cache: failed to create cache directory");
++		m_driver_cache_dirty = true;
+ 		return;
+ 	}
+ 	auto temp_path = m_driver_cache_path;
+@@ -719,12 +737,12 @@ void PipelineCache::Save() {
+ 	if (!written || error) {
+ 		PipelineCacheLog("Vulkan pipeline cache: failed to write {}",
+ 		                 Common::PathToString(m_driver_cache_path));
++		m_driver_cache_dirty = true;
+ 		return;
+ 	}
+ 	PipelineCacheLog("Vulkan pipeline cache: saved {:.2f} MB to {}",
+ 	                 static_cast<double>(payload.size()) / 1'000'000.0,
+ 	                 Common::PathToString(m_driver_cache_path));
+-	m_driver_cache_dirty = false;
+ }
+ 
+ void PipelineCache::GetGraphicsPrograms(const CommandBuffer& command, DrawRenderState& state) {
+diff --git a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.h b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.h
+index 98675bb7..1cd1c932 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.h
++++ b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.h
+@@ -14,6 +14,8 @@
+ #include "graphics/shader/rectListShader.h"
+ #include "graphics/shader/shader.h"
+ 
++#include <atomic>
++#include <future>
+ #include <chrono>
+ #include <condition_variable>
+ #include <cstddef>
+@@ -189,6 +191,7 @@ public:
+ 	void WarmUp(const std::filesystem::path& path);
+ 	~PipelineCache();
+ 	KYTY_CLASS_NO_COPY(PipelineCache);
++	// Waits for a save in flight, then saves what is left (shutdown).
+ 	void Save();
+ 
+ 	struct Pipeline {
+@@ -262,7 +265,11 @@ private:
+ 	vk::PipelineCache             m_driver_cache = nullptr;
+ 	std::filesystem::path         m_driver_cache_path;
+ 	std::chrono::steady_clock::time_point m_next_driver_cache_save;
+-	bool                          m_driver_cache_dirty = false;
++	// GameFlex: set by the command thread when a pipeline enters the driver's cache, cleared by the save that
++	// reads it. The periodic save runs on its own thread (m_driver_cache_saving), one at a time: reading a
++	// 40 MB cache and writing it stalled the command thread for a few hundred milliseconds every five minutes.
++	std::atomic_bool              m_driver_cache_dirty = false;
++	std::future<void>             m_driver_cache_saving;
+ 	std::unordered_map<GraphicsPipelineKey, Pipeline, GraphicsPipelineKeyHash> m_graphics_pipelines;
+ 	std::unordered_map<uint64_t, Pipeline>                                     m_compute_pipelines;
+ 	std::unordered_map<uint64_t, ShaderTessellationInputInfo>                  m_tess_layouts;
+@@ -302,6 +309,7 @@ private:
+ 	void CollectBuiltPipelines();
+ 	void InitializeDriverCache();
+ 	void CheckpointDriverCache();
++	void SaveDriverCache();
+ 
+ 	// pipelineSerialization.cpp
+ 	bool LoadRecord(std::span<const uint8_t>& records);

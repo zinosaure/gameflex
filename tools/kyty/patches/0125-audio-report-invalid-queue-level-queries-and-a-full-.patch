@@ -1,0 +1,115 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Senaxx <michelbeld@gmail.com>
+Date: Mon, 16 Nov 2026 21:08:48 +0100
+Subject: [PATCH] audio: report invalid queue-level queries and a full
+ AudioOut2 queue
+
+(cherry picked from commit 2d97fb5002f92d98a4fcfe938b3df2b70144fb6a)
+---
+ src/libs/libAudio2.cpp       | 29 ++++++++++++-----------------
+ tests/AudioOut2PortTests.cpp | 34 ++++++++++++++++++++++++++++++++--
+ 2 files changed, 44 insertions(+), 19 deletions(-)
+
+diff --git a/src/libs/libAudio2.cpp b/src/libs/libAudio2.cpp
+index c5eb42b6..f20a1052 100644
+--- a/src/libs/libAudio2.cpp
++++ b/src/libs/libAudio2.cpp
+@@ -679,27 +679,22 @@ int KYTY_SYSV_ABI AudioOut2ContextPush(AudioOut2ContextHandle ctx, uint32_t bloc
+ 
+ int KYTY_SYSV_ABI AudioOut2ContextGetQueueLevel(AudioOut2ContextHandle ctx, uint32_t* queue_level,
+                                                 uint32_t* available_queues) {
++	if (queue_level == nullptr && available_queues == nullptr) {
++		return AUDIO_OUT2_ERROR_INVALID_PARAM;
++	}
++	Common::LockGuard lock(g_audioout2_state_mutex);
++	auto*             state = audioout2_find_context_locked(ctx);
++	if (state == nullptr) {
++		return AUDIO_OUT2_ERROR_INVALID_PARAM;
++	}
++	audioout2_update_context_locked(state);
+ 	if (queue_level != nullptr) {
+-		*queue_level = 0;
++		*queue_level = state->queued;
+ 	}
+ 	if (available_queues != nullptr) {
+-		*available_queues = 4;
+-	}
+-
+-	g_audioout2_state_mutex.Lock();
+-	if (auto* state = audioout2_find_context_locked(ctx); state != nullptr) {
+-		audioout2_update_context_locked(state);
+-		if (queue_level != nullptr) {
+-			*queue_level = state->queued;
+-		}
+-		if (available_queues != nullptr) {
+-			*available_queues =
+-			    (state->queued < state->queue_depth ? state->queue_depth - state->queued : 0);
+-		}
++		*available_queues = state->queue_depth - state->queued;
+ 	}
+-	g_audioout2_state_mutex.Unlock();
+-
+-	return OK;
++	return state->queued < state->queue_depth ? OK : AUDIO_OUT2_ERROR_NOT_READY;
+ }
+ 
+ int KYTY_SYSV_ABI AudioOut2PortCreate(AudioOut2ContextHandle ctx, const AudioOut2PortParam* params,
+diff --git a/tests/AudioOut2PortTests.cpp b/tests/AudioOut2PortTests.cpp
+index 40a40df1..b8357a65 100644
+--- a/tests/AudioOut2PortTests.cpp
++++ b/tests/AudioOut2PortTests.cpp
+@@ -572,8 +572,9 @@ void TestAsynchronousDevicePushKeepsQueueBounded() {
+ 
+ 	uint32_t queued    = 0;
+ 	uint32_t available = 0;
+-	Check(AudioOut2::AudioOut2ContextGetQueueLevel(context, &queued, &available) == OK,
+-	      "queue-level query failed");
++	Check(AudioOut2::AudioOut2ContextGetQueueLevel(context, &queued, &available) ==
++	          static_cast<int>(0x80268008u),
++	      "a full queue's level query did not report NOT_READY");
+ 	Check(queued == 1 && available == 0, "async queue level does not match accepted pushes");
+ 
+ 	AudioOut2::AudioOut2PortDestroy(port);
+@@ -635,6 +636,34 @@ void TestQueueDrainsAtExactGrainRate() {
+ 	AudioOut2::AudioOut2ContextDestroy(context);
+ }
+ 
++// The query rejects two null outputs and an unknown context, leaving the outputs alone, and
++// writes both levels before it reports NOT_READY for a queue with no free entry.
++void TestQueueLevelResults() {
++	constexpr int invalid_param = static_cast<int>(0x80268001u);
++	constexpr int not_ready     = static_cast<int>(0x80268008u);
++	const auto    context       = CreateContext(2);
++	g_process_time_frozen       = true;
++	uint32_t queued = 7, available = 7;
++	Check(AudioOut2::AudioOut2ContextGetQueueLevel(context, nullptr, nullptr) == invalid_param,
++	      "two null outputs were accepted");
++	Check(AudioOut2::AudioOut2ContextGetQueueLevel(context, nullptr, &available) == OK &&
++	          available == 2,
++	      "an empty queue's free entries were wrong");
++	Check(AudioOut2::AudioOut2ContextPush(context, 0) == OK &&
++	          AudioOut2::AudioOut2ContextPush(context, 0) == OK,
++	      "async pushes failed");
++	Check(AudioOut2::AudioOut2ContextGetQueueLevel(context, &queued, &available) == not_ready &&
++	          queued == 2 && available == 0,
++	      "a full queue did not report NOT_READY with its levels");
++	g_process_time_frozen = false;
++	AudioOut2::AudioOut2ContextDestroy(context);
++	queued = available = 7;
++	Check(AudioOut2::AudioOut2ContextGetQueueLevel(context, &queued, &available) ==
++	              invalid_param &&
++	          queued == 7 && available == 7,
++	      "a destroyed context answered the level query");
++}
++
+ void TestPcmCopiedBeforeScratchBufferReuse() {
+ 	const auto context = CreateContext();
+ 	const auto param   = MakeParam();
+@@ -937,6 +966,7 @@ int main() {
+ 	TestHandleWithoutPcmDoesNotBypassQueue();
+ 	TestPushConsumesPcm();
+ 	TestQueueDrainsAtExactGrainRate();
++	TestQueueLevelResults();
+ 	TestPcmCopiedBeforeScratchBufferReuse();
+ 	TestPortGainAndValidation();
+ 	TestObjectGainAndAmbisonics();

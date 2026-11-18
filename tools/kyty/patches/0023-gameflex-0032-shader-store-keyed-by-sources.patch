@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:26 +0000
+Subject: [PATCH] gameflex 0032: shader store keyed by sources
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+le cache de shaders reconnu à ses sources
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0032.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ CMakeLists.txt                                 |  1 +
+ src/generate_version.cmake                     | 18 ++++++++++++++++++
+ .../pipeline/pipelineSerialization.cpp         | 13 ++++++++++++-
+ src/kytyGitVersion.h.in                        |  2 ++
+ 4 files changed, 33 insertions(+), 1 deletion(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 3b47471a..d05f8dfb 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -164,6 +164,7 @@ add_custom_target(KytyGitVersion
+ 		-D OUTPUT_FILE=${PROJECT_BINARY_DIR}/kytyGitVersion.h
+ 		-D GIT_EXECUTABLE=${GIT_EXECUTABLE}
+ 		-D GIT_WORKING_DIRECTORY=${CMAKE_CURRENT_SOURCE_DIR}
++		-D GRAPHICS_SOURCE_DIR=${KYTY_SOURCE_DIR}/graphics
+ 		-P ${KYTY_SOURCE_DIR}/generate_version.cmake
+ 	BYPRODUCTS ${PROJECT_BINARY_DIR}/kytyGitVersion.h
+ 	COMMENT "Generate kytyGitVersion.h"
+diff --git a/src/generate_version.cmake b/src/generate_version.cmake
+index 558cd1b8..6edcb15a 100644
+--- a/src/generate_version.cmake
++++ b/src/generate_version.cmake
+@@ -38,4 +38,22 @@ if(GIT_EXECUTABLE)
+ 		endif()
+ 	endif()
+ endif()
++# GameFlex: what the shader store's records depend on - the recompiler, and the renderer that
++# describes and creates pipelines (not its memory caches). A build that leaves these sources alone
++# keeps the store, whatever else it changes.
++set(KYTY_SHADER_STORE_STAMP "unknown")
++if(GRAPHICS_SOURCE_DIR)
++	file(GLOB_RECURSE store_sources LIST_DIRECTORIES false RELATIVE "${GRAPHICS_SOURCE_DIR}"
++		"${GRAPHICS_SOURCE_DIR}/shader/*" "${GRAPHICS_SOURCE_DIR}/host_gpu/renderer/*")
++	list(FILTER store_sources EXCLUDE REGEX "^host_gpu/renderer/cache/")
++	list(SORT store_sources)
++	set(store_digests "")
++	foreach(source IN LISTS store_sources)
++		file(SHA256 "${GRAPHICS_SOURCE_DIR}/${source}" digest)
++		string(APPEND store_digests "${source} ${digest}\n")
++	endforeach()
++	if(store_sources)
++		string(SHA256 KYTY_SHADER_STORE_STAMP "${store_digests}")
++	endif()
++endif()
+ configure_file("${INPUT_FILE}" "${OUTPUT_FILE}")
+diff --git a/src/graphics/host_gpu/renderer/pipeline/pipelineSerialization.cpp b/src/graphics/host_gpu/renderer/pipeline/pipelineSerialization.cpp
+index d9f9957a..f0e5cecd 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/pipelineSerialization.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/pipelineSerialization.cpp
+@@ -13,6 +13,7 @@
+ #include <cstring>
+ #include <fmt/format.h>
+ #include <ranges>
++#include <string_view>
+ #include <xxhash.h>
+ #include <zstd.h>
+ 
+@@ -62,9 +63,19 @@ uint64_t BuildStamp() {
+ 	return error ? 0 : static_cast<uint64_t>(time);
+ }
+ 
++// GameFlex: the sources the records depend on (generate_version.cmake), so a build that changes
++// neither the recompiler nor the pipelines keeps the store. Without them, the executable's date.
++uint64_t StoreStamp() {
++	constexpr std::string_view sources = KYTY_SHADER_STORE_STAMP;
++	if (sources != "unknown") {
++		return XXH3_64bits(sources.data(), sources.size());
++	}
++	return BuildStamp();
++}
++
+ // What every record depends on besides its own fields; empty when the build is unknown.
+ std::vector<uint8_t> StoreHeader(const GraphicContext& graphics) {
+-	const auto stamp = BuildStamp();
++	const auto stamp = StoreStamp();
+ 	if (stamp == 0) {
+ 		return {};
+ 	}
+diff --git a/src/kytyGitVersion.h.in b/src/kytyGitVersion.h.in
+index 7019b971..2c66b169 100644
+--- a/src/kytyGitVersion.h.in
++++ b/src/kytyGitVersion.h.in
+@@ -5,6 +5,8 @@
+ #define KYTY_GIT_HASH "@KYTY_GIT_HASH@"
+ // Full commit identity used for compatibility checks.
+ #define KYTY_GIT_REVISION "@KYTY_GIT_REVISION@"
++// GameFlex: the sources the shader store depends on (generate_version.cmake), "unknown" if unread.
++#define KYTY_SHADER_STORE_STAMP "@KYTY_SHADER_STORE_STAMP@"
+ 
+ /* Build provenance, shown in the window title and in crash reports. */
+ #if defined(KYTY_OFFICIAL_BUILD)

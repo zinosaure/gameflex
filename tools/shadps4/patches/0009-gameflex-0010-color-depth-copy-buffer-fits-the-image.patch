@@ -1,0 +1,98 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Wed, 11 Nov 2026 19:35:11 +0100
+Subject: [PATCH] gameflex 0010: color/depth copy buffer fits the image
+
+CopyImageWithBuffer went through a fixed 128 MB buffer. Final Fantasy
+VII Remake copies 256 MiB there after its title screen (2048x2048, 32
+layers): the GPU wrote past the buffer's end and the device was lost.
+The staging buffer is now requested at the copy's size, 128 MB at least.
+Upstream defect, still on main on 2026-11-04.
+
+Details: tools/shadps4/README.md in the GameFlex repository, entry 0010.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/video_core/renderer_vulkan/vk_runtime.cpp | 26 ++++++++++++-------
+ src/video_core/renderer_vulkan/vk_runtime.h   |  3 +--
+ 2 files changed, 17 insertions(+), 12 deletions(-)
+
+diff --git a/src/video_core/renderer_vulkan/vk_runtime.cpp b/src/video_core/renderer_vulkan/vk_runtime.cpp
+index 0e45a9d1..780a59c2 100644
+--- a/src/video_core/renderer_vulkan/vk_runtime.cpp
++++ b/src/video_core/renderer_vulkan/vk_runtime.cpp
+@@ -371,8 +371,7 @@ VideoCore::ImageView& Runtime::FindSubrectView(VideoCore::Image& image,
+     return image.FindView(view_info, crop);
+ }
+ 
+-void Runtime::CopyImageWithBuffer(VideoCore::Image* src, VideoCore::Image* dst,
+-                                  const VideoCore::Buffer* buffer, u64 offset) {
++void Runtime::CopyImageWithBuffer(VideoCore::Image* src, VideoCore::Image* dst) {
+     const u32 num_mips = std::min(src->info.resources.levels, dst->info.resources.levels);
+     const u32 num_layers = std::min(src->info.resources.layers, dst->info.resources.layers);
+ 
+@@ -380,7 +379,7 @@ void Runtime::CopyImageWithBuffer(VideoCore::Image* src, VideoCore::Image* dst,
+     SetBackingSamples(src, src->info.num_samples);
+ 
+     vk::BufferImageCopy buffer_copy = {
+-        .bufferOffset = offset,
++        .bufferOffset = 0,
+         .bufferRowLength = 0,
+         .bufferImageHeight = 0,
+         .imageSubresource{
+@@ -397,16 +396,26 @@ void Runtime::CopyImageWithBuffer(VideoCore::Image* src, VideoCore::Image* dst,
+     buffer_copies.push_back(buffer_copy);
+     for (u32 mip = 1; mip < num_mips; ++mip) {
+         auto mip_copy = buffer_copy;
+-        mip_copy.bufferOffset = Common::AlignUp(offset + copy_size, 16);
++        mip_copy.bufferOffset = Common::AlignUp(copy_size, 16);
+         mip_copy.imageSubresource.mipLevel = mip;
+         mip_copy.imageExtent = vk::Extent3D{std::max(src->info.size.width >> mip, 1u),
+                                             std::max(src->info.size.height >> mip, 1u),
+                                             std::max(src->info.size.depth >> mip, 1u)};
+-        copy_size =
+-            mip_copy.bufferOffset - offset + BufferImageCopySize(mip_copy, src->info.pixel_format);
++        copy_size = mip_copy.bufferOffset + BufferImageCopySize(mip_copy, src->info.pixel_format);
+         buffer_copies.push_back(mip_copy);
+     }
+ 
++    // GameFlex: the buffer holds the whole copy. A fixed 128 MB let a larger depth image run off its
++    // end, the GPU wrote past it, and the device was lost (FF7 Remake, after its title screen).
++    static constexpr size_t COPY_BUFFER_SIZE = 128_MB;
++    const auto copy_ref = staging_pool.Request(std::max<u64>(copy_size, COPY_BUFFER_SIZE),
++                                               VideoCore::MemoryType::DeviceLocal);
++    const auto* buffer = copy_ref.buffer;
++    const u64 offset = copy_ref.offset;
++    for (auto& copy : buffer_copies) {
++        copy.bufferOffset += offset;
++    }
++
+     scheduler.EndRendering();
+ 
+     bool needs_flush =
+@@ -505,10 +514,7 @@ void Runtime::CopyColorAndDepth(VideoCore::Image* src, VideoCore::Image* dst) {
+             CopyImage(src, dst);
+         } else {
+             // Perform depth from/to color copy using the intermediate copy buffer.
+-            static constexpr size_t COPY_BUFFER_SIZE = 128_MB;
+-            const auto copy_ref =
+-                staging_pool.Request(COPY_BUFFER_SIZE, VideoCore::MemoryType::DeviceLocal);
+-            CopyImageWithBuffer(src, dst, copy_ref.buffer, copy_ref.offset);
++            CopyImageWithBuffer(src, dst);
+         }
+     } else if (src->info.num_samples == 1 && dst->info.num_samples > 1 &&
+                dst->info.props.is_depth) {
+diff --git a/src/video_core/renderer_vulkan/vk_runtime.h b/src/video_core/renderer_vulkan/vk_runtime.h
+index 558a6f25..c03f2fb7 100644
+--- a/src/video_core/renderer_vulkan/vk_runtime.h
++++ b/src/video_core/renderer_vulkan/vk_runtime.h
+@@ -53,8 +53,7 @@ public:
+     void CopyImage(VideoCore::Image* src, VideoCore::Image* dst);
+     VideoCore::ImageView& FindSubrectView(VideoCore::Image& image, const VideoCore::ImageInfo& info,
+                                           const VideoCore::ImageViewInfo& view_info);
+-    void CopyImageWithBuffer(VideoCore::Image* src, VideoCore::Image* dst,
+-                             const VideoCore::Buffer* buffer, u64 offset);
++    void CopyImageWithBuffer(VideoCore::Image* src, VideoCore::Image* dst);
+     void CopyMip(VideoCore::Image* src, VideoCore::Image* dst, u32 mip, u32 slice);
+ 
+     void CopyColorAndDepth(VideoCore::Image* src, VideoCore::Image* dst);

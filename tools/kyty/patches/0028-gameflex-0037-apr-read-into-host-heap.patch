@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:26 +0000
+Subject: [PATCH] gameflex 0037: apr read into host heap
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+une lecture de fichier vers le tas de Kyty n'est plus refusée
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0037.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/libs/libAmpr.cpp | 21 +++++++++++++++++++--
+ 1 file changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/src/libs/libAmpr.cpp b/src/libs/libAmpr.cpp
+index 7f8c410a..d8fc8b32 100644
+--- a/src/libs/libAmpr.cpp
++++ b/src/libs/libAmpr.cpp
+@@ -10,6 +10,7 @@
+ #include "libs/libs.h"
+ #include "loader/symbolDatabase.h"
+ 
++#include <sys/mman.h>
+ #include <algorithm>
+ #include <array>
+ #include <atomic>
+@@ -1112,6 +1113,15 @@ static bool AppendCommandRecord(uint64_t command_buffer, CommandBufferState::Com
+ 	return CommitCommandBufferRecord(command_buffer, &state, record_size);
+ }
+ 
++// mincore() fails with ENOMEM as soon as one page of the range is not mapped.
++static bool HostRangeMapped(uint64_t address, uint64_t size) {
++	constexpr uint64_t page = 4096;
++	const auto         begin = address & ~(page - 1);
++	const auto         pages = (address + size - begin + page - 1) / page;
++	std::vector<unsigned char> residency(pages);
++	return mincore(reinterpret_cast<void*>(begin), pages * page, residency.data()) == 0;
++}
++
+ static int ReadHostFileToGuest(const std::filesystem::path& host_path, uint64_t file_offset,
+                                uint64_t destination, uint64_t size, uint64_t* bytes_read);
+ 
+@@ -1357,8 +1367,15 @@ static int ReadHostFileToGuest(const std::filesystem::path& host_path, uint64_t
+ 		void* end   = nullptr;
+ 		int   prot  = 0;
+ 		if (LibKernel::Memory::KernelQueryMemoryProtection(reinterpret_cast<void*>(at), &start, &end,
+-		                                                   &prot) != OK ||
+-		    prot == 0 || reinterpret_cast<uint64_t>(end) <= at) {
++		                                                   &prot) != OK) {
++			// GameFlex: not one of the game's mappings. Its malloc can come from Kyty's own heap
++			// (Kingdom Hearts III, the buffer of its first video): what counts is that it is mapped.
++			if (HostRangeMapped(at, destination + size - at)) {
++				break;
++			}
++			prot = 0;
++		}
++		if (prot == 0 || reinterpret_cast<uint64_t>(end) <= at) {
+ 			static std::atomic<uint32_t> s_logged {0};
+ 			if (s_logged.fetch_add(1, std::memory_order_relaxed) < 32) {
+ 				LOGF("\tAPR read into unmapped memory: %s offset=0x%016" PRIx64 " destination=0x%016" PRIx64

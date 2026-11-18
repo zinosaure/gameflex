@@ -24,6 +24,12 @@
 #
 # Un fichier livré dans cores/ sans sa ligne ici fait échouer assemble.py : chaque
 # livraison ajoute la sienne. Les anciennes lignes restent (Gamebox garde l'historique).
+#
+# AVANT LE 2026-11-18, nos constructions de KytyPS5 venaient d'une fourche publique, retirée depuis
+# (chantier 63 : aucun dépôt à nous ne porte le code d'un émulateur). Leur ligne cite le dépôt
+# officiel au commit de base, puis `gameflex:<révision>` : nos changements à cette révision, gardés
+# dans notre archive et donnés sur demande. Les constructions suivantes citent le dépôt officiel et
+# les patchs de ce dépôt (tools/kyty/patches, tools/shadps4/patches) au commit qui les a produites.
 
 ps3/rpcs3-v0.0.43-20607-fb6737b1_linux64.AppImage	upstream	https://github.com/RPCS3/rpcs3@fb6737b1c8306ceeccb53b7fa051acfc9e641cd7	-	-
 ps3/rpcs3-0.0.43-20508-forky-r1-x86_64.zip	repackaged	https://github.com/RPCS3/rpcs3@8e26652c85bb5658965fa5731d9a0309ca10b42b	src/mobileapp/tools/assemble-appimage.sh@43050ecf src/mobileapp/tools/assemble-glibc.sh@43050ecf src/microservices/runtimes/streamex/consoles/emulators.sh@43050ecf	src/mobileapp/tools/assemble-appimage.sh ps3 x86_64
@@ -40,18 +46,18 @@ ps4/shadps4-0.20.0+box64-d653d0ebe-forky-r1-x86_64.zip	repackaged	https://github
 
 ps5/KytyPS5-2026-11-04-91c5820-Linux-x86_64.tar.gz	upstream	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591	-	-
 ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p58	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591	tools/kyty@17d8eab5	tools/kyty/build.sh --server
-ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p69	ours	https://github.com/zinosaure/KytyPS5@3230d7747385285fb99f45709baf718ccbb14053	tools/kyty@0687f338	tools/kyty/build.sh --server
-ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p70	ours	https://github.com/zinosaure/KytyPS5@3f4f60066d7c1ee9d52406fbf37625e208b4fb01	tools/kyty@6d72bb0e	tools/kyty/build.sh --server
-ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p71	ours	https://github.com/zinosaure/KytyPS5@0056bcd44a51daa41a6f70a2fcc22025413fb86f	tools/kyty@28680185	tools/kyty/build.sh --server
-ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p77	ours	https://github.com/zinosaure/KytyPS5@08ee63893c673d9bb6217699a12a4fac39e893b2	tools/kyty@7a686846	tools/kyty/build.sh --server
-ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p84	ours	https://github.com/zinosaure/KytyPS5@7e6db46fa64bd397229c03337f7f0bde7a29a342	tools/kyty@7abcf177	tools/kyty/build.sh --server
-ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p85	ours	https://github.com/zinosaure/KytyPS5@0c20933efce1348bc8eadf8ddbb00848bfb90bac	tools/kyty@901bad53	tools/kyty/build.sh --server
-ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p86	ours	https://github.com/zinosaure/KytyPS5@6ba5e1bb283e0beb1e7d9e4b7d69ff1ac63e7e4a	tools/kyty@b71739e8	tools/kyty/build.sh --server
-ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p87	ours	https://github.com/zinosaure/KytyPS5@0d652016cf62bfed062fae244016c7ab1b0fd103	tools/kyty@e7688dfe	tools/kyty/build.sh --server
-ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p92	ours	https://github.com/zinosaure/KytyPS5@7158f17546ee06cbc660b5d401636f3d4226e53b	tools/kyty@7abfd0a3	tools/kyty/build.sh --server
-ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p93	ours	https://github.com/zinosaure/KytyPS5@41d2131fb0612cb849e63d353ad91603762dd2cf	tools/kyty@4a231393	tools/kyty/build.sh --server
-ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p95	ours	https://github.com/zinosaure/KytyPS5@c7e5ffb749688483aff5334bc3af5acc77b35650	tools/kyty@2bc6491c	tools/kyty/build.sh --server
-ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820	ours	https://github.com/zinosaure/KytyPS5@06197cdc832e6edf6177efa32b5106df686fd833	tools/kyty@a62c569b	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p69	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 gameflex:3230d7747385285fb99f45709baf718ccbb14053	tools/kyty@0687f338	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p70	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 gameflex:3f4f60066d7c1ee9d52406fbf37625e208b4fb01	tools/kyty@6d72bb0e	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p71	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 gameflex:0056bcd44a51daa41a6f70a2fcc22025413fb86f	tools/kyty@28680185	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p77	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 gameflex:08ee63893c673d9bb6217699a12a4fac39e893b2	tools/kyty@7a686846	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p84	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 gameflex:7e6db46fa64bd397229c03337f7f0bde7a29a342	tools/kyty@7abcf177	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p85	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 gameflex:0c20933efce1348bc8eadf8ddbb00848bfb90bac	tools/kyty@901bad53	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p86	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 gameflex:6ba5e1bb283e0beb1e7d9e4b7d69ff1ac63e7e4a	tools/kyty@b71739e8	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p87	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 gameflex:0d652016cf62bfed062fae244016c7ab1b0fd103	tools/kyty@e7688dfe	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p92	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 gameflex:7158f17546ee06cbc660b5d401636f3d4226e53b	tools/kyty@7abfd0a3	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p93	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 gameflex:41d2131fb0612cb849e63d353ad91603762dd2cf	tools/kyty@4a231393	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820-p95	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 gameflex:c7e5ffb749688483aff5334bc3af5acc77b35650	tools/kyty@2bc6491c	tools/kyty/build.sh --server
+ps5/kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 gameflex:06197cdc832e6edf6177efa32b5106df686fd833	tools/kyty@a62c569b	tools/kyty/build.sh --server
 ps5/kyty-2026-11-04+box64-d653d0ebe-forky-r12-aarch64.zip	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 https://github.com/ptitSeb/box64@d653d0ebefeba2c9abe13a5c4c13663bbd242549	tools/kyty@72911402 tools/box64@72911402 tools/box64/bundle.sh@72911402	tools/kyty/build.sh; tools/box64/build.sh; tools/box64/bundle.sh
 ps5/kyty-2026-11-04+box64-d653d0ebe-forky-r11-aarch64.zip	ours	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 https://github.com/ptitSeb/box64@d653d0ebefeba2c9abe13a5c4c13663bbd242549	tools/kyty@83832e5f tools/box64@83832e5f tools/box64/bundle.sh@83832e5f	tools/kyty/build.sh; tools/box64/build.sh; tools/box64/bundle.sh
 ps5/kyty-2026-11-04+box64-d653d0ebe-forky-r11-x86_64.zip	repackaged	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591	src/mobileapp/tools/assemble-appimage.sh@83832e5f src/mobileapp/tools/assemble-glibc.sh@83832e5f src/microservices/runtimes/streamex/consoles/emulators.sh@83832e5f	src/mobileapp/tools/assemble-appimage.sh ps5 x86_64

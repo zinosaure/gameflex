@@ -1,0 +1,81 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Wed, 11 Nov 2026 19:35:11 +0100
+Subject: [PATCH] gameflex 0013: Unreal render height from
+ GAMEFLEX_UE_RENDER_HEIGHT
+
+GAMEFLEX_UE_RENDER_HEIGHT (720, 540, 360) sets the height an Unreal game
+renders its scene at. Its command line (ue4commandline.txt) has no effect
+on PS4, but the engine reads <project>/saved/config/ps4/engine.ini; the
+game folder is read-only, so that engine.ini is written in shadPS4's
+user folder and mounted over /app0/<project>/saved. Final Fantasy VII
+Remake, same scene at 30 fps: GPU 69 -> 37 % at 540p.
+
+Details: tools/shadps4/README.md in the GameFlex repository, entry 0013.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/emulator.cpp | 36 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+
+diff --git a/src/emulator.cpp b/src/emulator.cpp
+index f0c2a7f7..a7533276 100644
+--- a/src/emulator.cpp
++++ b/src/emulator.cpp
+@@ -4,6 +4,8 @@
+ #include <algorithm>
+ #include <ctime>
+ #include <filesystem>
++#include <cctype>
++#include <cstdlib>
+ #include <fstream>
+ #include <iostream>
+ #include <set>
+@@ -287,6 +289,39 @@ std::map<s32, std::string> ExtractTrophies(std::string_view npbind_guest,
+     return trophy_index_map;
+ }
+ 
++// GAMEFLEX_UE_RENDER_HEIGHT (720, 540, 360): the height an Unreal game computes its scene at. PS4
++// games output 1080p and the engine takes a percentage of it from its saved configuration,
++// <project>/saved/config/ps4/engine.ini, which it looks for in its own folder (the command line
++// has no effect on them). That folder is read-only, so <project>/saved is mounted elsewhere.
++static void MountUnrealRenderHeight(const std::filesystem::path& game_folder,
++                                    Core::FileSys::MntPoints* mnt) {
++    const char* height = std::getenv("GAMEFLEX_UE_RENDER_HEIGHT");
++    if (height == nullptr) {
++        return;
++    }
++    const auto value = std::strtoul(height, nullptr, 10);
++    if (value < 144 || value >= 1080) {
++        return;
++    }
++    // "../../../End/End.uproject -Messaging": the project, as the game names it in lower case.
++    std::string target;
++    std::ifstream(game_folder / "ue4commandline.txt") >> target;
++    auto project = std::filesystem::path(target).stem().string();
++    std::ranges::transform(project, project.begin(),
++                           [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
++    if (project.empty()) {
++        return;
++    }
++    const auto saved =
++        Common::FS::GetUserPath(Common::FS::PathType::UserDir) / "gameflex-unreal" / project;
++    std::filesystem::create_directories(saved / "config" / "ps4");
++    std::ofstream(saved / "config" / "ps4" / "engine.ini", std::ios::trunc)
++        << "[SystemSettings]\nr.ScreenPercentage=" << (value * 100 + 540) / 1080
++        << "\nr.DynamicRes.OperationMode=0\n";
++    mnt->Mount(saved, "/app0/" + project + "/saved", false);
++    LOG_INFO(Loader, "Unreal render height {}: project {}", value, project);
++}
++
+ void Emulator::Run(std::filesystem::path file, std::vector<std::string> args,
+                    std::optional<std::filesystem::path> p_game_folder,
+                    std::vector<std::pair<std::filesystem::path, std::string>> mounts,
+@@ -388,6 +423,7 @@ void Emulator::Run(std::filesystem::path file, std::vector<std::string> args,
+     // Applications expect to be run from /app0 so mount the file's parent path as app0.
+     auto* mnt = Common::Singleton<Core::FileSys::MntPoints>::Instance();
+     mnt->Mount(game_folder, "/app0", true);
++    MountUnrealRenderHeight(game_folder, mnt);
+     // Certain games may use /hostapp as well such as CUSA001100
+     mnt->Mount(game_folder, "/hostapp", true);
+ 

@@ -393,7 +393,12 @@ const PORTRAIT_LIFT = 60;
 // trop remontés » — L et R sortaient par le haut du S25).
 // Puis 20 px plus bas (le porteur, 2026-11-17 : « en mode portrait, de baisser le block des boutons de 20px à peu près.
 // Juste pour que ça soit dessous du texte GameFlex et les stats »).
-const PORTRAIT_PAD_LIFT = PORTRAIT_LIFT + 64 + 40;
+// Puis 56 px plus bas encore (le porteur, 2026-11-18, sur le S25 avec FF7 Remake : « le bloc des boutons n'est toujours
+// pas descendu de quelques pixels […] c'est superposé sur les stats ») : la manette se pose depuis le BAS de l'écran, et
+// dans l'application l'écran visible est plus court que dans Chrome (les barres d'Android) — elle montait d'autant. Mesuré
+// sur sa capture (384 px de large) : le haut du pavé tactile à ~270 px, le bas de « GameFlex » sous la vue discrète à
+// ~314 ; 56 px laissent un écart, et le bas de la manette reste à ~200 px du bord.
+const PORTRAIT_PAD_LIFT = PORTRAIT_LIFT + 64 - 16;
 const LANDSCAPE_PAD_LIFT = 0;
 const PAD_BOTTOM = 20;
 const PAD_HEIGHT = 300;

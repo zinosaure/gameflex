@@ -167,8 +167,9 @@ export default function TouchpadSurface({ button, callback, isLandscape = false,
 				}),
 				opacity: alone ? 0.5 : 1,
 				// Plus large que haut, comme le vrai pavé : le doigt y a de la
-				// place pour glisser de gauche à droite.
-				width: size * 2,
+				// place pour glisser de gauche à droite. En paysage, la largeur
+				// du préréglage quand il en donne une (un peu moins que le double).
+				width: (!alone && isLandscape && button.xl?.width) || size * 2,
 				height: size,
 				borderRadius: 12,
 				// Seul, à côté d'une vraie manette : sans fond au repos (le porteur, 2026-11-03), le liseré des boutons.

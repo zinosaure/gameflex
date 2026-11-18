@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:26 +0000
+Subject: [PATCH] gameflex 0031: audio2 blocking push waits for room
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+une poussée bloquante d'AudioOut2 attend que la file ait de la place
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0031.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/libs/libAudio2.cpp | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/src/libs/libAudio2.cpp b/src/libs/libAudio2.cpp
+index db6a0188..092b9006 100644
+--- a/src/libs/libAudio2.cpp
++++ b/src/libs/libAudio2.cpp
+@@ -648,6 +648,23 @@ int KYTY_SYSV_ABI AudioOut2ContextPush(AudioOut2ContextHandle ctx, uint32_t bloc
+ 				auto& submission = audioout2_submission(*state);
+ 				g_audioout2_state_mutex.Unlock();
+ 				audioout2_queue_context_audio(ctx, submission, blocking != 0);
++				// GameFlex: a blocking push returns when the queue has room again, as the console's
++				// output does. Wwise wakes its mixer after a push; one that returns while the queue
++				// is still full leaves the mixer asleep until a fallback timer (~140 ms).
++				while (blocking != 0) {
++					g_audioout2_state_mutex.Lock();
++					auto* current = audioout2_find_context_locked(ctx);
++					bool  room    = current == nullptr;
++					if (current != nullptr) {
++						audioout2_update_context_locked(current);
++						room = current->queued < current->queue_depth;
++					}
++					g_audioout2_state_mutex.Unlock();
++					if (room) {
++						break;
++					}
++					Common::Thread::SleepMicro(std::max(sleep_micros / 4, 1000u));
++				}
+ 				return OK;
+ 			}
+ 		}

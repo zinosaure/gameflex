@@ -1,0 +1,74 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Wed, 11 Nov 2026 19:35:11 +0100
+Subject: [PATCH] gameflex 0003: static CPU patching only when a patch can
+ apply
+
+The static pass walked the whole game code even when no CPU patch could
+apply on this CPU (SSE4a patches without SSE4a, reciprocal ones on
+Intel): only the FS accesses were left, which the ahead-of-time pass
+already patches. On an AMD CPU with SSE4a - Box64 with BOX64_CPUTYPE=1,
+like the console - it took 108 s for Final Fantasy VII Remake on a phone,
+for nothing. CpuPatchesCanApply() skips it then.
+
+Details: tools/shadps4/README.md in the GameFlex repository, entry 0003.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/core/cpu_patches.cpp | 12 ++++++++++++
+ src/core/cpu_patches.h   |  6 ++++++
+ src/core/module.cpp      |  3 ++-
+ 3 files changed, 20 insertions(+), 1 deletion(-)
+
+diff --git a/src/core/cpu_patches.cpp b/src/core/cpu_patches.cpp
+index 244cf058..ff5d14e2 100644
+--- a/src/core/cpu_patches.cpp
++++ b/src/core/cpu_patches.cpp
+@@ -278,6 +278,18 @@ static bool FilterIntelCPU(const ZydisDecodedOperand*) {
+     return cpu.has(Cpu::tINTEL);
+ }
+ 
++bool CpuPatchesCanApply() noexcept {
++#if defined(__APPLE__)
++    return true;
++#else
++    static const bool can_apply = [] {
++        Cpu cpu;
++        return !cpu.has(Cpu::tSSE4a) || cpu.has(Cpu::tINTEL);
++    }();
++    return can_apply;
++#endif
++}
++
+ static void GenerateReciprocalInstruction(void* address, const ZydisDecodedInstruction& instruction,
+                                           const ZydisDecodedOperand* operands,
+                                           Xbyak::CodeGenerator& c, bool rsqrt, bool vex) {
+diff --git a/src/core/cpu_patches.h b/src/core/cpu_patches.h
+index c1cef2ad..4131f5ec 100644
+--- a/src/core/cpu_patches.h
++++ b/src/core/cpu_patches.h
+@@ -98,4 +98,10 @@ RedZonePatchResult PatchRedZoneMemoryInstructions(u64 segment_addr, u64 segment_
+ RedZonePatchResult PatchCpuInstructionsStatically(u64 segment_addr, u64 segment_size,
+                                                   std::span<const uintptr_t> function_starts);
+ 
++/// Whether a CPU patch can apply on this CPU: the SSE4a ones without SSE4a, the reciprocal ones on
++/// an Intel CPU. Without one, the static pass has nothing to patch: only the FS accesses remain, and
++/// the ahead-of-time pass patches those. (GameFlex: that pass took 108 s for Final Fantasy VII
++/// Remake under Box64 on a phone, for nothing, once Box64 reported an AMD CPU with SSE4a.)
++bool CpuPatchesCanApply() noexcept;
++
+ } // namespace Core
+diff --git a/src/core/module.cpp b/src/core/module.cpp
+index c721f5ba..abc166ef 100644
+--- a/src/core/module.cpp
++++ b/src/core/module.cpp
+@@ -186,7 +186,8 @@ void Module::LoadModuleToMemory(u32& max_tls_index) {
+ #if defined(_WIN32)
+     const bool use_static_patching = WindowsGuestRedZoneProtection::IsStaticPatchingEnabled();
+ #else
+-    constexpr bool use_static_patching = true;
++    // GameFlex: nothing to patch statically when no CPU patch can apply (CpuPatchesCanApply).
++    const bool use_static_patching = CpuPatchesCanApply();
+ #endif
+     std::vector<std::pair<VAddr, u64>> executable_segments;
+     std::vector<uintptr_t> function_starts;

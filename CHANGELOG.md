@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-11-18
+
+### Fixed
+
+- **The on-screen controller in portrait sits lower**: it no longer covers the compact performance view and the
+  « GameFlex » line under the video, on phones whose visible screen is shorter (in the Android app, for one).
+- **The touchpad of the PlayStation controller in landscape is a little narrower** (345 px instead of 360): it no longer
+  almost touches the buttons beside it.
+
+### Changed
+
+- **Our builds of shadPS4 and KytyPS5 are patches on the official repositories**: `tools/shadps4/patches/` and
+  `tools/kyty/patches/` (`patches-phone/` for the phone), applied by `build.sh` to the official source at a pinned commit.
+
 ## [0.13.0] - 2026-11-18
 
 ### Added

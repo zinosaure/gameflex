@@ -1,0 +1,85 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 23:35:31 +0000
+Subject: [PATCH] gameflex 0069: a transfer is ordered with the commands around
+ it
+
+Clair Obscur lost the device after two or three minutes with gameflex 0061
+(a compute ring timeout, the GPU recovered by the kernel), with 0061 alone
+as with everything after, never with the Kyty before it. Bisected on the
+bench: ordering every dispatch with the writes before it changes nothing;
+ordering every transfer with the commands around it keeps the game running
+(13.2 images/s over 330 s, against 11.5 before 0061).
+
+The game fills counters by DMA 6 500 times a second and reads them from its
+shaders with no wait the command processor decodes, and the console gets
+away with it. So transfers are the exception to following the game: a
+transfer waits for the shader writes before it, two transfers over the same
+bytes stay ordered, and the command after a transfer waits for it, until the
+packet the game relies on is found. Astro Bot's garden keeps its pace: the
+transfers of a run are few beside its draws.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/graphics/host_gpu/renderer/guestSync.cpp |  7 ++++++-
+ src/graphics/host_gpu/renderer/guestSync.h   | 15 +++++++++++----
+ 2 files changed, 17 insertions(+), 5 deletions(-)
+
+diff --git a/src/graphics/host_gpu/renderer/guestSync.cpp b/src/graphics/host_gpu/renderer/guestSync.cpp
+index 4c8171b5..0450fc29 100644
+--- a/src/graphics/host_gpu/renderer/guestSync.cpp
++++ b/src/graphics/host_gpu/renderer/guestSync.cpp
+@@ -18,6 +18,7 @@ void GuestSync::Wrote(vk::PipelineStageFlags2 stages, vk::AccessFlags2 access) {
+ void GuestSync::WroteTransfer(vk::Buffer buffer, uint64_t offset, uint64_t size) {
+ 	Wrote(vk::PipelineStageFlagBits2::eAllTransfer, vk::AccessFlagBits2::eTransferWrite);
+ 	m_transfers.push_back({buffer, offset, size});
++	m_wait = true; // the command after a transfer waits for it (see BeforeTransfer)
+ }
+ 
+ bool GuestSync::TransferOverlaps(vk::Buffer buffer, uint64_t offset, uint64_t size) const noexcept {
+@@ -61,7 +62,11 @@ void GuestSync::PostDue(vk::CommandBuffer command) {
+ 
+ void GuestSync::BeforeTransfer(vk::CommandBuffer command, vk::Buffer buffer, uint64_t offset,
+                                uint64_t size) {
+-	if (Due()) {
++	// Shaders wrote since the last barrier: a transfer waits for them. Transfers alone: ordered below, only
++	// over the same bytes.
++	const bool transfers_only =
++	    (m_stages & ~vk::PipelineStageFlags2 {vk::PipelineStageFlagBits2::eAllTransfer}) == vk::PipelineStageFlags2 {};
++	if (Due() || (static_cast<bool>(m_stages) && !transfers_only)) {
+ 		Post(command);
+ 		return;
+ 	}
+diff --git a/src/graphics/host_gpu/renderer/guestSync.h b/src/graphics/host_gpu/renderer/guestSync.h
+index 681af507..7362c7d1 100644
+--- a/src/graphics/host_gpu/renderer/guestSync.h
++++ b/src/graphics/host_gpu/renderer/guestSync.h
+@@ -28,8 +28,8 @@ public:
+ 	void Wait(vk::PipelineStageFlags2 stages, vk::AccessFlags2 access = {});
+ 	// A command wrote memory through `stages`: the next barrier releases it.
+ 	void Wrote(vk::PipelineStageFlags2 stages, vk::AccessFlags2 access);
+-	// A transfer wrote `size` bytes of `buffer` at `offset`: the next barrier releases it, and a later transfer
+-	// over the same bytes follows it, as the console's DMA engine runs its queue in order.
++	// A transfer wrote `size` bytes of `buffer` at `offset`: the command after it releases it, and a later
++	// transfer over the same bytes follows it, as the console's DMA engine runs its queue in order.
+ 	void WroteTransfer(vk::Buffer buffer, uint64_t offset, uint64_t size);
+ 	// Whether the game asked for a wait since the last barrier: one is due before the next command.
+ 	[[nodiscard]] bool Due() const noexcept { return m_wait && static_cast<bool>(m_stages); }
+@@ -37,8 +37,15 @@ public:
+ 	void Post(vk::CommandBuffer command);
+ 	// Posts the barrier due, if one is. Outside a render pass.
+ 	void PostDue(vk::CommandBuffer command);
+-	// Before a transfer over `size` bytes of `buffer` at `offset`: the barrier due, or, when a transfer of the
+-	// run wrote those bytes, a barrier between the two transfers.
++	// Before a transfer over `size` bytes of `buffer` at `offset`: the barrier for whatever the run wrote, or,
++	// when only transfers wrote and one of them those bytes, a barrier between the two transfers.
++	//
++	// Transfers are the exception to following the game. Clair Obscur fills counters by DMA 6 500 times a
++	// second and reads them from its shaders with no wait the command processor decodes, and the console gets
++	// away with it; left unordered here, the GPU hung on a compute ring after two or three minutes, every
++	// time, and never once with every transfer ordered with the commands around it. So a transfer waits for
++	// the writes before it and the command after it waits for the transfer, until the packet the game relies
++	// on is found.
+ 	void BeforeTransfer(vk::CommandBuffer command, vk::Buffer buffer, uint64_t offset, uint64_t size);
+ 
+ 	// Sync1 stage flags as sync2 flags: the bits coincide.

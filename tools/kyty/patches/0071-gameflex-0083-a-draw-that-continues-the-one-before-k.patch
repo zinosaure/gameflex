@@ -1,0 +1,135 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 13:50:37 +0000
+Subject: [PATCH] gameflex 0083: a draw that continues the one before keeps its
+ depth target
+
+As for the color targets (0081): the depth target's description and image
+depend on the depth registers alone, and a draw takes them again as they
+are when the registers are the same and nothing but register writes came
+between the two draws (same command buffer, no image registered or
+unregistered, no transfer, no dispatch nor image operation). The depth
+and stencil tests are still taken from their registers at every draw.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/graphics/guest_gpu/hardwareContext.h      | 10 ++++++++
+ .../host_gpu/renderer/depthRenderTarget.cpp   | 23 +++++++++++++++++--
+ src/graphics/host_gpu/renderer/render.h       | 13 +++++++++++
+ 3 files changed, 44 insertions(+), 2 deletions(-)
+
+diff --git a/src/graphics/guest_gpu/hardwareContext.h b/src/graphics/guest_gpu/hardwareContext.h
+index 8b5e7f83..13e963be 100644
+--- a/src/graphics/guest_gpu/hardwareContext.h
++++ b/src/graphics/guest_gpu/hardwareContext.h
+@@ -159,6 +159,8 @@ struct DepthZInfo {
+ 			default: return false;
+ 		}
+ 	}
++
++	bool operator==(const DepthZInfo&) const = default;
+ };
+ 
+ struct DepthStencilInfo {
+@@ -187,6 +189,8 @@ struct DepthStencilInfo {
+ 			default: return false;
+ 		}
+ 	}
++
++	bool operator==(const DepthStencilInfo&) const = default;
+ };
+ 
+ struct DepthDepthView {
+@@ -195,12 +199,16 @@ struct DepthDepthView {
+ 	uint8_t  current_mip_level     = 0;
+ 	bool     depth_write_disable   = false;
+ 	bool     stencil_write_disable = false;
++
++	bool operator==(const DepthDepthView&) const = default;
+ };
+ 
+ struct DepthDepthSizeXY {
+ 	uint16_t x_max = 0;
+ 	uint16_t y_max = 0;
+ 	bool     valid = false;
++
++	bool operator==(const DepthDepthSizeXY&) const = default;
+ };
+ 
+ struct DepthRenderTarget {
+@@ -215,6 +223,8 @@ struct DepthRenderTarget {
+ 	uint64_t stencil_write_base_addr = 0;
+ 	uint64_t htile_data_base_addr    = 0;
+ 	uint8_t  shading_rate_encoding   = 0;
++
++	bool operator==(const DepthRenderTarget&) const = default;
+ };
+ 
+ struct RenderControl {
+diff --git a/src/graphics/host_gpu/renderer/depthRenderTarget.cpp b/src/graphics/host_gpu/renderer/depthRenderTarget.cpp
+index 809a9537..7ca26a0a 100644
+--- a/src/graphics/host_gpu/renderer/depthRenderTarget.cpp
++++ b/src/graphics/host_gpu/renderer/depthRenderTarget.cpp
+@@ -311,7 +311,14 @@ void RenderExecutor::ResolveRenderDepthTarget(CommandBuffer& buffer, RenderDepth
+ 	     rc.depth_clear_enable || rc.stencil_clear_enable)) {
+ 		DepthFatal("unsupported depth-to-color copy state");
+ 	}
+-	r.desc = MakeDepthTargetDesc(buffer, z);
++	auto&      cache        = m_context.GetTextureCache();
++	auto&      buffer_cache = m_context.GetBufferCache();
++	auto&      continued    = m_continued_depth;
++	const bool continues    = continued.valid &&
++	                       continued.tick == m_context.GetCommandScheduler().CurrentTick() &&
++	                       continued.breaks == m_chain_breaks && continued.textures == cache.Epoch() &&
++	                       continued.transfers == buffer_cache.Transfers() && continued.registers == z;
++	r.desc = continues ? continued.desc : MakeDepthTargetDesc(buffer, z);
+ 	r.depth_clear_enable      = rc.depth_clear_enable;
+ 	r.depth_clear_value       = hw.GetDepthClearValue();
+ 	r.depth_test_enable       = dc.z_enable;
+@@ -348,9 +355,21 @@ void RenderExecutor::ResolveRenderDepthTarget(CommandBuffer& buffer, RenderDepth
+ 			r.stencil_back = r.stencil_front;
+ 		}
+ 	}
+-	auto& cache = m_context.GetTextureCache();
++	if (continues) {
++		r.image_id = continued.image_id;
++		BindRenderTarget(r.image_id);
++		return;
++	}
+ 	r.image_id = cache.FindImage(r.desc);
+ 	BindRenderTarget(r.image_id);
++	continued = {z,
++	             true,
++	             m_context.GetCommandScheduler().CurrentTick(),
++	             cache.Epoch(),
++	             buffer_cache.Transfers(),
++	             m_chain_breaks,
++	             r.desc,
++	             r.image_id};
+ }
+ 
+ bool RenderExecutor::DepthStencilCopy(CommandBuffer& buffer) {
+diff --git a/src/graphics/host_gpu/renderer/render.h b/src/graphics/host_gpu/renderer/render.h
+index 5e6ae336..70863a07 100644
+--- a/src/graphics/host_gpu/renderer/render.h
++++ b/src/graphics/host_gpu/renderer/render.h
+@@ -243,6 +243,19 @@ private:
+ 	RenderContext&                        m_context;
+ 	std::unordered_map<TextureBindingKey, CachedTextureBinding, TextureBindingKeyHash> m_texture_bindings;
+ 	std::array<ContinuedTarget, RENDER_COLOR_ATTACHMENTS_MAX> m_continued_targets;
++	// The depth target the draw before found, under the same conditions: its description and image depend on the
++	// depth registers alone (the depth and stencil tests are taken from their registers at every draw).
++	struct ContinuedDepth {
++		HW::DepthRenderTarget   registers;
++		bool                    valid     = false;
++		uint64_t                tick      = 0;
++		uint64_t                textures  = 0;
++		uint64_t                transfers = 0;
++		uint64_t                breaks    = 0;
++		TextureCache::ImageDesc desc;
++		ImageId                 image_id;
++	};
++	ContinuedDepth                                            m_continued_depth;
+ 	// Advances at every dispatch and at every draw spent on an image operation (metadata, copy, resolve).
+ 	uint64_t                                                  m_chain_breaks = 0;
+ 	GraphicsBindings                     m_graphics_bindings;

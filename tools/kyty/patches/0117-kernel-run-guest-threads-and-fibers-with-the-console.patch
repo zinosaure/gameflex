@@ -1,0 +1,169 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nawid3333 <102778966+Nawid3333@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 11:30:03 +0100
+Subject: [PATCH] kernel: run guest threads and fibers with the console's FP
+ environment
+
+(cherry picked from commit f399d481839722e6153d2ca190b7f669a7a40a6e)
+---
+ src/common/fpEnv.h           | 27 ++++++++++++++++++++++++
+ src/kernel/pthread.cpp       |  2 ++
+ src/libs/libKernel.cpp       | 40 ++++++++++++++++++++++++++----------
+ src/loader/runtimeLinker.cpp |  2 ++
+ 4 files changed, 60 insertions(+), 11 deletions(-)
+ create mode 100644 src/common/fpEnv.h
+
+diff --git a/src/common/fpEnv.h b/src/common/fpEnv.h
+new file mode 100644
+index 00000000..e8206ae4
+--- /dev/null
++++ b/src/common/fpEnv.h
+@@ -0,0 +1,27 @@
++#ifndef KYTY_COMMON_FP_ENV_H_
++#define KYTY_COMMON_FP_ENV_H_
++
++#include "common/common.h"
++
++namespace Common {
++
++struct FpEnv {
++	uint32_t mxcsr;
++	uint16_t control;
++};
++
++inline constexpr FpEnv GuestFpEnv {0x9fc0, 0x037f};
++
++inline FpEnv ReadFpEnv() {
++	FpEnv env {};
++	asm volatile("stmxcsr %0\n\tfnstcw %1" : "=m"(env.mxcsr), "=m"(env.control) : : "memory");
++	return env;
++}
++
++inline void WriteFpEnv(FpEnv env) {
++	asm volatile("ldmxcsr %0\n\tfldcw %1" : : "m"(env.mxcsr), "m"(env.control) : "memory");
++}
++
++} // namespace Common
++
++#endif /* KYTY_COMMON_FP_ENV_H_ */
+diff --git a/src/kernel/pthread.cpp b/src/kernel/pthread.cpp
+index a11e653a..c5322949 100644
+--- a/src/kernel/pthread.cpp
++++ b/src/kernel/pthread.cpp
+@@ -4,6 +4,7 @@
+ #include "common/gameflexWatchdog.h"
+ #include "common/common.h"
+ #include "common/emulatorConfig.h"
++#include "common/fpEnv.h"
+ #include "common/hostException.h"
+ #include "common/logging/log.h"
+ #include "common/singleton.h"
+@@ -3191,6 +3192,7 @@ static void CleanupThread(void* arg) {
+ }
+ 
+ static void* RunThread(void* arg) {
++	Common::WriteFpEnv(Common::GuestFpEnv);
+ 
+ #if KYTY_PLATFORM == KYTY_PLATFORM_LINUX
+ 	if (!Common::HostException::InitializeThreadSignalStack()) {
+diff --git a/src/libs/libKernel.cpp b/src/libs/libKernel.cpp
+index f864c2d8..88921eb8 100644
+--- a/src/libs/libKernel.cpp
++++ b/src/libs/libKernel.cpp
+@@ -3,6 +3,7 @@
+ #include "common/common.h"
+ #include "common/emulatorConfig.h"
+ #include "common/file.h"
++#include "common/fpEnv.h"
+ #include "common/hostException.h"
+ #include "common/logging/log.h"
+ #include "common/singleton.h"
+@@ -2291,19 +2292,20 @@ struct FiberOptParam {
+ };
+ 
+ struct FiberCpuContext {
+-	uint64_t rbx;
+-	uint64_t rbp;
+-	uint64_t rdi;
+-	uint64_t rsi;
+-	uint64_t r12;
+-	uint64_t r13;
+-	uint64_t r14;
+-	uint64_t r15;
+-	uint64_t rsp;
+-	uint64_t rip;
++	uint64_t      rbx;
++	uint64_t      rbp;
++	uint64_t      rdi;
++	uint64_t      rsi;
++	uint64_t      r12;
++	uint64_t      r13;
++	uint64_t      r14;
++	uint64_t      r15;
++	uint64_t      rsp;
++	uint64_t      rip;
++	Common::FpEnv fp_env;
+ };
+ 
+-static_assert(sizeof(FiberCpuContext) == 80);
++static_assert(sizeof(FiberCpuContext) == 88);
+ 
+ struct FiberObject {
+ 	uint32_t        magic_start;
+@@ -2433,6 +2435,8 @@ static void FiberSetContextValid(FiberObject* fiber, bool valid) {
+ 	             "movq %r11, 64(%r10)\n\t"
+ 	             "movq (%rsp), %r11\n\t"
+ 	             "movq %r11, 72(%r10)\n\t"
++	             "stmxcsr 80(%r10)\n\t"
++	             "fnstcw 84(%r10)\n\t"
+ 	             "xorl %eax, %eax\n\t"
+ 	             "retq\n");
+ }
+@@ -2450,6 +2454,16 @@ FiberRestoreContext(FiberCpuContext* /*ctx*/, uint64_t /*ret*/) {
+ 	             "movq 40(%r10), %r13\n\t"
+ 	             "movq 48(%r10), %r14\n\t"
+ 	             "movq 56(%r10), %r15\n\t"
++	             "subq $8, %rsp\n\t"
++	             "stmxcsr (%rsp)\n\t"
++	             "movl (%rsp), %ecx\n\t"
++	             "andl $0x3f, %ecx\n\t"
++	             "movl 80(%r10), %edx\n\t"
++	             "andl $0xffffffc0, %edx\n\t"
++	             "orl %ecx, %edx\n\t"
++	             "movl %edx, (%rsp)\n\t"
++	             "ldmxcsr (%rsp)\n\t"
++	             "fldcw 84(%r10)\n\t"
+ 	             "movq 64(%r10), %rsp\n\t"
+ 	             "jmp *%r11\n");
+ }
+@@ -2479,6 +2493,10 @@ static void FiberRestoreContext(FiberCpuContext* ctx, uint64_t ret) {
+ 	ctx.rsp = rsp;
+ 	ctx.rip = reinterpret_cast<uint64_t>(&FiberStartTrampoline);
+ 	ctx.rdi = reinterpret_cast<uint64_t>(fiber);
++	if ((fiber->flags & FIBER_FLAG_SET_FPU_REGS) != 0) {
++		Common::WriteFpEnv(Common::GuestFpEnv);
++	}
++	ctx.fp_env = Common::ReadFpEnv();
+ 
+ 	FiberRestoreContext(&ctx, 1);
+ }
+diff --git a/src/loader/runtimeLinker.cpp b/src/loader/runtimeLinker.cpp
+index c683424b..4dc8397b 100644
+--- a/src/loader/runtimeLinker.cpp
++++ b/src/loader/runtimeLinker.cpp
+@@ -5,6 +5,7 @@
+ #include "common/debugCounters.h"
+ #include "common/emulatorConfig.h"
+ #include "common/file.h"
++#include "common/fpEnv.h"
+ #include "common/hostException.h"
+ #include "common/logging/log.h"
+ #include "common/platform/sysDbg.h"
+@@ -1273,6 +1274,7 @@ void RuntimeLinker::Execute(const std::filesystem::path& game_patch) {
+ 			EXIT("Failed to apply game cheat\n");
+ 		}
+ 	}
++	Common::WriteFpEnv(Common::GuestFpEnv);
+ 	if (libc != nullptr && libc->dynamic_info->init_vaddr != 0) {
+ 		StartModule(libc, 0, nullptr, nullptr);
+ 	}

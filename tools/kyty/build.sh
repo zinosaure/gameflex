@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# Construit KytyPS5 depuis NOTRE FOURCHE — https://github.com/zinosaure/KytyPS5 —, à la révision
-# épinglée ci-dessous (FORK_REV, FORK_REV_PHONE). Deux branches : `gameflex`, le serveur (l'éditeur à l'étiquette
-# que le serveur emploie — consoles/ps5/Dockerfile, KYTY_RELEASE — plus nos commits 0007 à 0060
-# puis les refontes), et `gameflex-phone-2`, le téléphone (la même, plus les commits 0001 à 0006 :
-# l'espace d'adresses compact et le chemin sans extension barycentrique). Chaque commit est décrit
-# dans README.md, par son numéro ou son titre.
+# Construit KytyPS5 depuis le DÉPÔT OFFICIEL — https://github.com/KytyPS5/KytyPS5 —, au commit de
+# base épinglé ci-dessous (BASE : l'étiquette que le serveur emploie, consoles/ps5/Dockerfile,
+# KYTY_RELEASE), plus NOS PATCHS. Deux jeux de patchs : `patches/`, le serveur (nos commits 0007 et
+# suivants, puis les refontes et les reprises de l'amont, un patch par commit, décrits dans README.md
+# par leur numéro ou leur titre), et `patches-phone/gameflex-phone.patch`, le téléphone (un seul
+# patch : sa branche reçoit celle du serveur par fusion, une série ne s'y rejoue pas ; l'espace
+# d'adresses compact et le chemin sans extension barycentrique en plus).
 #
-# Plus de fichiers de patch depuis le 2026-11-09 (le porteur : « il faut du vrai changement de
-# code »). Le code se lit, se corrige et se construit dans la fourche comme n'importe quel code ;
-# pour changer Kyty : un commit sur la branche, poussé sur la fourche, puis FORK_REV avancé ici.
+# PLUS DE FOURCHE depuis le 2026-11-18 (chantier 63 ; le porteur : « on travaille que par des patchs
+# […] Ce que je ne veux pas c'est d'avoir des repos avec le code source des émulateurs »). Le code se
+# change dans le clone de travail (/home/gixi/Github/KytyPS5, branches `gameflex` et
+# `gameflex-phone-2`), puis les patchs se réexportent : tools/emulator-patches.sh export kyty
+# (README.md). Le fond ne change pas (refaire ce qui est mal conçu, 2026-11-09) : seule la forme de
+# livraison change.
 #
 #   tools/kyty/build.sh [--server] [dossier de sortie]     (défaut : ./kyty-out)
 #
@@ -23,10 +27,9 @@
 # dynamiquement à trixie.
 set -euo pipefail
 
-FORK=https://github.com/zinosaure/KytyPS5.git
-# La révision construite de chaque branche ; à avancer avec la fourche (README.md).
-FORK_REV=4e5167724bb0870b3391c0e4228682b061c91025
-FORK_REV_PHONE=5497652698a42d5d5a9c74b83ce642fd28176591
+UPSTREAM=https://github.com/KytyPS5/KytyPS5.git
+# Le commit officiel sur lequel les patchs s'appliquent (celui de KYTY_RELEASE) ; à avancer avec eux (README.md).
+BASE=91c5820c0cecb8ca024d691ca8750be811370591
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
@@ -34,24 +37,29 @@ SERVER=0
 if [ "${1:-}" = --server ]; then SERVER=1; shift; fi
 OUT=${1:-$PWD/kyty-out}
 CONTAINER=${KYTY_BUILD_CONTAINER:-gameflex-kyty-build}
-SRC=/src COMPACT=ON BRANCH=gameflex-phone-2 REV=$FORK_REV_PHONE
+SRC=/src COMPACT=ON PATCHES=$HERE/patches-phone WHAT=téléphone
 if [ "$SERVER" = 1 ]; then
-    SRC=/src-server COMPACT=OFF BRANCH=gameflex REV=$FORK_REV
+    SRC=/src-server COMPACT=OFF PATCHES=$HERE/patches WHAT=serveur
 fi
 TAG=$(sed -n 's/^ARG KYTY_RELEASE=//p' "$ROOT/src/microservices/runtimes/streamex/consoles/ps5/Dockerfile")
 JOBS=${JOBS:-$(( $(nproc) > 4 ? $(nproc) - 4 : 2 ))}
 
 [ -n "$TAG" ] || { echo "✗ KYTY_RELEASE introuvable dans le Dockerfile de la PS5" >&2; exit 1; }
 mkdir -p "$OUT"
+ls "$PATCHES"/*.patch > /dev/null 2>&1 || { echo "✗ aucun patch dans $PATCHES" >&2; exit 1; }
+# L'empreinte des patchs : un arbre déjà patché par les mêmes n'est pas refait (ninja reprend).
+SERIES=$(cat "$PATCHES"/*.patch | sha256sum | cut -c1-16)
 
 if ! docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
     docker run -d --name "$CONTAINER" debian:trixie sleep infinity > /dev/null
 fi
 docker start "$CONTAINER" > /dev/null
+docker exec "$CONTAINER" rm -rf /patches
+docker cp "$PATCHES" "$CONTAINER:/patches"
 
-echo "KytyPS5 $TAG, fourche $BRANCH@${REV:0:12}, $JOBS tâches, dans $CONTAINER"
+echo "KytyPS5 $TAG ($WHAT), officiel@${BASE:0:12} + $(ls "$PATCHES"/*.patch | wc -l) patch(s) ($SERIES), $JOBS tâches, dans $CONTAINER"
 # -i : le script passe par l'entrée standard.
-docker exec -i -e FORK="$FORK" -e FORK_REV="$REV" -e BRANCH="$BRANCH" -e JOBS="$JOBS" -e SRC="$SRC" -e COMPACT="$COMPACT" "$CONTAINER" bash -s <<'EOF2'
+docker exec -i -e UPSTREAM="$UPSTREAM" -e BASE="$BASE" -e SERIES="$SERIES" -e JOBS="$JOBS" -e SRC="$SRC" -e COMPACT="$COMPACT" "$CONTAINER" bash -s <<'EOF2'
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
@@ -64,21 +72,36 @@ if ! command -v clang > /dev/null; then
         libvulkan-dev > /tmp/apt.log 2>&1 || { tail -5 /tmp/apt.log; exit 1; }
 fi
 
-# Un arbre d'une autre origine (l'ancien clone de l'éditeur plus ses patchs) se reclone.
-if [ -d "$SRC/.git" ] && [ "$(git -C "$SRC" remote get-url origin 2>/dev/null)" != "$FORK" ]; then
-    echo "→ $SRC n'est pas un clone de la fourche : nouveau clone"
+# Un arbre d'une autre origine (l'ancien clone de la fourche) se reclone.
+if [ -d "$SRC/.git" ] && [ "$(git -C "$SRC" remote get-url origin 2>/dev/null)" != "$UPSTREAM" ]; then
+    echo "→ $SRC n'est pas un clone du dépôt officiel : nouveau clone"
     rm -rf "$SRC"
 fi
 if [ ! -d "$SRC/.git" ]; then
-    git clone -q --branch "$BRANCH" --recurse-submodules --shallow-submodules "$FORK" "$SRC"
+    git init -q "$SRC"
+    git -C "$SRC" remote add origin "$UPSTREAM"
 fi
 cd "$SRC"
-if [ "$(git rev-parse HEAD)" != "$FORK_REV" ]; then
-    git fetch -q origin "$BRANCH"
-    git checkout -q --detach "$FORK_REV"
+# Le commit de base et ses dépendances, puis les patchs — refaits seulement quand l'un ou l'autre change. En commits,
+# d'une identité et à des dates fixes : les mêmes patchs donnent la même révision.
+if [ "$(cat .git/gameflex-series 2>/dev/null)" != "$BASE $SERIES" ]; then
+    git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch -q --depth 1 origin "$BASE"
+    git checkout -q -f --detach "$BASE"
+    git clean -q -fd -e build
     git submodule update -q --init --recursive --depth 1
+    export GIT_AUTHOR_NAME=GameFlex GIT_AUTHOR_EMAIL=gameflex@users.noreply.github.com
+    export GIT_COMMITTER_NAME=GameFlex GIT_COMMITTER_EMAIL=gameflex@users.noreply.github.com
+    if head -1 /patches/*.patch | grep -q '^From '; then
+        git am -q --keep-cr --committer-date-is-author-date /patches/*.patch \
+            || { git am --abort 2>/dev/null; echo "✗ les patchs ne s'appliquent pas sur $BASE" >&2; exit 1; }
+    else
+        # Un patch unique (le téléphone) : un commit daté comme la base.
+        git apply --index /patches/*.patch || { echo "✗ le patch ne s'applique pas sur $BASE" >&2; exit 1; }
+        date=$(git log -1 --format=%cI "$BASE")
+        GIT_AUTHOR_DATE=$date GIT_COMMITTER_DATE=$date git commit -q -m "gameflex: the phone's patch"
+    fi
+    echo "$BASE $SERIES" > .git/gameflex-series
 fi
-git status --short | grep -q . && { echo "✗ $SRC a des modifications locales : les ranger avant de construire" >&2; git status --short | head; exit 1; }
 mkdir -p build
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
@@ -91,4 +114,4 @@ cp "$found" /tmp/kyty_emulator
 EOF2
 
 docker cp "$CONTAINER:/tmp/kyty_emulator" "$OUT/kyty_emulator"
-echo "→ $OUT/kyty_emulator ($(du -h "$OUT/kyty_emulator" | cut -f1) — KytyPS5 $TAG, fourche $BRANCH@${REV:0:12}, KYTY_COMPACT_ADDRESS_SPACE=$COMPACT)"
+echo "→ $OUT/kyty_emulator ($(du -h "$OUT/kyty_emulator" | cut -f1) — KytyPS5 $TAG ($WHAT), officiel@${BASE:0:12} + $SERIES, KYTY_COMPACT_ADDRESS_SPACE=$COMPACT)"

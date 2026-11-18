@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: nmzik <Nmzik@mail.ru>
+Date: Sat, 7 Nov 2026 18:56:26 +0100
+Subject: [PATCH] kernel: report a 64 KiB directory block size from stat and
+ fstat
+
+(cherry picked from commit 6d8d4c8b76c460ab772d059c655c2aa19a031c6c)
+---
+ src/kernel/fileSystem.cpp       | 36 +++++++++++++--------------------
+ tests/KernelFileSystemTests.cpp |  8 ++++++--
+ 2 files changed, 20 insertions(+), 24 deletions(-)
+
+diff --git a/src/kernel/fileSystem.cpp b/src/kernel/fileSystem.cpp
+index 8e734b2f..b22b96f9 100644
+--- a/src/kernel/fileSystem.cpp
++++ b/src/kernel/fileSystem.cpp
+@@ -136,6 +136,13 @@ static void SetStatTimes(FileStat* stat, std::optional<Common::File::Times> time
+ 	stat->st_birthtim = stat->st_mtim;
+ }
+ 
++// Directories report a 64 KiB st_blksize; games size one whole-directory getdents from it.
++static void SetStatSize(FileStat* stat, uint64_t size, bool directory) {
++	stat->st_size    = static_cast<int64_t>(size);
++	stat->st_blksize = directory ? 0x10000 : 512;
++	stat->st_blocks  = static_cast<int64_t>((size + 511) / 512);
++}
++
+ static uint64_t AlignDown(uint64_t value, uint64_t alignment) {
+ 	return (alignment != 0 ? value & ~(alignment - 1) : value);
+ }
+@@ -1405,18 +1412,9 @@ int StatHostPath(const std::filesystem::path& real_file_name, FileStat* sb) {
+ 
+ 	FileStat stat {};
+ 	stat.st_mode = 0000777u | (is_dir ? 0040000u : 0100000u);
+-
+-	if (is_dir) {
+-		stat.st_size =
+-		    static_cast<int64_t>(PackDirents(Common::File::GetDirEntries(real_file_name)).size());
+-		stat.st_blksize = 512;
+-		stat.st_blocks  = stat.st_size / 512;
+-	} else {
+-		stat.st_size    = static_cast<int64_t>(info->size);
+-		stat.st_blksize = 512;
+-		stat.st_blocks  = (stat.st_size + 511) / 512;
+-	}
+-
++	const uint64_t size =
++	    is_dir ? PackDirents(Common::File::GetDirEntries(real_file_name)).size() : info->size;
++	SetStatSize(&stat, size, is_dir);
+ 	SetStatTimes(&stat, is_dir ? std::nullopt : Common::File::GetTimes(real_file_name));
+ 	*sb = stat;
+ 
+@@ -1450,10 +1448,8 @@ int KYTY_SYSV_ABI KernelFstat(int d, FileStat* sb) {
+ 	std::optional<Common::File::Times> times;
+ 
+ 	if (file->special != SpecialFile::None) {
+-		stat.st_mode    = 0020644u;
+-		stat.st_size    = 0;
+-		stat.st_blksize = 512;
+-		stat.st_blocks  = 0;
++		stat.st_mode = 0020644u;
++		SetStatSize(&stat, 0, false);
+ 	} else if (!file->directory) {
+ 		file->mutex.Lock();
+ 
+@@ -1468,13 +1464,9 @@ int KYTY_SYSV_ABI KernelFstat(int d, FileStat* sb) {
+ 			return KERNEL_ERROR_EIO;
+ 		}
+ 
+-		stat.st_size    = static_cast<int64_t>(size);
+-		stat.st_blksize = 512;
+-		stat.st_blocks  = (stat.st_size + 511) / 512;
++		SetStatSize(&stat, size, false);
+ 	} else {
+-		stat.st_size    = static_cast<int64_t>(file->dirents.size());
+-		stat.st_blksize = 512;
+-		stat.st_blocks  = stat.st_size / 512;
++		SetStatSize(&stat, file->dirents.size(), true);
+ 	}
+ 
+ 	SetStatTimes(&stat, times);
+diff --git a/tests/KernelFileSystemTests.cpp b/tests/KernelFileSystemTests.cpp
+index 2f2fec78..ac1f020e 100644
+--- a/tests/KernelFileSystemTests.cpp
++++ b/tests/KernelFileSystemTests.cpp
+@@ -1389,11 +1389,15 @@ void CheckDirectoryStream(const std::filesystem::path &root) {
+         "directory SEEK_END uses padded stream size");
+   FileSystem::FileStat stat{};
+   Check(FileSystem::KernelFstat(fd, &stat) == OK && stat.st_size == end &&
+-            stat.st_blksize == 512,
++            stat.st_blksize == 0x10000,
+         "directory stat agrees with seek and enumeration");
+   Check(FileSystem::KernelStat("/app0/", &stat) == OK && stat.st_size == end &&
+-            stat.st_blocks == end / 512,
++            stat.st_blocks == end / 512 && stat.st_blksize == 0x10000,
+         "path and descriptor directory stat agree");
++  std::vector<char> whole(stat.st_blksize);
++  Check(FileSystem::KernelLseek(fd, 0, 0) == 0 &&
++            FileSystem::KernelGetdents(fd, whole.data(), whole.size()) == end,
++        "one getdents of st_blksize bytes reads the whole directory");
+   Check(FileSystem::KernelLseek(fd, 0, 0) == 0,
+         "rewind directory for asset read");
+   std::vector<char> raw(static_cast<size_t>(end));

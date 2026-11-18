@@ -1,0 +1,124 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:26 +0000
+Subject: [PATCH] gameflex 0049: window title says render and output size
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+le titre de la fenêtre dit la taille d'image
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0049.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/common/gameflexStatus.h                      | 16 ++++++++++++++++
+ src/graphics/presentation/window/swapchain.cpp   |  2 ++
+ src/graphics/presentation/window/window.cpp      | 10 ++++++++++
+ .../presentation/window/windowInternal.h         |  2 ++
+ src/kernel/fileSystem.cpp                        |  8 +++++++-
+ 5 files changed, 37 insertions(+), 1 deletion(-)
+ create mode 100644 src/common/gameflexStatus.h
+
+diff --git a/src/common/gameflexStatus.h b/src/common/gameflexStatus.h
+new file mode 100644
+index 00000000..ba29fefb
+--- /dev/null
++++ b/src/common/gameflexStatus.h
+@@ -0,0 +1,16 @@
++#ifndef KYTY_COMMON_GAMEFLEX_STATUS_H_
++#define KYTY_COMMON_GAMEFLEX_STATUS_H_
++
++#include <atomic>
++#include <cstdint>
++
++namespace Common::GameFlex {
++
++// GameFlex: the scene size Kyty asks an Unreal game for (r.ScreenPercentage from KYTY_UE_RENDER_HEIGHT),
++// width << 32 | height, 0 when it asks for none. The window title carries it for GameFlex's
++// performance panel, next to the image the game outputs.
++inline std::atomic<uint64_t> g_unreal_scene_size {0};
++
++} // namespace Common::GameFlex
++
++#endif /* KYTY_COMMON_GAMEFLEX_STATUS_H_ */
+diff --git a/src/graphics/presentation/window/swapchain.cpp b/src/graphics/presentation/window/swapchain.cpp
+index 2e30f1fe..33ecd7ae 100644
+--- a/src/graphics/presentation/window/swapchain.cpp
++++ b/src/graphics/presentation/window/swapchain.cpp
+@@ -1027,6 +1027,8 @@ Presenter::Frame& Presenter::PrepareFrame(CommandBuffer& buffer, const ImageInfo
+ 	auto* frame = m_impl->frames.Acquire({info.extent.width, info.extent.height}, frame_format);
+ 	frame->hdr   = hdr;
+ 	frame->blank = false;
++	m_impl->window.loop.output_size.store(uint64_t {info.extent.width} << 32 | info.extent.height,
++	                                      std::memory_order_relaxed);
+ 	Common::LockGuard render_lock(m_impl->renderer.GetMutex());
+ 	auto&             image = m_impl->ResolveSurface(info);
+ 	if (image.backing.format == vk::Format::eUndefined) {
+diff --git a/src/graphics/presentation/window/window.cpp b/src/graphics/presentation/window/window.cpp
+index d72f414e..7e6f6d73 100644
+--- a/src/graphics/presentation/window/window.cpp
++++ b/src/graphics/presentation/window/window.cpp
+@@ -4,6 +4,7 @@
+ #include "common/common.h"
+ #include "common/emulatorConfig.h"
+ #include "common/file.h"
++#include "common/gameflexStatus.h"
+ #include "common/logging/log.h"
+ #include "common/profiler.h"
+ #include "common/stringUtils.h"
+@@ -925,6 +926,15 @@ void WindowContext::UpdateTitle(uint64_t frame_num, double current_fps) {
+ 	    (has_title ? title : ""), (has_title ? ", " : ""), (has_title_id ? title_id : ""),
+ 	    (has_title_id ? ", " : ""), (has_app_ver ? app_ver : ""), (has_app_ver ? " " : ""),
+ 	    device_name, processor_name, frame_num, current_fps);
++	// GameFlex: the scene asked of an Unreal game and the image the game outputs, which GameFlex's
++	// performance panel reads here (sessionstatus.TitleResolution), as it reads the fps.
++	if (const auto scene = Common::GameFlex::g_unreal_scene_size.load(std::memory_order_relaxed);
++	    scene != 0) {
++		text += fmt::format(", render: {}x{}", scene >> 32, scene & 0xffffffffu);
++	}
++	if (const auto output = loop.output_size.load(std::memory_order_relaxed); output != 0) {
++		text += fmt::format(", output: {}x{}", output >> 32, output & 0xffffffffu);
++	}
+ 
+ 	SDL_SetWindowTitle(window, text.c_str());
+ }
+diff --git a/src/graphics/presentation/window/windowInternal.h b/src/graphics/presentation/window/windowInternal.h
+index 493d9c7c..c834724a 100644
+--- a/src/graphics/presentation/window/windowInternal.h
++++ b/src/graphics/presentation/window/windowInternal.h
+@@ -27,6 +27,8 @@ struct WindowLoopState {
+ 	SDL_Event             event {};
+ 	bool                  need_exit = false;
+ 	std::atomic<uint64_t> presented_frames {0};
++	// GameFlex: the size of the game's last output image, width << 32 | height, for the title.
++	std::atomic<uint64_t> output_size {0};
+ };
+ 
+ struct WindowContext {
+diff --git a/src/kernel/fileSystem.cpp b/src/kernel/fileSystem.cpp
+index 37e7b0bb..5331136a 100644
+--- a/src/kernel/fileSystem.cpp
++++ b/src/kernel/fileSystem.cpp
+@@ -6,6 +6,7 @@
+ #include "common/debugCounters.h"
+ #include "common/emulatorConfig.h"
+ #include "common/file.h"
++#include "common/gameflexStatus.h"
+ #include "common/logging/log.h"
+ #include "common/stringUtils.h"
+ #include "common/threads.h"
+@@ -484,7 +485,12 @@ static unsigned long UnrealScreenPercentage() {
+ 		Loader::SystemContentParamSfoGetInt("ATTRIBUTE3", &attribute3);
+ 		base = (attribute3 & 4) != 0 ? 1080 : 2160;
+ 	}
+-	return (height * 100 + base / 2) / base;
++	const auto percent = (height * 100 + base / 2) / base;
++	// GameFlex: the scene that percentage gives, for the window title (16:9 from the base height).
++	const uint64_t scene_width  = (base * 16 / 9 * percent + 50) / 100;
++	const uint64_t scene_height = (base * percent + 50) / 100;
++	Common::GameFlex::g_unreal_scene_size.store(scene_width << 32 | scene_height, std::memory_order_relaxed);
++	return percent;
+ }
+ 
+ // GameFlex: the variable that carries that percentage. r.ScreenPercentage for most games; Tekken 8 sets it

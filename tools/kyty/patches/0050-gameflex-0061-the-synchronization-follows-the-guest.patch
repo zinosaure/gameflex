@@ -1,0 +1,797 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 22:01:23 +0000
+Subject: [PATCH] gameflex 0061: the synchronization follows the guest
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+On the console, the draws, dispatches and DMA transfers of a queue overlap
+until the game asks the command processor to wait: ACQUIRE_MEM, a
+CS/VS/PS_PARTIAL_FLUSH, a writeback of the color or depth caches, a DMA with
+CP_SYNC, a WAIT_REG_MEM on a label the GPU has yet to write. Kyty ignored
+those packets and surrounded every command that writes memory with two full
+barriers (ALL_COMMANDS, MEMORY_READ|WRITE) instead: on RADV each one drains
+compute and pixels, writes back and invalidates L2 and flushes the CB/DB
+caches. About 3 000 barriers an image in Astro Bot's Celestial Garden, the
+GPU idle a third of the time inside its own command buffers.
+
+GuestSync, owned by the RenderContext, keeps the state of the stream: the
+commands say what they wrote (draws whose shaders write, dispatches with
+storage writes, transfers), the command processor says when the game waits
+and for which stages, and the next command posts one barrier for all of it,
+with the stages the game named as the source. Gone: the two barriers around
+each dispatch and each transfer (transfers over the same bytes stay ordered,
+as in the DMA engine's queue), the indirect-arguments barrier, the
+repeated-write rule of the images, the run mechanism of gameflex 0060. The
+labels of RELEASE_MEM are written with VK_AMD_buffer_marker when the device
+has it: the console's end-of-pipe write, without a barrier. The end of a
+command buffer releases what the run still owes.
+
+Measured on Astro Bot in the Celestial Garden (RADV, Radeon 780M): the idle
+time inside command buffers down 59 %, dispatches that found the GPU drained
+99.6 → 44 %, labels 94 → 9.5 %, 5.27 → 5.53 images/s; Wukong unchanged (same
+images, same GPU load). Clair Obscur lost the device until DMA_DATA's CP_SYNC
+was honored.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ .../command_processor/commandProcessor.h      |  1 +
+ .../command_processor/pm4Handlers.cpp         | 11 ++-
+ src/graphics/guest_gpu/graphicsRun.cpp        | 35 ++++++--
+ src/graphics/host_gpu/graphicContext.h        |  2 +
+ .../host_gpu/renderer/cache/bufferCache.cpp   | 16 ++++
+ .../host_gpu/renderer/cache/streamBuffer.cpp  | 55 +++---------
+ .../host_gpu/renderer/cache/streamBuffer.h    |  4 -
+ src/graphics/host_gpu/renderer/context.cpp    | 14 +++-
+ src/graphics/host_gpu/renderer/guestSync.cpp  | 83 +++++++++++++++++++
+ src/graphics/host_gpu/renderer/guestSync.h    | 66 +++++++++++++++
+ .../host_gpu/renderer/image/image.cpp         | 15 +---
+ .../pipeline/shaderResourceBarrier.cpp        | 31 -------
+ .../renderer/pipeline/shaderResourceBarrier.h |  9 --
+ src/graphics/host_gpu/renderer/render.h       | 15 +---
+ .../host_gpu/renderer/renderCompute.cpp       | 32 +++----
+ .../host_gpu/renderer/renderContext.h         |  3 +
+ src/graphics/host_gpu/renderer/renderDraw.cpp | 18 ++--
+ .../presentation/window/vulkanWindow.cpp      |  1 +
+ 18 files changed, 251 insertions(+), 160 deletions(-)
+ create mode 100644 src/graphics/host_gpu/renderer/guestSync.cpp
+ create mode 100644 src/graphics/host_gpu/renderer/guestSync.h
+
+diff --git a/src/graphics/guest_gpu/command_processor/commandProcessor.h b/src/graphics/guest_gpu/command_processor/commandProcessor.h
+index 49e862f5..76dae91b 100644
+--- a/src/graphics/guest_gpu/command_processor/commandProcessor.h
++++ b/src/graphics/guest_gpu/command_processor/commandProcessor.h
+@@ -64,6 +64,7 @@ public:
+ 
+ 	void            BufferInit();
+ 	void            BufferFlush();
++	GuestSync&      GetGuestSync() const { return m_renderer.GetGuestSync(); }
+ 	void            BufferWait();
+ 	HW::Context&    GetCtx() { return m_ctx; }
+ 	HW::UserConfig& GetUcfg() { return m_ucfg; }
+diff --git a/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp b/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp
+index bb1e28ac..181b8137 100644
+--- a/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp
++++ b/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp
+@@ -1,4 +1,3 @@
+-#include "graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.h"
+ #include "common/assert.h"
+ #include "common/logging/log.h"
+ #include "common/profiler.h"
+@@ -438,8 +437,9 @@ KYTY_CP_OP_PARSER(CpOpAcquireMem) {
+ 	KYTY_PROFILER_FUNCTION();
+ 
+ 	EXIT_NOT_IMPLEMENTED(cmd_id != 0xc0055800 && cmd_id != 0xc0065800);
+-	// GameFlex: the guest orders the GPU work on either side (render: the runs of memory-writing draws).
+-	Libs::Graphics::g_guest_sync_epoch.fetch_add(1, std::memory_order_relaxed);
++	// The CP waits for the GPU to be idle and invalidates its caches: the barrier the next command posts waits
++	// for everything recorded before (GuestSync).
++	cp.GetGuestSync().Wait(vk::PipelineStageFlagBits2::eAllCommands, vk::AccessFlagBits2::eMemoryWrite);
+ 	return KYTY_PM4_LEN(cmd_id) - 1;
+ }
+ 
+@@ -695,6 +695,11 @@ KYTY_CP_OP_PARSER(CpOpDmaData) {
+ 	    ((control >> 29u) & 0x3u) | ((control2 >> 24u) & 0x4u) | ((control2 >> 25u) & 0x8u));
+ 
+ 	cp.DmaData(dst_sel, dst, src_sel, src, num_bytes);
++	// CP_SYNC (bit 31): the CP waits for the transfer before it goes on, what follows is ordered after it
++	// (GuestSync). Clair Obscur zeroes its counters so, then dispatches read them; the GPU hung without it.
++	if ((control & (1u << 31u)) != 0) {
++		cp.GetGuestSync().Wait(vk::PipelineStageFlagBits2::eAllTransfer, vk::AccessFlagBits2::eTransferWrite);
++	}
+ 
+ 	return 6;
+ }
+diff --git a/src/graphics/guest_gpu/graphicsRun.cpp b/src/graphics/guest_gpu/graphicsRun.cpp
+index 5b52a68d..f77df364 100644
+--- a/src/graphics/guest_gpu/graphicsRun.cpp
++++ b/src/graphics/guest_gpu/graphicsRun.cpp
+@@ -1,4 +1,3 @@
+-#include "graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.h"
+ #include "graphics/guest_gpu/graphicsRun.h"
+ 
+ #include "common/assert.h"
+@@ -260,6 +259,10 @@ void CommandProcessor::WaitRegMem(uint32_t func, const T* addr, T ref, T mask, u
+ 		if (m_renderer.GetBufferCache().PendingGuestWrite(reinterpret_cast<uint64_t>(addr),
+ 		                                                  sizeof(T), &pending) &&
+ 		    TestWaitRegMemValue(static_cast<T>(pending), ref, mask, func)) {
++			// The label lands once everything before it is done: the CP waits for all of it, and so does the
++			// barrier the next command posts (GuestSync).
++			m_renderer.GetGuestSync().Wait(vk::PipelineStageFlagBits2::eAllCommands,
++			                               vk::AccessFlagBits2::eMemoryWrite);
+ 			return;
+ 		}
+ 		Common::GameFlex::NoteGpuWait("wait_reg_mem", reinterpret_cast<uint64_t>(addr), static_cast<uint64_t>(*addr),
+@@ -1019,13 +1022,29 @@ void CommandProcessor::TriggerEvent(uint32_t event_type, uint32_t event_index,
+ 	}
+ 
+ 	const auto valid_cache_event_index = event_index == 0x00000000 || event_index == 0x00000007;
+-	// GameFlex: partial flushes and cache writebacks order the GPU work on either side; the runs of
+-	// memory-writing draws end there.
+-	switch (event_type) {
+-		case 0x07: case 0x0f: case 0x10: case 0x16: case 0x31: case 0x2a: case 0x2c: case 0x2e:
+-			Libs::Graphics::g_guest_sync_epoch.fetch_add(1, std::memory_order_relaxed);
+-			break;
+-		default: break;
++	// The game waits for a stage of the GPU, or writes back its color and depth caches: the barrier the next
++	// command posts waits for those stages (GuestSync). CS_PARTIAL_FLUSH 0x07, VS_PARTIAL_FLUSH 0x0f,
++	// PS_PARTIAL_FLUSH 0x10, CACHE_FLUSH_AND_INV_EVENT 0x16, FLUSH_AND_INV_CB_PIXEL_DATA 0x31,
++	// DB_CACHE_FLUSH_AND_INV 0x2a, FLUSH_AND_INV_DB_META 0x2c, FLUSH_AND_INV_CB_META 0x2e.
++	{
++		auto&          sync  = m_renderer.GetGuestSync();
++		constexpr auto color = vk::PipelineStageFlagBits2::eColorAttachmentOutput;
++		constexpr auto depth =
++		    vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests;
++		switch (event_type) {
++			case 0x07: sync.Wait(vk::PipelineStageFlagBits2::eComputeShader); break;
++			case 0x0f: sync.Wait(vk::PipelineStageFlagBits2::ePreRasterizationShaders); break;
++			case 0x10: sync.Wait(vk::PipelineStageFlagBits2::eFragmentShader | color | depth); break;
++			case 0x16:
++				sync.Wait(color | depth, vk::AccessFlagBits2::eColorAttachmentWrite |
++				                             vk::AccessFlagBits2::eDepthStencilAttachmentWrite);
++				break;
++			case 0x31:
++			case 0x2e: sync.Wait(color, vk::AccessFlagBits2::eColorAttachmentWrite); break;
++			case 0x2a:
++			case 0x2c: sync.Wait(depth, vk::AccessFlagBits2::eDepthStencilAttachmentWrite); break;
++			default: break;
++		}
+ 	}
+ 	// Partial flushes and cache writebacks only order GPU work, which the renderer's resource
+ 	// barriers already order.
+diff --git a/src/graphics/host_gpu/graphicContext.h b/src/graphics/host_gpu/graphicContext.h
+index be556819..ddd2cd46 100644
+--- a/src/graphics/host_gpu/graphicContext.h
++++ b/src/graphics/host_gpu/graphicContext.h
+@@ -41,6 +41,8 @@ struct GraphicContext {
+ 	bool                               r8_srgb_views                         = false;
+ 	bool                               r8g8_srgb_views                       = false;
+ 	bool                               conditional_rendering_enabled         = false;
++	// End-of-pipe writes that do not stall the command processor (the labels of RELEASE_MEM).
++	bool                               buffer_marker_enabled                 = false;
+ 	bool                               occlusion_queries_enabled             = false;
+ 	bool                               occlusion_query_precise_enabled       = false;
+ 	bool                               supports_block_texel_view              = false;
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+index 376cc5ad..0ab08be9 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+@@ -1145,6 +1145,22 @@ bool BufferCache::WriteGuestMemory(uint64_t vaddr, const void* data, uint64_t si
+ 	auto&      buffer = m_slot_buffers[id];
+ 	const auto offset = buffer.Offset(vaddr);
+ 	auto&      command = m_scheduler.Current();
++	// A label is the console's end-of-pipe write: written once everything recorded before is done, without
++	// stopping what follows. The buffer marker is that write; the low word first, so a reader waiting for a
++	// growing value never sees it early. Only the CPU and WAIT_REG_MEM read labels: nothing to release.
++	if (m_graphics.buffer_marker_enabled && (size == 4u || size == 8u)) {
++		uint32_t words[2] {};
++		std::memcpy(words, data, size);
++		for (uint32_t i = 0; i < size / 4u; i++) {
++			command.Handle().writeBufferMarker2AMD(vk::PipelineStageFlagBits2::eAllCommands, buffer.Handle(),
++			                                       offset + i * 4u, words[i]);
++		}
++		uint64_t value = 0;
++		std::memcpy(&value, data, size);
++		m_pending_guest_writes[vaddr] = {size, m_scheduler.CurrentTick(), value};
++		RecordUnifiedGpuWrite(vaddr, size);
++		return true;
++	}
+ 	command.EndRendering();
+ 	const auto native = command.Handle();
+ 	// Everything recorded before lands first, as the GPU's own end-of-pipe write would.
+diff --git a/src/graphics/host_gpu/renderer/cache/streamBuffer.cpp b/src/graphics/host_gpu/renderer/cache/streamBuffer.cpp
+index a5708bf7..f0ffe239 100644
+--- a/src/graphics/host_gpu/renderer/cache/streamBuffer.cpp
++++ b/src/graphics/host_gpu/renderer/cache/streamBuffer.cpp
+@@ -1,5 +1,7 @@
+ #include "graphics/host_gpu/renderer/cache/streamBuffer.h"
+ 
++#include "graphics/host_gpu/renderer/renderContext.h"
++
+ #include "common/alignment.h"
+ #include "common/assert.h"
+ #include "common/profiler.h"
+@@ -17,9 +19,6 @@ namespace {
+ constexpr size_t WATCHES_INITIAL_RESERVE = 0x4000;
+ constexpr size_t WATCHES_RESERVE_CHUNK   = 0x1000;
+ 
+-constexpr vk::AccessFlags MEMORY_ACCESS =
+-    vk::AccessFlagBits::eMemoryRead | vk::AccessFlagBits::eMemoryWrite;
+-
+ [[nodiscard]] VmaAllocationCreateFlags AllocationFlags(MemoryUsage usage) {
+ 	switch (usage) {
+ 		case MemoryUsage::Upload:
+@@ -177,24 +176,6 @@ void Buffer::Invalidate(uint64_t offset, uint64_t size) {
+ 	}
+ }
+ 
+-vk::BufferMemoryBarrier Buffer::Barrier(uint64_t offset, uint64_t size, vk::AccessFlags source,
+-                                        vk::AccessFlags destination) const {
+-	if (Handle() == nullptr || size == 0 || offset > Size() || size > Size() - offset) {
+-		EXIT("Buffer: invalid DMA barrier, handle=%p offset=0x%016" PRIx64 " size=0x%016" PRIx64
+-		     " capacity=0x%016" PRIx64 "\n",
+-		     static_cast<const void*>(Handle()), offset, size, Size());
+-	}
+-	vk::BufferMemoryBarrier barrier {};
+-	barrier.srcAccessMask       = source;
+-	barrier.dstAccessMask       = destination;
+-	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+-	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+-	barrier.buffer              = Handle();
+-	barrier.offset              = offset;
+-	barrier.size                = size;
+-	return barrier;
+-}
+-
+ void Buffer::CopyFrom(CommandBuffer& command, const Buffer& source, uint64_t source_offset,
+                       uint64_t destination_offset, uint64_t size) {
+ 	if (size == 0 || source_offset > source.Size() || size > source.Size() - source_offset ||
+@@ -206,24 +187,15 @@ void Buffer::CopyFrom(CommandBuffer& command, const Buffer& source, uint64_t sou
+ 		EXIT("Buffer: overlapping self-copy\n");
+ 	}
+ 	command.EndRendering();
+-	const vk::BufferMemoryBarrier before[] = {
+-	    source.Barrier(source_offset, size, vk::AccessFlagBits::eMemoryWrite,
+-	                   vk::AccessFlagBits::eTransferRead),
+-	    Barrier(destination_offset, size, MEMORY_ACCESS, vk::AccessFlagBits::eTransferWrite),
+-	};
+ 	const auto native = command.Handle();
+-	native.pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands,
+-	                       vk::PipelineStageFlagBits::eTransfer, vk::DependencyFlagBits::eByRegion,
+-	                       0, nullptr, 2, before, 0, nullptr);
++	// A transfer runs unordered with the shaders of its run, as the console's does, until the game synchronizes;
++	// it follows the transfers of the run over the same bytes, as the DMA engine's queue does (GuestSync).
++	auto& sync = command.GetContext().GetGuestSync();
++	sync.BeforeTransfer(native, Handle(), destination_offset, size);
++	sync.BeforeTransfer(native, source.Handle(), source_offset, size);
+ 	const vk::BufferCopy copy {source_offset, destination_offset, size};
+ 	native.copyBuffer(source.Handle(), Handle(), 1, &copy);
+-	const vk::BufferMemoryBarrier after[] = {
+-	    source.Barrier(source_offset, size, vk::AccessFlagBits::eTransferRead, MEMORY_ACCESS),
+-	    Barrier(destination_offset, size, vk::AccessFlagBits::eTransferWrite, MEMORY_ACCESS),
+-	};
+-	native.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+-	                       vk::PipelineStageFlagBits::eAllCommands,
+-	                       vk::DependencyFlagBits::eByRegion, 0, nullptr, 2, after, 0, nullptr);
++	sync.WroteTransfer(Handle(), destination_offset, size);
+ }
+ 
+ void Buffer::Fill(uint64_t offset, uint64_t size, uint32_t value) {
+@@ -232,16 +204,11 @@ void Buffer::Fill(uint64_t offset, uint64_t size, uint32_t value) {
+ 	}
+ 	auto& command = Scheduler().Current();
+ 	command.EndRendering();
+-	const auto before = Barrier(offset, size, MEMORY_ACCESS, vk::AccessFlagBits::eTransferWrite);
+ 	const auto native = command.Handle();
+-	native.pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands,
+-	                       vk::PipelineStageFlagBits::eTransfer, vk::DependencyFlagBits::eByRegion,
+-	                       0, nullptr, 1, &before, 0, nullptr);
++	auto& sync = Scheduler().Context().GetGuestSync();
++	sync.BeforeTransfer(native, Handle(), offset, size);
+ 	native.fillBuffer(Handle(), offset, size, value);
+-	const auto after = Barrier(offset, size, vk::AccessFlagBits::eTransferWrite, MEMORY_ACCESS);
+-	native.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+-	                       vk::PipelineStageFlagBits::eAllCommands,
+-	                       vk::DependencyFlagBits::eByRegion, 0, nullptr, 1, &after, 0, nullptr);
++	sync.WroteTransfer(Handle(), offset, size);
+ }
+ 
+ StreamBuffer::StreamBuffer(GraphicContext& graphics, CommandScheduler& scheduler, MemoryUsage usage,
+diff --git a/src/graphics/host_gpu/renderer/cache/streamBuffer.h b/src/graphics/host_gpu/renderer/cache/streamBuffer.h
+index a9ab1a95..6aa9a915 100644
+--- a/src/graphics/host_gpu/renderer/cache/streamBuffer.h
++++ b/src/graphics/host_gpu/renderer/cache/streamBuffer.h
+@@ -92,10 +92,6 @@ protected:
+ 	[[nodiscard]] CommandScheduler& Scheduler() const noexcept { return *m_scheduler; }
+ 
+ private:
+-	[[nodiscard]] vk::BufferMemoryBarrier Barrier(uint64_t offset, uint64_t size,
+-	                                              vk::AccessFlags source,
+-	                                              vk::AccessFlags destination) const;
+-
+ 	GraphicContext*               m_graphics    = nullptr;
+ 	CommandScheduler*             m_scheduler   = nullptr;
+ 	MemoryUsage                   m_usage       = MemoryUsage::DeviceLocal;
+diff --git a/src/graphics/host_gpu/renderer/context.cpp b/src/graphics/host_gpu/renderer/context.cpp
+index c1d18e4a..f0f2a310 100644
+--- a/src/graphics/host_gpu/renderer/context.cpp
++++ b/src/graphics/host_gpu/renderer/context.cpp
+@@ -8,7 +8,6 @@
+ #include "graphics/host_gpu/renderer/depthRenderTarget.h"
+ #include "graphics/host_gpu/renderer/image/imageView.h"
+ #include "graphics/host_gpu/renderer/render.h"
+-#include "graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.h"
+ #include "graphics/host_gpu/renderer/renderContext.h"
+ #include "graphics/host_gpu/vulkanCommon.h"
+ 
+@@ -34,6 +33,8 @@ void CommandBuffer::Begin() {
+ 
+ void CommandBuffer::End() const {
+ 	EndRendering();
++	// What the run still owes is released here: a submission boundary orders nothing by itself.
++	m_context.GetGuestSync().Post(Handle());
+ 	auto buffer = Handle();
+ 
+ 	auto result = buffer.end();
+@@ -93,10 +94,15 @@ void CommandBuffer::EndRendering() const {
+ 		Handle().endRendering();
+ 		m_rendering = false;
+ 	}
+-	if (m_pending_shader_writes && !IsInvalid()) {
+-		ShaderWriteBarrier(Handle(), m_pending_shader_writes);
+-		m_pending_shader_writes = {};
++}
++
++void CommandBuffer::PostGuestBarrier() const {
++	auto& sync = m_context.GetGuestSync();
++	if (!sync.Due()) {
++		return;
+ 	}
++	EndRendering();
++	sync.Post(Handle());
+ }
+ 
+ } // namespace Libs::Graphics
+diff --git a/src/graphics/host_gpu/renderer/guestSync.cpp b/src/graphics/host_gpu/renderer/guestSync.cpp
+new file mode 100644
+index 00000000..4c8171b5
+--- /dev/null
++++ b/src/graphics/host_gpu/renderer/guestSync.cpp
+@@ -0,0 +1,83 @@
++#include "graphics/host_gpu/renderer/guestSync.h"
++
++#include <algorithm>
++
++namespace Libs::Graphics {
++
++void GuestSync::Wait(vk::PipelineStageFlags2 stages, vk::AccessFlags2 access) {
++	m_stages |= stages;
++	m_access |= access;
++	m_wait = true;
++}
++
++void GuestSync::Wrote(vk::PipelineStageFlags2 stages, vk::AccessFlags2 access) {
++	m_stages |= stages;
++	m_access |= access;
++}
++
++void GuestSync::WroteTransfer(vk::Buffer buffer, uint64_t offset, uint64_t size) {
++	Wrote(vk::PipelineStageFlagBits2::eAllTransfer, vk::AccessFlagBits2::eTransferWrite);
++	m_transfers.push_back({buffer, offset, size});
++}
++
++bool GuestSync::TransferOverlaps(vk::Buffer buffer, uint64_t offset, uint64_t size) const noexcept {
++	return std::ranges::any_of(m_transfers, [&](const TransferRange& range) {
++		return range.buffer == buffer && range.offset < offset + size && offset < range.offset + range.size;
++	});
++}
++
++void GuestSync::Post(vk::CommandBuffer command) {
++	if (static_cast<bool>(m_stages)) {
++		vk::MemoryBarrier2 barrier {};
++		barrier.srcStageMask  = m_stages;
++		barrier.srcAccessMask = m_access;
++		barrier.dstStageMask  = vk::PipelineStageFlagBits2::eAllCommands;
++		// Everything a later command may read, and the writes it may make over the same memory.
++		barrier.dstAccessMask = vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderWrite |
++		                        vk::AccessFlagBits2::eUniformRead | vk::AccessFlagBits2::eIndirectCommandRead |
++		                        vk::AccessFlagBits2::eVertexAttributeRead | vk::AccessFlagBits2::eIndexRead |
++		                        vk::AccessFlagBits2::eTransferRead | vk::AccessFlagBits2::eTransferWrite;
++		if (m_access & (vk::AccessFlagBits2::eColorAttachmentWrite |
++		                vk::AccessFlagBits2::eDepthStencilAttachmentWrite)) {
++			barrier.dstAccessMask |= vk::AccessFlagBits2::eColorAttachmentRead |
++			                         vk::AccessFlagBits2::eDepthStencilAttachmentRead;
++		}
++		vk::DependencyInfo dependency {};
++		dependency.memoryBarrierCount = 1;
++		dependency.pMemoryBarriers    = &barrier;
++		command.pipelineBarrier2(dependency);
++	}
++	m_stages = {};
++	m_access = {};
++	m_wait   = false;
++	m_transfers.clear();
++}
++
++void GuestSync::PostDue(vk::CommandBuffer command) {
++	if (Due()) {
++		Post(command);
++	}
++}
++
++void GuestSync::BeforeTransfer(vk::CommandBuffer command, vk::Buffer buffer, uint64_t offset,
++                               uint64_t size) {
++	if (Due()) {
++		Post(command);
++		return;
++	}
++	if (!TransferOverlaps(buffer, offset, size)) {
++		return;
++	}
++	vk::MemoryBarrier2 barrier {};
++	barrier.srcStageMask  = vk::PipelineStageFlagBits2::eAllTransfer;
++	barrier.srcAccessMask = vk::AccessFlagBits2::eTransferWrite;
++	barrier.dstStageMask  = vk::PipelineStageFlagBits2::eAllTransfer;
++	barrier.dstAccessMask = vk::AccessFlagBits2::eTransferRead | vk::AccessFlagBits2::eTransferWrite;
++	vk::DependencyInfo dependency {};
++	dependency.memoryBarrierCount = 1;
++	dependency.pMemoryBarriers    = &barrier;
++	command.pipelineBarrier2(dependency);
++	m_transfers.clear();
++}
++
++} // namespace Libs::Graphics
+diff --git a/src/graphics/host_gpu/renderer/guestSync.h b/src/graphics/host_gpu/renderer/guestSync.h
+new file mode 100644
+index 00000000..681af507
+--- /dev/null
++++ b/src/graphics/host_gpu/renderer/guestSync.h
+@@ -0,0 +1,66 @@
++#ifndef EMULATOR_SRC_GRAPHICS_HOST_GPU_RENDERER_GUESTSYNC_H_
++#define EMULATOR_SRC_GRAPHICS_HOST_GPU_RENDERER_GUESTSYNC_H_
++
++#include "common/common.h"
++#include "graphics/host_gpu/vulkanCommon.h"
++
++#include <vector>
++
++namespace Libs::Graphics {
++
++// The host GPU's synchronization follows the guest's.
++//
++// On the console, the draws, dispatches and DMA transfers of a queue overlap until the game asks the command
++// processor to wait: ACQUIRE_MEM (idle and invalidate), a CS/VS/PS_PARTIAL_FLUSH (one stage done), a writeback of
++// the color or depth caches, a DMA with CP_SYNC, a WAIT_REG_MEM on a label the GPU has yet to write. The renderer
++// keeps one GuestSync for its command stream: the commands say what they wrote (Wrote), the command processor says
++// when the game waits (Wait), and the next command posts one barrier for all of it (Post) — the stages the game
++// named as the source, everything a later command may read or write as the destination. Nothing is ordered that
++// the game did not order, as on the console; the end of a command buffer releases what the run still owes.
++//
++// Images keep their layout transitions, a host notion; the ordering of their writes comes from here as well.
++class GuestSync {
++public:
++	GuestSync() = default;
++	KYTY_CLASS_NO_COPY(GuestSync);
++
++	// The game asked the GPU to finish `stages` (and to land the writes of `access`) before going on.
++	void Wait(vk::PipelineStageFlags2 stages, vk::AccessFlags2 access = {});
++	// A command wrote memory through `stages`: the next barrier releases it.
++	void Wrote(vk::PipelineStageFlags2 stages, vk::AccessFlags2 access);
++	// A transfer wrote `size` bytes of `buffer` at `offset`: the next barrier releases it, and a later transfer
++	// over the same bytes follows it, as the console's DMA engine runs its queue in order.
++	void WroteTransfer(vk::Buffer buffer, uint64_t offset, uint64_t size);
++	// Whether the game asked for a wait since the last barrier: one is due before the next command.
++	[[nodiscard]] bool Due() const noexcept { return m_wait && static_cast<bool>(m_stages); }
++	// Posts the barrier for everything pending, due or not, and forgets the run. Outside a render pass.
++	void Post(vk::CommandBuffer command);
++	// Posts the barrier due, if one is. Outside a render pass.
++	void PostDue(vk::CommandBuffer command);
++	// Before a transfer over `size` bytes of `buffer` at `offset`: the barrier due, or, when a transfer of the
++	// run wrote those bytes, a barrier between the two transfers.
++	void BeforeTransfer(vk::CommandBuffer command, vk::Buffer buffer, uint64_t offset, uint64_t size);
++
++	// Sync1 stage flags as sync2 flags: the bits coincide.
++	[[nodiscard]] static vk::PipelineStageFlags2 Stages2(vk::PipelineStageFlags stages) noexcept {
++		return vk::PipelineStageFlags2 {static_cast<uint64_t>(static_cast<uint32_t>(stages))};
++	}
++
++private:
++	struct TransferRange {
++		vk::Buffer buffer;
++		uint64_t   offset;
++		uint64_t   size;
++	};
++
++	[[nodiscard]] bool TransferOverlaps(vk::Buffer buffer, uint64_t offset, uint64_t size) const noexcept;
++
++	vk::PipelineStageFlags2    m_stages {};
++	vk::AccessFlags2           m_access {};
++	bool                       m_wait = false; // the game asked to wait since the last barrier
++	std::vector<TransferRange> m_transfers;    // the transfers of the run
++};
++
++} // namespace Libs::Graphics
++
++#endif // EMULATOR_SRC_GRAPHICS_HOST_GPU_RENDERER_GUESTSYNC_H_
+diff --git a/src/graphics/host_gpu/renderer/image/image.cpp b/src/graphics/host_gpu/renderer/image/image.cpp
+index a20f9624..77215ca6 100644
+--- a/src/graphics/host_gpu/renderer/image/image.cpp
++++ b/src/graphics/host_gpu/renderer/image/image.cpp
+@@ -153,13 +153,9 @@ Image::Barriers Image::GetBarriers(vk::ImageLayout                      destinat
+ 				EXIT_IF(index >= subresource_states.size());
+ 				auto& subresource_state = subresource_states[index];
+ 
+-				constexpr auto write_access = vk::AccessFlagBits2::eTransferWrite |
+-				                              vk::AccessFlagBits2::eShaderWrite |
+-				                              vk::AccessFlagBits2::eMemoryWrite;
+-				const bool     repeated_write =
+-				    static_cast<bool>(subresource_state.access_mask & write_access);
++				// Two writes in a row take no barrier: the game orders them when it needs to (GuestSync).
+ 				if (subresource_state.layout != destination_layout ||
+-				    subresource_state.access_mask != destination_access || repeated_write) {
++				    subresource_state.access_mask != destination_access) {
+ 					vk::ImageMemoryBarrier2 barrier {};
+ 					barrier.srcStageMask                    = subresource_state.pl_stage;
+ 					barrier.srcAccessMask                   = subresource_state.access_mask;
+@@ -185,12 +181,7 @@ Image::Barriers Image::GetBarriers(vk::ImageLayout                      destinat
+ 			subresource_states.clear();
+ 		}
+ 	} else {
+-		constexpr auto write_access   = vk::AccessFlagBits2::eTransferWrite |
+-		                                vk::AccessFlagBits2::eShaderWrite |
+-		                                vk::AccessFlagBits2::eMemoryWrite;
+-		const bool     repeated_write = static_cast<bool>(state.access_mask & write_access);
+-		if (state.layout == destination_layout && state.access_mask == destination_access &&
+-		    !repeated_write) {
++		if (state.layout == destination_layout && state.access_mask == destination_access) {
+ 			return {};
+ 		}
+ 
+diff --git a/src/graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.cpp b/src/graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.cpp
+index a7424fc6..8dd88363 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.cpp
+@@ -46,19 +46,6 @@ vk::PipelineStageFlags ShaderPipelineStages(vk::ShaderStageFlags stages) {
+ 	return result;
+ }
+ 
+-vk::MemoryBarrier MakeShaderWriteDependency() {
+-	vk::MemoryBarrier barrier {};
+-	barrier.srcAccessMask = vk::AccessFlagBits::eShaderWrite;
+-	barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite |
+-	                        vk::AccessFlagBits::eVertexAttributeRead |
+-	                        vk::AccessFlagBits::eIndexRead | vk::AccessFlagBits::eUniformRead |
+-	                        vk::AccessFlagBits::eIndirectCommandRead |
+-	                        vk::AccessFlagBits::eTransferRead | vk::AccessFlagBits::eTransferWrite |
+-	                        vk::AccessFlagBits::eColorAttachmentRead |
+-	                        vk::AccessFlagBits::eColorAttachmentWrite;
+-	return barrier;
+-}
+-
+ vk::BufferMemoryBarrier MakeGdsDependency(vk::Buffer buffer) {
+ 	vk::BufferMemoryBarrier barrier {};
+ 	barrier.srcAccessMask = vk::AccessFlagBits::eHostWrite | vk::AccessFlagBits::eTransferWrite |
+@@ -100,22 +87,4 @@ void ShaderAccessBarrier(vk::CommandBuffer vk_buffer, vk::PipelineStageFlags sou
+ 	                          vk::DependencyFlags {}, 1, &barrier, 0, nullptr, 0, nullptr);
+ }
+ 
+-void ShaderWriteHazardBarrier(vk::CommandBuffer      vk_buffer,
+-                              vk::PipelineStageFlags destination_stages) {
+-	const vk::MemoryBarrier barrier {
+-	    .srcAccessMask = vk::AccessFlagBits::eMemoryRead | vk::AccessFlagBits::eMemoryWrite,
+-	    .dstAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite};
+-	vk_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eAllCommands, destination_stages,
+-	                          vk::DependencyFlags {}, 1, &barrier, 0, nullptr, 0, nullptr);
+-}
+-
+-void ShaderWriteBarrier(vk::CommandBuffer vk_buffer, vk::PipelineStageFlags source_stages) {
+-	const auto barrier = MakeShaderWriteDependency();
+-	vk_buffer.pipelineBarrier(source_stages,
+-	                          vk::PipelineStageFlagBits::eComputeShader |
+-	                              vk::PipelineStageFlagBits::eAllGraphics |
+-	                              vk::PipelineStageFlagBits::eTransfer,
+-	                          vk::DependencyFlags {}, 1, &barrier, 0, nullptr, 0, nullptr);
+-}
+-
+ } // namespace Libs::Graphics
+diff --git a/src/graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.h b/src/graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.h
+index 0c3d4bee..19c1d0a9 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.h
++++ b/src/graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.h
+@@ -1,7 +1,6 @@
+ #ifndef EMULATOR_SRC_GRAPHICS_HOST_GPU_RENDERER_SHADERRESOURCEBARRIER_H_
+ #define EMULATOR_SRC_GRAPHICS_HOST_GPU_RENDERER_SHADERRESOURCEBARRIER_H_
+ 
+-#include <atomic>
+ #include "graphics/host_gpu/graphicContext.h"
+ #include "graphics/shader/recompiler/ir/passes/ResourceMaterialization.h"
+ 
+@@ -11,17 +10,9 @@ struct ShaderStageRuntime;
+ 
+ vk::ShaderStageFlagBits NativeShaderStage(ShaderType stage);
+ vk::PipelineStageFlags  ShaderPipelineStages(vk::ShaderStageFlags stages);
+-vk::MemoryBarrier       MakeShaderWriteDependency();
+ vk::BufferMemoryBarrier MakeGdsDependency(vk::Buffer buffer);
+ bool HasShaderBufferWrites(const ShaderStageRuntime& runtime);
+ void ShaderAccessBarrier(vk::CommandBuffer vk_buffer, vk::PipelineStageFlags source_stages);
+-void ShaderWriteHazardBarrier(vk::CommandBuffer      vk_buffer,
+-                              vk::PipelineStageFlags destination_stages);
+-void ShaderWriteBarrier(vk::CommandBuffer vk_buffer, vk::PipelineStageFlags source_stages);
+-
+-// GameFlex: grows at each synchronization the guest asks the GPU for (ACQUIRE_MEM, a partial flush, a cache
+-// writeback): GPU work on either side of it is ordered, work between two of them is not.
+-inline std::atomic<uint64_t> g_guest_sync_epoch {0};
+ 
+ } // namespace Libs::Graphics
+ 
+diff --git a/src/graphics/host_gpu/renderer/render.h b/src/graphics/host_gpu/renderer/render.h
+index 7c15276c..580da626 100644
+--- a/src/graphics/host_gpu/renderer/render.h
++++ b/src/graphics/host_gpu/renderer/render.h
+@@ -101,18 +101,9 @@ public:
+ 	[[nodiscard]] bool IsInvalid() const noexcept { return m_buffer == nullptr; }
+ 
+ 	void BeginRendering(const RenderState& state) const;
+-	// Also lays the write barrier a run of memory-writing draws left pending.
+ 	void EndRendering() const;
+-	// GameFlex: a draw that writes memory continues the run before it when nothing else was recorded in between
+-	// and the guest asked for no synchronization; its write barrier waits for the end of the run.
+-	[[nodiscard]] bool ContinuesShaderWriteRun(uint64_t epoch) const {
+-		return m_pending_shader_writes && m_shader_write_epoch == epoch;
+-	}
+-	[[nodiscard]] bool HasPendingShaderWrites() const { return static_cast<bool>(m_pending_shader_writes); }
+-	void DeferShaderWriteBarrier(vk::PipelineStageFlags stages, uint64_t epoch) const {
+-		m_pending_shader_writes |= stages;
+-		m_shader_write_epoch = epoch;
+-	}
++	// Ends the render pass and posts the barrier the game asked for, when one is due (GuestSync).
++	void PostGuestBarrier() const;
+ 
+ 	[[nodiscard]] vk::CommandBuffer Handle() const noexcept { return m_buffer; }
+ 	[[nodiscard]] GraphicContext&   GetGraphics() const noexcept { return m_graphics; }
+@@ -137,8 +128,6 @@ private:
+ 	vk::CommandBuffer   m_buffer = nullptr;
+ 	mutable RenderState m_render_state;
+ 	mutable bool        m_rendering   = false;
+-	mutable vk::PipelineStageFlags m_pending_shader_writes = {};
+-	mutable uint64_t               m_shader_write_epoch    = 0;
+ 	HW::Context*        m_registers   = nullptr;
+ 	HW::UserConfig*     m_user_config = nullptr;
+ 	HW::Shader*         m_shaders     = nullptr;
+diff --git a/src/graphics/host_gpu/renderer/renderCompute.cpp b/src/graphics/host_gpu/renderer/renderCompute.cpp
+index 41dceced..da037af2 100644
+--- a/src/graphics/host_gpu/renderer/renderCompute.cpp
++++ b/src/graphics/host_gpu/renderer/renderCompute.cpp
+@@ -376,11 +376,8 @@ void RenderExecutor::DispatchDirect(CommandBuffer& buffer, uint32_t thread_group
+ 	const auto vk_buffer = buffer.Handle();
+ 	CommitBindings(buffer, vk::PipelineBindPoint::eCompute, pipeline,
+ 	               std::span {&descriptor_stage, 1u});
+-	if (HasStorageWrites(input_info, bindings)) {
+-		// A host fence used to serialize every dispatch. Preserve its read-before-write ordering
+-		// while allowing the queue to execute asynchronously.
+-		ShaderWriteHazardBarrier(vk_buffer, vk::PipelineStageFlagBits::eComputeShader);
+-	}
++	// The barrier the game asked for since the last one, if any (GuestSync).
++	m_context.GetGuestSync().PostDue(vk_buffer);
+ 	if (Config::GraphicsDebugDumpEnabled()) {
+ 		const auto sampled_images = std::count_if(
+ 		    program.info.images.begin(), program.info.images.end(), [](const auto& image) {
+@@ -467,8 +464,10 @@ void RenderExecutor::DispatchDirect(CommandBuffer& buffer, uint32_t thread_group
+ 	}
+ 	Common::DebugCounters::Add(Common::DebugCounters::Counter::Dispatches);
+ 
+-	// The removed host fence also ordered read-only dispatches before later writers.
+-	ShaderAccessBarrier(vk_buffer, vk::PipelineStageFlagBits::eComputeShader);
++	if (HasStorageWrites(input_info, bindings)) {
++		m_context.GetGuestSync().Wrote(vk::PipelineStageFlagBits2::eComputeShader,
++		                               vk::AccessFlagBits2::eShaderWrite);
++	}
+ 	ResetBindings();
+ }
+ 
+@@ -517,21 +516,16 @@ void RenderExecutor::DispatchIndirect(CommandBuffer& buffer, uint64_t args_addr,
+ 	CommitBindings(buffer, vk::PipelineBindPoint::eCompute, pipeline,
+ 	               std::span {&descriptor_stage, 1u});
+ 	const auto vk_buffer = buffer.Handle();
+-	if (HasStorageWrites(input_info, bindings)) {
+-		ShaderWriteHazardBarrier(vk_buffer, vk::PipelineStageFlagBits::eComputeShader);
+-	}
+-	vk::MemoryBarrier barrier {};
+-	barrier.srcAccessMask = vk::AccessFlagBits::eShaderWrite | vk::AccessFlagBits::eTransferWrite;
+-	barrier.dstAccessMask = vk::AccessFlagBits::eIndirectCommandRead;
+-	vk_buffer.pipelineBarrier(vk::PipelineStageFlagBits::eAllGraphics |
+-	                              vk::PipelineStageFlagBits::eComputeShader |
+-	                              vk::PipelineStageFlagBits::eTransfer,
+-	                          vk::PipelineStageFlagBits::eDrawIndirect, {},
+-	                          1, &barrier, 0, nullptr, 0, nullptr);
++	// The barrier the game asked for since the last one, if any (GuestSync): it makes the indirect arguments
++	// visible too, the game synchronizes before a dispatch whose arguments the GPU wrote.
++	m_context.GetGuestSync().PostDue(vk_buffer);
+ 	vk_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline.pipeline);
+ 	vk_buffer.dispatchIndirect(args_buffer->Handle(), args_offset);
+ 	Common::DebugCounters::Add(Common::DebugCounters::Counter::Dispatches);
+-	ShaderAccessBarrier(vk_buffer, vk::PipelineStageFlagBits::eComputeShader);
++	if (HasStorageWrites(input_info, bindings)) {
++		m_context.GetGuestSync().Wrote(vk::PipelineStageFlagBits2::eComputeShader,
++		                               vk::AccessFlagBits2::eShaderWrite);
++	}
+ 	ResetBindings();
+ }
+ 
+diff --git a/src/graphics/host_gpu/renderer/renderContext.h b/src/graphics/host_gpu/renderer/renderContext.h
+index 7650416b..04499d32 100644
+--- a/src/graphics/host_gpu/renderer/renderContext.h
++++ b/src/graphics/host_gpu/renderer/renderContext.h
+@@ -11,6 +11,7 @@
+ #include "graphics/host_gpu/renderer/cache/samplerCache.h"
+ #include "graphics/host_gpu/renderer/cache/textureCache.h"
+ #include "graphics/host_gpu/renderer/commandScheduler.h"
++#include "graphics/host_gpu/renderer/guestSync.h"
+ #include "graphics/host_gpu/renderer/occlusionQueries.h"
+ #include "graphics/host_gpu/renderer/pipeline/descriptorHeap.h"
+ #include "graphics/host_gpu/renderer/pipeline/imageHeap.h"
+@@ -52,6 +53,7 @@ public:
+ 	TextureCache&       GetTextureCache() { return m_texture_cache; }
+ 	RenderExecutor&     GetRenderExecutor() { return m_render_executor; }
+ 	OcclusionQueries&   GetOcclusionQueries() { return m_occlusion_queries; }
++	GuestSync&          GetGuestSync() noexcept { return m_guest_sync; }
+ 
+ 	[[nodiscard]] bool HandleFault(PageFaultAccess access, uint64_t fault_vaddr) noexcept;
+ 	[[nodiscard]] bool InvalidateMemory(uint64_t vaddr, uint64_t size);
+@@ -73,6 +75,7 @@ private:
+ 
+ 	GraphicContext&           m_graphics;
+ 	Common::Mutex             m_mutex;
++	GuestSync                 m_guest_sync;
+ 	RenderExecutor            m_render_executor;
+ 	CommandScheduler          m_command_scheduler;
+ 	DescriptorHeap            m_descriptor_heap;
+diff --git a/src/graphics/host_gpu/renderer/renderDraw.cpp b/src/graphics/host_gpu/renderer/renderDraw.cpp
+index 9f956f24..ef8f81c3 100644
+--- a/src/graphics/host_gpu/renderer/renderDraw.cpp
++++ b/src/graphics/host_gpu/renderer/renderDraw.cpp
+@@ -1217,18 +1217,9 @@ void RenderExecutor::ExecutePreparedDraw(CommandBuffer& buffer, const DrawCallIn
+ 	if (state.ps_active && HasShaderBufferWrites(state.ps_input_info.stage)) {
+ 		shader_write_stages |= vk::PipelineStageFlagBits::eFragmentShader;
+ 	}
+-	const auto guest_sync = g_guest_sync_epoch.load(std::memory_order_relaxed);
+-	if (shader_write_stages) {
+-		// As for dispatches, buffer writes wait for earlier accesses to the memory: once per run of
+-		// memory-writing draws (GameFlex), which the console leaves unordered among themselves until the
+-		// guest synchronizes.
+-		if (!buffer.ContinuesShaderWriteRun(guest_sync)) {
+-			buffer.EndRendering();
+-			ShaderWriteHazardBarrier(vk_buffer, shader_write_stages);
+-		}
+-	} else if (buffer.HasPendingShaderWrites()) {
+-		buffer.EndRendering();
+-	}
++	// The barrier the game asked for since the last one, if any: a draw that writes memory in a run the game
++	// did not synchronize runs unordered with it, as on the console.
++	buffer.PostGuestBarrier();
+ 	buffer.BeginRendering(rendering);
+ 	vk_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.pipeline);
+ 	auto&         occlusion_queries = m_context.GetOcclusionQueries();
+@@ -1268,7 +1259,8 @@ void RenderExecutor::ExecutePreparedDraw(CommandBuffer& buffer, const DrawCallIn
+ 	Common::DebugCounters::Add(Common::DebugCounters::Counter::DrawInstances, draw.instance_count);
+ 
+ 	if (shader_write_stages) {
+-		buffer.DeferShaderWriteBarrier(shader_write_stages, guest_sync);
++		m_context.GetGuestSync().Wrote(GuestSync::Stages2(shader_write_stages),
++		                               vk::AccessFlagBits2::eShaderWrite);
+ 	}
+ }
+ 
+diff --git a/src/graphics/presentation/window/vulkanWindow.cpp b/src/graphics/presentation/window/vulkanWindow.cpp
+index a682b40e..2e25d256 100644
+--- a/src/graphics/presentation/window/vulkanWindow.cpp
++++ b/src/graphics/presentation/window/vulkanWindow.cpp
+@@ -411,6 +411,7 @@ static vk::Device VulkanCreateDevice(GraphicContext&          graphics,
+ 	       feedback_layout, feedback_dynamic, provoking_vertex, maintenance8, shader_clock,
+ 	       image_atomic_int64, conditional_rendering, barycentric] = supported;
+ 	graphics.memory_budget_ext_enabled = add(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
++	graphics.buffer_marker_enabled     = add(VK_AMD_BUFFER_MARKER_EXTENSION_NAME);
+ 	add(VK_EXT_DEPTH_RANGE_UNRESTRICTED_EXTENSION_NAME);
+ 	const bool extended_dynamic_state = add(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME);
+ 	if (!add(VK_KHR_WORKGROUP_MEMORY_EXPLICIT_LAYOUT_EXTENSION_NAME)) {

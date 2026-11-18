@@ -1,0 +1,222 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 08:57:35 +0000
+Subject: [PATCH] gameflex 0072: a guest wait for a shader's value goes on
+ behind a barrier
+
+Astro Bot's graphics queue waits about nine times an image for a flag its compute work sets to 1. Each
+time the command thread submitted, then polled every 100 us until the GPU had written it: 610 suspended
+waits and 300 polls an image, the GPU and the thread taking turns. The compute work is recorded before,
+on the same Vulkan queue, and the GPU runs the stream in order: behind a barrier (GuestSync), everything
+recorded after the wait runs after that shader, which is all the wait asks - if the shader writes the
+value. BufferCache trusts an address once four waits there ended with the value, checks each trusted
+wait once the writer's work is done, and revokes the address for good on a miss (the console says so).
+
+Astro Bot, Sky Garden, production settings: label waits 47 -> 5.3 ms an image, 610 -> 74 suspensions,
+14 waits passed behind a barrier, 55 -> 35 command buffers, 8.6 -> 9.2-9.5 images/s. The thread now runs
+ahead into resource tables the compute work writes: two full drains an image, 33.6 ms (was 1.5).
+Five addresses revoked during loading (written later than the work recorded before the wait).
+---
+ src/common/commandThreadProfile.h             |  3 +-
+ src/graphics/guest_gpu/graphicsRun.cpp        | 21 +++--
+ .../host_gpu/renderer/cache/bufferCache.cpp   | 81 +++++++++++++++++++
+ .../host_gpu/renderer/cache/bufferCache.h     | 21 +++++
+ 4 files changed, 120 insertions(+), 6 deletions(-)
+
+diff --git a/src/common/commandThreadProfile.h b/src/common/commandThreadProfile.h
+index 4f187204..4c843314 100644
+--- a/src/common/commandThreadProfile.h
++++ b/src/common/commandThreadProfile.h
+@@ -70,6 +70,7 @@ enum class Event : uint8_t {
+ 	LabelPolls,     // Wake-ups while every queue waits for a label.
+ 	LabelWaitsGpu,  // Guest waits suspended on a value a pending GPU write will set.
+ 	LabelWaitsCpu,  // Guest waits suspended on a value nothing pending on the GPU will set.
++	TrustedWaits,   // Guest waits passed behind a barrier: a shader recorded before writes the value.
+ 	GpuWaits,       // Waits of this thread for the GPU.
+ 	MemoryAllocations, // Vulkan device memory allocated (driver buffer objects), any thread.
+ 	MemoryReleases,
+@@ -350,7 +351,7 @@ struct Report {
+ [[nodiscard]] constexpr const char* Name(Event event) noexcept {
+ 	constexpr const char* NAMES[EVENT_COUNT] = {
+ 	    "packets", "draws",       "dispatches", "barriers",    "command buffers", "submits",
+-	    "retries", "label polls", "label waits GPU", "label waits CPU", "GPU waits", "allocations", "releases"};
++	    "retries", "label polls", "label waits GPU", "label waits CPU", "trusted waits", "GPU waits", "allocations", "releases"};
+ 	return NAMES[static_cast<size_t>(event)];
+ }
+ 
+diff --git a/src/graphics/guest_gpu/graphicsRun.cpp b/src/graphics/guest_gpu/graphicsRun.cpp
+index 0180da81..dfe407e4 100644
+--- a/src/graphics/guest_gpu/graphicsRun.cpp
++++ b/src/graphics/guest_gpu/graphicsRun.cpp
+@@ -262,13 +262,17 @@ void CommandProcessor::WaitRegMem(uint32_t func, const T* addr, T ref, T mask, u
+ 		EXIT("unsupported wait_reg_mem operation: 0x%08" PRIx32 "\n", wait_op);
+ 	}
+ 
+-	if (!TestWaitRegMemValue(*addr, ref, mask, func)) {
++	auto& buffers = m_renderer.GetBufferCache();
++	if (TestWaitRegMemValue(*addr, ref, mask, func)) {
++		buffers.GuestWaitPassed(reinterpret_cast<uint64_t>(addr));
++		return;
++	}
++	{
+ 		// Unified memory: a label the GPU writes in work recorded before. Its barriers already
+ 		// hold everything recorded after it until the work before it is done, which is what the
+ 		// wait asks: go on recording. A wait on another value, the CPU or another queue suspends.
+ 		uint64_t pending = 0;
+-		if (m_renderer.GetBufferCache().PendingGuestWrite(reinterpret_cast<uint64_t>(addr),
+-		                                                  sizeof(T), &pending) &&
++		if (buffers.PendingGuestWrite(reinterpret_cast<uint64_t>(addr), sizeof(T), &pending) &&
+ 		    TestWaitRegMemValue(static_cast<T>(pending), ref, mask, func)) {
+ 			// The label lands once everything before it is done: the CP waits for all of it, and so does the
+ 			// barrier the next command posts (GuestSync).
+@@ -276,10 +280,17 @@ void CommandProcessor::WaitRegMem(uint32_t func, const T* addr, T ref, T mask, u
+ 			                               vk::AccessFlagBits2::eMemoryWrite);
+ 			return;
+ 		}
++		// A value a shader recorded before writes: the same barrier, once the address is trusted (BufferCache).
++		if (buffers.TrustPendingGpuWrite(reinterpret_cast<uint64_t>(addr), sizeof(T), func, ref, mask)) {
++			m_renderer.GetGuestSync().Wait(vk::PipelineStageFlagBits2::eAllCommands,
++			                               vk::AccessFlagBits2::eMemoryWrite);
++			Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::TrustedWaits);
++			return;
++		}
+ 		// What the wait is for, for the command thread's report: a write on its way to the GPU, or nothing there.
+ 		Common::CommandThreadProfile::NoteLabelWait(
+-		    m_renderer.GetBufferCache().PendingGuestWrite(reinterpret_cast<uint64_t>(addr), sizeof(T), &pending) ||
+-		    m_renderer.GetBufferCache().HasPendingGpuWrites(reinterpret_cast<uint64_t>(addr), sizeof(T)));
++		    buffers.PendingGuestWrite(reinterpret_cast<uint64_t>(addr), sizeof(T), &pending) ||
++		    buffers.HasPendingGpuWrites(reinterpret_cast<uint64_t>(addr), sizeof(T)));
+ 		Common::GameFlex::NoteGpuWait("wait_reg_mem", reinterpret_cast<uint64_t>(addr), static_cast<uint64_t>(*addr),
+ 		                           static_cast<uint64_t>(ref), static_cast<uint64_t>(mask), func);
+ 		SuspendPm4();
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+index 72cab0ad..68da01ab 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+@@ -1150,6 +1150,87 @@ bool BufferCache::FinishPendingGpuWritesUnder(std::span<const uint64_t> addresse
+ 	return false;
+ }
+ 
++// The command processor's own comparison (graphicsRun.cpp).
++bool TestWaitRegMemValue(uint64_t value, uint64_t ref, uint64_t mask, uint32_t func);
++
++// Astro Bot's graphics queue waits about nine times an image for a flag its compute work sets to 1, each time
++// submitting, then polling until the GPU wrote it: 35 ms an image, the GPU and the thread taking turns. The
++// compute work is recorded before, on the same Vulkan queue: the wait needs only a barrier, if the flag lands.
++namespace {
++constexpr uint32_t kFlagConfirmations = 4;
++} // namespace
++
++void BufferCache::VerifyFlagSpeculations() {
++	const auto done = m_scheduler.GetMasterSemaphore().KnownGpuTick();
++	for (auto& [address, flag]: m_flag_speculation) {
++		if (flag.verify_tick == 0 || flag.verify_tick > done) {
++			continue;
++		}
++		const auto verify_tick = flag.verify_tick;
++		flag.verify_tick       = 0;
++		// A shader recorded later may write it again: nothing to say then.
++		if (const auto* range = m_pending_gpu_writes.Find(address); range != nullptr && range->tick > verify_tick) {
++			continue;
++		}
++		uint64_t landed = 0;
++		if (!LibKernel::Memory::TryReadBacking(address, &landed, flag.size) ||
++		    TestWaitRegMemValue(landed, flag.ref, flag.mask, flag.func)) {
++			continue;
++		}
++		flag.trusted = false;
++		flag.revoked = true;
++		static uint32_t misses = 0;
++		if (misses++ < 50) {
++			std::printf("Guest wait speculation: 0x%016" PRIx64 " holds 0x%" PRIx64 " once the shader's work is done, "
++			            "the wait wanted 0x%" PRIx64 "; this address waits again from now on\n",
++			            address, landed, flag.ref);
++		}
++	}
++}
++
++bool BufferCache::TrustPendingGpuWrite(uint64_t vaddr, uint64_t size, uint32_t func, uint64_t ref, uint64_t mask) {
++	if (m_pending_gpu_writes.Empty()) {
++		return false;
++	}
++	m_pending_gpu_writes.Expire(m_scheduler.GetMasterSemaphore().KnownGpuTick());
++	if (!m_flag_speculation.empty()) {
++		VerifyFlagSpeculations();
++	}
++	const auto* range = m_pending_gpu_writes.Find(vaddr);
++	if (range == nullptr) {
++		return false;
++	}
++	auto& flag = m_flag_speculation[vaddr];
++	if (flag.revoked) {
++		return false;
++	}
++	if (!flag.trusted) {
++		flag.waiting = true;
++		return false;
++	}
++	flag.func        = func;
++	flag.size        = static_cast<uint32_t>(size);
++	flag.ref         = ref;
++	flag.mask        = mask;
++	flag.verify_tick = std::max(flag.verify_tick, range->tick);
++	return true;
++}
++
++void BufferCache::GuestWaitPassed(uint64_t vaddr) {
++	if (m_flag_speculation.empty()) {
++		return;
++	}
++	const auto found = m_flag_speculation.find(vaddr);
++	if (found == m_flag_speculation.end() || !found->second.waiting) {
++		return;
++	}
++	auto& flag   = found->second;
++	flag.waiting = false;
++	if (!flag.revoked && ++flag.confirmations >= kFlagConfirmations) {
++		flag.trusted = true;
++	}
++}
++
+ bool BufferCache::TakeUnifiedGpuWrites(uint64_t vaddr, uint64_t size) {
+ 	if (!m_unified_gpu_writes.Intersects(vaddr, size)) {
+ 		return false;
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.h b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+index 6d093522..e9f60800 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.h
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+@@ -107,6 +107,14 @@ public:
+ 		uint64_t verify_tick   = 0;     // the GPU work it skipped waiting for; 0 when nothing is to verify
+ 	};
+ 	void VerifySrtSpeculations();
++	// GameFlex: a guest wait (WAIT_REG_MEM) for a value a shader recorded before will write. The GPU runs the
++	// stream in order: behind a barrier, everything recorded after the wait runs after that shader, which is all
++	// the wait asks, as long as the shader writes the value. An address is trusted once four waits there ended
++	// with the value; each trusted wait is checked when the writer's work is done, and a miss revokes the
++	// address for good. True: the wait may go on.
++	[[nodiscard]] bool TrustPendingGpuWrite(uint64_t vaddr, uint64_t size, uint32_t func, uint64_t ref, uint64_t mask);
++	// The guest wait at vaddr found its value in memory.
++	void GuestWaitPassed(uint64_t vaddr);
+ 	// Unified memory: whether the GPU wrote [vaddr, vaddr + size) since the last call for it. GPU
+ 	// writes leave no fault: a reader that keeps its own copy (the image heap) asks.
+ 	[[nodiscard]] bool TakeUnifiedGpuWrites(uint64_t vaddr, uint64_t size);
+@@ -226,6 +234,19 @@ private:
+ 	// The ranges bound for writing in command buffers the GPU has not finished.
+ 	PendingGpuWrites                                  m_pending_gpu_writes;
+ 	std::unordered_map<uint64_t, SrtSpeculation>      m_srt_speculation;
++	struct FlagSpeculation {
++		uint32_t confirmations = 0;
++		bool     waiting       = false; // suspended on a pending shader write, value not found yet
++		bool     trusted       = false;
++		bool     revoked       = false; // once wrong, never trusted again
++		uint32_t func          = 0;     // the last trusted wait's condition, checked at verify_tick
++		uint32_t size          = 0;
++		uint64_t ref           = 0;
++		uint64_t mask          = 0;
++		uint64_t verify_tick   = 0;     // the writer's work; 0 when nothing is to verify
++	};
++	void VerifyFlagSpeculations();
++	std::unordered_map<uint64_t, FlagSpeculation>     m_flag_speculation;
+ 	// Ranges bound for writing that no TakeUnifiedGpuWrites has taken yet, and all of them.
+ 	RangeSet                                          m_unified_gpu_writes;
+ 	RangeSet                                          m_unified_gpu_written;

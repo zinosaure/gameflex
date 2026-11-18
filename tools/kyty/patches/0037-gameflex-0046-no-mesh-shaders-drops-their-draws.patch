@@ -1,0 +1,226 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:26 +0000
+Subject: [PATCH] gameflex 0046: no mesh shaders drops their draws
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+un GPU sans mesh shaders abandonne leurs dessins
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0046.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ .../renderer/pipeline/pipelineCache.cpp       | 22 ++++++-
+ src/graphics/presentation/systemOverlay.cpp   | 60 +++++++++++++------
+ src/graphics/presentation/systemOverlay.h     |  2 +
+ .../presentation/window/vulkanWindow.cpp      |  5 +-
+ 4 files changed, 70 insertions(+), 19 deletions(-)
+
+diff --git a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
+index 16b61fd6..b13daf48 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
+@@ -718,6 +718,11 @@ void PipelineCache::Save() {
+ 
+ void PipelineCache::GetGraphicsPrograms(const CommandBuffer& command, DrawRenderState& state) {
+ 	m_defer_translation = m_compile_aside && state.deferrable;
++	// Every way out ends the deferral: a dropped draw must not defer the next compute shader.
++	struct DeferralEnd {
++		bool& deferring;
++		~DeferralEnd() { deferring = false; }
++	} deferral_end {m_defer_translation};
+ 	const auto& context           = command.GetRegisters();
+ 	const auto& user_config       = command.GetUserConfig();
+ 	const auto& sh                = context.GetShaderRegisters();
+@@ -786,7 +791,22 @@ void PipelineCache::GetGraphicsPrograms(const CommandBuffer& command, DrawRender
+ 		                         .buffer_format != Prospero::BufferFormat::k32UInt);
+ 	}
+ 	if (mesh_active) {
+-		EXIT_NOT_IMPLEMENTED(!m_graphics.mesh_shader_enabled);
++		// GameFlex: a GPU without mesh shaders (Turnip) drops these draws rather than stop the
++		// game. Objects go missing from the picture, and the overlay says so.
++		if (!m_graphics.mesh_shader_enabled) {
++			static std::atomic_uint64_t dropped = 0;
++			const auto                  count   = dropped.fetch_add(1, std::memory_order_relaxed);
++			if (count == 0) {
++				Log::WriteToConsoleAndLog(fmt::format(
++				    "Warning: this GPU has no mesh shaders, their draws are dropped and objects "
++				    "go missing (first: shader 0x{:016x}).\n",
++				    vertex_params[0].hash));
++				NotifyMeshDrawsDropped();
++			} else if ((count + 1) % 100000 == 0) {
++				Log::WriteToConsoleAndLog(fmt::format("Mesh draws dropped: {}\n", count + 1));
++			}
++			return;
++		}
+ 		auto& mesh              = vertex_info[0].mesh;
+ 		mesh.host_subgroup_size = m_graphics.subgroup_size;
+ 		const auto& limits      = m_graphics.mesh_shader_properties;
+diff --git a/src/graphics/presentation/systemOverlay.cpp b/src/graphics/presentation/systemOverlay.cpp
+index eca1acad..0deedbf9 100644
+--- a/src/graphics/presentation/systemOverlay.cpp
++++ b/src/graphics/presentation/systemOverlay.cpp
+@@ -251,6 +251,9 @@ std::atomic<bool>              g_trophy_notification_active {false};
+ constexpr auto                       COMPILE_TOAST_LINGER = std::chrono::milliseconds {1500};
+ std::atomic<uint32_t>                g_compile_count {0};
+ std::atomic<Clock::duration::rep>    g_compile_last {0};
++// The notice of a GPU without mesh shaders: when the first of their draws was dropped.
++constexpr auto                       MESH_NOTICE_LINGER = std::chrono::seconds {20};
++std::atomic<Clock::duration::rep>    g_mesh_dropped_at {0};
+ std::array<std::filesystem::path, 2> g_splash_paths;
+ std::atomic<bool>                    g_splash_active {false};
+ std::atomic<Clock::duration::rep>    g_splash_hidden_at {0};
+@@ -716,6 +719,11 @@ static bool CompileToastActive() noexcept {
+ 	return Clock::now().time_since_epoch() - last < COMPILE_TOAST_LINGER;
+ }
+ 
++static bool MeshNoticeActive() noexcept {
++	const Clock::duration dropped {g_mesh_dropped_at.load(std::memory_order_relaxed)};
++	return dropped.count() != 0 && Clock::now().time_since_epoch() - dropped < MESH_NOTICE_LINGER;
++}
++
+ SystemOverlayVisualState GetSystemOverlayVisualState() noexcept {
+ 	const auto core   = CoreIme::GetVisualState();
+ 	const auto dialog = DialogIme::GetVisualState();
+@@ -724,10 +732,11 @@ SystemOverlayVisualState GetSystemOverlayVisualState() noexcept {
+ 	const bool splash        = g_splash_active.load(std::memory_order_acquire);
+ 	const auto cursor        = GetHostInputTouchPadVisualState();
+ 	const bool compiling     = CompileToastActive();
++	const bool mesh_notice   = MeshNoticeActive();
+ 	return {core.active || dialog.active || system.active || trophy_active || splash ||
+-	            cursor.enabled || compiling,
++	            cursor.enabled || compiling || mesh_notice,
+ 	        core.revision + dialog.revision + system.revision + (trophy_active ? 1u : 0u) +
+-	            (splash ? 2u : 0u) + (compiling ? 4u : 0u) +
++	            (splash ? 2u : 0u) + (compiling ? 4u : 0u) + (mesh_notice ? 8u : 0u) +
+ 	            static_cast<decltype(core.revision)>(g_compile_count.load(std::memory_order_relaxed)) +
+ 	            static_cast<decltype(core.revision)>(cursor.revision) + PerformanceOverlayRevision()};
+ }
+@@ -871,6 +880,10 @@ void NotifyShaderCompiled() noexcept {
+ 	}
+ }
+ 
++void NotifyMeshDrawsDropped() noexcept {
++	g_mesh_dropped_at.store(Clock::now().time_since_epoch().count(), std::memory_order_relaxed);
++}
++
+ void NotifyTrophyUnlocked(std::string_view name, int32_t grade,
+                           std::span<const std::byte> icon_png) {
+ 	std::scoped_lock lock(g_trophy_notification_mutex);
+@@ -1693,27 +1706,19 @@ struct SystemOverlay::Impl {
+ 		}
+ 	}
+ 
+-	// While shaders compile, in the bottom-left corner: the game may stutter, or miss an effect
+-	// for a moment, for a reason worth saying.
+-	void DrawCompileToast(vk::Extent2D frame_extent) {
+-		if (!CompileToastActive()) {
+-			g_compile_count.store(0, std::memory_order_relaxed);
+-			return;
+-		}
++	// One line in the bottom-left corner, `row` lines up from the bottom.
++	void DrawCornerNotice(const std::string& text, vk::Extent2D frame_extent, int row) {
+ 		const float scale = std::clamp(std::min(static_cast<float>(frame_extent.width) / 1920.0f,
+ 		                                        static_cast<float>(frame_extent.height) / 1080.0f),
+ 		                               0.65f, 1.25f);
+-		// Console language 2 is French; the emulator's other strings have no entry for this one.
+-		const auto  count = g_compile_count.load(std::memory_order_relaxed);
+-		const auto  text  = Config::GetConsoleLanguage() == 2
+-		                        ? fmt::format("Compilation des shaders : {}", count)
+-		                        : fmt::format("Compiling shaders: {}", count);
+ 		const float size = 22.0f * scale;
+ 		const float pad  = 12.0f * scale;
+ 		const auto  extent =
+ 		    ImGui::GetFont()->CalcTextSizeA(size, std::numeric_limits<float>::max(), 0.0f,
+ 		                                    text.c_str());
+-		const ImVec2 bottom_left {24.0f * scale, static_cast<float>(frame_extent.height) - 24.0f * scale};
++		const float  bottom = static_cast<float>(frame_extent.height) - 24.0f * scale -
++		                      static_cast<float>(row) * (extent.y + 2.0f * pad + 8.0f * scale);
++		const ImVec2 bottom_left {24.0f * scale, bottom};
+ 		const ImVec2 top_left {bottom_left.x, bottom_left.y - extent.y - 2.0f * pad};
+ 		const ImVec2 bottom_right {bottom_left.x + extent.x + 2.0f * pad, bottom_left.y};
+ 		auto*        draw = ImGui::GetForegroundDrawList();
+@@ -1722,6 +1727,27 @@ struct SystemOverlay::Impl {
+ 		              IM_COL32(255, 255, 255, 255), text.c_str());
+ 	}
+ 
++	// What the player would otherwise take for a bug: the first moments of a GPU without mesh
++	// shaders, and while shaders compile (the game may stutter, or miss an effect for a moment).
++	// Console language 2 is French; the emulator's other strings have no entry for these.
++	void DrawCornerNotices(vk::Extent2D frame_extent) {
++		const bool french = Config::GetConsoleLanguage() == 2;
++		int        row    = 0;
++		if (MeshNoticeActive()) {
++			DrawCornerNotice(french ? "Pas de mesh shaders sur ce GPU : des objets manquent à l'image"
++			                        : "No mesh shaders on this GPU: objects are missing",
++			                 frame_extent, row++);
++		}
++		if (!CompileToastActive()) {
++			g_compile_count.store(0, std::memory_order_relaxed);
++			return;
++		}
++		const auto count = g_compile_count.load(std::memory_order_relaxed);
++		DrawCornerNotice(french ? fmt::format("Compilation des shaders : {}", count)
++		                        : fmt::format("Compiling shaders: {}", count),
++		                 frame_extent, row);
++	}
++
+ 	void DrawTrophyNotification(vk::Extent2D frame_extent, Clock::time_point now, float min_top) {
+ 		std::erase_if(retired_trophy_images, [](const auto& texture) {
+ 			if (texture->Status != ImTextureStatus_Destroyed) {
+@@ -1859,7 +1885,7 @@ struct SystemOverlay::Impl {
+ 		if (!has_overlay && !g_trophy_notification_active.load(std::memory_order_acquire) &&
+ 		    !g_splash_active.load(std::memory_order_acquire) &&
+ 		    !GetHostInputTouchPadVisualState().enabled && !PerformanceOverlayEnabled() &&
+-		    !CompileToastActive()) {
++		    !CompileToastActive() && !MeshNoticeActive()) {
+ 			return false;
+ 		}
+ 		const auto prepared_session = snapshot.session;
+@@ -1900,7 +1926,7 @@ struct SystemOverlay::Impl {
+ 			}
+ 		}
+ 		DrawTrophyNotification(frame_extent, now, performance_bottom);
+-		DrawCompileToast(frame_extent);
++		DrawCornerNotices(frame_extent);
+ 		DrawTouchPadCursor(GetHostInputTouchPadVisualState());
+ 		ImGui::Render();
+ 		extent = frame_extent;
+diff --git a/src/graphics/presentation/systemOverlay.h b/src/graphics/presentation/systemOverlay.h
+index 3270c897..15325c2d 100644
+--- a/src/graphics/presentation/systemOverlay.h
++++ b/src/graphics/presentation/systemOverlay.h
+@@ -31,6 +31,8 @@ SystemOverlayVisualState GetSystemOverlayVisualState() noexcept;
+ // A shader or pipeline has just been compiled: shows the compilation toast for a moment. From any
+ // thread. KYTY_SHADER_TOAST=0 turns the toast off.
+ void                     NotifyShaderCompiled() noexcept;
++// The first draw this GPU cannot do has been dropped: says for a moment that objects are missing.
++void                     NotifyMeshDrawsDropped() noexcept;
+ void                     NotifyTrophyUnlocked(std::string_view name, int32_t grade,
+                                               std::span<const std::byte> icon_png);
+ 
+diff --git a/src/graphics/presentation/window/vulkanWindow.cpp b/src/graphics/presentation/window/vulkanWindow.cpp
+index 7635af36..a682b40e 100644
+--- a/src/graphics/presentation/window/vulkanWindow.cpp
++++ b/src/graphics/presentation/window/vulkanWindow.cpp
+@@ -25,6 +25,7 @@
+ #include <algorithm>
+ #include <cmath>
+ #include <cstdio>
++#include <cstdlib>
+ #include <cstring>
+ #include <fmt/format.h>
+ #include <memory>
+@@ -473,7 +474,9 @@ static vk::Device VulkanCreateDevice(GraphicContext&          graphics,
+ 		    workgroup_layout.workgroupMemoryExplicitLayout != VK_FALSE));
+ 	}
+ 	// Indirect mesh draws launch their records' groups from a task shader.
+-	graphics.mesh_shader_enabled = mesh.meshShader && mesh.taskShader;
++	// KYTY_NO_MESH_SHADER: a GPU that has them takes the path of one that does not (the bench).
++	graphics.mesh_shader_enabled = mesh.meshShader && mesh.taskShader &&
++	                               std::getenv("KYTY_NO_MESH_SHADER") == nullptr;
+ 
+ 	vk::StructureChain<
+ 	    vk::PhysicalDeviceProperties2, vk::PhysicalDeviceFloatControlsProperties,

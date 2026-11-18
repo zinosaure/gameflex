@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Henrique Reis Neves <39978017+NevesHenry@users.noreply.github.com>
+Date: Wed, 4 Nov 2026 18:57:46 -0300
+Subject: [PATCH] kernel: export sceKernelDeleteTimerEvent (Gran Turismo 7)
+ (#2107)
+
+sceKernelDeleteTimerEvent (YWQFUyXIVdU) was not registered, although
+sceKernelAddTimerEvent and sceKernelDeleteHRTimerEvent are. A call to it
+landed in the unresolved import stub, which returns 0 and leaves the
+timer in the queue, so a periodic timer the game had deleted kept firing.
+
+Gran Turismo 7 1.000 (PPSA01316, #1930) does this in its "PGL EventQ"
+thread: each EVFILT_TIMER event (ident 1) is followed by a
+sceKernelDeleteTimerEvent call. The log attached to #1930 reaches the
+1024-call stub log cap after about 13 seconds, and the thread keeps
+receiving about 80 timer events per second next to 60 graphics events.
+
+Delete the EVFILT_TIMER event with the existing KernelDeleteEvent, the
+same way sceKernelDeleteHRTimerEvent deletes EVFILT_HRTIMER events. An
+unknown queue gives EBADF and an unknown timer gives ENOENT.
+
+The periodic timer test now deletes its timers through the export and
+checks that a deleted zero-interval timer is not delivered again.
+
+Co-authored-by: Claude Opus 5.5 <noreply@anthropic.com>
+(cherry picked from commit a7e14aa716844006e583516f457f452c58815a80)
+---
+ src/kernel/eventQueue.cpp         |  4 ++++
+ src/kernel/eventQueue.h           |  1 +
+ src/libs/libKernel.cpp            |  1 +
+ tests/EventQueueLifetimeTests.cpp | 10 ++++++----
+ 4 files changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/src/kernel/eventQueue.cpp b/src/kernel/eventQueue.cpp
+index fd6a72e0..4a89df9c 100644
+--- a/src/kernel/eventQueue.cpp
++++ b/src/kernel/eventQueue.cpp
+@@ -533,6 +533,10 @@ int KYTY_SYSV_ABI KernelAddTimerEvent(KernelEqueue eq, int id, KernelUseconds us
+ 	return AddTimerEvent(eq, id, static_cast<uint64_t>(usec) * 1000, true, udata);
+ }
+ 
++int KYTY_SYSV_ABI KernelDeleteTimerEvent(KernelEqueue eq, int id) {
++	return KernelDeleteEvent(eq, static_cast<uintptr_t>(id), KERNEL_EVFILT_TIMER);
++}
++
+ int KYTY_SYSV_ABI KernelAddHRTimerEvent(KernelEqueue eq, int id, const KernelTimespec* ts,
+                                         void* udata) {
+ 	if (ts == nullptr) {
+diff --git a/src/kernel/eventQueue.h b/src/kernel/eventQueue.h
+index 911d6ea0..8f0e01be 100644
+--- a/src/kernel/eventQueue.h
++++ b/src/kernel/eventQueue.h
+@@ -76,6 +76,7 @@ int KYTY_SYSV_ABI KernelTriggerUserEventForAll(int id, void* udata);
+ int KYTY_SYSV_ABI KernelDeleteUserEvent(KernelEqueue eq, int id);
+ int KYTY_SYSV_ABI KernelAddTimerEvent(KernelEqueue eq, int id, KernelUseconds usec,
+                                       void* udata);
++int KYTY_SYSV_ABI KernelDeleteTimerEvent(KernelEqueue eq, int id);
+ int KYTY_SYSV_ABI KernelAddHRTimerEvent(KernelEqueue eq, int id, const KernelTimespec* ts,
+                                         void* udata);
+ int KYTY_SYSV_ABI KernelDeleteHRTimerEvent(KernelEqueue eq, int id);
+diff --git a/src/libs/libKernel.cpp b/src/libs/libKernel.cpp
+index da6ad39b..f864c2d8 100644
+--- a/src/libs/libKernel.cpp
++++ b/src/libs/libKernel.cpp
+@@ -3156,6 +3156,7 @@ LIB_DEFINE(InitLibKernel_1_Equeue) {
+ 	LIB_FUNC("F6e0kwo4cnk", EventQueue::KernelTriggerUserEvent);
+ 	LIB_FUNC("LJDwdSNTnDg", EventQueue::KernelDeleteUserEvent);
+ 	LIB_FUNC("57ZK+ODEXWY", EventQueue::KernelAddTimerEvent);
++	LIB_FUNC("YWQFUyXIVdU", EventQueue::KernelDeleteTimerEvent);
+ 	LIB_FUNC("R74tt43xP6k", EventQueue::KernelAddHRTimerEvent);
+ 	LIB_FUNC("J+LF6LwObXU", EventQueue::KernelDeleteHRTimerEvent);
+ 	LIB_FUNC("bBfz7kMF2Ho", EventQueue::KernelAddAmprEvent);
+diff --git a/tests/EventQueueLifetimeTests.cpp b/tests/EventQueueLifetimeTests.cpp
+index bf4c121f..400550bc 100644
+--- a/tests/EventQueueLifetimeTests.cpp
++++ b/tests/EventQueueLifetimeTests.cpp
+@@ -102,8 +102,7 @@ void TestPeriodicTimerEvents() {
+ 	      "timer update preserves accumulated occurrences and updates userdata");
+ 	Check(EventQueue::KernelWaitEqueue(queue, events, 2, &out, &timeout) == KERNEL_ERROR_ETIMEDOUT,
+ 	      "timer update replaces the repeating interval");
+-	Check(EventQueue::KernelDeleteEvent(queue, 10, EventQueue::KERNEL_EVFILT_TIMER) == OK,
+-	      "delete periodic timer");
++	Check(EventQueue::KernelDeleteTimerEvent(queue, 10) == OK, "delete periodic timer");
+ 
+ 	Check(EventQueue::KernelAddTimerEvent(queue, 10, 0, user_data) == OK,
+ 	      "add immediate periodic timer");
+@@ -116,8 +115,11 @@ void TestPeriodicTimerEvents() {
+ 		          events[0].data == 1,
+ 		      "zero interval remains immediately ready after delivery");
+ 	}
+-	Check(EventQueue::KernelDeleteEvent(queue, 10, EventQueue::KERNEL_EVFILT_TIMER) == OK,
+-	      "delete immediate timer");
++	Check(EventQueue::KernelDeleteTimerEvent(queue, 10) == OK, "delete immediate timer");
++	Check(EventQueue::KernelWaitEqueue(queue, events, 2, &out, &timeout) == KERNEL_ERROR_ETIMEDOUT,
++	      "deleted timer is not delivered again");
++	Check(EventQueue::KernelDeleteTimerEvent(queue, 10) == KERNEL_ERROR_ENOENT,
++	      "deleting a missing timer reports ENOENT");
+ 
+ 	const Libs::LibKernel::KernelTimespec delay {0, 1000000};
+ 	Check(EventQueue::KernelAddHRTimerEvent(queue, 10, &delay, user_data) == OK,

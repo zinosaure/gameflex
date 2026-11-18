@@ -1,0 +1,167 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: nmzik <Nmzik@mail.ru>
+Date: Fri, 6 Nov 2026 00:51:32 +0100
+Subject: [PATCH] shader: specialize a null image as the dimension and cube its
+ instructions declare
+
+(cherry picked from commit 9a29dc62cf144236a1aaa800fb9030e34bf201cc)
+---
+ .../recompiler/frontend/decode/ImageOps.cpp   |  1 +
+ .../frontend/decode/ShaderDecoder.h           |  1 +
+ .../recompiler/frontend/translate/Memory.cpp  |  1 +
+ src/graphics/shader/recompiler/ir/Serialize.h |  3 +-
+ src/graphics/shader/recompiler/ir/ShaderIR.h  |  1 +
+ .../ir/passes/ResourceMaterialization.cpp     |  3 +-
+ .../recompiler/ir/passes/ResourceTracking.cpp |  2 ++
+ tests/shaderCfgTests.cpp                      | 32 +++++++++++++++++++
+ 8 files changed, 41 insertions(+), 3 deletions(-)
+
+diff --git a/src/graphics/shader/recompiler/frontend/decode/ImageOps.cpp b/src/graphics/shader/recompiler/frontend/decode/ImageOps.cpp
+index 2133ea6b..f459d2b2 100644
+--- a/src/graphics/shader/recompiler/frontend/decode/ImageOps.cpp
++++ b/src/graphics/shader/recompiler/frontend/decode/ImageOps.cpp
+@@ -390,6 +390,7 @@ void DecodeMimg(uint32_t pc, std::span<const uint32_t> code, uint32_t word_index
+ 	}
+ 	inst.image_dimension  = dimension;
+ 	inst.image_r128       = r128;
++	inst.image_cube       = ((word0 >> 3u) & 0x7u) == 3u;
+ 	inst.image_nsa_dwords = nsa_dwords;
+ 	for (uint32_t i = 0; i < nsa_dwords * 4u; i++) {
+ 		inst.image_nsa_addr[i] = (code[word_index + 2u + i / 4u] >> ((i % 4u) * 8u)) & 0xffu;
+diff --git a/src/graphics/shader/recompiler/frontend/decode/ShaderDecoder.h b/src/graphics/shader/recompiler/frontend/decode/ShaderDecoder.h
+index 3855797b..62b2417e 100644
+--- a/src/graphics/shader/recompiler/frontend/decode/ShaderDecoder.h
++++ b/src/graphics/shader/recompiler/frontend/decode/ShaderDecoder.h
+@@ -878,6 +878,7 @@ struct Instruction {
+ 	bool           idxen                                        = false;
+ 	bool           offen                                        = false;
+ 	bool           image_r128                                   = false;
++	bool           image_cube                                   = false; // DIM is CUBE.
+ 	uint32_t       branch_target                                = 0;
+ 	struct {
+ 		uint32_t target = 0;
+diff --git a/src/graphics/shader/recompiler/frontend/translate/Memory.cpp b/src/graphics/shader/recompiler/frontend/translate/Memory.cpp
+index 816e540f..b208ed8b 100644
+--- a/src/graphics/shader/recompiler/frontend/translate/Memory.cpp
++++ b/src/graphics/shader/recompiler/frontend/translate/Memory.cpp
+@@ -85,6 +85,7 @@ IR::MemoryInfo MemoryInfoFromDecoded(const Decoder::Instruction& decoded) {
+ 	memory.image_has_mip = decoded.opcode == Decoder::Opcode::IMAGE_LOAD_MIP ||
+ 	                       decoded.opcode == Decoder::Opcode::IMAGE_STORE_MIP;
+ 	memory.image_r128    = decoded.image_r128;
++	memory.image_cube    = decoded.image_cube;
+ 	memory.idxen         = decoded.idxen;
+ 	memory.offen         = decoded.offen;
+ 	// Vector loads use GLC/DLC to bypass L0/GL1; atomics use GLC only to return data.
+diff --git a/src/graphics/shader/recompiler/ir/Serialize.h b/src/graphics/shader/recompiler/ir/Serialize.h
+index ecb1bbf9..24e7bb2b 100644
+--- a/src/graphics/shader/recompiler/ir/Serialize.h
++++ b/src/graphics/shader/recompiler/ir/Serialize.h
+@@ -147,7 +147,8 @@ template <class S, class T> void Io(S& io, T& value) {
+ 		auto& [__VA_ARGS__] = object;                                                              \
+ 		IoAll(io, __VA_ARGS__);                                                                    \
+ 	}
+-KYTY_IO_FIELDS(MemoryInfo, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y)
++KYTY_IO_FIELDS(MemoryInfo, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x,
++               y, z)
+ KYTY_IO_FIELDS(BufferResource, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q)
+ KYTY_IO_FIELDS(ImageResource, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y)
+ KYTY_IO_FIELDS(SamplerResource, a, b, c, d, e, f, g, h, i, j, k)
+diff --git a/src/graphics/shader/recompiler/ir/ShaderIR.h b/src/graphics/shader/recompiler/ir/ShaderIR.h
+index 206977a5..ee5c236a 100644
+--- a/src/graphics/shader/recompiler/ir/ShaderIR.h
++++ b/src/graphics/shader/recompiler/ir/ShaderIR.h
+@@ -73,6 +73,7 @@ struct MemoryInfo {
+ 	bool                    formatted                                             = false;
+ 	bool                    image_has_mip                                         = false;
+ 	bool                    image_r128                                            = false;
++	bool                    image_cube                                            = false;
+ 	bool                    idxen                                                 = false;
+ 	bool                    offen                                                 = false;
+ 	bool                    coherent                                              = false;
+diff --git a/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp b/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp
+index 5109053d..9dd1a3c1 100644
+--- a/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp
++++ b/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp
+@@ -938,11 +938,10 @@ static bool BuildResourceSpecialization(const ResourcePlan& program, ResourceSna
+ 			return SpecializationFail(fmt::format("image resource {} has an invalid class", i));
+ 		}
+ 		image.mip_count = ImageMipCount(base, descriptor);
++		// A null T# reads zero; it keeps the dimension and cube its instructions declare.
+ 		if (NullImageDescriptor(descriptor)) {
+ 			image.numeric_class = base.atomic ? Prospero::TextureNumericClass::Uint
+ 			                                  : Prospero::TextureNumericClass::Float;
+-			image.dimension     = Decoder::ImageDimension::Dim2D;
+-			image.cube          = false;
+ 			continue;
+ 		}
+ 		const auto descriptor_dimension = DescriptorDimension(descriptor, base.dimension);
+diff --git a/src/graphics/shader/recompiler/ir/passes/ResourceTracking.cpp b/src/graphics/shader/recompiler/ir/passes/ResourceTracking.cpp
+index d6c2bea0..b0439137 100644
+--- a/src/graphics/shader/recompiler/ir/passes/ResourceTracking.cpp
++++ b/src/graphics/shader/recompiler/ir/passes/ResourceTracking.cpp
+@@ -4132,6 +4132,7 @@ private:
+ 			    image.dimension == memory.image_dimension && image.mip_mode == mip &&
+ 			    image.depth_compare == depth && image.r128 == memory.image_r128 &&
+ 			    image.atomic64 == atomic64) {
++				image.cube |= memory.image_cube;
+ 				Merge(image, op, pc);
+ 				return i;
+ 			}
+@@ -4147,6 +4148,7 @@ private:
+ 		image.mip_mode       = mip;
+ 		image.depth_compare  = depth;
+ 		image.r128           = memory.image_r128;
++		image.cube           = memory.image_cube;
+ 		image.atomic64       = atomic64;
+ 		Merge(image, op, pc);
+ 		m_info.images.push_back(image);
+diff --git a/tests/shaderCfgTests.cpp b/tests/shaderCfgTests.cpp
+index bd93cc47..9f72eda8 100644
+--- a/tests/shaderCfgTests.cpp
++++ b/tests/shaderCfgTests.cpp
+@@ -5898,6 +5898,37 @@ void TestNativeConstantSamplerSelection() {
+   CheckSpirvBinaryValidates(result.spirv);
+ }
+ 
++void TestNullImageTakesDeclaredCube() {
++  using namespace ShaderRecompiler::IR;
++  // image_sample_lz v0, v[2:4], s[8:15], s[16:19] dmask:0x1 dim:CUBE, then the result is stored.
++  const uint32_t shader[] = {
++      EncodeMimg0(0x27, 0x1, false, 3), EncodeMimg1(0, 2, 4, 2),
++      EncodeMubuf0(0x1c, 0, false), EncodeMubuf1(0, 0, 0),
++      EncodeSopp(0x01),
++  };
++  auto user_data = ImageTestUserData();
++  user_data[0] = 0x1000u;
++  user_data[1] = 0u;
++  user_data[2] = 4u;
++  user_data[3] = 0x30005204u;
++  auto options = MakeCompileOptions(ShaderType::Compute);
++  options.user_data = user_data;
++  const auto plan = ExtractResourcePlan(ShaderRecompiler::TranslateProgram(shader, options).program);
++  const auto specialize = [&](std::array<uint32_t, 8> descriptor) {
++    std::ranges::copy(descriptor, user_data.begin() + 8);
++    ResourceSnapshot snapshot;
++    ResourceSpecialization specialization;
++    Check(MaterializeResources(plan, {.user_data = user_data}, snapshot, specialization),
++          "cube sample resources did not materialize");
++    return specialization;
++  };
++  const auto cube = specialize({0x100u, static_cast<uint32_t>(Prospero::BufferFormat::k8UNorm) << 20u,
++                                0u, DstSel(4, 5, 6, 7) |
++                                    (static_cast<uint32_t>(Prospero::ImageType::kCube) << 28u)});
++  Check(cube.images.size() == 1u && cube.images[0].cube && specialize({}) == cube,
++        "a null T# sampled as a cube specialized as another image type");
++}
++
+ void TestPackedZeroHighSamplerTableKey() {
+   // s_pack_ll_b32_b16 with a zero high lane zero-extends a GPU-selected table key, so the
+   // sampler table stays bounded to 64Ki records.
+@@ -13508,6 +13539,7 @@ int main() {
+   TestNativeGuardedSamplerSource(false);
+   TestNativeGuardedSamplerSource(true);
+   TestNativeConstantSamplerSelection();
++  TestNullImageTakesDeclaredCube();
+   TestPackedZeroHighSamplerTableKey();
+   for (const bool scalar_key : {false, true}) TestBoundedMaterialBufferStores(scalar_key);
+   TestNativeDescriptorProvenanceKeepsGpuSelection();

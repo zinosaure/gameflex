@@ -1,0 +1,145 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 11:52:13 +0000
+Subject: [PATCH] gameflex 0079: pending GPU writes are looked up behind a
+ filter of 64 KiB blocks
+
+Every word the resource-table walker reads asks whether the GPU may still
+write it: a binary search over the pending ranges. Once the GPU ran
+alongside the command thread (0077), about a thousand labels stayed in
+flight, and the search, word after word, took 10 % of the thread in
+Astro Bot (perf, Celestial Garden). A bit per 64 KiB block that a range
+touches, rebuilt when ranges expire, answers most words, which lie in
+tables the CPU writes, without the search.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../renderer/cache/pendingGpuWrites.cpp       | 40 +++++++++++++++++++
+ .../renderer/cache/pendingGpuWrites.h         | 18 ++++++++-
+ 2 files changed, 56 insertions(+), 2 deletions(-)
+
+diff --git a/src/graphics/host_gpu/renderer/cache/pendingGpuWrites.cpp b/src/graphics/host_gpu/renderer/cache/pendingGpuWrites.cpp
+index 4492f1b6..0f9ed0a7 100644
+--- a/src/graphics/host_gpu/renderer/cache/pendingGpuWrites.cpp
++++ b/src/graphics/host_gpu/renderer/cache/pendingGpuWrites.cpp
+@@ -11,11 +11,30 @@ PendingGpuWrites::FirstEndingAfter(uint64_t address) const noexcept {
+ 	                        [](uint64_t value, const Range& range) { return value < range.end; });
+ }
+ 
++void PendingGpuWrites::MarkBlocks(uint64_t start, uint64_t end) noexcept {
++	const auto first = start >> BlockBits;
++	const auto last  = (end - 1) >> BlockBits;
++	if (last - first >= BlockCount - 1) {
++		m_blocks.fill(~uint64_t {0});
++		return;
++	}
++	for (auto block = first; block <= last; block++) {
++		const auto bit = block % BlockCount;
++		m_blocks[bit / 64] |= uint64_t {1} << (bit % 64);
++	}
++}
++
++void PendingGpuWrites::Clear() noexcept {
++	m_ranges.clear();
++	m_blocks.fill(0);
++}
++
+ void PendingGpuWrites::Add(uint64_t address, uint64_t size, uint64_t tick) {
+ 	if (size == 0) {
+ 		return;
+ 	}
+ 	const uint64_t end = address + size;
++	MarkBlocks(address, end);
+ 	// The first range that ends at or after the new one starts: it touches or overlaps it, or comes after.
+ 	auto first = std::lower_bound(m_ranges.begin(), m_ranges.end(), address,
+ 	                              [](const Range& range, uint64_t value) { return range.end < value; });
+@@ -40,10 +59,21 @@ void PendingGpuWrites::Expire(uint64_t done_tick) {
+ 		return;
+ 	}
+ 	m_expired_tick = done_tick;
++	const auto before = m_ranges.size();
+ 	std::erase_if(m_ranges, [done_tick](const Range& range) { return range.tick <= done_tick; });
++	if (m_ranges.size() == before) {
++		return;
++	}
++	m_blocks.fill(0);
++	for (const auto& range: m_ranges) {
++		MarkBlocks(range.start, range.end);
++	}
+ }
+ 
+ const PendingGpuWrites::Range* PendingGpuWrites::Find(uint64_t address) const noexcept {
++	if (!MaybeTouched(address)) {
++		return nullptr;
++	}
+ 	const auto it = FirstEndingAfter(address);
+ 	return it != m_ranges.end() && it->start <= address ? &*it : nullptr;
+ }
+@@ -52,6 +82,16 @@ bool PendingGpuWrites::Intersects(uint64_t address, uint64_t size) const noexcep
+ 	if (size == 0) {
+ 		return false;
+ 	}
++	// A small read asks the blocks first; a large one goes straight to the search.
++	if (const auto first = address >> BlockBits, last = (address + size - 1) >> BlockBits; last - first < 4) {
++		bool touched = false;
++		for (auto block = first; block <= last && !touched; block++) {
++			touched = MaybeTouched(block << BlockBits);
++		}
++		if (!touched) {
++			return false;
++		}
++	}
+ 	const auto it = FirstEndingAfter(address);
+ 	return it != m_ranges.end() && it->start < address + size;
+ }
+diff --git a/src/graphics/host_gpu/renderer/cache/pendingGpuWrites.h b/src/graphics/host_gpu/renderer/cache/pendingGpuWrites.h
+index fab61802..7dd2625b 100644
+--- a/src/graphics/host_gpu/renderer/cache/pendingGpuWrites.h
++++ b/src/graphics/host_gpu/renderer/cache/pendingGpuWrites.h
+@@ -1,6 +1,7 @@
+ #ifndef EMULATOR_SRC_GRAPHICS_HOST_GPU_RENDERER_CACHE_PENDINGGPUWRITES_H_
+ #define EMULATOR_SRC_GRAPHICS_HOST_GPU_RENDERER_CACHE_PENDINGGPUWRITES_H_
+ 
++#include <array>
+ #include <cstdint>
+ #include <vector>
+ 
+@@ -9,7 +10,9 @@ namespace Libs::Graphics {
+ // The guest ranges the GPU may still be writing: bound for writing in a command buffer the GPU has not finished.
+ // Sorted by address, disjoint (overlapping and touching ranges merge), each with the tick of the last buffer
+ // that writes it. Every read of a shader's table of resources asks whether its word lies in one: a binary search,
+-// where a std::map scanned from the first range in reach cost 7 % of the command thread in Astro Bot.
++// where a std::map scanned from the first range in reach cost 7 % of the command thread in Astro Bot. Once the GPU
++// ran alongside the thread (0077), about a thousand labels stayed in flight and the search over them, word by word,
++// took 10 % of the thread: a bit per 64 KiB block that a range touches answers most words without the search.
+ class PendingGpuWrites {
+ public:
+ 	struct Range {
+@@ -21,7 +24,7 @@ public:
+ 	void Add(uint64_t address, uint64_t size, uint64_t tick);
+ 	// Forgets the ranges whose last writer the GPU has finished.
+ 	void Expire(uint64_t done_tick);
+-	void Clear() noexcept { m_ranges.clear(); }
++	void Clear() noexcept;
+ 
+ 	[[nodiscard]] bool         Empty() const noexcept { return m_ranges.empty(); }
+ 	[[nodiscard]] const Range* Find(uint64_t address) const noexcept;
+@@ -33,7 +36,18 @@ private:
+ 	// The first range that ends after `address`.
+ 	[[nodiscard]] std::vector<Range>::const_iterator FirstEndingAfter(uint64_t address) const noexcept;
+ 
++	static constexpr uint32_t BlockBits  = 16;    // 64 KiB blocks
++	static constexpr uint32_t BlockCount = 65536; // a bit each, the block number taken modulo the count
++
++	[[nodiscard]] bool MaybeTouched(uint64_t address) const noexcept {
++		const auto block = (address >> BlockBits) % BlockCount;
++		return ((m_blocks[block / 64] >> (block % 64)) & 1u) != 0;
++	}
++	void MarkBlocks(uint64_t start, uint64_t end) noexcept;
++
+ 	std::vector<Range> m_ranges;
++	// A bit set for every block a range touches; others share a bit by the modulo, which only costs the search.
++	std::array<uint64_t, BlockCount / 64> m_blocks {};
+ 	// The GPU tick of the last expiry: ranges added since carry later ticks, so the same tick finds nothing.
+ 	uint64_t           m_expired_tick = 0;
+ };

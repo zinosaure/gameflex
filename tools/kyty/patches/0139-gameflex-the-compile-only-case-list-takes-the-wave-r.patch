@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Tue, 17 Nov 2026 23:48:43 +0100
+Subject: [PATCH] gameflex: the compile-only case list takes the wave
+ reductions by table
+
+Upstream 1e871718 turned ComputeWave64Reduction(masked, bitwise_or) into a reduction from
+kWaveReductions; the three cases of --compile-only keep their meaning (minimum, masked minimum, or).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ tests/ShaderRecompilerComputeTests.cpp | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/tests/ShaderRecompilerComputeTests.cpp b/tests/ShaderRecompilerComputeTests.cpp
+index 84a0c917..0a1801ba 100644
+--- a/tests/ShaderRecompilerComputeTests.cpp
++++ b/tests/ShaderRecompilerComputeTests.cpp
+@@ -55023,9 +55023,9 @@ int main(int argc, char **argv) {
+         [] { return BufferAtomicAddX2GlcAndExec(); },
+         [] { return BufferAtomicUMinX2GlcAndExec(); },
+         [] { return Vop3pIntegerNegationCapturedAndSelectedHalves(); },
+-        [] { return ComputeWave64Reduction(false, false); },
+-        [] { return ComputeWave64Reduction(true, false); },
+-        [] { return ComputeWave64Reduction(false, true); },
++        [] { return ComputeWave64Reduction(kWaveMinimum); },
++        [] { return ComputeWave64Reduction(kWaveMinimum, true); },
++        [] { return ComputeWave64Reduction(kWaveReductions[1]); },
+         [] { return VectorDpp8Captured(false); },
+         [] { return VectorDppQuadPermuteReverse(); },
+         [] { return VectorDppRowXmask(); },

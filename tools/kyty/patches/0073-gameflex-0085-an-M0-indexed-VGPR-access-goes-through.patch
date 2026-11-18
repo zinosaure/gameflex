@@ -1,0 +1,362 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 17:26:53 +0000
+Subject: [PATCH] gameflex 0085: an M0-indexed VGPR access goes through a local
+ array
+
+V_MOVRELS_B32 read VGPR[base + M0] by comparing M0 with every register
+from the base up to the shader's last one and selecting among them;
+V_MOVRELD_B32 rewrote each of those registers with a select. M0 is one
+value for the whole wave and the console touches a single register:
+Astro Bot's foliage vertex shaders paid ~2 500 comparisons and as many
+selects a vertex (22 indexed reads over ~116 registers), and RADV kept
+the comparison masks in scalar registers it had to spill (2 313 spills
+in the heaviest one): 7.7 ns a vertex against 1 ns for an ordinary
+vertex shader, the garden's geometry pass 26 ms of the GPU's 78.
+
+The registers stay SSA values. An indexed access now names its element
+(VgprIndexBegin: M0, or 0 past the shader's registers, as before), puts
+the registers it may reach one by one (VgprIndexPut), then reads the
+element (VgprIndexGet) or writes it where EXEC allows and reads the
+registers back (VgprIndexSet, VgprIndexTake). The SPIR-V goes through a
+local array in parts of at most 64 registers: RADV keeps such a part in
+registers and turns the indexed access into a binary tree of branches;
+a larger array goes to scratch memory.
+
+Two earlier forms of this commit, never delivered, kept the indexed
+registers themselves in a private array for the whole shader. The
+first, one array, put 128 registers in scratch memory (32 KiB a wave);
+the second, in parts, had none. Both had the GPU reset when the game
+entered a level: behind the array, EliminateReadLane no longer saw a
+V_READLANE reading back what a V_WRITELANE had put in a lane (the guest
+compiler keeping scalar registers in vector lanes), and two vertex
+shaders compiled right before the reset kept some 70 more cross-lane
+reads than with 0084, reading lanes a partial wave may not have.
+
+The garden's heaviest vertex shader, compiled by RADV for the 780M on a
+null device (Mesa 25.0) from the SPIR-V of the select chains rewritten
+this way: 88 914 estimated cycles instead of 226 281 (92 110 with an
+essay bounding the chains to 32 registers, wrong for a shader indexing
+further), 168 VGPRs instead of 256, no scratch.
+
+At the bench, production settings: the garden 12.06 -> 15.95 and 16.06
+images/s over two games, the GPU 81 -> 61.4 ms a frame, the heaviest
+foliage draw 2.29 -> 1.06 ms, same image; every module the two versions
+share keeps the same cross-lane reads. Tekken 8's menu 18.80 -> 21.47
+(two of its pixel shaders index registers), Clair Obscur 14.77 -> 15.65,
+Wukong at 30, no GPU loss. A shader with indexed accesses takes ~27 %
+longer for RADV to compile, once per cache.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../backend/spirv/spirvEmitterInstructions.h  |  5 +
+ .../backend/spirv/spirvEmitterInternal.h      | 10 ++
+ .../backend/spirv/spirvEmitterMemory.cpp      | 94 +++++++++++++++++++
+ .../backend/spirv/spirvEmitterModule.cpp      |  7 ++
+ .../backend/spirv/spirvEmitterProgram.cpp     |  8 ++
+ .../recompiler/frontend/translate/Control.cpp | 43 ++++++---
+ .../frontend/translate/Translator.h           |  7 ++
+ src/graphics/shader/recompiler/ir/ShaderIR.h  |  2 +
+ .../recompiler/ir/opcodes/ValueOpcodes.inc    |  8 ++
+ 9 files changed, 169 insertions(+), 15 deletions(-)
+
+diff --git a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterInstructions.h b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterInstructions.h
+index 6b4b839f..b92305f2 100644
+--- a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterInstructions.h
++++ b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterInstructions.h
+@@ -378,6 +378,11 @@ inline constexpr auto EmitGetScalarRegister          = EmitUnreachable;
+ inline constexpr auto EmitSetScalarRegister          = EmitUnreachable;
+ inline constexpr auto EmitGetVectorRegister          = EmitUnreachable;
+ inline constexpr auto EmitSetVectorRegister          = EmitUnreachable;
++void                  EmitVgprIndexBegin(ValueEmitContext& ctx, const IR::Inst& inst);
++void                  EmitVgprIndexPut(ValueEmitContext& ctx, const IR::Inst& inst);
++void                  EmitVgprIndexGet(ValueEmitContext& ctx, const IR::Inst& inst);
++void                  EmitVgprIndexSet(ValueEmitContext& ctx, const IR::Inst& inst);
++void                  EmitVgprIndexTake(ValueEmitContext& ctx, const IR::Inst& inst);
+ inline constexpr auto EmitGetGotoVariable            = EmitUnreachable;
+ inline constexpr auto EmitSetGotoVariable            = EmitUnreachable;
+ inline constexpr auto EmitGetScc                     = EmitUnreachable;
+diff --git a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterInternal.h b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterInternal.h
+index 62b52544..b3ec5dce 100644
+--- a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterInternal.h
++++ b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterInternal.h
+@@ -134,6 +134,7 @@ struct EmitterState {
+ 	uint32_t                                         lds_variable            = 0;
+ 	uint32_t                                         lds_u64_variable        = 0;
+ 	std::array<uint32_t, 2>                          scratch_variable {};
++	std::array<std::vector<uint32_t>, 2>             vgpr_index_parts {}; // IR::Program::vgpr_index_registers, per half
+ 	std::array<ImageDefinition, IR::ImageBindingCount> images {};
+ 	std::array<ImageDefinition, IR::ImageBindingCount> heap_images {};
+ 	uint32_t                   sampler_variable                      = 0;
+@@ -190,6 +191,15 @@ uint32_t TypeStorageBufferElementPointer(EmitterState& state, uint32_t bits = 32
+ uint32_t TypePhysicalU32Pointer(EmitterState& state);
+ uint32_t TypePushConstantElementPointer(EmitterState& state);
+ uint32_t TypeU32ArrayPointer(EmitterState& state, spv::StorageClass storage_class, uint32_t dwords);
++
++// GameFlex: the local array an M0-indexed VGPR access goes through (VgprIndex*), in parts of at most this many
++// registers. RADV keeps a private array of up to 256 bytes in registers, its indexed accesses turned into a binary
++// tree of branches, and moves a larger one to scratch memory (ac_nir_lower_indirect_derefs): a 128-register array
++// cost a vertex shader of Astro Bot's garden 32 KiB of memory a wave.
++inline constexpr uint32_t VgprIndexPart = 64;
++inline uint32_t VgprIndexPartSize(const IR::Program& program, size_t part) {
++	return std::min(VgprIndexPart, program.vgpr_index_registers - static_cast<uint32_t>(part) * VgprIndexPart);
++}
+ uint32_t TypeU32ElementPointer(EmitterState& state, spv::StorageClass storage_class);
+ 
+ inline void EmitLabel(EmitterState& state, uint32_t label) {
+diff --git a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterMemory.cpp b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterMemory.cpp
+index 84987819..4c6d4b9a 100644
+--- a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterMemory.cpp
++++ b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterMemory.cpp
+@@ -1708,6 +1708,100 @@ uint32_t EmitGetBufferResourceIndex(ValueEmitContext& ctx, const IR::Inst& inst)
+ 	                                 buffer.indirect_search_iterations, UINT32_MAX);
+ }
+ 
++// GameFlex: an M0-indexed VGPR access (VgprIndex*, spirvEmitterInternal.h for the parts). The token is the element
++// the access names; a register is put at its position, and the element read or written in every part at its
++// offset there, clamped to the part's first register when the element is not in it.
++namespace {
++uint32_t VgprIndexPointer(ValueEmitContext& ctx, size_t part, uint32_t offset) {
++	auto&      state   = ctx.state;
++	const auto pointer = state.builder.AllocateId();
++	state.builder.AddFunction(spv::OpAccessChain, TypePointer(state, spv::StorageClassFunction, TypeU32(state)),
++	                          pointer, state.vgpr_index_parts[ctx.half][part], offset);
++	return pointer;
++}
++
++uint32_t VgprIndexPositionPointer(ValueEmitContext& ctx, const IR::Inst& inst) {
++	const auto position = inst.Arg(1).U32();
++	return VgprIndexPointer(ctx, position / VgprIndexPart, ConstantU32(ctx.state, position % VgprIndexPart));
++}
++
++struct VgprIndexSlot {
++	uint32_t pointer = 0;
++	uint32_t in_part = 0; // 0 when there is one part
++};
++
++std::vector<VgprIndexSlot> VgprIndexSlots(ValueEmitContext& ctx, const IR::Inst& inst) {
++	auto&      state   = ctx.state;
++	const auto element = ctx.Arg(inst, 0);
++	const auto parts   = state.vgpr_index_parts[ctx.half].size();
++	if (parts == 1) {
++		return {{VgprIndexPointer(ctx, 0, element)}};
++	}
++	std::vector<VgprIndexSlot> slots;
++	for (size_t part = 0; part < parts; part++) {
++		const auto offset  = state.builder.AllocateId();
++		const auto in_part = state.builder.AllocateId();
++		const auto clamped = state.builder.AllocateId();
++		state.builder.AddFunction(spv::OpISub, TypeU32(state), offset, element,
++		                          ConstantU32(state, static_cast<uint32_t>(part) * VgprIndexPart));
++		state.builder.AddFunction(spv::OpULessThan, TypeBool(state), in_part, offset,
++		                          ConstantU32(state, VgprIndexPartSize(state.program, part)));
++		state.builder.AddFunction(spv::OpSelect, TypeU32(state), clamped, in_part, offset, ConstantU32(state, 0));
++		slots.push_back({VgprIndexPointer(ctx, part, clamped), in_part});
++	}
++	return slots;
++}
++} // namespace
++
++void EmitVgprIndexBegin(ValueEmitContext& ctx, const IR::Inst& inst) {
++	ctx.Define(inst, ctx.Arg(inst, 0));
++}
++
++void EmitVgprIndexPut(ValueEmitContext& ctx, const IR::Inst& inst) {
++	ctx.state.builder.AddFunction(spv::OpStore, VgprIndexPositionPointer(ctx, inst), ctx.Arg(inst, 2));
++	ctx.Define(inst, ctx.Arg(inst, 0));
++}
++
++void EmitVgprIndexGet(ValueEmitContext& ctx, const IR::Inst& inst) {
++	auto&    builder = ctx.state.builder;
++	uint32_t value   = 0;
++	for (const auto& slot: VgprIndexSlots(ctx, inst)) {
++		const auto loaded = builder.AllocateId();
++		builder.AddFunction(spv::OpLoad, TypeU32(ctx.state), loaded, slot.pointer);
++		if (value == 0) {
++			value = loaded;
++			continue;
++		}
++		const auto selected = builder.AllocateId();
++		builder.AddFunction(spv::OpSelect, TypeU32(ctx.state), selected, slot.in_part, loaded, value);
++		value = selected;
++	}
++	ctx.Define(inst, value);
++}
++
++void EmitVgprIndexSet(ValueEmitContext& ctx, const IR::Inst& inst) {
++	auto&      builder = ctx.state.builder;
++	const auto value   = ctx.Arg(inst, 1);
++	for (const auto& slot: VgprIndexSlots(ctx, inst)) {
++		auto stored = value;
++		if (slot.in_part != 0) {
++			// A part the element is not in gets back what its clamped register holds.
++			const auto old = builder.AllocateId();
++			stored         = builder.AllocateId();
++			builder.AddFunction(spv::OpLoad, TypeU32(ctx.state), old, slot.pointer);
++			builder.AddFunction(spv::OpSelect, TypeU32(ctx.state), stored, slot.in_part, value, old);
++		}
++		builder.AddFunction(spv::OpStore, slot.pointer, stored);
++	}
++	ctx.Define(inst, ctx.Arg(inst, 0));
++}
++
++void EmitVgprIndexTake(ValueEmitContext& ctx, const IR::Inst& inst) {
++	const auto value = ctx.state.builder.AllocateId();
++	ctx.state.builder.AddFunction(spv::OpLoad, TypeU32(ctx.state), value, VgprIndexPositionPointer(ctx, inst));
++	ctx.Define(inst, value);
++}
++
+ void EmitLoadMemory(ValueEmitContext& ctx, const IR::Inst& inst) {
+ 	const auto  op  = inst.GetOpcode();
+ 	const auto& mem = ctx.Memory(inst);
+diff --git a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterModule.cpp b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterModule.cpp
+index cb4a23d1..59c62b7b 100644
+--- a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterModule.cpp
++++ b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterModule.cpp
+@@ -723,6 +723,13 @@ void DefineModule(EmitterState& state) {
+ 			state.scratch_variable[half] = state.builder.AllocateId();
+ 		}
+ 	}
++	for (uint32_t half = 0; half < 2; half++) {
++		state.vgpr_index_parts[half].clear();
++		for (uint32_t part = 0; half < state.lane_count && part * VgprIndexPart < state.program.vgpr_index_registers;
++		     part++) {
++			state.vgpr_index_parts[half].push_back(state.builder.AllocateId());
++		}
++	}
+ 	state.main_func = state.builder.AllocateId();
+ 	if (state.program.stage == ShaderType::Mesh) {
+ 		state.mesh_guest_func = state.builder.AllocateId();
+diff --git a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterProgram.cpp b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterProgram.cpp
+index 1ed43004..b39e78cb 100644
+--- a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterProgram.cpp
++++ b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterProgram.cpp
+@@ -704,6 +704,14 @@ void EmitProgram(EmitterState& state) {
+ 			    state.scratch_variable[half], spv::StorageClassFunction);
+ 		}
+ 	}
++	for (const auto& parts: state.vgpr_index_parts) {
++		for (size_t part = 0; part < parts.size(); part++) {
++			state.builder.AddFunction(
++			    spv::OpVariable,
++			    TypeU32ArrayPointer(state, spv::StorageClassFunction, VgprIndexPartSize(state.program, part)),
++			    parts[part], spv::StorageClassFunction);
++		}
++	}
+ 	if (state.pixel_valid_mask_variable != 0) {
+ 		state.builder.AddFunction(spv::OpVariable,
+ 		                          TypePointer(state, spv::StorageClassFunction, TypeU32(state)),
+diff --git a/src/graphics/shader/recompiler/frontend/translate/Control.cpp b/src/graphics/shader/recompiler/frontend/translate/Control.cpp
+index bdcac1a1..07a446eb 100644
+--- a/src/graphics/shader/recompiler/frontend/translate/Control.cpp
++++ b/src/graphics/shader/recompiler/frontend/translate/Control.cpp
+@@ -399,15 +399,26 @@ void Translator::V_MOVRELS_B32(const Decoder::Instruction& inst) {
+ 	    inst.src0.dpp) {
+ 		EXIT("V_MOVRELS_B32 modifiers are not implemented at pc 0x%08x", inst.pc);
+ 	}
+-	const auto base     = inst.src0.reg;
+-	const auto m0       = ir.BitwiseAnd(ReadU32(ConditionOperand(Decoder::OperandKind::M0)),
+-	                                    IR::U32(IR::Value(0xffu)));
+-	auto       selected = ir.GetVectorReg(static_cast<IR::VectorReg>(base));
+-	for (uint32_t index = base + 1u; index < current_vector_limit; index++) {
+-		const auto match = ir.IEqual(m0, IR::U32(IR::Value(index - base)));
+-		selected = ir.Select(match, ir.GetVectorReg(static_cast<IR::VectorReg>(index)), selected);
++	// M0 is one value for the whole wave and the console reads a single register. Comparing M0 with every register
++	// above the base cost Astro Bot's foliage ~2 500 comparisons and selects a vertex, and RADV spilled their masks:
++	// the registers go through a local array instead, read once at the element M0 names.
++	const auto index = VgprIndexBegin(inst.src0.reg);
++	WriteOperand(DestinationOperand(inst), IR::U32(ir.Emit(IR::ValueOpcode::VgprIndexGet, {index.token})));
++}
++
++Translator::VgprIndex Translator::VgprIndexBegin(uint32_t base) {
++	const auto count   = current_vector_limit - base;
++	const auto m0      = ir.BitwiseAnd(ReadU32(ConditionOperand(Decoder::OperandKind::M0)),
++	                                   IR::U32(IR::Value(0xffu)));
++	const auto in_range = ir.ULessThan(m0, IR::U32(IR::Value(count)));
++	program.vgpr_index_registers = std::max(program.vgpr_index_registers, count);
++	auto token = IR::U32(ir.Emit(IR::ValueOpcode::VgprIndexBegin, {ir.Select(in_range, m0, IR::U32(IR::Value(0u)))}));
++	for (uint32_t position = 0; position < count; position++) {
++		token = IR::U32(ir.Emit(IR::ValueOpcode::VgprIndexPut,
++		                        {token, IR::Value(position),
++		                         ir.GetVectorReg(static_cast<IR::VectorReg>(base + position))}));
+ 	}
+-	WriteOperand(DestinationOperand(inst), selected);
++	return {token, in_range};
+ }
+ 
+ void Translator::V_MOVRELD_B32(const Decoder::Instruction& inst) {
+@@ -419,15 +430,17 @@ void Translator::V_MOVRELD_B32(const Decoder::Instruction& inst) {
+ 	    inst.src0.dpp) {
+ 		EXIT("V_MOVRELD_B32 modifiers are not implemented at pc 0x%08x", inst.pc);
+ 	}
++	// The registers through the local array, as for V_MOVRELS_B32: the element M0 names written where EXEC allows,
++	// past the shader's registers nothing.
+ 	const auto base  = inst.dst.reg;
+ 	const auto value = ReadU32(inst.src0);
+-	const auto m0    = ir.BitwiseAnd(ReadU32(ConditionOperand(Decoder::OperandKind::M0)),
+-	                                 IR::U32(IR::Value(0xffu)));
+-	for (uint32_t index = base; index < current_vector_limit; index++) {
+-		const auto reg   = static_cast<IR::VectorReg>(index);
+-		const auto match = ir.IEqual(m0, IR::U32(IR::Value(index - base)));
+-		const auto write = ir.LogicalAnd(ir.GetExec(), match);
+-		ir.SetVectorReg(reg, ir.Select(write, value, ir.GetVectorReg(reg)));
++	const auto index = VgprIndexBegin(base);
++	const auto old   = IR::U32(ir.Emit(IR::ValueOpcode::VgprIndexGet, {index.token}));
++	const auto write = ir.LogicalAnd(ir.GetExec(), index.in_range);
++	const auto token = IR::U32(ir.Emit(IR::ValueOpcode::VgprIndexSet, {index.token, ir.Select(write, value, old)}));
++	for (uint32_t position = 0; base + position < current_vector_limit; position++) {
++		ir.SetVectorReg(static_cast<IR::VectorReg>(base + position),
++		                IR::U32(ir.Emit(IR::ValueOpcode::VgprIndexTake, {token, IR::Value(position)})));
+ 	}
+ }
+ 
+diff --git a/src/graphics/shader/recompiler/frontend/translate/Translator.h b/src/graphics/shader/recompiler/frontend/translate/Translator.h
+index 39ef5ab2..f5976a70 100644
+--- a/src/graphics/shader/recompiler/frontend/translate/Translator.h
++++ b/src/graphics/shader/recompiler/frontend/translate/Translator.h
+@@ -250,6 +250,13 @@ private:
+ 	void S_WQM(const Decoder::Instruction& inst, bool wide);
+ 	void V_MOVRELS_B32(const Decoder::Instruction& inst);
+ 	void V_MOVRELD_B32(const Decoder::Instruction& inst);
++	// The registers from the base up to the shader's last one, put after the element M0 names; in_range is false
++	// past them, where the element is the base's.
++	struct VgprIndex {
++		IR::U32 token;
++		IR::U1  in_range;
++	};
++	VgprIndex VgprIndexBegin(uint32_t base);
+ 	void V_READFIRSTLANE_B32(const Decoder::Instruction& inst);
+ 	void V_READLANE_B32(const Decoder::Instruction& inst);
+ 	void V_WRITELANE_B32(const Decoder::Instruction& inst);
+diff --git a/src/graphics/shader/recompiler/ir/ShaderIR.h b/src/graphics/shader/recompiler/ir/ShaderIR.h
+index c5754bbb..206977a5 100644
+--- a/src/graphics/shader/recompiler/ir/ShaderIR.h
++++ b/src/graphics/shader/recompiler/ir/ShaderIR.h
+@@ -744,6 +744,8 @@ struct Program: ResourcePlan {
+ 	BlockList                           blocks;
+ 	uint32_t                      wave_size      = 64;
+ 	uint32_t                      scratch_dwords = 0;
++	// The most registers an M0-indexed access may reach (VgprIndexPut): the size of the local array it goes through.
++	uint32_t                      vgpr_index_registers = 0;
+ 	bool                          dispatcher_fallback = false;
+ 	struct ScalarWrite { uint32_t pc; ScalarReg reg; Value value; };
+ 	std::vector<ScalarWrite>      scalar_writes;
+diff --git a/src/graphics/shader/recompiler/ir/opcodes/ValueOpcodes.inc b/src/graphics/shader/recompiler/ir/opcodes/ValueOpcodes.inc
+index ef772579..7c728689 100644
+--- a/src/graphics/shader/recompiler/ir/opcodes/ValueOpcodes.inc
++++ b/src/graphics/shader/recompiler/ir/opcodes/ValueOpcodes.inc
+@@ -25,6 +25,14 @@ VALUE_OPCODE(GetScalarRegister, U32, ScalarReg)
+ VALUE_OPCODE(SetScalarRegister, Void, ScalarReg, U32)
+ VALUE_OPCODE(GetVectorRegister, U32, VectorReg)
+ VALUE_OPCODE(SetVectorRegister, Void, VectorReg, U32)
++// V_MOVRELS/V_MOVRELD: the element an M0-indexed access names (Begin) and the registers it may reach, put one
++// by one (Put: token, position, value); then the named element read (Get) or written (Set: token, value), and
++// the registers read back one by one (Take: token, position). Each returns the token the next one takes.
++VALUE_OPCODE(VgprIndexBegin, U32, U32)
++VALUE_OPCODE(VgprIndexPut, U32, U32, U32, U32)
++VALUE_OPCODE(VgprIndexGet, U32, U32)
++VALUE_OPCODE(VgprIndexSet, U32, U32, U32)
++VALUE_OPCODE(VgprIndexTake, U32, U32, U32)
+ VALUE_OPCODE(GetGotoVariable, U1, U32)
+ VALUE_OPCODE(SetGotoVariable, Void, U32, U1)
+ VALUE_OPCODE(GetScc, U1)

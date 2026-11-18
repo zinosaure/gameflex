@@ -1,0 +1,314 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 22:20:45 +0000
+Subject: [PATCH] gameflex 0065: the GPU's pending writes in a sorted vector
+
+Every read of a shader's table of resources on the CPU asks whether its word
+lies in a range the GPU may still write. Those ranges were a std::map by
+start address, scanned from the first range long enough to reach the word
+(the longest range ever recorded set that distance) and, for whole-range
+questions, from the beginning: 7 % of the command thread in Astro Bot, in
+the scan and the tree walk.
+
+PendingGpuWrites keeps them sorted and disjoint (overlapping and touching
+ranges merge, with the latest tick), so every question is a binary search:
+the range holding a word, whether a range intersects, how many bytes they
+cover.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ .../host_gpu/renderer/cache/bufferCache.cpp   | 96 +++++++------------
+ .../host_gpu/renderer/cache/bufferCache.h     |  7 +-
+ .../renderer/cache/pendingGpuWrites.cpp       | 62 ++++++++++++
+ .../renderer/cache/pendingGpuWrites.h         | 41 ++++++++
+ 4 files changed, 141 insertions(+), 65 deletions(-)
+ create mode 100644 src/graphics/host_gpu/renderer/cache/pendingGpuWrites.cpp
+ create mode 100644 src/graphics/host_gpu/renderer/cache/pendingGpuWrites.h
+
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+index 471296e3..3ada7cec 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+@@ -721,14 +721,7 @@ uint64_t BufferCache::GpuDirtyBytes(uint64_t vaddr, uint64_t size) {
+ 	m_gpu_modified_ranges.ForEachInRange(vaddr, size,
+ 	                                     [&](uint64_t begin, uint64_t end) { bytes += end - begin; });
+ 	if (HasPendingGpuWrites(vaddr, size)) {
+-		for (const auto& [start, entry]: m_pending_gpu_writes) {
+-			if (start >= vaddr + size) {
+-				break;
+-			}
+-			if (entry.first > vaddr) {
+-				bytes += std::min(entry.first, vaddr + size) - std::max(start, vaddr);
+-			}
+-		}
++		bytes += m_pending_gpu_writes.Bytes(vaddr, size);
+ 	}
+ 	return std::min(bytes, size);
+ }
+@@ -1047,10 +1040,7 @@ bool BufferCache::PendingGuestWrite(uint64_t vaddr, uint64_t size, uint64_t* val
+ }
+ 
+ void BufferCache::RecordUnifiedGpuWrite(uint64_t vaddr, uint64_t size) {
+-	auto& pending  = m_pending_gpu_writes[vaddr];
+-	pending.first  = std::max(pending.first, vaddr + size);
+-	pending.second = m_scheduler.CurrentTick();
+-	m_pending_gpu_writes_span = std::max(m_pending_gpu_writes_span, pending.first - vaddr);
++	m_pending_gpu_writes.Add(vaddr, size, m_scheduler.CurrentTick());
+ 	m_unified_gpu_writes.Add(vaddr, size);
+ 	m_unified_gpu_written.Add(vaddr, size);
+ }
+@@ -1058,26 +1048,16 @@ void BufferCache::RecordUnifiedGpuWrite(uint64_t vaddr, uint64_t size) {
+ void BufferCache::FinishPendingGpuWrites(uint64_t vaddr, uint64_t size) {
+ 	if (HasPendingGpuWrites(vaddr, size)) {
+ 		m_scheduler.Finish();
+-		m_pending_gpu_writes.clear();
+-		m_pending_gpu_writes_span = 0;
++		m_pending_gpu_writes.Clear();
+ 	}
+ }
+ 
+ bool BufferCache::HasPendingGpuWrites(uint64_t vaddr, uint64_t size) {
+-	if (m_pending_gpu_writes.empty() || size == 0) {
++	if (m_pending_gpu_writes.Empty() || size == 0) {
+ 		return false;
+ 	}
+-	const auto done = m_scheduler.GetMasterSemaphore().KnownGpuTick();
+-	std::erase_if(m_pending_gpu_writes, [done](const auto& entry) { return entry.second.second <= done; });
+-	for (const auto& [start, entry]: m_pending_gpu_writes) {
+-		if (start >= vaddr + size) {
+-			break;
+-		}
+-		if (entry.first > vaddr) {
+-			return true;
+-		}
+-	}
+-	return false;
++	m_pending_gpu_writes.Expire(m_scheduler.GetMasterSemaphore().KnownGpuTick());
++	return m_pending_gpu_writes.Intersects(vaddr, size);
+ }
+ 
+ // The recompiler reads a shader's tables of resources on the CPU when it records a draw or a dispatch. When a
+@@ -1116,53 +1096,47 @@ void BufferCache::VerifySrtSpeculations() {
+ }
+ 
+ bool BufferCache::FinishPendingGpuWritesUnder(std::span<const uint64_t> addresses) {
+-	if (m_pending_gpu_writes.empty()) {
++	if (m_pending_gpu_writes.Empty()) {
+ 		return false;
+ 	}
+-	const auto done = m_scheduler.GetMasterSemaphore().KnownGpuTick();
+-	std::erase_if(m_pending_gpu_writes, [done](const auto& entry) { return entry.second.second <= done; });
++	m_pending_gpu_writes.Expire(m_scheduler.GetMasterSemaphore().KnownGpuTick());
+ 	if (!m_srt_speculation.empty()) {
+ 		VerifySrtSpeculations();
+ 	}
+-	if (m_pending_gpu_writes.empty()) {
+-		m_pending_gpu_writes_span = 0;
++	if (m_pending_gpu_writes.Empty()) {
+ 		return false;
+ 	}
+ 	for (const auto address: addresses) {
+-		const auto from = address > m_pending_gpu_writes_span ? address - m_pending_gpu_writes_span : 0;
+-		const auto last = m_pending_gpu_writes.upper_bound(address + sizeof(uint32_t) - 1);
+-		for (auto it = m_pending_gpu_writes.lower_bound(from); it != last; ++it) {
+-			if (it->second.first <= address) {
+-				continue;
+-			}
+-			auto& speculation = m_srt_speculation[address];
+-			if (speculation.trusted) {
+-				uint32_t used = 0;
+-				if (LibKernel::Memory::TryReadBacking(address, &used, sizeof(used))) {
+-					if (speculation.verify_tick == 0) {
+-						speculation.used = used;
+-					}
+-					speculation.verify_tick = std::max(speculation.verify_tick, it->second.second);
+-					break;
++		const auto* range = m_pending_gpu_writes.Find(address);
++		if (range == nullptr) {
++			continue;
++		}
++		auto& speculation = m_srt_speculation[address];
++		if (speculation.trusted) {
++			uint32_t used = 0;
++			if (LibKernel::Memory::TryReadBacking(address, &used, sizeof(used))) {
++				if (speculation.verify_tick == 0) {
++					speculation.used = used;
+ 				}
++				speculation.verify_tick = std::max(speculation.verify_tick, range->tick);
++				continue;
+ 			}
+-			uint32_t before = 0;
+-			LibKernel::Memory::TryReadBacking(address, &before, sizeof(before));
+-			const auto range_size = it->second.first - it->first;
+-			m_scheduler.Finish();
+-			m_pending_gpu_writes.clear();
+-			m_pending_gpu_writes_span = 0;
+-			if (!speculation.revoked && range_size <= kSpeculationRangeBytes) {
+-				uint32_t after = 0;
+-				LibKernel::Memory::TryReadBacking(address, &after, sizeof(after));
+-				if (after != before) {
+-					speculation.confirmations = 0;
+-				} else if (++speculation.confirmations >= kSpeculationConfirmations) {
+-					speculation.trusted = true;
+-				}
++		}
++		uint32_t before = 0;
++		LibKernel::Memory::TryReadBacking(address, &before, sizeof(before));
++		const auto range_size = range->end - range->start;
++		m_scheduler.Finish();
++		m_pending_gpu_writes.Clear();
++		if (!speculation.revoked && range_size <= kSpeculationRangeBytes) {
++			uint32_t after = 0;
++			LibKernel::Memory::TryReadBacking(address, &after, sizeof(after));
++			if (after != before) {
++				speculation.confirmations = 0;
++			} else if (++speculation.confirmations >= kSpeculationConfirmations) {
++				speculation.trusted = true;
+ 			}
+-			return true;
+ 		}
++		return true;
+ 	}
+ 	return false;
+ }
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.h b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+index 015c431f..6d093522 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.h
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+@@ -9,6 +9,7 @@
+ #include "graphics/host_gpu/rangeSet.h"
+ #include "graphics/host_gpu/renderer/cache/faultManager.h"
+ #include "graphics/host_gpu/renderer/cache/multiLevelPageTable.h"
++#include "graphics/host_gpu/renderer/cache/pendingGpuWrites.h"
+ #include "graphics/host_gpu/renderer/cache/streamBuffer.h"
+ 
+ #include <array>
+@@ -222,11 +223,9 @@ private:
+ 	// The guest views bound in the windows: address -> (size, offset in the dma-buf).
+ 	std::map<uint64_t, std::pair<uint64_t, uint64_t>> m_unified_views;
+ 	vk::Fence                                         m_unified_bind_fence {};
+-	// Ranges bound for writing, by start: (end, tick of the command buffer that may write them).
+-	std::map<uint64_t, std::pair<uint64_t, uint64_t>> m_pending_gpu_writes;
++	// The ranges bound for writing in command buffers the GPU has not finished.
++	PendingGpuWrites                                  m_pending_gpu_writes;
+ 	std::unordered_map<uint64_t, SrtSpeculation>      m_srt_speculation;
+-	// The longest of them: no range starting further before an address can reach it.
+-	uint64_t                                          m_pending_gpu_writes_span = 0;
+ 	// Ranges bound for writing that no TakeUnifiedGpuWrites has taken yet, and all of them.
+ 	RangeSet                                          m_unified_gpu_writes;
+ 	RangeSet                                          m_unified_gpu_written;
+diff --git a/src/graphics/host_gpu/renderer/cache/pendingGpuWrites.cpp b/src/graphics/host_gpu/renderer/cache/pendingGpuWrites.cpp
+new file mode 100644
+index 00000000..7e8bcd43
+--- /dev/null
++++ b/src/graphics/host_gpu/renderer/cache/pendingGpuWrites.cpp
+@@ -0,0 +1,62 @@
++#include "graphics/host_gpu/renderer/cache/pendingGpuWrites.h"
++
++#include <algorithm>
++
++namespace Libs::Graphics {
++
++std::vector<PendingGpuWrites::Range>::const_iterator
++PendingGpuWrites::FirstEndingAfter(uint64_t address) const noexcept {
++	// Disjoint and sorted by start, the ranges are sorted by end as well.
++	return std::upper_bound(m_ranges.begin(), m_ranges.end(), address,
++	                        [](uint64_t value, const Range& range) { return value < range.end; });
++}
++
++void PendingGpuWrites::Add(uint64_t address, uint64_t size, uint64_t tick) {
++	if (size == 0) {
++		return;
++	}
++	const uint64_t end = address + size;
++	// The first range that ends at or after the new one starts: it touches or overlaps it, or comes after.
++	auto first = std::lower_bound(m_ranges.begin(), m_ranges.end(), address,
++	                              [](const Range& range, uint64_t value) { return range.end < value; });
++	if (first == m_ranges.end() || first->start > end) {
++		m_ranges.insert(first, {address, end, tick});
++		return;
++	}
++	Range merged {std::min(first->start, address), std::max(first->end, end), std::max(first->tick, tick)};
++	auto  last = first + 1;
++	while (last != m_ranges.end() && last->start <= merged.end) {
++		merged.end  = std::max(merged.end, last->end);
++		merged.tick = std::max(merged.tick, last->tick);
++		++last;
++	}
++	*first = merged;
++	m_ranges.erase(first + 1, last);
++}
++
++void PendingGpuWrites::Expire(uint64_t done_tick) {
++	std::erase_if(m_ranges, [done_tick](const Range& range) { return range.tick <= done_tick; });
++}
++
++const PendingGpuWrites::Range* PendingGpuWrites::Find(uint64_t address) const noexcept {
++	const auto it = FirstEndingAfter(address);
++	return it != m_ranges.end() && it->start <= address ? &*it : nullptr;
++}
++
++bool PendingGpuWrites::Intersects(uint64_t address, uint64_t size) const noexcept {
++	if (size == 0) {
++		return false;
++	}
++	const auto it = FirstEndingAfter(address);
++	return it != m_ranges.end() && it->start < address + size;
++}
++
++uint64_t PendingGpuWrites::Bytes(uint64_t address, uint64_t size) const noexcept {
++	uint64_t bytes = 0;
++	for (auto it = FirstEndingAfter(address); it != m_ranges.end() && it->start < address + size; ++it) {
++		bytes += std::min(it->end, address + size) - std::max(it->start, address);
++	}
++	return bytes;
++}
++
++} // namespace Libs::Graphics
+diff --git a/src/graphics/host_gpu/renderer/cache/pendingGpuWrites.h b/src/graphics/host_gpu/renderer/cache/pendingGpuWrites.h
+new file mode 100644
+index 00000000..72e35807
+--- /dev/null
++++ b/src/graphics/host_gpu/renderer/cache/pendingGpuWrites.h
+@@ -0,0 +1,41 @@
++#ifndef EMULATOR_SRC_GRAPHICS_HOST_GPU_RENDERER_CACHE_PENDINGGPUWRITES_H_
++#define EMULATOR_SRC_GRAPHICS_HOST_GPU_RENDERER_CACHE_PENDINGGPUWRITES_H_
++
++#include <cstdint>
++#include <vector>
++
++namespace Libs::Graphics {
++
++// The guest ranges the GPU may still be writing: bound for writing in a command buffer the GPU has not finished.
++// Sorted by address, disjoint (overlapping and touching ranges merge), each with the tick of the last buffer
++// that writes it. Every read of a shader's table of resources asks whether its word lies in one: a binary search,
++// where a std::map scanned from the first range in reach cost 7 % of the command thread in Astro Bot.
++class PendingGpuWrites {
++public:
++	struct Range {
++		uint64_t start;
++		uint64_t end;  // one past the last byte
++		uint64_t tick; // the command buffer that writes it last
++	};
++
++	void Add(uint64_t address, uint64_t size, uint64_t tick);
++	// Forgets the ranges whose last writer the GPU has finished.
++	void Expire(uint64_t done_tick);
++	void Clear() noexcept { m_ranges.clear(); }
++
++	[[nodiscard]] bool         Empty() const noexcept { return m_ranges.empty(); }
++	[[nodiscard]] const Range* Find(uint64_t address) const noexcept;
++	[[nodiscard]] bool         Intersects(uint64_t address, uint64_t size) const noexcept;
++	// How many bytes of [address, address + size) the ranges cover.
++	[[nodiscard]] uint64_t     Bytes(uint64_t address, uint64_t size) const noexcept;
++
++private:
++	// The first range that ends after `address`.
++	[[nodiscard]] std::vector<Range>::const_iterator FirstEndingAfter(uint64_t address) const noexcept;
++
++	std::vector<Range> m_ranges;
++};
++
++} // namespace Libs::Graphics
++
++#endif // EMULATOR_SRC_GRAPHICS_HOST_GPU_RENDERER_CACHE_PENDINGGPUWRITES_H_

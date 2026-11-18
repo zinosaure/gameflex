@@ -1,0 +1,184 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:26 +0000
+Subject: [PATCH] gameflex 0060: memory writing draws in runs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+les dessins qui écrivent en mémoire, par séries
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0060.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ .../guest_gpu/command_processor/pm4Handlers.cpp    |  3 +++
+ src/graphics/guest_gpu/graphicsRun.cpp             |  9 +++++++++
+ src/graphics/host_gpu/renderer/context.cpp         | 12 ++++++++----
+ .../renderer/pipeline/shaderResourceBarrier.h      |  5 +++++
+ src/graphics/host_gpu/renderer/render.h            | 13 +++++++++++++
+ src/graphics/host_gpu/renderer/renderDraw.cpp      | 14 ++++++++++----
+ 6 files changed, 48 insertions(+), 8 deletions(-)
+
+diff --git a/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp b/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp
+index dd227639..bb1e28ac 100644
+--- a/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp
++++ b/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp
+@@ -1,3 +1,4 @@
++#include "graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.h"
+ #include "common/assert.h"
+ #include "common/logging/log.h"
+ #include "common/profiler.h"
+@@ -437,6 +438,8 @@ KYTY_CP_OP_PARSER(CpOpAcquireMem) {
+ 	KYTY_PROFILER_FUNCTION();
+ 
+ 	EXIT_NOT_IMPLEMENTED(cmd_id != 0xc0055800 && cmd_id != 0xc0065800);
++	// GameFlex: the guest orders the GPU work on either side (render: the runs of memory-writing draws).
++	Libs::Graphics::g_guest_sync_epoch.fetch_add(1, std::memory_order_relaxed);
+ 	return KYTY_PM4_LEN(cmd_id) - 1;
+ }
+ 
+diff --git a/src/graphics/guest_gpu/graphicsRun.cpp b/src/graphics/guest_gpu/graphicsRun.cpp
+index dcdf4902..5b52a68d 100644
+--- a/src/graphics/guest_gpu/graphicsRun.cpp
++++ b/src/graphics/guest_gpu/graphicsRun.cpp
+@@ -1,3 +1,4 @@
++#include "graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.h"
+ #include "graphics/guest_gpu/graphicsRun.h"
+ 
+ #include "common/assert.h"
+@@ -1018,6 +1019,14 @@ void CommandProcessor::TriggerEvent(uint32_t event_type, uint32_t event_index,
+ 	}
+ 
+ 	const auto valid_cache_event_index = event_index == 0x00000000 || event_index == 0x00000007;
++	// GameFlex: partial flushes and cache writebacks order the GPU work on either side; the runs of
++	// memory-writing draws end there.
++	switch (event_type) {
++		case 0x07: case 0x0f: case 0x10: case 0x16: case 0x31: case 0x2a: case 0x2c: case 0x2e:
++			Libs::Graphics::g_guest_sync_epoch.fetch_add(1, std::memory_order_relaxed);
++			break;
++		default: break;
++	}
+ 	// Partial flushes and cache writebacks only order GPU work, which the renderer's resource
+ 	// barriers already order.
+ 	switch (event_type) {
+diff --git a/src/graphics/host_gpu/renderer/context.cpp b/src/graphics/host_gpu/renderer/context.cpp
+index 873a4a93..c1d18e4a 100644
+--- a/src/graphics/host_gpu/renderer/context.cpp
++++ b/src/graphics/host_gpu/renderer/context.cpp
+@@ -8,6 +8,7 @@
+ #include "graphics/host_gpu/renderer/depthRenderTarget.h"
+ #include "graphics/host_gpu/renderer/image/imageView.h"
+ #include "graphics/host_gpu/renderer/render.h"
++#include "graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.h"
+ #include "graphics/host_gpu/renderer/renderContext.h"
+ #include "graphics/host_gpu/vulkanCommon.h"
+ 
+@@ -88,11 +89,14 @@ void CommandBuffer::BeginRendering(const RenderState& state) const {
+ }
+ 
+ void CommandBuffer::EndRendering() const {
+-	if (!m_rendering) {
+-		return;
++	if (m_rendering) {
++		Handle().endRendering();
++		m_rendering = false;
++	}
++	if (m_pending_shader_writes && !IsInvalid()) {
++		ShaderWriteBarrier(Handle(), m_pending_shader_writes);
++		m_pending_shader_writes = {};
+ 	}
+-	Handle().endRendering();
+-	m_rendering = false;
+ }
+ 
+ } // namespace Libs::Graphics
+diff --git a/src/graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.h b/src/graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.h
+index 0d7b9701..0c3d4bee 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.h
++++ b/src/graphics/host_gpu/renderer/pipeline/shaderResourceBarrier.h
+@@ -1,6 +1,7 @@
+ #ifndef EMULATOR_SRC_GRAPHICS_HOST_GPU_RENDERER_SHADERRESOURCEBARRIER_H_
+ #define EMULATOR_SRC_GRAPHICS_HOST_GPU_RENDERER_SHADERRESOURCEBARRIER_H_
+ 
++#include <atomic>
+ #include "graphics/host_gpu/graphicContext.h"
+ #include "graphics/shader/recompiler/ir/passes/ResourceMaterialization.h"
+ 
+@@ -18,6 +19,10 @@ void ShaderWriteHazardBarrier(vk::CommandBuffer      vk_buffer,
+                               vk::PipelineStageFlags destination_stages);
+ void ShaderWriteBarrier(vk::CommandBuffer vk_buffer, vk::PipelineStageFlags source_stages);
+ 
++// GameFlex: grows at each synchronization the guest asks the GPU for (ACQUIRE_MEM, a partial flush, a cache
++// writeback): GPU work on either side of it is ordered, work between two of them is not.
++inline std::atomic<uint64_t> g_guest_sync_epoch {0};
++
+ } // namespace Libs::Graphics
+ 
+ #endif // EMULATOR_SRC_GRAPHICS_HOST_GPU_RENDERER_SHADERRESOURCEBARRIER_H_
+diff --git a/src/graphics/host_gpu/renderer/render.h b/src/graphics/host_gpu/renderer/render.h
+index 6ee808cb..7c15276c 100644
+--- a/src/graphics/host_gpu/renderer/render.h
++++ b/src/graphics/host_gpu/renderer/render.h
+@@ -101,7 +101,18 @@ public:
+ 	[[nodiscard]] bool IsInvalid() const noexcept { return m_buffer == nullptr; }
+ 
+ 	void BeginRendering(const RenderState& state) const;
++	// Also lays the write barrier a run of memory-writing draws left pending.
+ 	void EndRendering() const;
++	// GameFlex: a draw that writes memory continues the run before it when nothing else was recorded in between
++	// and the guest asked for no synchronization; its write barrier waits for the end of the run.
++	[[nodiscard]] bool ContinuesShaderWriteRun(uint64_t epoch) const {
++		return m_pending_shader_writes && m_shader_write_epoch == epoch;
++	}
++	[[nodiscard]] bool HasPendingShaderWrites() const { return static_cast<bool>(m_pending_shader_writes); }
++	void DeferShaderWriteBarrier(vk::PipelineStageFlags stages, uint64_t epoch) const {
++		m_pending_shader_writes |= stages;
++		m_shader_write_epoch = epoch;
++	}
+ 
+ 	[[nodiscard]] vk::CommandBuffer Handle() const noexcept { return m_buffer; }
+ 	[[nodiscard]] GraphicContext&   GetGraphics() const noexcept { return m_graphics; }
+@@ -126,6 +137,8 @@ private:
+ 	vk::CommandBuffer   m_buffer = nullptr;
+ 	mutable RenderState m_render_state;
+ 	mutable bool        m_rendering   = false;
++	mutable vk::PipelineStageFlags m_pending_shader_writes = {};
++	mutable uint64_t               m_shader_write_epoch    = 0;
+ 	HW::Context*        m_registers   = nullptr;
+ 	HW::UserConfig*     m_user_config = nullptr;
+ 	HW::Shader*         m_shaders     = nullptr;
+diff --git a/src/graphics/host_gpu/renderer/renderDraw.cpp b/src/graphics/host_gpu/renderer/renderDraw.cpp
+index 350446fe..9f956f24 100644
+--- a/src/graphics/host_gpu/renderer/renderDraw.cpp
++++ b/src/graphics/host_gpu/renderer/renderDraw.cpp
+@@ -1217,10 +1217,17 @@ void RenderExecutor::ExecutePreparedDraw(CommandBuffer& buffer, const DrawCallIn
+ 	if (state.ps_active && HasShaderBufferWrites(state.ps_input_info.stage)) {
+ 		shader_write_stages |= vk::PipelineStageFlagBits::eFragmentShader;
+ 	}
++	const auto guest_sync = g_guest_sync_epoch.load(std::memory_order_relaxed);
+ 	if (shader_write_stages) {
+-		// As for dispatches, buffer writes wait for earlier accesses to the memory.
++		// As for dispatches, buffer writes wait for earlier accesses to the memory: once per run of
++		// memory-writing draws (GameFlex), which the console leaves unordered among themselves until the
++		// guest synchronizes.
++		if (!buffer.ContinuesShaderWriteRun(guest_sync)) {
++			buffer.EndRendering();
++			ShaderWriteHazardBarrier(vk_buffer, shader_write_stages);
++		}
++	} else if (buffer.HasPendingShaderWrites()) {
+ 		buffer.EndRendering();
+-		ShaderWriteHazardBarrier(vk_buffer, shader_write_stages);
+ 	}
+ 	buffer.BeginRendering(rendering);
+ 	vk_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.pipeline);
+@@ -1261,8 +1268,7 @@ void RenderExecutor::ExecutePreparedDraw(CommandBuffer& buffer, const DrawCallIn
+ 	Common::DebugCounters::Add(Common::DebugCounters::Counter::DrawInstances, draw.instance_count);
+ 
+ 	if (shader_write_stages) {
+-		buffer.EndRendering();
+-		ShaderWriteBarrier(vk_buffer, shader_write_stages);
++		buffer.DeferShaderWriteBarrier(shader_write_stages, guest_sync);
+ 	}
+ }
+ 

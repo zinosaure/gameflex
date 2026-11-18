@@ -1,15 +1,23 @@
 # KytyPS5 construit par GameFlex
 
-**Notre fourche** : [`zinosaure/KytyPS5`](https://github.com/zinosaure/KytyPS5), branche `gameflex` — le Kyty de
-l'éditeur à l'étiquette que le serveur emploie (`KYTY_RELEASE`, `91c5820`), plus nos commits : d'abord les anciens
-patchs 0007 à 0060, devenus chacun un commit (`gameflex 00NN: …`), puis les refontes (0061 et suivants). La branche
-`gameflex-phone-2` y ajoute 0001 à 0006 (l'espace d'adresses compact, le chemin sans extension barycentrique). Chaque
-entrée ci-dessous décrit un commit, par son numéro.
+**Le dépôt officiel plus nos patchs** : [`KytyPS5/KytyPS5`](https://github.com/KytyPS5/KytyPS5) au commit de
+l'étiquette que le serveur emploie (`BASE` dans `build.sh` : `91c5820`, `KytyPS5-2026-11-04-91c5820`), plus nos
+patchs : `patches/` pour le serveur (un patch par commit, décrits ci-dessous par leur numéro ou leur titre),
+`patches-phone/gameflex-phone.patch` pour le téléphone (un seul patch : sa branche reçoit celle du serveur par fusion,
+une série ne s'y rejoue pas). `tools/kyty/build.sh` clone le dépôt officiel à ce commit et applique les patchs.
+
+**Plus de fourche depuis le 2026-11-18** (chantier 63 ; le porteur : « on travaille que par des patchs […] Ce que je
+ne veux pas c'est d'avoir des repos avec le code source des émulateurs »). Les patchs ont été tirés de l'ancienne
+fourche `zinosaure/KytyPS5` (`gameflex` à `4e516772`, `gameflex-phone-2` à `54976526`) : appliqués à `91c5820`, ils
+redonnent leurs arbres, fichier pour fichier. Le code se change dans un clone de travail local du dépôt officiel
+(`~/Github/KytyPS5`, branches `gameflex` et `gameflex-phone-2`, jamais poussées), puis les patchs se réexportent
+(`tools/emulator-patches.sh export kyty`). Le lot 2 de l'amont (12 commits, pas encore construit) attend dans ce clone,
+branche `lot2-2026-11-17`.
 
 **Plus de fichiers de patch depuis le 2026-11-09, et pas de pull request vers l'éditeur** (le porteur, le 9 : « on ne va pas faire de pull requests vers KytyPS5 » — la fourche est notre code, publié parce qu'il est GPL) (le porteur, le 8 au soir : « il faut arrêter avec ça ! il faut du
-vrai changement de code »). Le code se lit, se corrige et se construit dans la fourche comme n'importe quel code :
-`tools/kyty/build.sh` la clone à la révision épinglée dans le script (`FORK_REV`) ; changer Kyty, c'est un commit sur
-la branche, poussé sur la fourche, puis `FORK_REV` avancé — et son entrée ici, avec sa mesure.
+vrai changement de code »). Ce fond tient toujours : le code se lit, se corrige et se refait dans le clone de
+travail comme n'importe quel code ; changer Kyty, c'est un commit sur la branche, puis l'export des patchs — et son
+entrée ici, avec sa mesure. Seule la livraison est en patchs (2026-11-18).
 
 **0001 — une option de compilation** : `KYTY_COMPACT_ADDRESS_SPACE`. Elle range tout l'espace
 d'adresses du jeu sous 512 Gio — la plage du jeu jusqu'à 256 Gio, la région étendue (128 Gio) juste
@@ -638,9 +646,9 @@ l'espace compact, appliqués tels quels. Au banc, par le chemin du téléphone
 
 | Où | Quoi |
 |---|---|
-| `zinosaure/KytyPS5` branche `gameflex` | le serveur : l'éditeur à `91c5820` + les commits 0007 à 0060 (un par ancien patch, même contenu) + les refontes 0061 et suivants |
-| `zinosaure/KytyPS5` branche `gameflex-phone-2` | le téléphone : `gameflex` + 0001 à 0006 (les fichiers de 0001 à 0020 décrits plus haut vivent là, par commit), rebasée sur 0069 le 2026-11-09 (`2ce5b55b`), puis reçoit `gameflex` par fusion, sans réécriture (0070, 0071, puis 0072 à 0077 en `064fd03a`, 0079 à 0084 en `4ee1e0eb`, 0085 en `02b1969e`, 0086 en `caad338e`, 0087 en `ef2322a4`, 0088 à 0092 en `030daf7b`). L'ancienne branche `gameflex-phone` (avant les refontes) est supprimée du dépôt distant depuis le 2026-11-09 |
-| `build.sh` | clone la fourche à `FORK_REV` et construit `kyty_emulator` sans lanceur Qt, dans un conteneur trixie gardé ; `--server` : la branche `gameflex`, sans l'espace compact |
+| `patches/` (la branche `gameflex` du clone) | le serveur : l'éditeur à `91c5820` + les commits 0007 à 0060 (un par ancien patch, même contenu) + les refontes 0061 et suivants |
+| `patches-phone/gameflex-phone.patch` (la branche `gameflex-phone-2` du clone) | le téléphone : `gameflex` + 0001 à 0006 (les fichiers de 0001 à 0020 décrits plus haut vivent là, par commit), rebasée sur 0069 le 2026-11-09 (`2ce5b55b`), puis reçoit `gameflex` par fusion, sans réécriture (0070, 0071, puis 0072 à 0077 en `064fd03a`, 0079 à 0084 en `4ee1e0eb`, 0085 en `02b1969e`, 0086 en `caad338e`, 0087 en `ef2322a4`, 0088 à 0092 en `030daf7b`). L'ancienne branche `gameflex-phone` (avant les refontes) est supprimée du dépôt distant depuis le 2026-11-09 |
+| `build.sh` | clone le dépôt officiel à `BASE`, applique les patchs et construit `kyty_emulator` sans lanceur Qt, dans un conteneur trixie gardé ; `--server` : la branche `gameflex`, sans l'espace compact |
 | `bench.sh`, `bench/` | l'essai sur x86_64 dans l'image PS5 du serveur : notre construction contre le Kyty officiel. Le banc a le RADV de `streamex-ps5:latest`, corrigé (`consoles/ps5/mesa/`, journal 505) : sa construction s'arrête si la base ne le porte pas, ou si son apt remet celui du paquet. `bench.sh` le reconstruit à chaque appel |
 
 **Le lot 1 de l'amont** (2026-11-18, `#771`, [rapport](../../docs/reports/2026-11-17-correctifs-amont/README.md)) : 51
@@ -659,15 +667,15 @@ simple) ; livré sur la dev le 2026-11-18 (0099 reste sur Gamebox sous le nom de
 
 1. **La version** : `ARG KYTY_RELEASE=…` dans
    `src/microservices/runtimes/streamex/consoles/ps5/Dockerfile` (le script la lit là).
-2. **Rebaser la fourche** : dans un clone de `zinosaure/KytyPS5` (le conteneur `gameflex-kyty-build` en garde un,
-   `/src-fork`, avec l'éditeur en `upstream`), `git fetch upstream` puis `git rebase <étiquette> gameflex` et
-   `git rebase gameflex gameflex-phone-2` : les conflits se règlent commit par commit, avec `git log` pour dire ce que
+2. **Rebaser les branches du clone de travail** (`~/Github/KytyPS5`, l'éditeur en `upstream`) : `git fetch upstream`
+   puis `git rebase <étiquette> gameflex` et `git rebase gameflex gameflex-phone-2` : les conflits se règlent commit par commit, avec `git log` pour dire ce que
    chacun fait ; ce qui s'en rapproche chez l'éditeur se lit d'abord dans son journal (le 2026-11-08, `ReleaseMem`
    gagne un paramètre `gl2_writeback` que 0059 touche ; `CpOpAcquireMem` lit `GCR_CNTL`, que 0061 pourrait décoder).
    Les règles de 0001 et 0002 valent toujours : les quatre constantes de 0001 (`kExtendedMemoryBase`/`Size`,
    `HOST_USER_MAX`, `TRACKER_ADDRESS_SIZE`, `LOWER_ADDRESS_SIZE`) gardent **base étendue = point de pliage**, tout sous
    2³⁹ ; le drapeau de 0002 (`graphics.fragment_shader_barycentric_enabled`) arrive au recompilateur avant le premier
-   shader. Pousser les deux branches, avancer `FORK_REV` dans `build.sh`, construire : `tools/kyty/build.sh <sortie>`.
+   shader. Avancer `BASE` dans `build.sh` (le commit de l'étiquette), réexporter les patchs
+   (`tools/emulator-patches.sh export kyty`), construire : `tools/kyty/build.sh <sortie>`.
 3. **Essayer** : `tools/kyty/bench.sh <sortie>/kyty_emulator "<bibliothèque>/roms/ps5/Richman 11"`
    — même écran que le Kyty officiel. Puis `FORCE_NO_BARYCENTRIC=1 tools/kyty/bench.sh …` : le
    même écran encore, par le chemin du téléphone (le parcours `compact` seul). Pour lire les lignes

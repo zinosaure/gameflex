@@ -1,0 +1,214 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: nmzik <Nmzik@mail.ru>
+Date: Fri, 6 Nov 2026 03:38:31 +0100
+Subject: [PATCH] kernel: add POSIX rmdir and give sceKernelRmdir its error
+ codes
+
+(cherry picked from commit 6a1394d5be9e399045e2d39bfa5ed87d20f74198)
+---
+ src/common/file.cpp                      |  8 ----
+ src/common/file.h                        |  1 -
+ src/common/platform/sysFileIO.h          |  1 -
+ src/common/platform/sysLinuxFileIO.cpp   |  7 ----
+ src/common/platform/sysWindowsFileIO.cpp |  5 ---
+ src/kernel/fileSystem.cpp                | 52 +++++++++++++++++++-----
+ src/libs/libKernel.cpp                   |  7 ++++
+ 7 files changed, 49 insertions(+), 32 deletions(-)
+
+diff --git a/src/common/file.cpp b/src/common/file.cpp
+index 568b877f..4c724b2d 100644
+--- a/src/common/file.cpp
++++ b/src/common/file.cpp
+@@ -283,14 +283,6 @@ bool File::CreateDirectory(const std::filesystem::path& path) {
+         WithoutTrailingSeparator(path));
+ }
+ 
+-bool File::DeleteDirectory(const std::filesystem::path& path) {
+-	if (IsArchivePath(path)) {
+-		return false;
+-	}
+-    return SysFileDeleteDirectory(
+-        WithoutTrailingSeparator(path));
+-}
+-
+ bool File::CreateDirectories(const std::filesystem::path& path) {
+ 	if (IsArchivePath(path)) {
+ 		return false;
+diff --git a/src/common/file.h b/src/common/file.h
+index 3e5f61f8..eec87bfe 100644
+--- a/src/common/file.h
++++ b/src/common/file.h
+@@ -84,7 +84,6 @@ public:
+ 	static bool IsFileExisting(const std::filesystem::path& name);
+ 	static bool CreateDirectory(const std::filesystem::path& path);
+ 	static bool CreateDirectories(const std::filesystem::path& path);
+-	static bool DeleteDirectory(const std::filesystem::path& path);
+ 	static bool DeleteFile(const std::filesystem::path& name);
+ 
+ 	static std::vector<DirEntry> GetDirEntries(const std::filesystem::path& path);
+diff --git a/src/common/platform/sysFileIO.h b/src/common/platform/sysFileIO.h
+index 74e96460..6b17c1ef 100644
+--- a/src/common/platform/sysFileIO.h
++++ b/src/common/platform/sysFileIO.h
+@@ -35,7 +35,6 @@ bool        SysFileUnlink(sys_file_t&                  f,
+                           const std::filesystem::path& name); // NOLINT(google-runtime-references)
+ bool        SysFileGetInfo(const std::filesystem::path& name, bool* is_file, uint64_t* size);
+ bool        SysFileCreateDirectory(const std::filesystem::path& path);
+-bool        SysFileDeleteDirectory(const std::filesystem::path& path);
+ bool        SysFileDeleteFile(const std::filesystem::path& name);
+ bool        SysFileFlush(sys_file_t& f); // NOLINT(google-runtime-references)
+ SysFileTimeStruct SysFileGetLastWriteTimeUtc(const std::filesystem::path& name);
+diff --git a/src/common/platform/sysLinuxFileIO.cpp b/src/common/platform/sysLinuxFileIO.cpp
+index 0c2190b5..b5c19b56 100644
+--- a/src/common/platform/sysLinuxFileIO.cpp
++++ b/src/common/platform/sysLinuxFileIO.cpp
+@@ -151,13 +151,6 @@ bool SysFileCreateDirectory(const std::filesystem::path& path) {
+ 	return true;
+ }
+ 
+-bool SysFileDeleteDirectory(const std::filesystem::path& path) {
+-	auto real_name     = get_internal_name(path);
+-	auto real_name_str = real_name.string();
+-
+-	return 0 == remove(real_name_str.c_str());
+-}
+-
+ bool SysFileDeleteFile(const std::filesystem::path& name) {
+ 	auto real_name     = get_internal_name(name);
+ 	auto real_name_str = real_name.string();
+diff --git a/src/common/platform/sysWindowsFileIO.cpp b/src/common/platform/sysWindowsFileIO.cpp
+index 416d09db..8b751c03 100644
+--- a/src/common/platform/sysWindowsFileIO.cpp
++++ b/src/common/platform/sysWindowsFileIO.cpp
+@@ -141,11 +141,6 @@ bool SysFileCreateDirectory(const std::filesystem::path& path) {
+ 	return CreateDirectoryW(wide.c_str(), nullptr) != 0;
+ }
+ 
+-bool SysFileDeleteDirectory(const std::filesystem::path& path) {
+-	auto wide = path.wstring();
+-	return RemoveDirectoryW(wide.c_str()) != 0;
+-}
+-
+ bool SysFileDeleteFile(const std::filesystem::path& name) {
+ 	auto wide = name.wstring();
+ 	return DeleteFileW(wide.c_str()) != 0;
+diff --git a/src/kernel/fileSystem.cpp b/src/kernel/fileSystem.cpp
+index b22b96f9..e2beea32 100644
+--- a/src/kernel/fileSystem.cpp
++++ b/src/kernel/fileSystem.cpp
+@@ -63,6 +63,7 @@ public:
+ 
+ 	[[nodiscard]] std::filesystem::path ResolvePath(const std::string& mounted_name);
+ 	void SetUnrealSavedConfig(const std::string& project);
++	[[nodiscard]] bool                  IsMountPoint(const std::string& point);
+ 
+ private:
+ 	std::vector<MountPair> m_mount_pairs;
+@@ -310,6 +311,22 @@ void MountPoints::Umount(const std::string& folder_or_point) {
+ 	}
+ }
+ 
++// Guests join mount points and names with extra slashes (e.g. "/addcont0//file").
++static std::string NormalizeGuestPath(const std::string& mounted_name) {
++	std::string normalized = Common::FixFilenameSlash(mounted_name);
++	normalized.erase(std::unique(normalized.begin(), normalized.end(),
++	                             [](char a, char b) { return a == '/' && b == '/'; }),
++	                 normalized.end());
++	return normalized;
++}
++
++bool MountPoints::IsMountPoint(const std::string& point) {
++	Common::LockGuard lock(m_mutex);
++
++	return std::ranges::any_of(m_mount_pairs,
++	                           [&point](const MountPair& p) { return p.point == point; });
++}
++
+ #if KYTY_PLATFORM != KYTY_PLATFORM_WINDOWS
+ // Resolve guest paths case-insensitively on case-sensitive hosts.
+ static std::filesystem::path ResolvePathIgnoringCase(const std::filesystem::path& path) {
+@@ -372,11 +389,7 @@ void MountPoints::SetUnrealSavedConfig(const std::string& project) {
+ std::filesystem::path MountPoints::ResolvePath(const std::string& mounted_name) {
+ 	Common::LockGuard lock(m_mutex);
+ 
+-	// Guests join mount points and names with extra slashes (e.g. "/addcont0//file").
+-	std::string normalized = Common::FixFilenameSlash(mounted_name);
+-	normalized.erase(std::unique(normalized.begin(), normalized.end(),
+-	                             [](char a, char b) { return a == '/' && b == '/'; }),
+-	                 normalized.end());
++	std::string normalized = NormalizeGuestPath(mounted_name);
+ 	if (normalized == m_unreal_config_in_game_folder) {
+ 		normalized = m_unreal_saved_config;
+ 	}
+@@ -1751,22 +1764,41 @@ int KYTY_SYSV_ABI KernelRmdir(const char* path) {
+ 	PRINT_NAME();
+ 
+ 	if (path == nullptr) {
+-		return KERNEL_ERROR_EINVAL;
++		return KERNEL_ERROR_EFAULT;
++	}
++
++	if (std::strlen(path) > 255) {
++		return KERNEL_ERROR_ENAMETOOLONG;
+ 	}
+ 
+ 	LOGF("\t path = %s\n", path);
+ 
+-	auto real_name = g_mount_points->ResolvePath(std::string(path));
++	const auto directory = Common::FixDirectorySlash(NormalizeGuestPath(path));
++	if (directory.ends_with("/./") || directory.ends_with("/../")) {
++		return KERNEL_ERROR_EINVAL;
++	}
++
++	if (g_mount_points->IsMountPoint(directory)) {
++		return KERNEL_ERROR_EBUSY;
++	}
++
++	const auto real_name = g_mount_points->ResolvePath(path);
+ 	if (Common::IsArchivePath(real_name)) {
+ 		return KERNEL_ERROR_EROFS;
+ 	}
+ 
+-	if (!Common::File::IsDirectoryExisting(real_name)) {
++	const auto info = Common::File::GetInfo(real_name);
++	if (!info) {
+ 		return KERNEL_ERROR_ENOENT;
+ 	}
+ 
+-	if (!Common::File::DeleteDirectory(real_name)) {
+-		return KERNEL_ERROR_EIO;
++	if (info->is_file) {
++		return KERNEL_ERROR_ENOTDIR;
++	}
++
++	std::error_code error;
++	if (!std::filesystem::remove(real_name, error)) {
++		return error == std::errc::directory_not_empty ? KERNEL_ERROR_ENOTEMPTY : KERNEL_ERROR_EIO;
+ 	}
+ 
+ 	return OK;
+diff --git a/src/libs/libKernel.cpp b/src/libs/libKernel.cpp
+index 88921eb8..e83b56fd 100644
+--- a/src/libs/libKernel.cpp
++++ b/src/libs/libKernel.cpp
+@@ -1885,6 +1885,12 @@ int KYTY_SYSV_ABI mkdir(const char* path, uint16_t mode) {
+ 	return POSIX_CALL(LibKernel::FileSystem::KernelMkdir(path, mode));
+ }
+ 
++int KYTY_SYSV_ABI rmdir(const char* path) {
++	PRINT_NAME();
++
++	return POSIX_CALL(LibKernel::FileSystem::KernelRmdir(path));
++}
++
+ int64_t KYTY_SYSV_ABI lseek(int d, int64_t offset, int whence) {
+ 	PRINT_NAME();
+ 
+@@ -3334,6 +3340,7 @@ LIB_DEFINE(InitLibKernel_1_Pthread) {
+ 	LIB_FUNC("z0dtnPxYgtg", chmod);
+ 	LIB_FUNC("VAzswvTOCzI", FileSystem::KernelUnlink);
+ 	LIB_FUNC("JGMio+21L4c", Posix::mkdir);
++	LIB_FUNC("c7ZnT7V1B98", Posix::rmdir);
+ 	LIB_FUNC("wuCroIGjt2g", FileSystem::KernelOpen);
+ 	LIB_FUNC("bY-PO6JhzhQ", FileSystem::KernelClose);
+ 	LIB_FUNC("FN4gaPmuFV8", FileSystem::KernelWrite);

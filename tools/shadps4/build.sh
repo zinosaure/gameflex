@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# Construit shadPS4 depuis NOTRE FOURCHE — https://github.com/zinosaure/shadPS4 —, branche
-# `gameflex`, à la révision épinglée ci-dessous (FORK_REV) : un commit de `main` de l'amont
-# (7c0b846d, du 2026-11-17 — plus récent que la dernière version publiée : le porteur, 2026-10-27,
-# le rendu de la 0.20 arrêtait FIFA 22), plus nos commits `gameflex 00NN: …`, chacun décrit dans
-# README.md par son numéro. Une seule branche : le serveur et le téléphone (sous Box64,
-# tools/box64/bundle.sh) prennent le même binaire, les réglages du téléphone sont des réglages
-# (0001) ou des variables d'environnement (0006).
+# Construit shadPS4 depuis le DÉPÔT OFFICIEL — https://github.com/shadps4-emu/shadPS4 —, au commit
+# de base épinglé ci-dessous (BASE : un commit de `main`, 7c0b846d du 2026-11-17 — plus récent que la
+# dernière version publiée : le porteur, 2026-10-27, le rendu de la 0.20 arrêtait FIFA 22), plus NOS
+# PATCHS, `patches/00NN-gameflex-00NN-….patch`, chacun décrit dans README.md par son numéro. Une seule
+# série : le serveur et le téléphone (sous Box64, tools/box64/bundle.sh) prennent le même binaire.
 #
-# Plus de fichiers de patch depuis le 2026-11-11, comme pour Kyty (le porteur : « il faut du vrai
-# changement de code »). Changer shadPS4, c'est un commit sur la branche, poussé sur la fourche,
-# puis FORK_REV avancé ici — et son entrée dans README.md.
+# PLUS DE FOURCHE depuis le 2026-11-18 (chantier 63 ; le porteur : « on travaille que par des patchs
+# […] Ce que je ne veux pas c'est d'avoir des repos avec le code source des émulateurs »). Le code se
+# change dans le clone de travail (/home/gixi/Github/shadPS4, branche `gameflex`), puis la série se
+# réexporte : tools/emulator-patches.sh export shadps4 (README.md).
 #
 # Le binaire remplace celui de l'AppImage de la version du serveur (consoles/ps4/Dockerfile,
 # SHADPS4_VERSION), et en garde le nom à la livraison (shadps4-gameflex-<version>).
@@ -26,10 +25,9 @@
 # streamex-ps4 (trixie aussi), à la place de l'AppImage de l'amont.
 set -euo pipefail
 
-FORK=https://github.com/zinosaure/shadPS4.git
-BRANCH=gameflex
-# La révision construite ; à avancer avec la fourche (README.md).
-FORK_REV=e441ba5de6d2d16641ee6701ac1bcc8516439170
+UPSTREAM=https://github.com/shadps4-emu/shadPS4.git
+# Le commit officiel sur lequel la série s'applique ; à avancer avec elle (README.md).
+BASE=7c0b846d0579c7c13b4c2d76032227b68615d068
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
@@ -42,16 +40,21 @@ JOBS=${JOBS:-$(( $(nproc) > 4 ? $(nproc) - 4 : 2 ))}
 
 [ -n "$VERSION" ] || { echo "✗ SHADPS4_VERSION introuvable dans le Dockerfile de la PS4" >&2; exit 1; }
 mkdir -p "$OUT"
+ls "$HERE"/patches/*.patch > /dev/null 2>&1 || { echo "✗ aucun patch dans $HERE/patches" >&2; exit 1; }
+# L'empreinte de la série : un arbre déjà patché par la même série n'est pas refait (ninja reprend).
+SERIES=$(cat "$HERE"/patches/*.patch | sha256sum | cut -c1-16)
 
 if ! docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
     docker run -d --name "$CONTAINER" debian:trixie sleep infinity > /dev/null
 fi
 docker start "$CONTAINER" > /dev/null
+docker exec "$CONTAINER" rm -rf /patches
+docker cp "$HERE/patches" "$CONTAINER:/patches"
 
-echo "shadPS4, fourche $BRANCH@${FORK_REV:0:12}, $JOBS tâches, dans $CONTAINER"
+echo "shadPS4, officiel@${BASE:0:12} + $(ls "$HERE"/patches/*.patch | wc -l) patchs ($SERIES), $JOBS tâches, dans $CONTAINER"
 # -i : le script passe par l'entrée standard ; sans lui, bash -s ne lit rien et
 # sort aussitôt, sans erreur.
-docker exec -i -e FORK="$FORK" -e BRANCH="$BRANCH" -e FORK_REV="$FORK_REV" -e JOBS="$JOBS" "$CONTAINER" bash -s <<'EOF'
+docker exec -i -e UPSTREAM="$UPSTREAM" -e BASE="$BASE" -e SERIES="$SERIES" -e JOBS="$JOBS" "$CONTAINER" bash -s <<'EOF'
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
@@ -66,25 +69,30 @@ if ! command -v clang > /dev/null; then
         || { tail -5 /tmp/apt.log; exit 1; }
 fi
 
-# Un arbre d'une autre origine (l'ancien clone de l'éditeur plus ses patchs) se reclone.
-if [ -d /src/.git ] && [ "$(git -C /src remote get-url origin 2>/dev/null)" != "$FORK" ]; then
-    echo "→ /src n'est pas un clone de la fourche : nouveau clone"
+# Un arbre d'une autre origine (l'ancien clone de la fourche) se reclone.
+if [ -d /src/.git ] && [ "$(git -C /src remote get-url origin 2>/dev/null)" != "$UPSTREAM" ]; then
+    echo "→ /src n'est pas un clone du dépôt officiel : nouveau clone"
     rm -rf /src
 fi
 if [ ! -d /src/.git ]; then
-    git clone -q --depth 1 --branch "$BRANCH" --recurse-submodules --shallow-submodules \
-        "$FORK" /src
+    git init -q /src
+    git -C /src remote add origin "$UPSTREAM"
 fi
 
 cd /src
-# La révision voulue, et ses externals : un clone superficiel ne la connaît pas
-# forcément, on va la chercher.
-if [ "$(git rev-parse HEAD)" != "$FORK_REV" ]; then
-    git fetch -q --depth 1 origin "$FORK_REV"
-    git checkout -q --detach "$FORK_REV"
+# Le commit de base et ses externals, puis la série — refaits seulement quand l'un ou l'autre change.
+if [ "$(cat .git/gameflex-series 2>/dev/null)" != "$BASE $SERIES" ]; then
+    git cat-file -e "$BASE^{commit}" 2>/dev/null || git fetch -q --depth 1 origin "$BASE"
+    git checkout -q -f --detach "$BASE"
+    git clean -q -fd -e build
     git submodule update -q --init --recursive --depth 1
+    # En commits, d'une identité et à des dates fixes : la même série donne la même révision, celle que le journal
+    # d'une partie et le titre de la fenêtre portent (`Revision`) — elle désigne la construction.
+    git -c user.name=GameFlex -c user.email=gameflex@users.noreply.github.com am -q --keep-cr \
+        --committer-date-is-author-date /patches/*.patch \
+        || { git am --abort 2>/dev/null; echo "✗ la série ne s'applique pas sur $BASE" >&2; exit 1; }
+    echo "$BASE $SERIES" > .git/gameflex-series
 fi
-git status --short | grep -q . && { echo "✗ /src a des modifications locales : les ranger avant de construire" >&2; git status --short | head; exit 1; }
 mkdir -p build
 # SCAN_FOR_MODULES=OFF : sans lui, CMake cherche clang-scan-deps (paquet
 # clang-tools) pour des modules C++20 que shadPS4 n'emploie pas.
@@ -96,4 +104,4 @@ cmake --build build --parallel "$JOBS"
 EOF
 
 docker cp "$CONTAINER:/src/build/shadps4" "$OUT/shadps4"
-echo "→ $OUT/shadps4 ($(du -h "$OUT/shadps4" | cut -f1) — fourche $BRANCH@${FORK_REV:0:12} ; à livrer sous le nom shadps4-gameflex-$VERSION)"
+echo "→ $OUT/shadps4 ($(du -h "$OUT/shadps4" | cut -f1) — officiel@${BASE:0:12} + série $SERIES ; à livrer sous le nom shadps4-gameflex-$VERSION)"

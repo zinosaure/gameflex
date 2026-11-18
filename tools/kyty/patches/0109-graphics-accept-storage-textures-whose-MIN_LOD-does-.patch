@@ -1,0 +1,97 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: nmzik <Nmzik@mail.ru>
+Date: Sat, 7 Nov 2026 19:08:00 +0100
+Subject: [PATCH] graphics: accept storage textures whose MIN_LOD does not
+ exceed BASE_LEVEL
+
+(cherry picked from commit 8d2b53f7a5c92c3d1a2c61b06d664034a2443407)
+---
+ .../renderer/pipeline/descriptors.cpp         |  7 ++---
+ tests/ShaderRecompilerComputeTests.cpp        | 26 +++++++++++++++++++
+ 2 files changed, 30 insertions(+), 3 deletions(-)
+
+diff --git a/src/graphics/host_gpu/renderer/pipeline/descriptors.cpp b/src/graphics/host_gpu/renderer/pipeline/descriptors.cpp
+index 82d62417..13151458 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/descriptors.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/descriptors.cpp
+@@ -144,7 +144,7 @@ NativeStorageBuffer(RenderContext& context, const PreparedBindings::BufferSource
+ 
+ // Reserved and unsupported T# fields must be zero; perf_mod only scales sampler state.
+ static bool IsCanonicalTextureEncoding(const ShaderTextureResource& descriptor, bool r128) {
+-	constexpr uint32_t field1_reserved_mask = 0x200fff00u;
++	constexpr uint32_t field1_reserved_mask = 1u << 29u;
+ 	constexpr uint32_t field2_reserved_mask = 0xf0003000u;
+ 	const uint32_t     field3_expected = descriptor.DstSelXYZW() |
+ 	                                     (static_cast<uint32_t>(descriptor.BaseLevel()) << 12u) |
+@@ -289,10 +289,11 @@ static bool IsSupportedStorageTextureDescriptor(const ShaderRecompiler::IR::Imag
+ 	const bool supported_swizzle =
+ 	    IsValidImageSwizzle(swizzle) &&
+ 	    (swizzle == DstSel(4, 5, 6, 7) || !resource.read || resource.atomic);
++	// A 4.8 fixed-point MIN_LOD at or below BASE_LEVEL clamps no level of the view.
+ 	return (is_1d || is_1d_array || is_2d || is_2d_array || is_3d || is_2d_msaa) &&
+ 	       supported_tile && descriptor.BaseLevel() <= descriptor.LastLevel() &&
+-	       descriptor.MinLod() == 0 && supported_swizzle && descriptor.BCSwizzle() == 0 &&
+-	       !descriptor.MsaaDepth();
++	       descriptor.MinLod() <= descriptor.BaseLevel() * 256u && supported_swizzle &&
++	       descriptor.BCSwizzle() == 0 && !descriptor.MsaaDepth();
+ }
+ 
+ void ValidateStorageTexture(const ShaderRecompiler::IR::ImageResource& resource,
+diff --git a/tests/ShaderRecompilerComputeTests.cpp b/tests/ShaderRecompilerComputeTests.cpp
+index f3c59032..d302e93a 100644
+--- a/tests/ShaderRecompilerComputeTests.cpp
++++ b/tests/ShaderRecompilerComputeTests.cpp
+@@ -50557,6 +50557,11 @@ ShaderRecompiler::IR::ImageResource Ppsa01530MaxMipStorageTextureResource() {
+   return resource;
+ }
+ 
++ShaderTextureResource Ppsa02110MinLodStorageTextureDescriptor() {
++  return {{0x13053000u, 0xc3e40000u, 0x003fc03fu, 0xd054402cu, 0x00000000u,
++           0x00700080u, 0x000000d1u, 0x00000000u}};
++}
++
+ ShaderTextureResource Ppsa02527R16FloatStorageTextureDescriptor() {
+   return {{0x00ce3500u, 0xc0d00000u, 0x010dc1dfu, 0x91b00204u, 0x00000000u,
+            0x00700000u, 0x00000000u, 0x00000000u}};
+@@ -51199,6 +51204,19 @@ void CheckBasicStorageTextureDescriptor() {
+ }
+ #endif
+ 
++void CheckStorageTextureMinLodAtBaseLevel() {
++  const auto descriptor = Ppsa02110MinLodStorageTextureDescriptor();
++  Require("StorageTextureMinLod", "PPSA02110 mip-four descriptor",
++          descriptor.BaseLevel() == 4 && descriptor.LastLevel() == 4 &&
++              descriptor.MinLod() == 4u << 8u &&
++              descriptor.Format() == Prospero::BufferFormat::k32_32UInt &&
++              descriptor.TileMode() == Prospero::TileMode::kStandard4KB,
++          "PPSA02110 MIN_LOD storage descriptor fixture is malformed");
++  ValidateStorageTexture(Ppsa01530MaxMipStorageTextureResource(), descriptor,
++                         0xab000);
++  std::printf("[host]    %-32s ok\n", "StorageTextureMinLod");
++}
++
+ void CheckStorageTextureLinearUploadLayout() {
+   constexpr auto format = Prospero::BufferFormat::k8_8_8_8UNorm;
+   constexpr uint32_t width = 3840;
+@@ -51677,6 +51695,13 @@ void CheckShaderRecompilerFatalContracts() {
+     (void)CompileCase(test);
+   });
+ 
++  ExpectFatal("StorageTextureMinLodAboveBase", [] {
++    auto descriptor = Ppsa02110MinLodStorageTextureDescriptor();
++    descriptor.fields[1] += 1u << 8u;
++    ValidateStorageTexture(Ppsa01530MaxMipStorageTextureResource(), descriptor,
++                           0xab000);
++  });
++
+   {
+     ShaderRecompiler::IR::Program program;
+     program.resource_tracking_complete = true;
+@@ -56078,6 +56103,7 @@ int main(int argc, char **argv) {
+   bool skipped_device_checks = false;
+ #endif
+   CheckImageSamplerSpecialization();
++  CheckStorageTextureMinLodAtBaseLevel();
+   CheckResourcePlanHandoff();
+   CheckNativeImageDescriptorTypes();
+   CheckClipControlDepthClipState();

@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 12:40:05 +0000
+Subject: [PATCH] gameflex 0080: deferred operations ask the driver only once
+ the GPU's progress word says they are done
+
+PopPendingOperations runs at every draw and asked the driver where the GPU
+is (vkGetSemaphoreCounterValue, a system call) once every 16 draws while
+the oldest pending operation was not known to be done. With the GPU
+behind, as in Astro Bot's garden, that was 1.6 % of the command thread
+for nothing. It now asks only when the word the GPU writes at the end of
+each command buffer (0064) says that operation is done; the semaphore
+still decides. Without that word, once every 16 calls as before.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../host_gpu/renderer/commandScheduler.cpp         | 14 ++++++++++----
+ src/graphics/host_gpu/renderer/masterSemaphore.h   |  1 +
+ 2 files changed, 11 insertions(+), 4 deletions(-)
+
+diff --git a/src/graphics/host_gpu/renderer/commandScheduler.cpp b/src/graphics/host_gpu/renderer/commandScheduler.cpp
+index 32e4b61d..4255d9a1 100644
+--- a/src/graphics/host_gpu/renderer/commandScheduler.cpp
++++ b/src/graphics/host_gpu/renderer/commandScheduler.cpp
+@@ -308,12 +308,18 @@ void CommandScheduler::Wait(uint64_t tick) {
+ void CommandScheduler::PopPendingOperations() {
+ 	// GameFlex: this runs at every draw, and asking the driver where the GPU is costs a system call
+ 	// (vkGetSemaphoreCounterValue, an ioctl): 9 % of the command thread in Kingdom Hearts III. Ask only
+-	// when the oldest pending operation is not already known to be done, and at most once every 16
+-	// calls; these operations wait for the GPU anyway, a few draws later changes nothing.
++	// when the oldest pending operation is not already known to be done, and when the word the GPU writes
++	// at the end of each command buffer (0064) says it is: with the GPU behind, as in Astro Bot's garden,
++	// asking once every 16 draws still cost 1.6 % of the thread for nothing. The semaphore decides. Without
++	// that word, once every 16 calls; these operations wait for the GPU anyway.
+ 	{
+ 		std::lock_guard lock(m_operation_mutex);
+-		if (m_pending_operations.empty() ||
+-		    (!m_master.IsFree(m_pending_operations.front().tick) && (++m_refresh_skips & 15u) != 0)) {
++		if (m_pending_operations.empty()) {
++			return;
++		}
++		const auto tick = m_pending_operations.front().tick;
++		if (!m_master.IsFree(tick) && (m_master.HasProgressWord() ? m_master.Progress() < tick
++		                                                          : (++m_refresh_skips & 15u) != 0)) {
+ 			return;
+ 		}
+ 	}
+diff --git a/src/graphics/host_gpu/renderer/masterSemaphore.h b/src/graphics/host_gpu/renderer/masterSemaphore.h
+index 41baa5f6..a61c1463 100644
+--- a/src/graphics/host_gpu/renderer/masterSemaphore.h
++++ b/src/graphics/host_gpu/renderer/masterSemaphore.h
+@@ -36,6 +36,7 @@ public:
+ 	// caches, so memory is read and resources are reused after KnownGpuTick, which the kernel signals once the
+ 	// caches are written back. For the decisions of the scheduler, which asking the driver cost a system call.
+ 	void                   SetProgressWord(const uint32_t* word) noexcept { m_progress_word = word; }
++	[[nodiscard]] bool     HasProgressWord() const noexcept { return m_progress_word != nullptr; }
+ 	[[nodiscard]] uint64_t Progress();
+ 
+ private:

@@ -30,7 +30,10 @@ const XSMALL_BUTTON_SIZE = 0.7; // multiplier for small buttons
 const LARGE_BUTTON_SIZE = 1.2; // multiplier for large buttons
 const XLARGE_BUTTON_SIZE = 1.35; // multiplier for extra large buttons
 const XXLARGE_BUTTON_SIZE = 1.5; // multiplier for extra large buttons
-const TOUCHPAD_LANDSCAPE_SIZE = 180; // pixels : le pavé tactile de la manette PS4/PS5, en paysage (360 × 180)
+const TOUCHPAD_LANDSCAPE_SIZE = 180; // pixels : le pavé tactile de la manette PS4/PS5, en paysage (sa hauteur)
+// Sa largeur en paysage : 345 et non 2 × 180 (le porteur, 2026-11-18 : « tu peux diminuer de 15px la largeur du touchpad
+// en mode landscape? Ça touche presque les boutons »).
+const TOUCHPAD_LANDSCAPE_WIDTH = 345;
 const STICK_ANALOG_SIZE = 85; // pixels
 const N64_C_LIFT_LANDSCAPE = 0.11; // fraction de la colonne : les quatre C de la N64, remontés en paysage
 
@@ -561,7 +564,8 @@ export const CONTROLLER_PRESETS = {
                 xl: {
                     x: 0.5,
                     y: 0.27,
-                    size: TOUCHPAD_LANDSCAPE_SIZE
+                    size: TOUCHPAD_LANDSCAPE_SIZE,
+                    width: TOUCHPAD_LANDSCAPE_WIDTH,
                 },
                 icon: "bi bi-square fs-1",
             },

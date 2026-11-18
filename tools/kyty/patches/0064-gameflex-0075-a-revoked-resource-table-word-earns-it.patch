@@ -1,0 +1,81 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 09:17:25 +0000
+Subject: [PATCH] gameflex 0075: a revoked resource-table word earns its trust
+ back
+
+---
+ .../host_gpu/renderer/cache/bufferCache.cpp   | 20 ++++++++++++-------
+ .../host_gpu/renderer/cache/bufferCache.h     |  6 ++++--
+ 2 files changed, 17 insertions(+), 9 deletions(-)
+
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+index 3a645a84..e1787d8a 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+@@ -1076,10 +1076,14 @@ bool BufferCache::HasPendingGpuWrites(uint64_t vaddr, uint64_t size) {
+ // wait for it (Finish), which leaves the GPU dry while the thread records what follows. Games keep small counters
+ // there that a compute pass rewrites every frame to the same value (Astro Bot: two 32-byte counters, 40 waits an
+ // image, unchanged 5 196 times out of 5 218): once a word came out of eight waits unchanged, the read takes the
+-// value in memory without waiting, and the GPU's value is checked once its work is done. A difference revokes the
+-// word for good and says so on the console.
++// value in memory without waiting, and the GPU's value is checked once its work is done. A difference withdraws
++// the trust and says so on the console. A word that changes once, when a level loads, and then holds still
++// (Astro Bot's light counter: 4 then 6 for good) earned it back nowhere and cost two full drains an image,
++// 33 ms, once the thread stopped waiting for labels (0072): the trust comes back after twice as many unchanged
++// waits as the time before, and only the fifth difference revokes the word for good.
+ namespace {
+ constexpr uint32_t kSpeculationConfirmations = 8;
++constexpr uint32_t kSpeculationMisses        = 5; // differences before the word is revoked for good
+ constexpr uint64_t kSpeculationRangeBytes    = 256; // a counter, not a table the GPU fills
+ } // namespace
+ 
+@@ -1095,13 +1099,15 @@ void BufferCache::VerifySrtSpeculations() {
+ 		    landed == speculation.used) {
+ 			continue;
+ 		}
+-		speculation.trusted = false;
+-		speculation.revoked = true;
++		speculation.trusted       = false;
++		speculation.confirmations = 0;
++		speculation.revoked       = ++speculation.misses >= kSpeculationMisses;
+ 		static uint32_t misses = 0;
+ 		if (misses++ < 50) {
+ 			std::printf("SRT speculation: the GPU wrote 0x%08x at 0x%016" PRIx64 " after 0x%08x was used; "
+-			            "this word waits again from now on\n",
+-			            landed, address, speculation.used);
++			            "this word waits again%s\n",
++			            landed, address, speculation.used,
++			            speculation.revoked ? " from now on" : " until it holds still for longer");
+ 		}
+ 	}
+ }
+@@ -1144,7 +1150,7 @@ bool BufferCache::FinishPendingGpuWritesUnder(std::span<const uint64_t> addresse
+ 			LibKernel::Memory::TryReadBacking(address, &after, sizeof(after));
+ 			if (after != before) {
+ 				speculation.confirmations = 0;
+-			} else if (++speculation.confirmations >= kSpeculationConfirmations) {
++			} else if (++speculation.confirmations >= kSpeculationConfirmations << speculation.misses) {
+ 				speculation.trusted = true;
+ 			}
+ 		}
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.h b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+index 5b3920df..3d78c460 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.h
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+@@ -98,11 +98,13 @@ public:
+ 	// As FinishPendingGpuWrites, for the 4-byte reads of the SRT walker; true when it waited.
+ 	bool FinishPendingGpuWritesUnder(std::span<const uint64_t> addresses);
+ 	// A word of a table of resources inside a range the GPU may still write, read without waiting once its value
+-	// came out of eight waits unchanged; the GPU's value is compared afterwards, a difference revokes it for good.
++	// came out of eight waits unchanged; the GPU's value is compared afterwards. A difference withdraws the trust,
++	// which comes back after twice as many unchanged waits each time; the fifth revokes the word for good.
+ 	struct SrtSpeculation {
+ 		uint32_t confirmations = 0; // consecutive waits that changed nothing
+ 		bool     trusted       = false;
+-		bool     revoked       = false; // once wrong, never trusted again
++		bool     revoked       = false; // wrong five times: never trusted again
++		uint32_t misses        = 0;     // differences seen so far
+ 		uint32_t used          = 0;     // the value read without waiting
+ 		uint64_t verify_tick   = 0;     // the GPU work it skipped waiting for; 0 when nothing is to verify
+ 	};

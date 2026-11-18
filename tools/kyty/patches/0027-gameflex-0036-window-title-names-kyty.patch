@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:26 +0000
+Subject: [PATCH] gameflex 0036: window title names kyty
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+le titre de la fenêtre nomme Kyty
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0036.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/kytyGitVersion.h.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/kytyGitVersion.h.in b/src/kytyGitVersion.h.in
+index 2c66b169..c05a6f25 100644
+--- a/src/kytyGitVersion.h.in
++++ b/src/kytyGitVersion.h.in
+@@ -14,5 +14,5 @@
+ #elif defined(KYTY_FORK_BUILD)
+ #define KYTY_BUILD_LABEL "Fork build " KYTY_BUILD_REPOSITORY " " KYTY_GIT_HASH
+ #else
+-#define KYTY_BUILD_LABEL "Source build " KYTY_GIT_HASH
++#define KYTY_BUILD_LABEL "KytyPS5 source build " KYTY_GIT_HASH
+ #endif

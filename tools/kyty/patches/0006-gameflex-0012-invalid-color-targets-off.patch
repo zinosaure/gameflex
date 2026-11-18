@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:25 +0000
+Subject: [PATCH] gameflex 0012: invalid color targets off
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0012.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
+index a4916bd8..abeb6a4b 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
+@@ -655,7 +655,10 @@ void PipelineCache::GetGraphicsPrograms(const CommandBuffer& command, DrawRender
+ 		if (slot >= RENDER_COLOR_ATTACHMENTS_MAX) {
+ 			break;
+ 		}
+-		if (sh.target_output_mode[index] != 0 && render_target_mask_slot(write_mask, slot) != 0) {
++		// A target whose format is COLOR_INVALID is off: the color block drops what the pixel
++		// shader exports to it (Final Fantasy VII Rebirth binds such slots with an address).
++		if (sh.target_output_mode[index] != 0 && render_target_mask_slot(write_mask, slot) != 0 &&
++		    context.GetRenderTarget(slot).info.format != Prospero::ChannelLayout::kInvalid) {
+ 			color_output_mask |= 1u << slot;
+ 		}
+ 	}

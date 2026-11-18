@@ -1,0 +1,1748 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 08:30:41 +0000
+Subject: [PATCH] gameflex 0071: the command thread says where its time goes
+
+Every moment of the GPU command thread now belongs to one cause, so the causes add up to its wall
+time: its work (PM4, registers, draw glue, programs, resource tables, textures, buffers, targets,
+bindings, barriers, Vulkan recording, compilation, transfers, submission, frame upkeep, work handed by
+other threads) and its waits (for GPU writes the CPU reads, for resource tables, for remaps, for
+presentation, for the completion thread, for the queue lock, for a guest label a pending GPU write will
+set, for a label nothing on the GPU will set, idle, idle while the game sits at its suspend point).
+Entering a cause suspends the current one (Common::CommandThreadProfile, rdtsc, one writer, no locked
+add). Per frame it also counts PM4 packets by opcode, draws, dispatches, barriers, command buffers and
+why each was submitted, GPU waits, label waits by kind, polls, blocked retries and Vulkan device memory
+allocations, and times each command buffer on the GPU (timestamps at its begin and end: busy time,
+idle time with the GPU dry, idle time with work queued). Shown in the performance overlay details,
+and every N seconds in the log with --perf-log <seconds>; counted only while either asks. The compact
+panel's "CPU waiting on GPU" (every thread, the completion and present threads waiting by design) is
+replaced by the command thread's own waits. Host query reset is enabled whenever the device has it.
+
+Astro Bot, Sky Garden, production settings, 8.6 images/s, 116 ms per frame: waits for labels a pending
+GPU write will set 35.5 ms (303 per frame), for labels nothing on the GPU sets 11.8 ms (307), textures
+13.7, resource tables 12.0, submission 12.1 (55 command buffers, ~0.22 ms each), targets 6.3, draw glue
+5.1, buffers 4.5, programs 4.0, recording 2.8, bindings 2.6; the GPU is busy 84 ms and idle 31 ms
+waiting for the CPU; 5,250 draws, 26,500 packets, 950 barriers. Wukong 29.2, Tekken 8 30, Clair Obscur
+14.8 (no device loss); the instrument costs about 2% while it counts.
+---
+ src/common/commandThreadProfile.h             | 365 ++++++++++++++++++
+ src/common/emulatorConfig.cpp                 |   6 +-
+ src/common/emulatorConfig.h                   |   3 +
+ .../command_processor/commandProcessor.h      |   3 +-
+ src/graphics/guest_gpu/graphicsRun.cpp        |  75 +++-
+ src/graphics/guest_gpu/graphicsRun.h          |   2 +
+ src/graphics/guest_gpu/pm4.cpp                |   4 +
+ src/graphics/guest_gpu/pm4.h                  |   3 +
+ src/graphics/host_gpu/graphicContext.h        |   1 +
+ .../host_gpu/renderer/cache/bufferCache.cpp   |  13 +-
+ .../host_gpu/renderer/colorRenderTarget.cpp   |   2 +
+ .../host_gpu/renderer/commandScheduler.cpp    | 107 ++++-
+ .../host_gpu/renderer/commandScheduler.h      |  21 +-
+ .../host_gpu/renderer/depthRenderTarget.cpp   |   2 +
+ src/graphics/host_gpu/renderer/guestSync.cpp  |   5 +
+ .../host_gpu/renderer/image/image.cpp         |   3 +
+ .../host_gpu/renderer/masterSemaphore.cpp     |   5 +
+ .../renderer/pipeline/descriptors.cpp         |   6 +
+ .../renderer/pipeline/pipelineCache.cpp       |   5 +
+ .../host_gpu/renderer/pipeline/shaders.cpp    |   3 +
+ .../host_gpu/renderer/renderCompute.cpp       |   5 +
+ .../host_gpu/renderer/renderContext.cpp       |   1 +
+ src/graphics/host_gpu/renderer/renderDraw.cpp |   6 +
+ src/graphics/host_gpu/vma.cpp                 |  11 +
+ .../presentation/performanceOverlay.cpp       | 123 +++++-
+ src/graphics/presentation/videoOut.cpp        |   3 +
+ .../presentation/window/vulkanWindow.cpp      |   4 +-
+ .../shader/recompiler/ShaderRecompiler.cpp    |   4 +
+ .../ir/passes/ResourceMaterialization.cpp     |   2 +
+ src/main.cpp                                  |   7 +
+ 30 files changed, 777 insertions(+), 23 deletions(-)
+ create mode 100644 src/common/commandThreadProfile.h
+
+diff --git a/src/common/commandThreadProfile.h b/src/common/commandThreadProfile.h
+new file mode 100644
+index 00000000..4f187204
+--- /dev/null
++++ b/src/common/commandThreadProfile.h
+@@ -0,0 +1,365 @@
++#ifndef KYTY_COMMON_COMMAND_THREAD_PROFILE_H_
++#define KYTY_COMMON_COMMAND_THREAD_PROFILE_H_
++
++#include "common/debugCounters.h"
++#include "common/timer.h"
++
++#include <algorithm>
++#include <array>
++#include <atomic>
++#include <cstdint>
++#include <utility>
++
++#if defined(_M_X64) || defined(__x86_64__)
++#include <x86intrin.h>
++#endif
++
++// GameFlex: where the GPU command thread spends its time. Every moment of that thread belongs to
++// exactly one cause: entering a cause suspends the current one, leaving it resumes the outer one,
++// so the causes add up to the thread's wall time - its work and its waits. Collected only while the
++// performance overlay (or --perf-log) asks for counters, like DebugCounters.
++namespace Common::CommandThreadProfile {
++
++enum class Cause : uint8_t {
++	// Work.
++	Pm4,       // The PM4 loop and the packets listed nowhere below (sync, labels, markers).
++	Registers, // Register writes.
++	Draw,      // Draw and dispatch packets, outside the steps below.
++	Programs,  // Shader programs and pipelines found for a draw or dispatch.
++	Resources, // Resource tables (SRT) walked and materialized.
++	Textures,  // Images and views found or created for bindings.
++	Buffers,   // Buffers found or created for bindings.
++	Targets,   // Render targets and depth.
++	Bindings,  // Descriptors written and bound.
++	Barriers,  // Barriers recorded (the guest's synchronization, image layouts).
++	Record,    // Vulkan recording of a draw or dispatch: pipeline, state, the call itself.
++	Compile,   // Shaders translated, pipelines created.
++	Transfers, // DMA copies and fills.
++	Submit,    // Command buffers begun, ended and submitted.
++	Upkeep,    // Frame boundaries: suspend points, flips, cache aging.
++	Foreign,   // Work other threads hand to this one.
++	// Waits.
++	WaitGpuRead,     // For GPU writes the CPU must read (indirect counts, CP reads, readbacks).
++	WaitGpuSrt,      // For GPU writes to a resource table being read.
++	WaitGpuRebind,   // For the GPU before unified memory is remapped.
++	WaitGpuFrame,    // For presentation: a free frame, room in the flip queue, a flip done.
++	WaitGpuPriority, // For the thread that delivers the GPU's completions to the guest.
++	WaitGpuOther,    // For the GPU, for another reason.
++	WaitQueueLock,   // For the Vulkan queue, held by presentation.
++	WaitLabelGpu,    // Every guest queue waits for a value a write still on its way to the GPU will set.
++	WaitLabelCpu,    // Every guest queue waits for a value nothing on the GPU will set (the game, another queue).
++	IdleSuspend,     // No guest work: the game waits at its suspend point for the previous frame.
++	Idle,            // No guest work.
++	Other,           // Not attributed.
++	Count
++};
++
++// Why the command thread is about to wait for the GPU, set by the callers of the waits.
++enum class WaitReason : uint8_t { Other, Read, Srt, Rebind, Frame };
++
++constexpr size_t CAUSE_COUNT = static_cast<size_t>(Cause::Count);
++
++enum class Event : uint8_t {
++	Packets,
++	Draws,
++	Dispatches,
++	Barriers,
++	CommandBuffers,
++	Submits,
++	BlockedRetries, // Guest command lists resumed while still waiting.
++	LabelPolls,     // Wake-ups while every queue waits for a label.
++	LabelWaitsGpu,  // Guest waits suspended on a value a pending GPU write will set.
++	LabelWaitsCpu,  // Guest waits suspended on a value nothing pending on the GPU will set.
++	GpuWaits,       // Waits of this thread for the GPU.
++	MemoryAllocations, // Vulkan device memory allocated (driver buffer objects), any thread.
++	MemoryReleases,
++	Count
++};
++
++constexpr size_t EVENT_COUNT = static_cast<size_t>(Event::Count);
++
++// Why a command buffer was submitted.
++enum class Close : uint8_t {
++	GpuIdle,    // The GPU ran dry while commands were recorded.
++	Size,       // The buffer reached its command budget.
++	Boundary,   // The end of a guest command list.
++	BeforeIdle, // The thread was about to sleep or poll.
++	Wait,       // The CPU needed the GPU to finish (readback, Finish).
++	Frame,      // A suspend point or a flip.
++	Other,
++	Count
++};
++
++constexpr size_t CLOSE_COUNT  = static_cast<size_t>(Close::Count);
++constexpr size_t PACKET_KINDS = 256; // PM4 type-3 opcodes.
++
++namespace Detail {
++inline std::atomic<uint64_t> g_ticks[CAUSE_COUNT] {};
++inline std::atomic<uint64_t> g_events[EVENT_COUNT] {};
++inline std::atomic<uint64_t> g_closes[CLOSE_COUNT] {};
++inline std::atomic<uint64_t> g_packets[PACKET_KINDS] {};
++// From per-command-buffer GPU timestamps: busy time, gaps between consecutive buffers, buffers measured.
++inline std::atomic<uint64_t> g_gpu_busy_ns {0};
++inline std::atomic<uint64_t> g_gpu_gap_ns {0};      // The GPU ran dry: the buffer after the gap came late.
++inline std::atomic<uint64_t> g_gpu_queued_gap_ns {0}; // The buffer after the gap was already waiting.
++inline std::atomic<uint64_t> g_gpu_buffers {0};
++
++struct ThreadState {
++	bool     command_thread = false;
++	bool     counting       = false; // The overlay was on at the last transition.
++	Cause      current        = Cause::Other;
++	WaitReason reason         = WaitReason::Other;
++	bool       label_gpu      = true; // What the last suspended guest wait waits for.
++	uint64_t   since          = 0;
++};
++inline thread_local ThreadState t_state;
++
++[[nodiscard]] inline uint64_t Ticks() noexcept {
++#if defined(_M_X64) || defined(__x86_64__)
++	return __rdtsc();
++#else
++	return SteadyNs();
++#endif
++}
++
++inline void Switch(Cause next) noexcept {
++	auto& state = t_state;
++	if (!state.command_thread) {
++		return;
++	}
++	const bool counting = DebugCounters::Enabled();
++	if (counting) {
++		const auto now = Ticks();
++		// The first transition after the overlay turns on only starts the clock.
++		if (state.counting) {
++			// One writer, this thread: a plain add, readers see a recent value.
++			auto& ticks = g_ticks[static_cast<size_t>(state.current)];
++			ticks.store(ticks.load(std::memory_order_relaxed) + (now - state.since), std::memory_order_relaxed);
++		}
++		state.since = now;
++	}
++	state.counting = counting;
++	state.current  = next;
++}
++} // namespace Detail
++
++// Called once by the command thread, before its first command.
++inline void SetCommandThread() noexcept {
++	Detail::t_state.command_thread = true;
++	Detail::t_state.current        = Cause::Other;
++}
++
++[[nodiscard]] inline bool OnCommandThread() noexcept {
++	return Detail::t_state.command_thread;
++}
++
++// The cause for the scope's lifetime; the outer cause resumes when it ends.
++class Scope final {
++public:
++	explicit Scope(Cause cause) noexcept: m_outer(Detail::t_state.current) {
++		Detail::Switch(cause);
++	}
++	~Scope() { Detail::Switch(m_outer); }
++	Scope(const Scope&)            = delete;
++	Scope& operator=(const Scope&) = delete;
++
++private:
++	Cause m_outer;
++};
++
++// Changes the current cause without restoring it: for the PM4 loop, inside a Scope that restores.
++inline void Phase(Cause cause) noexcept {
++	if (Detail::t_state.current != cause) {
++		Detail::Switch(cause);
++	}
++}
++
++// The reason for any wait for the GPU under it, on the command thread.
++class WaitReasonScope final {
++public:
++	explicit WaitReasonScope(WaitReason reason) noexcept: m_outer(Detail::t_state.reason) {
++		// The outermost reason wins: a readback inside a remap is the remap's.
++		if (m_outer == WaitReason::Other) {
++			Detail::t_state.reason = reason;
++		}
++	}
++	~WaitReasonScope() { Detail::t_state.reason = m_outer; }
++	WaitReasonScope(const WaitReasonScope&)            = delete;
++	WaitReasonScope& operator=(const WaitReasonScope&) = delete;
++
++private:
++	WaitReason m_outer;
++};
++
++// The cause a wait for the GPU counts under, from the current reason.
++[[nodiscard]] inline Cause WaitCause() noexcept {
++	switch (Detail::t_state.reason) {
++		case WaitReason::Read: return Cause::WaitGpuRead;
++		case WaitReason::Srt: return Cause::WaitGpuSrt;
++		case WaitReason::Rebind: return Cause::WaitGpuRebind;
++		case WaitReason::Frame: return Cause::WaitGpuFrame;
++		default: return Cause::WaitGpuOther;
++	}
++}
++
++inline void AddGpuTimes(uint64_t busy_ns, uint64_t gap_ns, uint64_t queued_gap_ns, uint64_t buffers) noexcept {
++	Detail::g_gpu_busy_ns.fetch_add(busy_ns, std::memory_order_relaxed);
++	Detail::g_gpu_gap_ns.fetch_add(gap_ns, std::memory_order_relaxed);
++	Detail::g_gpu_queued_gap_ns.fetch_add(queued_gap_ns, std::memory_order_relaxed);
++	Detail::g_gpu_buffers.fetch_add(buffers, std::memory_order_relaxed);
++}
++
++inline void Count(Event event, uint64_t value = 1) noexcept {
++	if (DebugCounters::Enabled()) {
++		Detail::g_events[static_cast<size_t>(event)].fetch_add(value, std::memory_order_relaxed);
++	}
++}
++
++// A guest wait suspends: on a value a pending GPU write will set, or not.
++inline void NoteLabelWait(bool gpu) noexcept {
++	Detail::t_state.label_gpu = gpu;
++	Count(gpu ? Event::LabelWaitsGpu : Event::LabelWaitsCpu);
++}
++
++// The cause of a poll while every guest queue waits.
++[[nodiscard]] inline Cause LabelCause() noexcept {
++	return Detail::t_state.label_gpu ? Cause::WaitLabelGpu : Cause::WaitLabelCpu;
++}
++
++inline void CountClose(Close reason) noexcept {
++	if (DebugCounters::Enabled()) {
++		Detail::g_closes[static_cast<size_t>(reason)].fetch_add(1, std::memory_order_relaxed);
++	}
++}
++
++inline void CountPacket(uint32_t opcode) noexcept {
++	if (DebugCounters::Enabled()) {
++		Detail::g_packets[opcode & (PACKET_KINDS - 1)].fetch_add(1, std::memory_order_relaxed);
++		Detail::g_events[static_cast<size_t>(Event::Packets)].fetch_add(1, std::memory_order_relaxed);
++	}
++}
++
++struct Totals {
++	std::array<uint64_t, CAUSE_COUNT>  ticks {};
++	std::array<uint64_t, EVENT_COUNT>  events {};
++	std::array<uint64_t, CLOSE_COUNT>  closes {};
++	std::array<uint64_t, PACKET_KINDS> packets {};
++	uint64_t                           gpu_busy_ns = 0;
++	uint64_t                           gpu_gap_ns  = 0;
++	uint64_t                           gpu_queued_gap_ns = 0;
++	uint64_t                           gpu_buffers = 0;
++	uint64_t                           clock_ticks = 0; // Ticks() when read.
++	uint64_t                           clock_ns    = 0; // SteadyNs() when read: ticks per ns.
++};
++
++[[nodiscard]] inline Totals Read() noexcept {
++	Totals totals;
++	for (size_t i = 0; i < CAUSE_COUNT; i++) {
++		totals.ticks[i] = Detail::g_ticks[i].load(std::memory_order_relaxed);
++	}
++	for (size_t i = 0; i < EVENT_COUNT; i++) {
++		totals.events[i] = Detail::g_events[i].load(std::memory_order_relaxed);
++	}
++	for (size_t i = 0; i < CLOSE_COUNT; i++) {
++		totals.closes[i] = Detail::g_closes[i].load(std::memory_order_relaxed);
++	}
++	for (size_t i = 0; i < PACKET_KINDS; i++) {
++		totals.packets[i] = Detail::g_packets[i].load(std::memory_order_relaxed);
++	}
++	totals.gpu_busy_ns = Detail::g_gpu_busy_ns.load(std::memory_order_relaxed);
++	totals.gpu_gap_ns  = Detail::g_gpu_gap_ns.load(std::memory_order_relaxed);
++	totals.gpu_queued_gap_ns = Detail::g_gpu_queued_gap_ns.load(std::memory_order_relaxed);
++	totals.gpu_buffers = Detail::g_gpu_buffers.load(std::memory_order_relaxed);
++	totals.clock_ticks = Detail::Ticks();
++	totals.clock_ns    = SteadyNs();
++	return totals;
++}
++
++// Per-frame values between two readings, for the overlay and --perf-log.
++struct Report {
++	double                                     seconds = 0.0;
++	double                                     frames  = 0.0;
++	std::array<double, CAUSE_COUNT>            ms_per_frame {};
++	std::array<double, EVENT_COUNT>            per_frame {};
++	std::array<double, CLOSE_COUNT>            closes_per_frame {};
++	std::array<std::pair<uint32_t, double>, 8> packets_per_frame {}; // The most frequent opcodes.
++	double                                     gpu_busy_ms_per_frame = 0.0;
++	double                                     gpu_gap_ms_per_frame  = 0.0;
++	double                                     gpu_queued_gap_ms_per_frame = 0.0;
++	double                                     wait_ms_per_frame = 0.0; // Every wait cause together.
++	double                                     gpu_buffers_per_frame = 0.0;
++};
++
++[[nodiscard]] inline Report MakeReport(const Totals& before, const Totals& after,
++                                       uint64_t frames) noexcept {
++	Report report;
++	const auto ns    = static_cast<double>(after.clock_ns - before.clock_ns);
++	const auto ticks = static_cast<double>(after.clock_ticks - before.clock_ticks);
++	if (ns <= 0.0 || ticks <= 0.0) {
++		return report;
++	}
++	report.seconds          = ns / 1e9;
++	report.frames           = static_cast<double>(frames);
++	const double per_frame  = frames != 0 ? 1.0 / static_cast<double>(frames) : 0.0;
++	const double ms_per_tick = ns / ticks / 1e6;
++	for (size_t i = 0; i < CAUSE_COUNT; i++) {
++		report.ms_per_frame[i] =
++		    static_cast<double>(after.ticks[i] - before.ticks[i]) * ms_per_tick * per_frame;
++	}
++	for (size_t i = 0; i < EVENT_COUNT; i++) {
++		report.per_frame[i] = static_cast<double>(after.events[i] - before.events[i]) * per_frame;
++	}
++	for (size_t i = 0; i < CLOSE_COUNT; i++) {
++		report.closes_per_frame[i] =
++		    static_cast<double>(after.closes[i] - before.closes[i]) * per_frame;
++	}
++	for (uint32_t op = 0; op < PACKET_KINDS; op++) {
++		const double value = static_cast<double>(after.packets[op] - before.packets[op]) * per_frame;
++		auto&        least = *std::min_element(
++            report.packets_per_frame.begin(), report.packets_per_frame.end(),
++            [](const auto& a, const auto& b) { return a.second < b.second; });
++		if (value > least.second) {
++			least = {op, value};
++		}
++	}
++	std::sort(report.packets_per_frame.begin(), report.packets_per_frame.end(),
++	          [](const auto& a, const auto& b) { return a.second > b.second; });
++	report.gpu_busy_ms_per_frame = static_cast<double>(after.gpu_busy_ns - before.gpu_busy_ns) / 1e6 * per_frame;
++	report.gpu_gap_ms_per_frame  = static_cast<double>(after.gpu_gap_ns - before.gpu_gap_ns) / 1e6 * per_frame;
++	report.gpu_queued_gap_ms_per_frame =
++	    static_cast<double>(after.gpu_queued_gap_ns - before.gpu_queued_gap_ns) / 1e6 * per_frame;
++	for (size_t i = static_cast<size_t>(Cause::WaitGpuRead); i <= static_cast<size_t>(Cause::WaitLabelCpu); i++) {
++		report.wait_ms_per_frame += report.ms_per_frame[i];
++	}
++	report.gpu_buffers_per_frame = static_cast<double>(after.gpu_buffers - before.gpu_buffers) * per_frame;
++	return report;
++}
++
++[[nodiscard]] constexpr const char* Name(Cause cause) noexcept {
++	constexpr const char* NAMES[CAUSE_COUNT] = {
++	    "pm4",           "registers",         "draw",          "programs",
++	    "resources",     "textures",          "buffers",       "targets",
++	    "bindings",      "barriers",          "record",        "compile",
++	    "transfers",     "submit",            "upkeep",        "foreign",
++	    "wait GPU read", "wait GPU SRT",      "wait GPU remap", "wait GPU frame",
++	    "wait priority", "wait GPU other",    "wait queue lock", "wait label GPU", "wait label CPU",
++	    "idle (suspend)", "idle",             "other"};
++	return NAMES[static_cast<size_t>(cause)];
++}
++
++[[nodiscard]] constexpr const char* Name(Event event) noexcept {
++	constexpr const char* NAMES[EVENT_COUNT] = {
++	    "packets", "draws",       "dispatches", "barriers",    "command buffers", "submits",
++	    "retries", "label polls", "label waits GPU", "label waits CPU", "GPU waits", "allocations", "releases"};
++	return NAMES[static_cast<size_t>(event)];
++}
++
++[[nodiscard]] constexpr const char* Name(Close close) noexcept {
++	constexpr const char* NAMES[CLOSE_COUNT] = {"GPU idle", "size",  "boundary", "before idle",
++	                                            "wait",     "frame", "other"};
++	return NAMES[static_cast<size_t>(close)];
++}
++
++} // namespace Common::CommandThreadProfile
++
++#endif /* KYTY_COMMON_COMMAND_THREAD_PROFILE_H_ */
+diff --git a/src/common/emulatorConfig.cpp b/src/common/emulatorConfig.cpp
+index 410dc978..5dcb55eb 100644
+--- a/src/common/emulatorConfig.cpp
++++ b/src/common/emulatorConfig.cpp
+@@ -29,7 +29,7 @@ void Load(const ConfigOptions& cfg) {
+ 	EXIT_IF(cfg.keyboard_player > static_cast<uint32_t>(MAX_PLAYERS));
+ 
+ 	*g_config = cfg;
+-	Common::DebugCounters::SetEnabled(cfg.perf_overlay_enabled);
++	Common::DebugCounters::SetEnabled(cfg.perf_overlay_enabled || cfg.perf_log_seconds != 0);
+ }
+ 
+ uint32_t GetScreenWidth() {
+@@ -221,6 +221,10 @@ bool CoarseShadingEnabled() {
+ 	return g_config->coarse_shading_enabled;
+ }
+ 
++uint32_t PerfLogSeconds() {
++	return g_config->perf_log_seconds;
++}
++
+ bool TrophyEnabled() {
+ 	return g_config->trophy_enabled;
+ }
+diff --git a/src/common/emulatorConfig.h b/src/common/emulatorConfig.h
+index c6910ca8..3d149c33 100644
+--- a/src/common/emulatorConfig.h
++++ b/src/common/emulatorConfig.h
+@@ -95,6 +95,7 @@ struct ConfigOptions {
+ 	bool                   trophy_enabled              = true;
+ 	uint32_t               trophy_duration_seconds     = 6;
+ 	bool                   perf_overlay_enabled            = false;
++	uint32_t               perf_log_seconds                = 0;
+ 	bool                   playgo_hack_enabled         = false;
+ 	bool                   skip_notice_screen          = false;
+ #if KYTY_PLATFORM == KYTY_PLATFORM_WINDOWS
+@@ -164,6 +165,8 @@ bool SyncRawImageBuffersEnabled();
+ bool TessellationEnabled();
+ bool OcclusionQueriesEnabled();
+ bool CoarseShadingEnabled();
++// Seconds between two command-thread reports in the log; 0: none (--perf-log).
++uint32_t PerfLogSeconds();
+ bool TrophyEnabled();
+ uint32_t GetTrophyDurationSeconds();
+ bool PlayGoHackEnabled();
+diff --git a/src/graphics/guest_gpu/command_processor/commandProcessor.h b/src/graphics/guest_gpu/command_processor/commandProcessor.h
+index e547fbc3..db9e241b 100644
+--- a/src/graphics/guest_gpu/command_processor/commandProcessor.h
++++ b/src/graphics/guest_gpu/command_processor/commandProcessor.h
+@@ -2,6 +2,7 @@
+ #define GRAPHICS_GUEST_GPU_COMMAND_PROCESSOR_COMMAND_PROCESSOR_H
+ 
+ #include "common/assert.h"
++#include "common/commandThreadProfile.h"
+ #include "graphics/guest_gpu/hardwareContext.h"
+ #include "graphics/guest_gpu/pssr.h"
+ #include "graphics/host_gpu/renderer/render.h"
+@@ -63,7 +64,7 @@ public:
+ 	void ApplyContextStateOperation(ContextStateOperation operation);
+ 
+ 	void            BufferInit();
+-	void            BufferFlush();
++	void            BufferFlush(Common::CommandThreadProfile::Close reason = Common::CommandThreadProfile::Close::Other);
+ 	void            BufferFlushAtBoundary();
+ 	GuestSync&      GetGuestSync() const { return m_renderer.GetGuestSync(); }
+ 	void            BufferWait();
+diff --git a/src/graphics/guest_gpu/graphicsRun.cpp b/src/graphics/guest_gpu/graphicsRun.cpp
+index f2826a3c..0180da81 100644
+--- a/src/graphics/guest_gpu/graphicsRun.cpp
++++ b/src/graphics/guest_gpu/graphicsRun.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/guest_gpu/graphicsRun.h"
++#include "common/commandThreadProfile.h"
+ 
+ #include "common/assert.h"
+ #include "common/gameflexWatchdog.h"
+@@ -92,6 +93,7 @@ void GuestGpu::ProcessCommands() {
+ 			m_commands.pop_front();
+ 			EXIT_IF(m_pending_commands.fetch_sub(1, std::memory_order_acq_rel) == 0);
+ 		}
++		Common::CommandThreadProfile::Scope ctp_foreign(Common::CommandThreadProfile::Cause::Foreign);
+ 		command();
+ 	}
+ }
+@@ -150,7 +152,9 @@ void GuestGpu::SuspendPoint() {
+ 	EXIT_IF(IsGpuThread() || CommandScheduler::InDeferredOperation());
+ 	// Do not hold a queue lock while waiting: asynchronous work may be needed to
+ 	// finish the preceding graphics frame. The first point returns immediately.
++	m_guest_at_suspend_point.store(true, std::memory_order_relaxed);
+ 	m_suspend_point_ready->acquire();
++	m_guest_at_suspend_point.store(false, std::memory_order_relaxed);
+ 	Submission submission;
+ 	submission.type = SubmissionType::SuspendPoint;
+ 	Enqueue(std::move(submission));
+@@ -211,8 +215,8 @@ void CommandProcessor::BufferInit() {
+ 	GetScheduler().Begin(m_ctx, m_ucfg, m_sh_ctx);
+ }
+ 
+-void CommandProcessor::BufferFlush() {
+-	GetScheduler().Flush();
++void CommandProcessor::BufferFlush(Common::CommandThreadProfile::Close reason) {
++	GetScheduler().Flush(reason);
+ 	// The occlusion counters reach a guest that polls them without waiting for a later fence.
+ 	m_renderer.GetOcclusionQueries().Publish();
+ }
+@@ -272,6 +276,10 @@ void CommandProcessor::WaitRegMem(uint32_t func, const T* addr, T ref, T mask, u
+ 			                               vk::AccessFlagBits2::eMemoryWrite);
+ 			return;
+ 		}
++		// What the wait is for, for the command thread's report: a write on its way to the GPU, or nothing there.
++		Common::CommandThreadProfile::NoteLabelWait(
++		    m_renderer.GetBufferCache().PendingGuestWrite(reinterpret_cast<uint64_t>(addr), sizeof(T), &pending) ||
++		    m_renderer.GetBufferCache().HasPendingGpuWrites(reinterpret_cast<uint64_t>(addr), sizeof(T)));
+ 		Common::GameFlex::NoteGpuWait("wait_reg_mem", reinterpret_cast<uint64_t>(addr), static_cast<uint64_t>(*addr),
+ 		                           static_cast<uint64_t>(ref), static_cast<uint64_t>(mask), func);
+ 		SuspendPm4();
+@@ -287,6 +295,7 @@ void CommandProcessor::MemSemaphore(uint64_t* counter, bool signal, bool write)
+ 	if (signal) {
+ 		*counter = write ? 1u : *counter + 1u;
+ 	} else if (*counter == 0) {
++		Common::CommandThreadProfile::NoteLabelWait(false);
+ 		Common::GameFlex::NoteGpuWait("mem_semaphore", reinterpret_cast<uint64_t>(counter), 0, 1, 0, 0);
+ 		SuspendPm4();
+ 	} else {
+@@ -414,6 +423,7 @@ void GuestGpu::ThreadRun(void* data) {
+ 	EXIT_IF(gpu == nullptr);
+ 	KYTY_PROFILER_THREAD("Thread_Gpu");
+ 	g_gpu_state = gpu;
++	Common::CommandThreadProfile::SetCommandThread();
+ 
+ 	for (;;) {
+ 		Submission                   submission;
+@@ -427,6 +437,9 @@ void GuestGpu::ThreadRun(void* data) {
+ 				gpu->m_processing = false;
+ 				gpu->m_idle.Signal();
+ 				Common::GameFlex::WaitNote gameflex_wait("gpu thread: no work");
++				Common::CommandThreadProfile::Scope ctp_idle(gpu->m_guest_at_suspend_point.load(std::memory_order_relaxed)
++				                                              ? Common::CommandThreadProfile::Cause::IdleSuspend
++				                                              : Common::CommandThreadProfile::Cause::Idle);
+ 				gpu->m_work_available.Wait(&gpu->m_queue_mutex);
+ 			}
+ 			if (gpu->m_stopping && gpu->m_commands.empty() && gpu->m_submission_count == 0) {
+@@ -450,7 +463,11 @@ void GuestGpu::ThreadRun(void* data) {
+ 				if (selected_queue < 0) {
+ 					gpu->m_renderer.GetCommandScheduler().FlushBeforeIdle();
+ 					gpu->m_processing = false;
+-					gpu->m_work_available.WaitFor(&gpu->m_queue_mutex, 100);
++					{
++						Common::CommandThreadProfile::Scope ctp_label(Common::CommandThreadProfile::LabelCause());
++						Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::LabelPolls);
++						gpu->m_work_available.WaitFor(&gpu->m_queue_mutex, 100);
++					}
+ 					for (auto& queue: gpu->m_queues) {
+ 						if (!queue.empty()) {
+ 							queue.front().blocked = false;
+@@ -476,6 +493,7 @@ void GuestGpu::ThreadRun(void* data) {
+ 			{
+ 				Common::DebugCounters::ScopedTimer busy(
+ 				    Common::DebugCounters::Counter::GpuThreadBusyNs);
++				Common::CommandThreadProfile::Scope ctp_foreign(Common::CommandThreadProfile::Cause::Foreign);
+ 				command();
+ 			}
+ 
+@@ -490,12 +508,14 @@ void GuestGpu::ThreadRun(void* data) {
+ 		const bool complete = [&] {
+ 			Common::DebugCounters::ScopedTimer busy(
+ 			    Common::DebugCounters::Counter::GpuThreadBusyNs);
++			Common::CommandThreadProfile::Scope ctp_pm4(Common::CommandThreadProfile::Cause::Pm4);
+ 			return gpu->Process(submission);
+ 		}();
+ 
+ 		Common::LockGuard lock(gpu->m_queue_mutex);
+ 		if (!complete) {
+ 			submission.blocked = true;
++			Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::BlockedRetries);
+ 			gpu->m_queues[submission.queue_id].push_front(std::move(submission));
+ 			gpu->m_submission_count++;
+ 		} else {
+@@ -527,17 +547,21 @@ bool GuestGpu::Process(Submission& submission) {
+ 				cp.BufferFlushAtBoundary();
+ 			}
+ 			break;
+-		case SubmissionType::FlipPreparation:
++		case SubmissionType::FlipPreparation: {
++			Common::CommandThreadProfile::Scope ctp_upkeep(Common::CommandThreadProfile::Cause::Upkeep);
+ 			cp.PrepareCpuFlip(submission.flip_request_id);
+ 			break;
+-		case SubmissionType::SuspendPoint:
++		}
++		case SubmissionType::SuspendPoint: {
++			Common::CommandThreadProfile::Scope ctp_upkeep(Common::CommandThreadProfile::Cause::Upkeep);
+ 			// Age caches at the frame boundary, not once per command list.
+ 			m_renderer.RunGarbageCollector();
+ 			m_renderer.GetCommandScheduler().DeferPriorityOperation(
+ 			    [ready = m_suspend_point_ready] { ready->release(); });
+-			cp.BufferFlush();
++			cp.BufferFlush(Common::CommandThreadProfile::Close::Frame);
+ 			cp.Reset();
+ 			break;
++		}
+ 	}
+ 
+ 	return complete;
+@@ -576,6 +600,33 @@ void CommandProcessor::SuspendPm4() {
+ 	g_current_execution->m_suspended = true;
+ }
+ 
++namespace {
++// GameFlex: the command thread's cause for each PM4 opcode (CommandThreadProfile).
++constexpr std::array<Common::CommandThreadProfile::Cause, 256> MakePacketCauses() {
++	using Common::CommandThreadProfile::Cause;
++	std::array<Cause, 256> causes {};
++	causes.fill(Cause::Pm4);
++	for (const auto op: {Pm4::IT_SET_BASE, Pm4::IT_CLEAR_STATE, Pm4::IT_INDEX_BUFFER_SIZE, Pm4::IT_INDEX_BASE,
++	                     Pm4::IT_INDEX_TYPE, Pm4::IT_NUM_INSTANCES, Pm4::IT_CONTEXT_CONTROL,
++	                     Pm4::IT_SET_SH_REG_INDIRECT, Pm4::IT_SET_UCONFIG_REG_INDIRECT, Pm4::IT_SET_CONFIG_REG,
++	                     Pm4::IT_SET_CONTEXT_REG, Pm4::IT_SET_SH_REG, Pm4::IT_SET_QUEUE_REG, Pm4::IT_SET_UCONFIG_REG,
++	                     Pm4::IT_SET_UCONFIG_REG_INDEX, Pm4::IT_SET_CONTEXT_REG_INDIRECT}) {
++		causes[op] = Cause::Registers;
++	}
++	for (const auto op: {Pm4::IT_DISPATCH_DIRECT, Pm4::IT_DISPATCH_INDIRECT, Pm4::IT_DRAW_INDIRECT,
++	                     Pm4::IT_DRAW_INDEX_INDIRECT, Pm4::IT_DRAW_INDEX_2, Pm4::IT_DRAW_INDIRECT_MULTI,
++	                     Pm4::IT_DRAW_INDEX_AUTO, Pm4::IT_DRAW_INDEX_OFFSET_2, Pm4::IT_DRAW_INDEX_INDIRECT_MULTI,
++	                     Pm4::IT_DISPATCH_DRAW_PREAMBLE, Pm4::IT_DISPATCH_DRAW}) {
++		causes[op] = Cause::Draw;
++	}
++	for (const auto op: {Pm4::IT_COPY_DATA, Pm4::IT_CP_DMA, Pm4::IT_DMA_DATA}) {
++		causes[op] = Cause::Transfers;
++	}
++	return causes;
++}
++constexpr auto g_packet_causes = MakePacketCauses();
++} // namespace
++
+ void CommandProcessor::ProcessPm4(Pm4Execution& execution) {
+ 	const bool debug_dump = graphics_debug_dump_enabled();
+ 	while (!execution.m_buffer_stack.empty()) {
+@@ -633,6 +684,8 @@ void CommandProcessor::ProcessPm4(Pm4Execution& execution) {
+ 			EXIT("unknown op\n\t%05" PRIx32 ":\n\tcmd_id = %08" PRIx32 "\n", offset, packet_header);
+ 		}
+ 
++		Common::CommandThreadProfile::CountPacket(opcode);
++		Common::CommandThreadProfile::Phase(g_packet_causes[opcode]);
+ 		const auto packet_dw =
+ 		    handler(*this, packet_header & ~1u, packet + 1, remaining_dw, total_dw) + 1;
+ 		EXIT_IF(packet_dw > remaining_dw);
+@@ -939,7 +992,8 @@ void CommandProcessor::DrawIndexAuto(DrawAutoArgs args) {
+ }
+ 
+ void CommandProcessor::WaitFlipDone(uint32_t video_out_handle, uint32_t display_buffer_index) {
+-	BufferFlush();
++	Common::CommandThreadProfile::Scope ctp_upkeep(Common::CommandThreadProfile::Cause::Upkeep);
++	BufferFlush(Common::CommandThreadProfile::Close::Frame);
+ 
+ 	m_renderer.GetVideoOut().WaitFlipDone(static_cast<int>(video_out_handle),
+ 	                                      static_cast<int>(display_buffer_index));
+@@ -1124,6 +1178,8 @@ void CommandProcessor::TriggerEvent(uint32_t event_type, uint32_t event_index,
+ }
+ 
+ void CommandProcessor::Flip(int handle, int index, int flip_mode, int64_t flip_arg) {
++	Common::CommandThreadProfile::Scope           ctp_upkeep(Common::CommandThreadProfile::Cause::Upkeep);
++	Common::CommandThreadProfile::WaitReasonScope ctp_frame(Common::CommandThreadProfile::WaitReason::Frame);
+ 	if (graphics_debug_dump_enabled()) {
+ 		LOGF("CommandProcessor::Flip()\n");
+ 	}
+@@ -1133,15 +1189,16 @@ void CommandProcessor::Flip(int handle, int index, int flip_mode, int64_t flip_a
+ 	auto  request = Sync::PrepareVideoOutFlip(command, handle, index, flip_mode, flip_arg);
+ 	GetScheduler().DeferPriorityOperation(
+ 	    [&renderer = m_renderer, request] { renderer.GetVideoOut().CompleteFlip(request); });
+-	GetScheduler().Flush();
++	GetScheduler().Flush(Common::CommandThreadProfile::Close::Frame);
+ }
+ 
+ void CommandProcessor::PrepareCpuFlip(uint64_t request_id) {
++	Common::CommandThreadProfile::WaitReasonScope ctp_frame(Common::CommandThreadProfile::WaitReason::Frame);
+ 	auto& command = CurrentBuffer();
+ 	m_renderer.GetVideoOut().PrepareFlip(request_id, command);
+ 	GetScheduler().DeferPriorityOperation(
+ 	    [this, request_id] { m_renderer.GetVideoOut().CompleteFlip(request_id); });
+-	GetScheduler().Flush();
++	GetScheduler().Flush(Common::CommandThreadProfile::Close::Frame);
+ }
+ 
+ bool GuestGpu::IsGpuThread() noexcept {
+diff --git a/src/graphics/guest_gpu/graphicsRun.h b/src/graphics/guest_gpu/graphicsRun.h
+index 307b967d..6e7a344e 100644
+--- a/src/graphics/guest_gpu/graphicsRun.h
++++ b/src/graphics/guest_gpu/graphicsRun.h
+@@ -85,6 +85,8 @@ private:
+ 	// Completion callbacks can outlive GuestGpu during renderer shutdown.
+ 	std::shared_ptr<std::binary_semaphore> m_suspend_point_ready =
+ 	    std::make_shared<std::binary_semaphore>(1);
++	// GameFlex: a game thread waits at its suspend point for the previous frame (CommandThreadProfile).
++	std::atomic<bool> m_guest_at_suspend_point {false};
+ 
+ 	std::unique_ptr<CommandProcessor>                                m_gfx_cp;
+ 	std::array<std::unique_ptr<CommandProcessor>, ComputeQueueCount> m_compute_cp;
+diff --git a/src/graphics/guest_gpu/pm4.cpp b/src/graphics/guest_gpu/pm4.cpp
+index 1674b108..c2495c4e 100644
+--- a/src/graphics/guest_gpu/pm4.cpp
++++ b/src/graphics/guest_gpu/pm4.cpp
+@@ -86,6 +86,10 @@ constexpr auto g_opcode_names   = MakeOpcodeNames();
+ 
+ } // namespace
+ 
++const char* OpcodeName(uint32_t opcode) {
++	return g_opcode_names[opcode & 0xffu];
++}
++
+ void DumpPm4PacketStream(Common::File* file, const uint32_t* cmd_buffer, uint32_t start_dw,
+                          uint32_t num_dw) {
+ 	file->Printf("----- Buffer --- dwords: 0x%05" PRIx32 ", offset : %u, addr: %016" PRIx64
+diff --git a/src/graphics/guest_gpu/pm4.h b/src/graphics/guest_gpu/pm4.h
+index 4a7890a0..3ac1c6f3 100644
+--- a/src/graphics/guest_gpu/pm4.h
++++ b/src/graphics/guest_gpu/pm4.h
+@@ -899,6 +899,9 @@ constexpr uint32_t UC_NOP = 0xA2;
+ 
+ constexpr uint32_t UC_NUM = 0x3FFF + 1;
+ 
++// The name of a type-3 opcode, as in packet dumps ("IT_SET_CONTEXT_REG").
++[[nodiscard]] const char* OpcodeName(uint32_t opcode);
++
+ void DumpPm4PacketStream(Common::File* file, const uint32_t* cmd_buffer, uint32_t start_dw,
+                          uint32_t num_dw);
+ 
+diff --git a/src/graphics/host_gpu/graphicContext.h b/src/graphics/host_gpu/graphicContext.h
+index ac19a5d0..02a4bbc8 100644
+--- a/src/graphics/host_gpu/graphicContext.h
++++ b/src/graphics/host_gpu/graphicContext.h
+@@ -47,6 +47,7 @@ struct GraphicContext {
+ 	// End-of-pipe writes that do not stall the command processor (the labels of RELEASE_MEM).
+ 	bool                               buffer_marker_enabled                 = false;
+ 	bool                               occlusion_queries_enabled             = false;
++	bool                               host_query_reset_enabled              = false;
+ 	bool                               occlusion_query_precise_enabled       = false;
+ 	bool                               supports_block_texel_view              = false;
+ 	bool                                      mesh_shader_enabled                   = false;
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+index 3ada7cec..72cab0ad 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/host_gpu/renderer/cache/bufferCache.h"
++#include "common/commandThreadProfile.h"
+ 
+ #include "common/alignment.h"
+ #include "common/assert.h"
+@@ -340,6 +341,7 @@ void BufferCache::ReadMemory(uint64_t vaddr, uint64_t size, bool is_write) {
+ }
+ 
+ BufferId BufferCache::FindBuffer(uint64_t vaddr, uint64_t size) {
++	Common::CommandThreadProfile::Scope ctp_buffers(Common::CommandThreadProfile::Cause::Buffers);
+ 	if (vaddr == 0) {
+ 		return NULL_BUFFER_ID;
+ 	}
+@@ -516,6 +518,7 @@ vk::Buffer BufferCache::UploadCopies(Buffer& buffer, std::span<vk::BufferCopy> c
+ std::pair<Buffer*, uint64_t> BufferCache::ObtainBuffer(uint64_t vaddr, uint64_t size,
+                                                        bool is_written, bool is_texel_buffer,
+                                                        BufferId id) {
++	Common::CommandThreadProfile::Scope ctp_buffers(Common::CommandThreadProfile::Cause::Buffers);
+ 	EXIT_IF(!(GuestRange {vaddr, size}.Valid()));
+ 
+ 	if (IsUnified()) {
+@@ -918,6 +921,7 @@ bool BufferCache::BindUnified(uint64_t vaddr, uint64_t size) {
+ 
+ void BufferCache::BindUnifiedPieces(uint64_t begin, uint64_t end,
+                                     const std::vector<std::tuple<uint64_t, uint64_t, uint64_t>>& pieces) {
++	Common::CommandThreadProfile::WaitReasonScope ctp_reason(Common::CommandThreadProfile::WaitReason::Rebind);
+ 	// The GPU may still read the old views: let it finish before they change. A range the game
+ 	// has just mapped has none, and the GPU has nothing there to finish.
+ 	auto bound = m_unified_views.upper_bound(begin);
+@@ -979,8 +983,11 @@ void BufferCache::BindUnifiedPieces(uint64_t begin, uint64_t end,
+ 		EXIT_NOT_IMPLEMENTED(m_graphics.queue.bindSparse(1, &info, m_unified_bind_fence) !=
+ 		                     vk::Result::eSuccess);
+ 	}
+-	EXIT_NOT_IMPLEMENTED(m_graphics.device.waitForFences(1, &m_unified_bind_fence, VK_TRUE, UINT64_MAX) !=
+-	                     vk::Result::eSuccess);
++	{
++		Common::CommandThreadProfile::Scope ctp_wait(Common::CommandThreadProfile::WaitCause());
++		EXIT_NOT_IMPLEMENTED(m_graphics.device.waitForFences(1, &m_unified_bind_fence, VK_TRUE, UINT64_MAX) !=
++		                     vk::Result::eSuccess);
++	}
+ 	EXIT_NOT_IMPLEMENTED(m_graphics.device.resetFences(1, &m_unified_bind_fence) != vk::Result::eSuccess);
+ 
+ 	// The record of what is bound.
+@@ -1047,6 +1054,7 @@ void BufferCache::RecordUnifiedGpuWrite(uint64_t vaddr, uint64_t size) {
+ 
+ void BufferCache::FinishPendingGpuWrites(uint64_t vaddr, uint64_t size) {
+ 	if (HasPendingGpuWrites(vaddr, size)) {
++		Common::CommandThreadProfile::WaitReasonScope ctp_reason(Common::CommandThreadProfile::WaitReason::Read);
+ 		m_scheduler.Finish();
+ 		m_pending_gpu_writes.Clear();
+ 	}
+@@ -1096,6 +1104,7 @@ void BufferCache::VerifySrtSpeculations() {
+ }
+ 
+ bool BufferCache::FinishPendingGpuWritesUnder(std::span<const uint64_t> addresses) {
++	Common::CommandThreadProfile::WaitReasonScope ctp_reason(Common::CommandThreadProfile::WaitReason::Srt);
+ 	if (m_pending_gpu_writes.Empty()) {
+ 		return false;
+ 	}
+diff --git a/src/graphics/host_gpu/renderer/colorRenderTarget.cpp b/src/graphics/host_gpu/renderer/colorRenderTarget.cpp
+index 29387924..40400622 100644
+--- a/src/graphics/host_gpu/renderer/colorRenderTarget.cpp
++++ b/src/graphics/host_gpu/renderer/colorRenderTarget.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/host_gpu/renderer/colorRenderTarget.h"
++#include "common/commandThreadProfile.h"
+ 
+ #include "common/assert.h"
+ #include "common/logging/log.h"
+@@ -44,6 +45,7 @@ void RenderExecutor::ResolveRenderColorTarget(CommandBuffer& buffer, RenderColor
+                                               uint32_t rt_slot, bool ignore_target_mask,
+                                               bool exact_format) {
+ 	KYTY_PROFILER_FUNCTION();
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Targets);
+ 	const auto& hw = buffer.GetRegisters();
+ 
+ 	const auto& rt      = hw.GetRenderTarget(rt_slot);
+diff --git a/src/graphics/host_gpu/renderer/commandScheduler.cpp b/src/graphics/host_gpu/renderer/commandScheduler.cpp
+index 10e27fc7..32e4b61d 100644
+--- a/src/graphics/host_gpu/renderer/commandScheduler.cpp
++++ b/src/graphics/host_gpu/renderer/commandScheduler.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/host_gpu/renderer/commandScheduler.h"
++#include "common/commandThreadProfile.h"
+ #include "common/gameflexWatchdog.h"
+ 
+ #include "common/assert.h"
+@@ -95,6 +96,70 @@ CommandScheduler::CommandScheduler(RenderContext& context, GraphicContext& graph
+ 
+ CommandScheduler::~CommandScheduler() {
+ 	Shutdown();
++	if (m_timestamps != nullptr) {
++		m_graphics.device.destroyQueryPool(m_timestamps, nullptr);
++	}
++}
++
++void CommandScheduler::EnableProfile() {
++	m_profiled         = true;
++	const auto& limits = m_graphics.GetPhysicalDeviceProperties().limits;
++	if (!m_graphics.host_query_reset_enabled || limits.timestampComputeAndGraphics == VK_FALSE) {
++		return;
++	}
++	const vk::QueryPoolCreateInfo info {.queryType = vk::QueryType::eTimestamp, .queryCount = 2 * kTimestampSlots};
++	if (m_graphics.device.createQueryPool(&info, nullptr, &m_timestamps) != vk::Result::eSuccess) {
++		m_timestamps = nullptr;
++		return;
++	}
++	m_graphics.device.resetQueryPool(m_timestamps, 0, 2 * kTimestampSlots);
++	m_timestamp_ns     = static_cast<double>(limits.timestampPeriod);
++	const auto queues = m_graphics.physical_device.getQueueFamilyProperties();
++	if (m_graphics.queue_family < queues.size()) {
++		const auto bits = queues[m_graphics.queue_family].timestampValidBits;
++		m_timestamp_mask = bits >= 64 ? ~uint64_t {0} : (uint64_t {1} << bits) - 1;
++	}
++}
++
++// The GPU's begin and end of each buffer it has finished: its busy time, and the gap since the previous one.
++void CommandScheduler::HarvestTimestamps() {
++	uint64_t   busy    = 0;
++	uint64_t   gap     = 0;
++	uint64_t   queued  = 0;
++	uint64_t   buffers = 0;
++	const auto done    = m_master.KnownGpuTick();
++	while (!m_timestamp_pending.empty() && m_timestamp_pending.front() <= done) {
++		const auto tick = m_timestamp_pending.front();
++		m_timestamp_pending.pop_front();
++		const auto slot = static_cast<uint32_t>(tick % kTimestampSlots);
++		if (m_timestamp_ticks[slot] != tick) {
++			continue;
++		}
++		std::array<uint64_t, 4> data {};
++		const auto result = m_graphics.device.getQueryPoolResults(
++		    m_timestamps, 2 * slot, 2, sizeof(data), data.data(), 2 * sizeof(uint64_t),
++		    vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWithAvailability);
++		if ((result != vk::Result::eSuccess && result != vk::Result::eNotReady) || data[1] == 0 || data[3] == 0) {
++			continue;
++		}
++		const auto begin = data[0] & m_timestamp_mask;
++		const auto end   = data[2] & m_timestamp_mask;
++		if (end >= begin) {
++			busy += end - begin;
++			buffers++;
++		}
++		if (m_last_end_tick + 1 == tick && begin > m_last_end) {
++			(m_timestamp_starved[slot] ? gap : queued) += begin - m_last_end;
++		}
++		m_last_end_tick = tick;
++		m_last_end      = end;
++	}
++	if (buffers != 0) {
++		Common::CommandThreadProfile::AddGpuTimes(static_cast<uint64_t>(static_cast<double>(busy) * m_timestamp_ns),
++		                                          static_cast<uint64_t>(static_cast<double>(gap) * m_timestamp_ns),
++		                                          static_cast<uint64_t>(static_cast<double>(queued) * m_timestamp_ns),
++		                                          buffers);
++	}
+ }
+ 
+ void CommandScheduler::Shutdown() {
+@@ -150,7 +215,8 @@ void CommandScheduler::Begin(HW::Context& registers, HW::UserConfig& user_config
+ 	}
+ }
+ 
+-void CommandScheduler::Flush() {
++void CommandScheduler::Flush(Common::CommandThreadProfile::Close reason) {
++	m_close_reason = reason;
+ 	SubmitInfo submit;
+ 	Flush(submit);
+ }
+@@ -179,7 +245,7 @@ void CommandScheduler::Recorded() {
+ 	// Buffers submitted and not finished, as the GPU says now. None: the GPU is dry, this one goes now.
+ 	const uint64_t queued = CurrentTick() - 1 - m_master.Progress();
+ 	if (queued == 0 || m_commands_recorded >= kFullCommands) {
+-		Flush();
++		Flush(queued == 0 ? Common::CommandThreadProfile::Close::GpuIdle : Common::CommandThreadProfile::Close::Size);
+ 	}
+ }
+ 
+@@ -192,7 +258,7 @@ bool CommandScheduler::FlushAtBoundary() {
+ 	const uint64_t queued = CurrentTick() - 1 - m_master.Progress();
+ 	if (queued == 0 || (queued == 1 && m_commands_recorded >= kBoundaryCommands) ||
+ 	    m_commands_recorded >= kFullCommands) {
+-		Flush();
++		Flush(m_commands_recorded >= kFullCommands ? Common::CommandThreadProfile::Close::Size : Common::CommandThreadProfile::Close::Boundary);
+ 		return true;
+ 	}
+ 	return false;
+@@ -201,7 +267,7 @@ bool CommandScheduler::FlushAtBoundary() {
+ void CommandScheduler::FlushBeforeIdle() {
+ 	// Before the first Begin, or after a reset, nothing can have been recorded.
+ 	if (Active() && !m_command.IsInvalid() && m_buffer_used) {
+-		Flush();
++		Flush(Common::CommandThreadProfile::Close::BeforeIdle);
+ 	}
+ }
+ 
+@@ -213,6 +279,7 @@ void CommandScheduler::Flush(SubmitInfo& submit) {
+ void CommandScheduler::Finish() {
+ 	CheckActive();
+ 	if (!m_command.IsInvalid()) {
++		m_close_reason = Common::CommandThreadProfile::Close::Wait;
+ 		Submit();
+ 	}
+ 	m_master.Wait(CurrentTick() - 1);
+@@ -228,6 +295,7 @@ void CommandScheduler::Wait(uint64_t tick) {
+ 		// A stream-buffer wrap can wait while a draw is being prepared through a reference to
+ 		// Current(). The wrapper stays stable while its pooled Vulkan buffer is retired. Deferred
+ 		// resources are released only at the next GPU operation boundary.
++		m_close_reason            = Common::CommandThreadProfile::Close::Wait;
+ 		const auto submitted_tick = Submit();
+ 		EXIT_IF(submitted_tick != tick);
+ 		m_master.Wait(tick);
+@@ -336,6 +404,7 @@ void CommandScheduler::DrainPriorityOperations() {
+ 
+ void CommandScheduler::WaitPriorityOperations(uint64_t tick) {
+ 	EXIT_IF(g_deferred_callback_scheduler == this);
++	Common::CommandThreadProfile::Scope ctp_wait(Common::CommandThreadProfile::Cause::WaitGpuPriority);
+ 	std::unique_lock lock(m_operation_mutex);
+ 	m_operation_available.wait(lock, [this, tick] {
+ 		const bool active_before_or_at =
+@@ -372,14 +441,30 @@ CommandBuffer& CommandScheduler::Current() {
+ }
+ 
+ CommandBuffer& CommandScheduler::BeginCommand() {
++	Common::CommandThreadProfile::Scope ctp_submit(Common::CommandThreadProfile::Cause::Submit);
+ 	EXIT_IF(!m_command.IsInvalid());
+ 	m_command.m_buffer = m_command_pool.Commit();
+ 	m_command.Begin();
+ 	m_dynamic_state.Invalidate();
++	if (m_profiled && Common::DebugCounters::Enabled()) {
++		Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::CommandBuffers);
++		if (m_timestamps != nullptr) {
++			HarvestTimestamps();
++			// This buffer's tick is the next one handed out; its slot was last used 256 buffers ago.
++			const auto tick = CurrentTick();
++			const auto slot = static_cast<uint32_t>(tick % kTimestampSlots);
++			if (m_timestamp_ticks[slot] == 0 || m_master.IsFree(m_timestamp_ticks[slot])) {
++				m_graphics.device.resetQueryPool(m_timestamps, 2 * slot, 2);
++				m_command.Handle().writeTimestamp2(vk::PipelineStageFlagBits2::eNone, m_timestamps, 2 * slot);
++				m_timestamp_ticks[slot] = tick;
++			}
++		}
++	}
+ 	return m_command;
+ }
+ 
+ uint64_t CommandScheduler::Submit(SubmitInfo submit) {
++	Common::CommandThreadProfile::Scope ctp_submit_scope(Common::CommandThreadProfile::Cause::Submit);
+ 	EXIT_IF(m_command.IsInvalid());
+ 
+ 	// This thread alone hands out ticks and submits: the order of the two is the same.
+@@ -390,6 +475,13 @@ uint64_t CommandScheduler::Submit(SubmitInfo submit) {
+ 		m_command.Handle().writeBufferMarker2AMD(vk::PipelineStageFlagBits2::eAllCommands,
+ 		                                          m_progress->Handle(), 0, static_cast<uint32_t>(tick));
+ 	}
++	if (const auto slot = static_cast<uint32_t>(tick % kTimestampSlots);
++	    m_timestamps != nullptr && m_timestamp_ticks[slot] == tick) {
++		m_command.EndRendering();
++		m_command.Handle().writeTimestamp2(vk::PipelineStageFlagBits2::eAllCommands, m_timestamps, 2 * slot + 1);
++		m_timestamp_pending.push_back(tick);
++		m_timestamp_starved[slot] = tick == m_master.Progress() + 1;
++	}
+ 	m_command.End();
+ 	const auto buffer   = m_command.m_buffer;
+ 	auto&      graphics = m_graphics;
+@@ -397,7 +489,9 @@ uint64_t CommandScheduler::Submit(SubmitInfo submit) {
+ 
+ 	vk::Result result;
+ 	{
++		Common::CommandThreadProfile::Phase(Common::CommandThreadProfile::Cause::WaitQueueLock);
+ 		Common::LockGuard lock(graphics.queue_mutex);
++		Common::CommandThreadProfile::Phase(Common::CommandThreadProfile::Cause::Submit);
+ 		submit.AddSignal(m_master.Handle(), tick);
+ 
+ 		vk::TimelineSemaphoreSubmitInfo timeline_info {};
+@@ -424,6 +518,11 @@ uint64_t CommandScheduler::Submit(SubmitInfo submit) {
+ 		EXIT("vkQueueSubmit failed: %s, tick=%" PRIu64 "\n", vk::to_string(result).c_str(), tick);
+ 	}
+ 
++	if (m_profiled) {
++		Common::CommandThreadProfile::CountClose(m_close_reason);
++		Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::Submits);
++	}
++	m_close_reason      = Common::CommandThreadProfile::Close::Other;
+ 	m_command.m_buffer  = nullptr;
+ 	m_commands_recorded = 0;
+ 	m_buffer_used       = false;
+diff --git a/src/graphics/host_gpu/renderer/commandScheduler.h b/src/graphics/host_gpu/renderer/commandScheduler.h
+index 57d11c84..e752b44a 100644
+--- a/src/graphics/host_gpu/renderer/commandScheduler.h
++++ b/src/graphics/host_gpu/renderer/commandScheduler.h
+@@ -2,12 +2,15 @@
+ #define EMULATOR_SRC_GRAPHICS_HOST_GPU_RENDERER_COMMANDSCHEDULER_H_
+ 
+ #include "common/common.h"
++#include "common/commandThreadProfile.h"
+ #include "common/uniqueFunction.h"
+ #include "graphics/host_gpu/renderer/dynamicState.h"
+ #include "graphics/host_gpu/renderer/masterSemaphore.h"
+ #include "graphics/host_gpu/renderer/render.h"
+ 
++#include <array>
+ #include <condition_variable>
++#include <deque>
+ #include <memory>
+ #include <mutex>
+ #include <queue>
+@@ -26,7 +29,7 @@ public:
+ 
+ 	void           Begin(HW::Context& registers, HW::UserConfig& user_config, HW::Shader& shaders);
+ 	void           EndRendering() { m_command.EndRendering(); }
+-	void           Flush();
++	void           Flush(Common::CommandThreadProfile::Close reason = Common::CommandThreadProfile::Close::Other);
+ 	void           Flush(SubmitInfo& submit);
+ 	// A draw or a dispatch was recorded: the work goes to the GPU when it would otherwise run dry.
+ 	void           Recorded();
+@@ -41,6 +44,9 @@ public:
+ 	// Deferred callbacks can observe an externally owned drain, but cannot initiate shutdown:
+ 	// the priority runner cannot join itself.
+ 	void                      Shutdown();
++	// GameFlex: this scheduler feeds the performance overlay (CommandThreadProfile): why buffers close, and
++	// how long the GPU takes over each one, from timestamps at its begin and end.
++	void                      EnableProfile();
+ 	void                      Wait(uint64_t tick);
+ 	void                      PopPendingOperations();
+ 	void                      DrainPriorityOperations();
+@@ -91,6 +97,7 @@ private:
+ 	};
+ 
+ 	void BeginNext();
++	void HarvestTimestamps();
+ 	void PriorityOperationsThread(std::stop_token stop);
+ 	void QueueOperation(Common::UniqueFunction<void>&& operation, bool priority);
+ 	void RunOperation(Common::UniqueFunction<void>&& operation);
+@@ -117,6 +124,18 @@ private:
+ 	std::jthread                 m_priority_thread;
+ 	uint64_t                     m_priority_active_tick = 0; // 0 while none runs
+ 	OperationState               m_operation_state      = OperationState::Open;
++	// GameFlex: the instrument (EnableProfile).
++	static constexpr uint32_t                 kTimestampSlots = 256;
++	bool                                      m_profiled      = false;
++	Common::CommandThreadProfile::Close       m_close_reason  = Common::CommandThreadProfile::Close::Other;
++	vk::QueryPool                             m_timestamps    = nullptr;
++	double                                    m_timestamp_ns  = 1.0;
++	uint64_t                                  m_timestamp_mask = ~uint64_t {0};
++	std::array<uint64_t, kTimestampSlots>     m_timestamp_ticks {};
++	std::array<bool, kTimestampSlots>         m_timestamp_starved {}; // The GPU was dry when it was submitted.
++	std::deque<uint64_t>                      m_timestamp_pending;
++	uint64_t                                  m_last_end_tick = 0;
++	uint64_t                                  m_last_end      = 0;
+ };
+ 
+ } // namespace Libs::Graphics
+diff --git a/src/graphics/host_gpu/renderer/depthRenderTarget.cpp b/src/graphics/host_gpu/renderer/depthRenderTarget.cpp
+index 6eb7d385..809a9537 100644
+--- a/src/graphics/host_gpu/renderer/depthRenderTarget.cpp
++++ b/src/graphics/host_gpu/renderer/depthRenderTarget.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/host_gpu/renderer/depthRenderTarget.h"
++#include "common/commandThreadProfile.h"
+ 
+ #include "common/assert.h"
+ #include "common/common.h"
+@@ -253,6 +254,7 @@ static TextureCache::ImageDesc MakeDepthTargetDesc(const CommandBuffer& buffer,
+ // NOLINTNEXTLINE(readability-function-cognitive-complexity)
+ void RenderExecutor::ResolveRenderDepthTarget(CommandBuffer& buffer, RenderDepthInfo& r) {
+ 	KYTY_PROFILER_FUNCTION();
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Targets);
+ 	const auto& hw          = buffer.GetRegisters();
+ 	const auto& z           = hw.GetDepthRenderTarget();
+ 	const auto& rc          = hw.GetRenderControl();
+diff --git a/src/graphics/host_gpu/renderer/guestSync.cpp b/src/graphics/host_gpu/renderer/guestSync.cpp
+index 0450fc29..3833319c 100644
+--- a/src/graphics/host_gpu/renderer/guestSync.cpp
++++ b/src/graphics/host_gpu/renderer/guestSync.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/host_gpu/renderer/guestSync.h"
++#include "common/commandThreadProfile.h"
+ 
+ #include <algorithm>
+ 
+@@ -29,6 +30,8 @@ bool GuestSync::TransferOverlaps(vk::Buffer buffer, uint64_t offset, uint64_t si
+ 
+ void GuestSync::Post(vk::CommandBuffer command) {
+ 	if (static_cast<bool>(m_stages)) {
++		Common::CommandThreadProfile::Scope ctp_barrier(Common::CommandThreadProfile::Cause::Barriers);
++		Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::Barriers);
+ 		vk::MemoryBarrier2 barrier {};
+ 		barrier.srcStageMask  = m_stages;
+ 		barrier.srcAccessMask = m_access;
+@@ -73,6 +76,8 @@ void GuestSync::BeforeTransfer(vk::CommandBuffer command, vk::Buffer buffer, uin
+ 	if (!TransferOverlaps(buffer, offset, size)) {
+ 		return;
+ 	}
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Barriers);
++	Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::Barriers);
+ 	vk::MemoryBarrier2 barrier {};
+ 	barrier.srcStageMask  = vk::PipelineStageFlagBits2::eAllTransfer;
+ 	barrier.srcAccessMask = vk::AccessFlagBits2::eTransferWrite;
+diff --git a/src/graphics/host_gpu/renderer/image/image.cpp b/src/graphics/host_gpu/renderer/image/image.cpp
+index 77215ca6..c7f6d2b8 100644
+--- a/src/graphics/host_gpu/renderer/image/image.cpp
++++ b/src/graphics/host_gpu/renderer/image/image.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/host_gpu/renderer/image/image.h"
++#include "common/commandThreadProfile.h"
+ 
+ #include "common/assert.h"
+ #include "common/logging/log.h"
+@@ -232,6 +233,8 @@ void Image::Transit(vk::ImageLayout destination_layout, vk::AccessFlags2 destina
+ 	if (barriers.empty()) {
+ 		return;
+ 	}
++	Common::CommandThreadProfile::Scope ctp_barrier(Common::CommandThreadProfile::Cause::Barriers);
++	Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::Barriers);
+ 	m_scheduler.EndRendering();
+ 	vk::DependencyInfo dependency {};
+ 	dependency.imageMemoryBarrierCount = static_cast<uint32_t>(barriers.size());
+diff --git a/src/graphics/host_gpu/renderer/masterSemaphore.cpp b/src/graphics/host_gpu/renderer/masterSemaphore.cpp
+index eacefdf4..09678281 100644
+--- a/src/graphics/host_gpu/renderer/masterSemaphore.cpp
++++ b/src/graphics/host_gpu/renderer/masterSemaphore.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/host_gpu/renderer/masterSemaphore.h"
++#include "common/commandThreadProfile.h"
+ 
+ #include "common/assert.h"
+ #include "common/debugCounters.h"
+@@ -66,6 +67,10 @@ void MasterSemaphore::Wait(uint64_t tick) {
+ 	wait_info.pSemaphores    = &m_semaphore;
+ 	wait_info.pValues        = &tick;
+ 
++	Common::CommandThreadProfile::Scope ctp_wait(Common::CommandThreadProfile::WaitCause());
++	if (Common::CommandThreadProfile::OnCommandThread()) {
++		Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::GpuWaits);
++	}
+ 	Common::DebugCounters::ScopedTimer timer(Common::DebugCounters::Counter::GpuWaits,
+ 	                                         Common::DebugCounters::Counter::GpuWaitNs);
+ 	const auto result = m_graphics.device.waitSemaphores(&wait_info, UINT64_MAX);
+diff --git a/src/graphics/host_gpu/renderer/pipeline/descriptors.cpp b/src/graphics/host_gpu/renderer/pipeline/descriptors.cpp
+index d9a9dd8c..bf3f4f1c 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/descriptors.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/descriptors.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/host_gpu/renderer/pipeline/descriptors.h"
++#include "common/commandThreadProfile.h"
+ 
+ #include "common/alignment.h"
+ #include "common/assert.h"
+@@ -729,6 +730,7 @@ void RenderExecutor::ResetBindings() {
+ void RenderExecutor::PrepareBindings(const ShaderStageRuntime& runtime,
+                                      PreparedBindings& prepared) {
+ 	KYTY_PROFILER_FUNCTION();
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Textures);
+ 	EXIT_IF(!runtime);
+ 	const auto& program  = runtime.module->info;
+ 	const auto& snapshot = *runtime.resources;
+@@ -768,6 +770,7 @@ void RenderExecutor::PrepareBindings(const ShaderStageRuntime& runtime,
+ 
+ void RenderExecutor::FindBuffers(std::span<PreparedBindings* const> stages) {
+ 	KYTY_PROFILER_FUNCTION();
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Buffers);
+ 	auto& cache = m_context.GetBufferCache();
+ 	for (auto* stage: stages) {
+ 		auto&       prepared = *stage;
+@@ -827,6 +830,7 @@ void RenderExecutor::FindBuffers(std::span<PreparedBindings* const> stages) {
+ 
+ void RenderExecutor::RebindBuffers(PreparedBindings& prepared) {
+ 	KYTY_PROFILER_FUNCTION();
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Buffers);
+ 	const auto& program  = prepared.runtime->module->info;
+ 	const auto& snapshot = *prepared.runtime->resources;
+ 	const auto& layout   = program.bindings;
+@@ -860,6 +864,7 @@ void RenderExecutor::RebindBuffers(PreparedBindings& prepared) {
+ 
+ void RenderExecutor::RebindImages(PreparedBindings& prepared) {
+ 	KYTY_PROFILER_FUNCTION();
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Textures);
+ 	const auto& program       = prepared.runtime->module->info;
+ 	const auto& snapshot      = *prepared.runtime->resources;
+ 	auto&       images        = prepared.images;
+@@ -938,6 +943,7 @@ void RenderExecutor::CommitBindings(CommandBuffer&                     buffer,
+                                     const PipelineCache::Pipeline&     pipeline,
+                                     std::span<PreparedBindings* const> prepared_bindings) {
+ 	KYTY_PROFILER_FUNCTION();
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Bindings);
+ 	auto                           vk_buffer              = buffer.Handle();
+ 	size_t                         image_descriptor_count = 0;
+ 	ShaderRecompiler::IR::PushData push_data;
+diff --git a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
+index b751fc4e..a415c595 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/host_gpu/renderer/pipeline/pipelineCache.h"
++#include "common/commandThreadProfile.h"
+ 
+ #include "common/assert.h"
+ #include "common/debugCounters.h"
+@@ -718,6 +719,7 @@ void PipelineCache::Save() {
+ }
+ 
+ void PipelineCache::GetGraphicsPrograms(const CommandBuffer& command, DrawRenderState& state) {
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Programs);
+ 	m_defer_translation = m_compile_aside && state.deferrable;
+ 	// Every way out ends the deferral: a dropped draw must not defer the next compute shader.
+ 	struct DeferralEnd {
+@@ -1012,6 +1014,7 @@ void PipelineCache::GetGraphicsPrograms(const CommandBuffer& command, DrawRender
+ 
+ const ShaderModule* PipelineCache::GetComputeProgram(const HW::ComputeShaderInfo& regs,
+                                                      ShaderComputeInputInfo&      input_info) {
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Programs);
+ 	m_defer_translation           = false;
+ 	input_info.host_subgroup_size = m_graphics.SupportsComputeWave64() ? 64u : 32u;
+ 	const auto        params      = PrepareProgram(regs, input_info);
+@@ -1023,6 +1026,7 @@ const ShaderModule* PipelineCache::GetComputeProgram(const HW::ComputeShaderInfo
+ 
+ PipelineCache::Pipeline* PipelineCache::GetGraphicsPipeline(const CommandBuffer&   command,
+                                                             const DrawRenderState& state) {
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Programs);
+ 	const auto* colors        = state.color_info;
+ 	const auto& depth         = state.depth_info;
+ 	const auto  vertex_info   = state.VertexStages();
+@@ -1235,6 +1239,7 @@ PipelineCache::Pipeline* PipelineCache::GetGraphicsPipeline(const CommandBuffer&
+ }
+ 
+ PipelineCache::Pipeline& PipelineCache::GetComputePipeline(const ShaderComputeInputInfo& input_info) {
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Programs);
+ 	KYTY_PROFILER_BLOCK("PipelineCache::CreatePipeline(Compute)", profiler::colors::RedA100);
+ 
+ 	const auto& module = *input_info.stage.module;
+diff --git a/src/graphics/host_gpu/renderer/pipeline/shaders.cpp b/src/graphics/host_gpu/renderer/pipeline/shaders.cpp
+index 025693ab..6926d4cf 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/shaders.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/shaders.cpp
+@@ -1,4 +1,5 @@
+ #include "common/assert.h"
++#include "common/commandThreadProfile.h"
+ #include "common/common.h"
+ #include "common/profiler.h"
+ #include "gpu_blit_shaders/gpu_mesh_indirect_spv.h"
+@@ -156,6 +157,7 @@ void CreatePipelineInternal(GraphicContext& graphics, PipelineCache::Pipeline& p
+                             const GraphicsPipelineKey&                 key,
+                             const std::array<const ShaderModule*, 4>& stages,
+                             vk::PipelineCache                          driver_cache) {
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Compile);
+ 	const auto& rendering     = key.rendering;
+ 	const auto& vertex_input  = key.vertex_input;
+ 	const auto& static_params = key.static_params;
+@@ -383,6 +385,7 @@ void CreatePipelineInternal(GraphicContext& graphics, PipelineCache::Pipeline& p
+ 
+ void CreatePipelineInternal(GraphicContext& graphics, PipelineCache::Pipeline& pipeline,
+                             const ShaderModule& module, vk::PipelineCache driver_cache) {
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Compile);
+ 	vk::PipelineShaderStageCreateInfo                     comp_shader_stage_info {};
+ 	vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo comp_subgroup_size {};
+ 	comp_shader_stage_info.stage  = vk::ShaderStageFlagBits::eCompute;
+diff --git a/src/graphics/host_gpu/renderer/renderCompute.cpp b/src/graphics/host_gpu/renderer/renderCompute.cpp
+index 05484a22..fc56814e 100644
+--- a/src/graphics/host_gpu/renderer/renderCompute.cpp
++++ b/src/graphics/host_gpu/renderer/renderCompute.cpp
+@@ -1,4 +1,5 @@
+ #include "common/assert.h"
++#include "common/commandThreadProfile.h"
+ #include "common/common.h"
+ #include "common/debugCounters.h"
+ #include "common/emulatorConfig.h"
+@@ -440,6 +441,8 @@ void RenderExecutor::DispatchDirect(CommandBuffer& buffer, uint32_t thread_group
+ 		}
+ 	}
+ 
++	Common::CommandThreadProfile::Scope ctp_record(Common::CommandThreadProfile::Cause::Record);
++	Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::Dispatches);
+ 	vk_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline.pipeline);
+ 	constexpr uint32_t DISPATCH_INITIATOR_ORDERED_APPEND_ENABLE = 1u << 3u;
+ 	const uint64_t     group_threads = uint64_t {std::max(input_info.threads_num[0], 1u)} *
+@@ -519,6 +522,8 @@ void RenderExecutor::DispatchIndirect(CommandBuffer& buffer, uint64_t args_addr,
+ 	const auto vk_buffer = buffer.Handle();
+ 	// The barrier the game asked for since the last one, if any (GuestSync): it makes the indirect arguments
+ 	// visible too, the game synchronizes before a dispatch whose arguments the GPU wrote.
++	Common::CommandThreadProfile::Scope ctp_record(Common::CommandThreadProfile::Cause::Record);
++	Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::Dispatches);
+ 	m_context.GetGuestSync().PostDue(vk_buffer);
+ 	vk_buffer.bindPipeline(vk::PipelineBindPoint::eCompute, pipeline.pipeline);
+ 	vk_buffer.dispatchIndirect(args_buffer->Handle(), args_offset);
+diff --git a/src/graphics/host_gpu/renderer/renderContext.cpp b/src/graphics/host_gpu/renderer/renderContext.cpp
+index e7d3ef56..127d8eda 100644
+--- a/src/graphics/host_gpu/renderer/renderContext.cpp
++++ b/src/graphics/host_gpu/renderer/renderContext.cpp
+@@ -17,6 +17,7 @@ RenderContext::RenderContext(GraphicContext& graphics, const std::filesystem::pa
+       m_texture_cache(graphics, m_command_scheduler, m_page_manager, m_buffer_cache),
+       m_image_heap(*this, m_page_manager), m_occlusion_queries(graphics, m_command_scheduler) {
+ 	EXIT_NOT_IMPLEMENTED(!Common::Thread::IsMainThread());
++	m_command_scheduler.EnableProfile();
+ 	m_pipeline_cache.WarmUp(shader_store);
+ }
+ 
+diff --git a/src/graphics/host_gpu/renderer/renderDraw.cpp b/src/graphics/host_gpu/renderer/renderDraw.cpp
+index 0805639e..cf252aa7 100644
+--- a/src/graphics/host_gpu/renderer/renderDraw.cpp
++++ b/src/graphics/host_gpu/renderer/renderDraw.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/host_gpu/renderer/renderDraw.h"
++#include "common/commandThreadProfile.h"
+ #include "gpu_blit_shaders/gpu_mesh_indirect_spv.h"
+ 
+ #include "common/assert.h"
+@@ -459,6 +460,7 @@ RenderState RenderExecutor::AcquireRenderTargets(CommandBuffer& buffer, RenderCo
+                                                  uint32_t color_count, RenderDepthInfo& depth,
+                                                  vk::ImageAspectFlags& feedback_aspects,
+                                                  std::span<PreparedBindings* const> stages) {
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Targets);
+ 	EXIT_IF(colors == nullptr || color_count > RENDER_COLOR_ATTACHMENTS_MAX);
+ 	feedback_aspects = {};
+ 	auto&       cache = m_context.GetTextureCache();
+@@ -677,6 +679,7 @@ struct PreparedVertexBuffers {
+ 
+ static PreparedVertexBuffers AcquireVertexBuffers(CommandBuffer&               buffer,
+                                                   const ShaderVertexInputInfo& vs_input_info) {
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Buffers);
+ 	EXIT_IF(vs_input_info.buffers_num < 0 ||
+ 	        vs_input_info.buffers_num > ShaderVertexInputInfo::RES_MAX);
+ 
+@@ -903,6 +906,7 @@ bool RenderExecutor::PrepareDrawRenderState(CommandBuffer& buffer, const DrawCal
+ 
+ static PreparedIndexBuffer PrepareIndexBuffer(CommandBuffer&               buffer,
+                                               const DrawIndexBufferSource& source) {
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Buffers);
+ 	PreparedIndexBuffer prepared;
+ 	if (source.size == 0) {
+ 		return prepared;
+@@ -1219,6 +1223,8 @@ void RenderExecutor::ExecutePreparedDraw(CommandBuffer& buffer, const DrawCallIn
+ 	}
+ 	// The barrier the game asked for since the last one, if any: a draw that writes memory in a run the game
+ 	// did not synchronize runs unordered with it, as on the console.
++	Common::CommandThreadProfile::Scope ctp_record(Common::CommandThreadProfile::Cause::Record);
++	Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::Draws);
+ 	buffer.PostGuestBarrier();
+ 	buffer.BeginRendering(rendering);
+ 	vk_buffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.pipeline);
+diff --git a/src/graphics/host_gpu/vma.cpp b/src/graphics/host_gpu/vma.cpp
+index 0a6e0496..cdd782be 100644
+--- a/src/graphics/host_gpu/vma.cpp
++++ b/src/graphics/host_gpu/vma.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/host_gpu/vulkanCommon.h"
++#include "common/commandThreadProfile.h"
+ 
+ #if defined(__clang__)
+ #pragma clang diagnostic push
+@@ -44,6 +45,16 @@ bool GraphicContext::CreateAllocator() {
+ 		info.flags |= VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT;
+ 	}
+ 
++	// GameFlex: Vulkan device memory - driver buffer objects - counted for the performance overlay.
++	static const VmaDeviceMemoryCallbacks memory_callbacks {
++	    .pfnAllocate = [](VmaAllocator, uint32_t, VkDeviceMemory, VkDeviceSize, void*) {
++		    Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::MemoryAllocations);
++	    },
++	    .pfnFree = [](VmaAllocator, uint32_t, VkDeviceMemory, VkDeviceSize, void*) {
++		    Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::MemoryReleases);
++	    },
++	    .pUserData = nullptr};
++	info.pDeviceMemoryCallbacks = &memory_callbacks;
+ 	const auto result = static_cast<vk::Result>(vmaCreateAllocator(&info, &allocator));
+ 	if (result != vk::Result::eSuccess) {
+ 		LOGF("vmaCreateAllocator failed: %s\n", vk::to_string(result).c_str());
+diff --git a/src/graphics/presentation/performanceOverlay.cpp b/src/graphics/presentation/performanceOverlay.cpp
+index 0c947493..d8755f9e 100644
+--- a/src/graphics/presentation/performanceOverlay.cpp
++++ b/src/graphics/presentation/performanceOverlay.cpp
+@@ -1,8 +1,10 @@
+ #include "graphics/presentation/performanceOverlay.h"
+ 
++#include "common/commandThreadProfile.h"
+ #include "common/debugCounters.h"
+ #include "common/emulatorConfig.h"
+ #include "common/hostStats.h"
++#include "graphics/guest_gpu/pm4.h"
+ #include "graphics/host_gpu/graphicContext.h"
+ #include "imgui.h"
+ #include "kernel/memory.h"
+@@ -136,6 +138,10 @@ struct Snapshot {
+ 	std::optional<uint64_t>             device_memory;
+ 	uint64_t                            device_budget = 0;
+ 	std::array<GraphicContext::HeapUsage, VK_MAX_MEMORY_HEAPS> heaps {};
++	// GameFlex: where the command thread spends each frame (CommandThreadProfile).
++	Common::CommandThreadProfile::Totals                       profile_totals;
++	uint64_t                                                   profile_flips = 0;
++	Common::CommandThreadProfile::Report                       profile;
+ 	uint32_t                                                   heap_count = 0;
+ 	std::array<float, FRAME_HISTORY>                           history {};
+ 	size_t                                                     history_count = 0;
+@@ -148,6 +154,8 @@ FrameWindow           g_frames;
+ std::atomic<uint64_t> g_generation {0};
+ std::atomic<bool>     g_details {false};
+ std::atomic<uint64_t> g_revision {0};
++// GameFlex: the guest's flips, counted for the command-thread report whether the panel is shown or not.
++std::atomic<uint64_t> g_profile_flips {0};
+ 
+ std::mutex                  g_host_mutex;
+ Common::HostStats           g_host_stats;
+@@ -163,7 +171,8 @@ void SetOverlayEnabled(bool enabled) {
+ 			g_frames = {};
+ 			g_generation.fetch_add(1, std::memory_order_release);
+ 		}
+-		Common::DebugCounters::SetEnabled(enabled);
++		// --perf-log keeps counting while the panel is hidden.
++		Common::DebugCounters::SetEnabled(enabled || Config::PerfLogSeconds() != 0);
+ 	}
+ 	g_sampler_wait.notify_all();
+ }
+@@ -376,9 +385,8 @@ void GpuActivityRows(const Snapshot& shown) {
+ 	const auto draws = Rate(shown, Counter::Draws);
+ 	Row("Draw calls", Fmt("%.0f/frame  %.0f/s", draws / std::max(shown.fps, 1.0), draws));
+ 	// Includes present pacing waits, so a high value alone is not a stall.
+-	Row("CPU waiting on GPU",
+-	    Fmt("%.0f ms/s  (%.0f waits/s)", Rate(shown, Counter::GpuWaitNs) / 1e6,
+-	        Rate(shown, Counter::GpuWaits)));
++	// The command thread's own waits (CommandThreadProfile); other threads wait by design (present, completions).
++	Row("Command thread waits", Fmt("%.0f ms/frame", shown.profile.wait_ms_per_frame));
+ 	Row("DCC/CMASK readbacks",
+ 	    Fmt("%.0f ms/s  (%.0f/s)", Rate(shown, Counter::ColorMetadataReadbackNs) / 1e6,
+ 	        Rate(shown, Counter::ColorMetadataReadbacks)));
+@@ -477,6 +485,16 @@ void Refresh(Snapshot& shown, const GraphicContext& graphics, Clock::time_point
+ 	if (seconds <= 0.0) {
+ 		shown.frame_count = 0;
+ 	}
++	{
++		const auto totals = Common::CommandThreadProfile::Read();
++		const auto flips  = g_profile_flips.load(std::memory_order_relaxed);
++		if (seconds > 0.0) {
++			shown.profile = Common::CommandThreadProfile::MakeReport(shown.profile_totals, totals,
++			                                                         flips - shown.profile_flips);
++		}
++		shown.profile_totals = totals;
++		shown.profile_flips  = flips;
++	}
+ 	shown.shader_compile_peak_ns  = Common::DebugCounters::Get(Peak::ShaderCompileNs);
+ 	shown.pipeline_create_peak_ns = Common::DebugCounters::Get(Peak::PipelineCreateNs);
+ 	shown.sample_time             = now;
+@@ -533,6 +551,97 @@ void DrawCompact(const Snapshot& shown) {
+ 	ImGui::EndTable();
+ }
+ 
++// GameFlex: the command thread's frame, cause by cause (exclusive times: they add up to the frame).
++void DrawCommandThread(const Snapshot& shown) {
++	using namespace Common::CommandThreadProfile;
++	const auto& report = shown.profile;
++	if (report.frames <= 0.0 || !BeginSection("Command thread (ms/frame)")) {
++		return;
++	}
++	std::array<size_t, CAUSE_COUNT> order {};
++	for (size_t i = 0; i < CAUSE_COUNT; i++) {
++		order[i] = i;
++	}
++	std::sort(order.begin(), order.end(),
++	          [&](size_t a, size_t b) { return report.ms_per_frame[a] > report.ms_per_frame[b]; });
++	double total = 0.0;
++	for (const double ms: report.ms_per_frame) {
++		total += ms;
++	}
++	for (size_t i = 0; i < 10 && report.ms_per_frame[order[i]] >= 0.05; i++) {
++		Row(Name(static_cast<Cause>(order[i])), Fmt("%.1f", report.ms_per_frame[order[i]]));
++	}
++	Row("Total", Fmt("%.1f", total));
++	if (report.gpu_buffers_per_frame > 0.0) {
++		Row("GPU busy / idle", Fmt("%.1f / %.1f ms", report.gpu_busy_ms_per_frame,
++		                           report.gpu_gap_ms_per_frame + report.gpu_queued_gap_ms_per_frame));
++	}
++	const auto& e = report.per_frame;
++	Row("Packets / draws", Fmt("%.0f / %.0f", e[static_cast<size_t>(Event::Packets)],
++	                           e[static_cast<size_t>(Event::Draws)] + e[static_cast<size_t>(Event::Dispatches)]));
++	Row("Barriers", Fmt("%.0f", e[static_cast<size_t>(Event::Barriers)]));
++	Row("Buffers / waits", Fmt("%.0f / %.0f", e[static_cast<size_t>(Event::Submits)],
++	                           e[static_cast<size_t>(Event::GpuWaits)]));
++	Row("Label polls", Fmt("%.0f", e[static_cast<size_t>(Event::LabelPolls)]));
++	ImGui::EndTable();
++}
++
++// GameFlex: the same report in the log, every --perf-log seconds, for benches.
++std::string ProfileLines(const Common::CommandThreadProfile::Report& report) {
++	using namespace Common::CommandThreadProfile;
++	std::string text;
++	char        line[256];
++	std::snprintf(line, sizeof(line), "[perf] %.2f frames/s over %.0f s; command thread, ms per frame:",
++	              report.seconds > 0.0 ? report.frames / report.seconds : 0.0, report.seconds);
++	text += line;
++	double total = 0.0;
++	for (size_t i = 0; i < CAUSE_COUNT; i++) {
++		total += report.ms_per_frame[i];
++		if (report.ms_per_frame[i] >= 0.005) {
++			std::snprintf(line, sizeof(line), " %s %.2f;", Name(static_cast<Cause>(i)), report.ms_per_frame[i]);
++			text += line;
++		}
++	}
++	std::snprintf(line, sizeof(line), " total %.2f\n[perf] GPU per frame: busy %.2f ms, idle %.2f ms waiting for the CPU and %.2f ms with work queued, %.1f buffers measured\n[perf] per frame:",
++	              total, report.gpu_busy_ms_per_frame, report.gpu_gap_ms_per_frame, report.gpu_queued_gap_ms_per_frame,
++	              report.gpu_buffers_per_frame);
++	text += line;
++	for (size_t i = 0; i < EVENT_COUNT; i++) {
++		std::snprintf(line, sizeof(line), " %s %.1f;", Name(static_cast<Event>(i)), report.per_frame[i]);
++		text += line;
++	}
++	text += "\n[perf] buffers closed per frame:";
++	for (size_t i = 0; i < CLOSE_COUNT; i++) {
++		std::snprintf(line, sizeof(line), " %s %.1f;", Name(static_cast<Close>(i)), report.closes_per_frame[i]);
++		text += line;
++	}
++	text += "\n[perf] packets per frame:";
++	for (const auto& [opcode, count]: report.packets_per_frame) {
++		if (count > 0.0) {
++			std::snprintf(line, sizeof(line), " %s %.0f;", Pm4::OpcodeName(opcode), count);
++			text += line;
++		}
++	}
++	text += "\n";
++	return text;
++}
++
++void ProfileLogThread(uint32_t period_seconds) {
++	auto totals = Common::CommandThreadProfile::Read();
++	auto flips  = g_profile_flips.load(std::memory_order_relaxed);
++	for (;;) {
++		std::this_thread::sleep_for(std::chrono::seconds(period_seconds));
++		const auto next_totals = Common::CommandThreadProfile::Read();
++		const auto next_flips  = g_profile_flips.load(std::memory_order_relaxed);
++		const auto text        = ProfileLines(
++            Common::CommandThreadProfile::MakeReport(totals, next_totals, next_flips - flips));
++		std::fputs(text.c_str(), stdout);
++		std::fflush(stdout);
++		totals = next_totals;
++		flips  = next_flips;
++	}
++}
++
+ void DrawFramesAndCpu(const Snapshot& shown, vk::Extent2D extent) {
+ 	const auto& host = shown.host;
+ 	if (BeginSection("Frames")) {
+@@ -746,6 +855,11 @@ void DrawMemoryAndIo(const Snapshot& shown) {
+ } // namespace
+ 
+ void PerformanceOverlayRecordFlip(uint32_t guest_width, uint32_t guest_height) noexcept {
++	g_profile_flips.fetch_add(1, std::memory_order_relaxed);
++	if (const auto period = Config::PerfLogSeconds(); period != 0) {
++		static std::once_flag log_once;
++		std::call_once(log_once, [period] { std::thread(ProfileLogThread, period).detach(); });
++	}
+ 	if (!Common::DebugCounters::Enabled()) {
+ 		return;
+ 	}
+@@ -869,6 +983,7 @@ float DrawPerformanceOverlay(const GraphicContext& graphics, vk::Extent2D extent
+ 				ImGui::TableNextRow();
+ 				ImGui::TableNextColumn();
+ 				DrawFramesAndCpu(shown, extent);
++				DrawCommandThread(shown);
+ 				ImGui::TableNextColumn();
+ 				DrawGpu(shown, graphics);
+ 				ImGui::TableNextColumn();
+diff --git a/src/graphics/presentation/videoOut.cpp b/src/graphics/presentation/videoOut.cpp
+index 8ebd4323..4094891f 100644
+--- a/src/graphics/presentation/videoOut.cpp
++++ b/src/graphics/presentation/videoOut.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/presentation/videoOut.h"
++#include "common/commandThreadProfile.h"
+ 
+ #include "common/abi.h"
+ #include "common/assert.h"
+@@ -1095,6 +1096,7 @@ void FlipQueue::Complete(uint64_t request_id) {
+ 
+ void FlipQueue::WaitForSubmitSlot(VideoOutConfig& cfg) {
+ 	Common::GameFlex::WaitNote gameflex_wait("video out: wait for room in the flip queue", &cfg);
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::WaitGpuFrame);
+ 	Common::LockGuard lock(m_mutex);
+ 	auto belongs_to_port = [&cfg](const auto& request) { return request.cfg == &cfg; };
+ 	while (std::count_if(m_requests.begin(), m_requests.end(), belongs_to_port) +
+@@ -1109,6 +1111,7 @@ void FlipQueue::WaitForSubmitSlot(VideoOutConfig& cfg) {
+ 
+ void FlipQueue::Wait(VideoOutConfig& cfg, int index) {
+ 	Common::GameFlex::WaitNote gameflex_wait("video out: wait for a buffer's flips", &cfg);
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::WaitGpuFrame);
+ 	Common::LockGuard lock(m_mutex);
+ 
+ 	auto has_request = [this, &cfg, index] {
+diff --git a/src/graphics/presentation/window/vulkanWindow.cpp b/src/graphics/presentation/window/vulkanWindow.cpp
+index 2d3c3223..afaa2811 100644
+--- a/src/graphics/presentation/window/vulkanWindow.cpp
++++ b/src/graphics/presentation/window/vulkanWindow.cpp
+@@ -588,7 +588,9 @@ static vk::Device VulkanCreateDevice(GraphicContext&          graphics,
+ 	    Config::OcclusionQueriesEnabled() && supported12.hostQueryReset;
+ 	graphics.occlusion_query_precise_enabled =
+ 	    graphics.occlusion_queries_enabled && supported2.features.occlusionQueryPrecise;
+-	features12.hostQueryReset             = graphics.occlusion_queries_enabled;
++	// Occlusion queries and the command thread's GPU timestamps (CommandThreadProfile) reset from the host.
++	graphics.host_query_reset_enabled     = supported12.hostQueryReset == VK_TRUE;
++	features12.hostQueryReset             = supported12.hostQueryReset;
+ 	device_features.occlusionQueryPrecise = graphics.occlusion_query_precise_enabled;
+ 	LOGF("Vulkan occlusion queries: %s, precise: %s\n",
+ 	     graphics.occlusion_queries_enabled ? "true" : "false",
+diff --git a/src/graphics/shader/recompiler/ShaderRecompiler.cpp b/src/graphics/shader/recompiler/ShaderRecompiler.cpp
+index 59f8cc27..4134ad77 100644
+--- a/src/graphics/shader/recompiler/ShaderRecompiler.cpp
++++ b/src/graphics/shader/recompiler/ShaderRecompiler.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/shader/recompiler/ShaderRecompiler.h"
++#include "common/commandThreadProfile.h"
+ #include "graphics/shader/recompiler/Tessellation.h"
+ 
+ #include "common/assert.h"
+@@ -597,6 +598,7 @@ const char* StageName(ShaderType stage) {
+ }
+ 
+ ShaderSource PrepareShaderSource(std::span<const uint32_t> code, const CompileOptions& options) {
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Compile);
+ 	EXIT_IF(code.empty());
+ 	ShaderSource source;
+ 	if (!options.back_code.empty()) {
+@@ -746,11 +748,13 @@ const Decoder::Program& RefreshShaderSource(ShaderSource& source, const IR::SrtR
+ }
+ 
+ TranslateResult TranslateProgram(std::span<const uint32_t> code, const CompileOptions& options) {
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Compile);
+ 	auto source = PrepareShaderSource(code, options);
+ 	return TranslateProgram(source.decoded, options);
+ }
+ 
+ TranslateResult TranslateProgram(const Decoder::Program& decoded, const CompileOptions& options) {
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Compile);
+ 	EXIT_IF(decoded.instructions.empty());
+ 	if (decoded.has_swap_pc) {
+ 		for (const auto& inst: decoded.instructions) {
+diff --git a/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp b/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp
+index 1c4abd82..5109053d 100644
+--- a/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp
++++ b/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp
+@@ -1,4 +1,5 @@
+ #include "graphics/shader/recompiler/ir/passes/ResourceMaterialization.h"
++#include "common/commandThreadProfile.h"
+ 
+ #include "common/assert.h"
+ #include "graphics/guest_gpu/gpu_format.h"
+@@ -1597,6 +1598,7 @@ ResourcePlan ExtractResourcePlan(const Program& program) {
+ 
+ bool MaterializeResources(const ResourcePlan& program, const SrtRuntime& runtime,
+                           ResourceSnapshot& snapshot, ResourceSpecialization& specialization) {
++	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::Resources);
+ 	for (auto& keys: program.selector_keys) keys.resolved = false;
+ 	if (!program.resource_tracking_complete) return false;
+ 	const auto uses_workgroup_count = [](const DescriptorSource& source) {
+diff --git a/src/main.cpp b/src/main.cpp
+index 6b161b97..bd6692b1 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -86,6 +86,8 @@ static void PrintUsage() {
+ 	::printf(
+ 	    "  --trophy-duration <seconds>          Trophy toast duration, 5-10. Default: 6.\n");
+ 	::printf("  --perf-overlay                       Show the performance panel (F2 or Cmd+P).\n");
++	::printf("  --perf-log <seconds>                 Print where the GPU command thread spends each frame\n"
++	         "                                       to the log every <seconds>. Default: 0 (never).\n");
+ 	::printf("  --playgo-hack                       Use the supplied PlayGo stub fallback.\n");
+ 	::printf("  --skip-notice-screen                 Skip startup logos and notices in supported games.\n");
+ #if KYTY_PLATFORM == KYTY_PLATFORM_WINDOWS
+@@ -382,6 +384,11 @@ static bool ParseArgs(int argc, char* argv[], RunOptions& options, bool& show_he
+ 				::printf("invalid gpu index: %s\n", value.c_str());
+ 				return false;
+ 			}
++		} else if (arg == "--perf-log") {
++			if (!ParseUint32(value, options.config.perf_log_seconds)) {
++				::printf("invalid perf log period: %s\n", value.c_str());
++				return false;
++			}
+ 		} else if (arg == "--vblank-frequency") {
+ 			if (!ParseUint32(value, options.config.vblank_frequency)) {
+ 				::printf("invalid vblank frequency: %s\n", value.c_str());

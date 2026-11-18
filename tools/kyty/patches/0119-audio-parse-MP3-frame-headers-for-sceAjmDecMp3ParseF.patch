@@ -1,0 +1,121 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: nmzik <Nmzik@mail.ru>
+Date: Thu, 12 Nov 2026 16:39:08 +0100
+Subject: [PATCH] audio: parse MP3 frame headers for sceAjmDecMp3ParseFrame
+
+(cherry picked from commit 83df9c252ce13173b176e926abe2ab39e83295be)
+---
+ src/libs/ajm.cpp           | 20 ++++++++++++++++++++
+ src/libs/audio.h           | 14 ++++++++++++++
+ src/libs/libAudio.cpp      |  1 +
+ tests/AjmResampleTests.cpp | 19 +++++++++++++++++++
+ 4 files changed, 54 insertions(+)
+
+diff --git a/src/libs/ajm.cpp b/src/libs/ajm.cpp
+index 5b3653d0..07eeca5b 100644
+--- a/src/libs/ajm.cpp
++++ b/src/libs/ajm.cpp
+@@ -168,6 +168,26 @@ int KYTY_SYSV_ABI AjmDecAt9ParseConfigData(const void*              config_data,
+ 	return OK;
+ }
+ 
++static_assert(sizeof(AjmDecMp3ParseFrameInfo) == 40);
++
++int KYTY_SYSV_ABI AjmDecMp3ParseFrame(const void* bitstream, size_t size, int parse_ofl,
++                                      AjmDecMp3ParseFrameInfo* frame_info) {
++	PRINT_NAME();
++	LOGF("\t size = %zu, parse_ofl = %d\n", size, parse_ofl);
++	if (frame_info == nullptr) {
++		return AJM_ERROR_INVALID_PARAMETER;
++	}
++
++	AjmMp3FrameHeader header {};
++	if (!AjmParseMp3Header(static_cast<const uint8_t*>(bitstream), size, &header)) {
++		return AJM_ERROR_INVALID_PARAMETER;
++	}
++
++	*frame_info = {header.frame_size, header.num_channels, header.samples_per_channel,
++	               header.bitrate, header.sample_rate};
++	return OK;
++}
++
+ struct AjmInstanceState {
+ 	uint32_t                    context = 0;
+ 	uint32_t                    codec   = 0;
+diff --git a/src/libs/audio.h b/src/libs/audio.h
+index fd4a2e63..5b3b0706 100644
+--- a/src/libs/audio.h
++++ b/src/libs/audio.h
+@@ -131,6 +131,18 @@ struct AjmDecAt9ConfigDataInfo {
+ 	uint32_t superframe_size;
+ };
+ 
++struct AjmDecMp3ParseFrameInfo {
++	size_t   frame_size;
++	uint32_t num_channels;
++	uint32_t samples_per_channel;
++	uint32_t bitrate;
++	uint32_t sample_rate;
++	uint32_t encoder_delay;
++	uint32_t num_frames;
++	uint32_t total_samples;
++	uint32_t ofl_type;
++};
++
+ int KYTY_SYSV_ABI AjmInitialize(int64_t reserved, uint32_t* context);
+ int KYTY_SYSV_ABI AjmModuleRegister(uint32_t context, uint32_t codec, int64_t reserved);
+ int KYTY_SYSV_ABI AjmModuleUnregister(uint32_t context, uint32_t codec);
+@@ -191,6 +203,8 @@ int KYTY_SYSV_ABI AjmBatchJobRunSplit(AjmBatchInfo* info, uint32_t instance, uin
+                                       void* sideband_output, size_t sideband_output_size);
+ int KYTY_SYSV_ABI AjmDecAt9ParseConfigData(const void*              config_data,
+                                            AjmDecAt9ConfigDataInfo* config_info);
++int KYTY_SYSV_ABI AjmDecMp3ParseFrame(const void* bitstream, size_t size, int parse_ofl,
++                                      AjmDecMp3ParseFrameInfo* frame_info);
+ const char* KYTY_SYSV_ABI AjmStrError(int error);
+ 
+ } // namespace Ajm
+diff --git a/src/libs/libAudio.cpp b/src/libs/libAudio.cpp
+index c2156a31..c762c714 100644
+--- a/src/libs/libAudio.cpp
++++ b/src/libs/libAudio.cpp
+@@ -578,6 +578,7 @@ LIB_DEFINE(InitAudio_1_Ajm) {
+ 	LIB_FUNC("jVCWcthifr8", Ajm::AjmBatchJobRun);
+ 	LIB_FUNC("Z9NVCesiP0Q", Ajm::AjmBatchJobRunSplit);
+ 	LIB_FUNC("1t3ixYNXyuc", Ajm::AjmDecAt9ParseConfigData);
++	LIB_FUNC("eDFeTyi+G3Y", Ajm::AjmDecMp3ParseFrame);
+ }
+ 
+ } // namespace LibAjm
+diff --git a/tests/AjmResampleTests.cpp b/tests/AjmResampleTests.cpp
+index ba991fc1..77911ed1 100644
+--- a/tests/AjmResampleTests.cpp
++++ b/tests/AjmResampleTests.cpp
+@@ -376,9 +376,28 @@ void MappingFamilies() {
+ 	f.Initialize(AJM_RESULT_INVALID_PARAMETER | AJM_RESULT_FATAL);
+ }
+ 
++void Mp3ParseFrame() {
++	// MPEG-1 Layer III, 128 kbps, 44.1 kHz, joint stereo, no CRC.
++	std::array<uint8_t, 4>  frame = {0xff, 0xfb, 0x90, 0x64};
++	AjmDecMp3ParseFrameInfo info;
++	std::memset(&info, 0xff, sizeof(info));
++	Check(AjmDecMp3ParseFrame(frame.data(), frame.size(), 1, &info) == OK, "parse MP3 frame");
++	Check(info.frame_size == 417 && info.num_channels == 2 && info.samples_per_channel == 1152 &&
++	          info.bitrate == 128000 && info.sample_rate == 44100 && info.encoder_delay == 0 &&
++	          info.num_frames == 0 && info.total_samples == 0 && info.ofl_type == 0,
++	      "MP3 frame info");
++	Check(AjmDecMp3ParseFrame(frame.data(), frame.size(), 0, nullptr) ==
++	          AJM_ERROR_INVALID_PARAMETER,
++	      "MP3 parse without output");
++	frame[1] = 0xfd;
++	Check(AjmDecMp3ParseFrame(frame.data(), frame.size(), 0, &info) == AJM_ERROR_INVALID_PARAMETER,
++	      "MP3 parse of a Layer II frame");
++}
++
+ } // namespace
+ 
+ int main(int argc, char** argv) {
++	Mp3ParseFrame();
+ 	const auto packet = Encode(1, 1);
+ 	SmallOutputs(packet);
+ 	SmallOutputs(packet, 312);

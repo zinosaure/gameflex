@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Wed, 11 Nov 2026 19:35:11 +0100
+Subject: [PATCH] gameflex 0002: touchpad mouse mode blocks only mouse buttons
+
+In touchpad mode, ApplyMouseInputBlockers blocked every pressed input
+whose id equals SDL_BUTTON_LEFT or SDL_BUTTON_RIGHT (1 or 3), whatever
+its type: axis 1 (left stick Y), axis 3 (right stick Y), button 1
+(circle) and button 3 (triangle) were swallowed. GameFlex puts the mouse
+in that mode for the touchpad of its on-screen pad. Only the mouse's own
+buttons are blocked now. Upstream defect, still on main on 2026-10-22.
+
+Details: tools/shadps4/README.md in the GameFlex repository, entry 0002.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/input/input_mouse.cpp | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/input/input_mouse.cpp b/src/input/input_mouse.cpp
+index f90c2048..4d046a16 100644
+--- a/src/input/input_mouse.cpp
++++ b/src/input/input_mouse.cpp
+@@ -112,8 +112,12 @@ void ApplyMouseInputBlockers() {
+     switch (mouse_mode) {
+     case MouseMode::Touchpad:
+         for (auto& k : pressed_keys) {
+-            if (k.first.input.sdl_id == SDL_BUTTON_LEFT ||
+-                k.first.input.sdl_id == SDL_BUTTON_RIGHT) {
++            // Only the mouse's own buttons: a gamepad input with the same id
++            // (axis 1 = left stick Y, axis 3 = right stick Y, button 1 =
++            // circle, button 3 = triangle) must not be swallowed.
++            if (k.first.input.type == InputType::KeyboardMouse &&
++                (k.first.input.sdl_id == SDL_BUTTON_LEFT ||
++                 k.first.input.sdl_id == SDL_BUTTON_RIGHT)) {
+                 k.second = true;
+             }
+         }

@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:26 +0000
+Subject: [PATCH] gameflex 0048: vp9 frames stay nv12
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+les images VP9 restent en NV12
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0048.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/libs/videoDec2Decoder.cpp | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/libs/videoDec2Decoder.cpp b/src/libs/videoDec2Decoder.cpp
+index 2cd336f1..5ca94cf5 100644
+--- a/src/libs/videoDec2Decoder.cpp
++++ b/src/libs/videoDec2Decoder.cpp
+@@ -387,8 +387,9 @@ private:
+ };
+ 
+ bool HighBitDepthProfile(uint32_t codec_type, uint32_t profile) {
+-	return (codec_type == CODEC_TYPE_VP9 && profile >= 2u) ||
+-	       (codec_type == CODEC_TYPE_HEVC && profile == 2u);
++	// Not VP9: a game copies its frames by what MakeVp9PictureInfo says, and that is 8-bit NV12.
++	// P010 with those words turned Final Fantasy VII Remake's opening video pink and green.
++	return codec_type == CODEC_TYPE_HEVC && profile == 2u;
+ }
+ 
+ bool IsCodecSupported(uint32_t codec_type) {

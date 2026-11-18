@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: nmzik <Nmzik@mail.ru>
+Date: Sat, 7 Nov 2026 19:51:47 +0100
+Subject: [PATCH] shader: accept SDWA byte sources for V_CVT_F16_I16
+
+(cherry picked from commit 8ac946cebf4e8430ede815b61318a99573fcf2e2)
+---
+ .../frontend/decode/VectorAluOps.cpp          |  4 +--
+ tests/ShaderRecompilerComputeTests.cpp        | 29 +++++++++++++++++++
+ 2 files changed, 31 insertions(+), 2 deletions(-)
+
+diff --git a/src/graphics/shader/recompiler/frontend/decode/VectorAluOps.cpp b/src/graphics/shader/recompiler/frontend/decode/VectorAluOps.cpp
+index 44bdecbd..150cc215 100644
+--- a/src/graphics/shader/recompiler/frontend/decode/VectorAluOps.cpp
++++ b/src/graphics/shader/recompiler/frontend/decode/VectorAluOps.cpp
+@@ -559,8 +559,8 @@ constexpr Vop1SdwaRule VOP1_SDWA_RULES[] = {
+      SdwaSelBytes() | SdwaSelWords() | SdwaSelFull(), false},
+     {Opcode::V_CVT_U16_F16, SdwaSelWords() | SdwaSelFull(), SdwaSelWords(),
+      SdwaSelWords() | SdwaSelFull(), true},
+-    {Opcode::V_CVT_F16_I16, SdwaSelWords() | SdwaSelFull(), SdwaSelWords(),
+-     SdwaSelWords() | SdwaSelFull(), false},
++    {Opcode::V_CVT_F16_I16, SdwaSelBytes() | SdwaSelWords() | SdwaSelFull(), SdwaSelWords(),
++     SdwaSelBytes() | SdwaSelWords() | SdwaSelFull(), false},
+     {Opcode::V_CVT_I16_F16, SdwaSelWords() | SdwaSelFull(), SdwaSelWords(),
+      SdwaSelWords() | SdwaSelFull(), true},
+     {Opcode::V_RCP_F16, SdwaSelWords() | SdwaSelFull(), SdwaSelWords(),
+diff --git a/tests/ShaderRecompilerComputeTests.cpp b/tests/ShaderRecompilerComputeTests.cpp
+index 6d0ba949..f8faaed7 100644
+--- a/tests/ShaderRecompilerComputeTests.cpp
++++ b/tests/ShaderRecompilerComputeTests.cpp
+@@ -29366,6 +29366,34 @@ TestCase VectorCvtF16U16ByteSource() {
+   return test;
+ }
+ 
++TestCase VectorCvtF16I16ByteSource() {
++  using O = ShaderOpcode;
++
++  std::vector<u32> code;
++  AppendVMovLiteral(&code, 8, 0xa5a55a5au);
++  u32 index = 0;
++  for (u32 sext : {0u, 1u}) {
++    for (u32 input : {0x123456ffu, 0x12345680u, 0x1234567fu}) {
++      AppendSMovLiteral(&code, 106, input);
++      // Convert byte0 of vcc_lo, zero- then sign-extended, to FP16 word0 while
++      // preserving word1 of v8.
++      code.insert(code.end(), {0x7e10a2f9u, 0x0080146au | (sext << 19u)});
++      AppendStoreVgpr(&code, 8, index++);
++    }
++  }
++  AppendEnd(&code);
++
++  TestCase test;
++  test.name = "VectorCvtF16I16ByteSource";
++  test.code = std::move(code);
++  test.expected = {0xa5a55bf8u, 0xa5a55800u, 0xa5a557f0u,
++                   0xa5a5bc00u, 0xa5a5d800u, 0xa5a557f0u};
++  test.opcodes = {O::V_MOV_B32, O::S_MOV_B32, O::V_CVT_F16_I16,
++                  O::BUFFER_STORE_DWORD, O::S_ENDPGM};
++  test.required_spirv = {"OpConvertSToF"};
++  return test;
++}
++
+ TestCase VectorCvtU16F16Sdwa() {
+   using O = ShaderOpcode;
+ 
+@@ -47944,6 +47972,7 @@ std::vector<TestCase> MakeCases() {
+   AddCase(PackedMinMaxF16NanAndSignedZeroEdges);
+   AddCase(VectorMinMaxF16Ops);
+   AddCase(VectorCvtF16U16ByteSource);
++  AddCase(VectorCvtF16I16ByteSource);
+   AddCase(VectorCvtU16F16Sdwa);
+   AddCase(NativeAndSdwa16BitDestinationWrites);
+   AddCase(VectorMinMaxMed3F16Ops);

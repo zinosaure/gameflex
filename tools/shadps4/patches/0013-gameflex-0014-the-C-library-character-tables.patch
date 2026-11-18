@@ -1,0 +1,109 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Wed, 18 Nov 2026 00:32:05 +0100
+Subject: [PATCH] gameflex 0014: the C library character tables
+
+_Getpctype, _Getptolower and _Getptoupper were stubs returning null. Since upstream #5425 emulates
+sceLibcMspaceCreate, the NP toolkit of Final Fantasy VII Remake and Kingdom Hearts III no longer
+gives up at its init: it starts its thread, classifies a character through _Getpctype and faulted
+reading address 2 * c (0xc4 for 'b'). Each getter now returns entry 0 of a Dinkumware table of 257
+shorts whose entry -1 is EOF.
+
+Details: tools/shadps4/README.md in the GameFlex repository, entry 0014.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../libc_internal/libc_internal_str.cpp       | 66 +++++++++++++++++++
+ 1 file changed, 66 insertions(+)
+
+diff --git a/src/core/libraries/libc_internal/libc_internal_str.cpp b/src/core/libraries/libc_internal/libc_internal_str.cpp
+index e5c2e64b..9cd92264 100644
+--- a/src/core/libraries/libc_internal/libc_internal_str.cpp
++++ b/src/core/libraries/libc_internal/libc_internal_str.cpp
+@@ -1,6 +1,8 @@
+ // SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
++#include <array>
++
+ #include "common/assert.h"
+ #include "common/logging/log.h"
+ #include "core/libraries/error_codes.h"
+@@ -60,6 +62,67 @@ const char* PS4_SYSV_ABI internal_strchr(const char* str, int c) {
+     return std::strchr(str, c);
+ }
+ 
++// GameFlex: the character tables of the console's C library (Dinkumware). Each getter returns a
++// pointer to entry 0 of a table of 257 shorts whose entry -1 is EOF, indexed by the character
++// itself. They were stubs that returned null: once sceLibcMspaceCreate is emulated (#5425), the NP
++// toolkit of Final Fantasy VII Remake and Kingdom Hearts III starts its thread, classifies a
++// character, and faulted reading address 2 * c.
++namespace {
++constexpr s16 CtypeXdigit = 0x01, CtypeUpper = 0x02, CtypeSpace = 0x04, CtypePunct = 0x08,
++              CtypeLower = 0x10, CtypeDigit = 0x20, CtypeControlSpace = 0x40, CtypeControl = 0x80,
++              CtypeBlank = 0x400;
++
++struct CharacterTables {
++    std::array<s16, 257> ctype{};
++    std::array<s16, 257> lower{};
++    std::array<s16, 257> upper{};
++
++    CharacterTables() {
++        ctype[0] = 0;
++        lower[0] = upper[0] = -1;
++        for (int c = 0; c < 256; c++) {
++            s16 flags = 0;
++            if (c < 0x20 || c == 0x7f) {
++                flags = (c >= '\t' && c <= '\r') ? CtypeControlSpace : CtypeControl;
++                if (c == '\t') {
++                    flags |= CtypeBlank;
++                }
++            } else if (c == ' ') {
++                flags = CtypeSpace | CtypeBlank;
++            } else if (c >= '0' && c <= '9') {
++                flags = CtypeDigit | CtypeXdigit;
++            } else if (c >= 'A' && c <= 'Z') {
++                flags = CtypeUpper | (c <= 'F' ? CtypeXdigit : 0);
++            } else if (c >= 'a' && c <= 'z') {
++                flags = CtypeLower | (c <= 'f' ? CtypeXdigit : 0);
++            } else if (c < 0x7f) {
++                flags = CtypePunct;
++            }
++            ctype[c + 1] = flags;
++            lower[c + 1] = static_cast<s16>((c >= 'A' && c <= 'Z') ? c + 0x20 : c);
++            upper[c + 1] = static_cast<s16>((c >= 'a' && c <= 'z') ? c - 0x20 : c);
++        }
++    }
++};
++
++const CharacterTables& Tables() {
++    static const CharacterTables tables;
++    return tables;
++}
++} // namespace
++
++const s16* PS4_SYSV_ABI internal__Getpctype() {
++    return Tables().ctype.data() + 1;
++}
++
++const s16* PS4_SYSV_ABI internal__Getptolower() {
++    return Tables().lower.data() + 1;
++}
++
++const s16* PS4_SYSV_ABI internal__Getptoupper() {
++    return Tables().upper.data() + 1;
++}
++
+ void RegisterlibSceLibcInternalStr(Core::Loader::SymbolsResolver* sym) {
+     LIB_FUNCTION("5Xa2ACNECdo", "libSceLibcInternal", 1, "libSceLibcInternal", internal_strcpy_s);
+     LIB_FUNCTION("K+gcnFFJKVc", "libSceLibcInternal", 1, "libSceLibcInternal", internal_strcat_s);
+@@ -70,6 +133,9 @@ void RegisterlibSceLibcInternalStr(Core::Loader::SymbolsResolver* sym) {
+     LIB_FUNCTION("YNzNkJzYqEg", "libSceLibcInternal", 1, "libSceLibcInternal", internal_strncpy_s);
+     LIB_FUNCTION("Ls4tzzhimqQ", "libSceLibcInternal", 1, "libSceLibcInternal", internal_strcat);
+     LIB_FUNCTION("ob5xAW4ln-0", "libSceLibcInternal", 1, "libSceLibcInternal", internal_strchr);
++    LIB_FUNCTION("sUP1hBaouOw", "libSceLibcInternal", 1, "libSceLibcInternal", internal__Getpctype);
++    LIB_FUNCTION("1uJgoVq3bQU", "libSceLibcInternal", 1, "libSceLibcInternal", internal__Getptolower);
++    LIB_FUNCTION("rcQCUr0EaRU", "libSceLibcInternal", 1, "libSceLibcInternal", internal__Getptoupper);
+ }
+ 
+ } // namespace Libraries::LibcInternal

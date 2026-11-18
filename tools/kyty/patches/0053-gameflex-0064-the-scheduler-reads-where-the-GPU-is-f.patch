@@ -1,0 +1,203 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 22:19:20 +0000
+Subject: [PATCH] gameflex 0064: the scheduler reads where the GPU is from
+ memory
+
+To decide when to submit, the scheduler asked the driver where the GPU was
+(vkGetSemaphoreCounterValue, a system call) every 64 commands: 3 % of the
+command thread in Astro Bot, and more wherever a decision wanted a fresh
+answer.
+
+Each command buffer now ends with VK_AMD_buffer_marker writing its own tick
+into a host-visible word once all its work is done. MasterSemaphore::Progress
+reads that word, so the scheduler knows where the GPU is at no cost; without
+the extension it asks the driver as before. Execution is all the word says:
+the writes of that work may still sit in the GPU's caches, so memory is read
+and resources are reused after the semaphore the kernel signals once the
+caches are written back (KnownGpuTick), unchanged.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ .../host_gpu/renderer/commandScheduler.cpp    | 36 ++++++++++++++-----
+ .../host_gpu/renderer/commandScheduler.h      |  6 ++++
+ .../host_gpu/renderer/masterSemaphore.cpp     | 18 ++++++++++
+ .../host_gpu/renderer/masterSemaphore.h       |  8 +++++
+ 4 files changed, 59 insertions(+), 9 deletions(-)
+
+diff --git a/src/graphics/host_gpu/renderer/commandScheduler.cpp b/src/graphics/host_gpu/renderer/commandScheduler.cpp
+index c8209ec2..8a127589 100644
+--- a/src/graphics/host_gpu/renderer/commandScheduler.cpp
++++ b/src/graphics/host_gpu/renderer/commandScheduler.cpp
+@@ -4,8 +4,10 @@
+ #include "common/assert.h"
+ #include "common/debugCounters.h"
+ #include "graphics/host_gpu/graphicContext.h"
++#include "graphics/host_gpu/renderer/cache/streamBuffer.h"
+ 
+ #include <algorithm>
++#include <cstring>
+ #include <optional>
+ 
+ namespace Libs::Graphics {
+@@ -78,7 +80,18 @@ bool CommandScheduler::InDeferredOperation() noexcept {
+ CommandScheduler::CommandScheduler(RenderContext& context, GraphicContext& graphics)
+     : m_master(graphics), m_context(context), m_graphics(graphics),
+       m_command_pool(graphics, m_master), m_command(*this),
+-      m_priority_thread([this](std::stop_token stop) { PriorityOperationsThread(stop); }) {}
++      m_priority_thread([this](std::stop_token stop) { PriorityOperationsThread(stop); }) {
++	if (graphics.buffer_marker_enabled) {
++		m_progress = std::make_unique<Buffer>(graphics, *this, MemoryUsage::Download, 0,
++		                                      vk::BufferUsageFlagBits::eTransferDst, 64);
++		if (m_progress->IsCoherent() && !m_progress->Mapped().empty()) {
++			std::memset(m_progress->Mapped().data(), 0, m_progress->Mapped().size());
++			m_master.SetProgressWord(reinterpret_cast<const uint32_t*>(m_progress->Mapped().data()));
++		} else {
++			m_progress.reset();
++		}
++	}
++}
+ 
+ CommandScheduler::~CommandScheduler() {
+ 	Shutdown();
+@@ -159,11 +172,10 @@ void CommandScheduler::Recorded() {
+ 	if (m_commands_recorded % kFeedCommands != 0) {
+ 		return;
+ 	}
+-	// Buffers submitted and not finished, as the GPU reports now. One in flight and nothing behind it: this one
+-	// goes now, so the GPU finds the next job in its queue when it ends the current one, instead of waiting for
+-	// the kernel to wake up and hand it over (0.6 ms a time, measured).
+-	m_master.Refresh();
+-	const uint64_t queued = CurrentTick() - 1 - m_master.KnownGpuTick();
++	// Buffers submitted and not finished, as the GPU says now. One in flight and nothing behind it: this one goes
++	// now, so the GPU finds the next job in its queue when it ends the current one, instead of waiting for the
++	// kernel to wake up and hand it over (0.6 ms a time, measured).
++	const uint64_t queued = CurrentTick() - 1 - m_master.Progress();
+ 	if (queued <= 1 || m_commands_recorded >= kFullCommands) {
+ 		Flush();
+ 	}
+@@ -173,7 +185,7 @@ bool CommandScheduler::FlushAtBoundary() {
+ 	if (!Active() || m_command.IsInvalid() || !m_buffer_used) {
+ 		return false;
+ 	}
+-	const uint64_t queued = CurrentTick() - 1 - m_master.KnownGpuTick();
++	const uint64_t queued = CurrentTick() - 1 - m_master.Progress();
+ 	if (queued >= 2 && m_commands_recorded < kFullCommands) {
+ 		return false;
+ 	}
+@@ -365,16 +377,22 @@ CommandBuffer& CommandScheduler::BeginCommand() {
+ uint64_t CommandScheduler::Submit(SubmitInfo submit) {
+ 	EXIT_IF(m_command.IsInvalid());
+ 
++	// This thread alone hands out ticks and submits: the order of the two is the same.
++	const auto tick = m_master.NextTick();
++	if (m_progress != nullptr) {
++		// Where the GPU is, for the CPU to read: this buffer's tick, written once all its work is done.
++		m_command.EndRendering();
++		m_command.Handle().writeBufferMarker2AMD(vk::PipelineStageFlagBits2::eAllCommands,
++		                                          m_progress->Handle(), 0, static_cast<uint32_t>(tick));
++	}
+ 	m_command.End();
+ 	const auto buffer   = m_command.m_buffer;
+ 	auto&      graphics = m_graphics;
+ 	EXIT_IF(graphics.queue == nullptr);
+ 
+ 	vk::Result result;
+-	uint64_t   tick;
+ 	{
+ 		Common::LockGuard lock(graphics.queue_mutex);
+-		tick = m_master.NextTick();
+ 		submit.AddSignal(m_master.Handle(), tick);
+ 
+ 		vk::TimelineSemaphoreSubmitInfo timeline_info {};
+diff --git a/src/graphics/host_gpu/renderer/commandScheduler.h b/src/graphics/host_gpu/renderer/commandScheduler.h
+index d9270c79..57d11c84 100644
+--- a/src/graphics/host_gpu/renderer/commandScheduler.h
++++ b/src/graphics/host_gpu/renderer/commandScheduler.h
+@@ -8,6 +8,7 @@
+ #include "graphics/host_gpu/renderer/render.h"
+ 
+ #include <condition_variable>
++#include <memory>
+ #include <mutex>
+ #include <queue>
+ #include <thread>
+@@ -15,6 +16,8 @@
+ 
+ namespace Libs::Graphics {
+ 
++class Buffer;
++
+ class CommandScheduler {
+ public:
+ 	CommandScheduler(RenderContext& context, GraphicContext& graphics);
+@@ -107,6 +110,9 @@ private:
+ 	// the buffer to whoever records: a label, a transfer, a draw).
+ 	uint32_t m_commands_recorded = 0;
+ 	bool     m_buffer_used       = false;
++	// The word the GPU writes at the end of each command buffer with the buffer's tick (VK_AMD_buffer_marker):
++	// where the GPU is, read from memory (MasterSemaphore::Progress).
++	std::unique_ptr<Buffer> m_progress;
+ 	std::condition_variable      m_operation_available;
+ 	std::jthread                 m_priority_thread;
+ 	uint64_t                     m_priority_active_tick = 0; // 0 while none runs
+diff --git a/src/graphics/host_gpu/renderer/masterSemaphore.cpp b/src/graphics/host_gpu/renderer/masterSemaphore.cpp
+index fc7e8783..eacefdf4 100644
+--- a/src/graphics/host_gpu/renderer/masterSemaphore.cpp
++++ b/src/graphics/host_gpu/renderer/masterSemaphore.cpp
+@@ -4,6 +4,8 @@
+ #include "common/debugCounters.h"
+ #include "graphics/host_gpu/graphicContext.h"
+ 
++#include <algorithm>
++
+ namespace Libs::Graphics {
+ 
+ MasterSemaphore::MasterSemaphore(GraphicContext& graphics): m_graphics(graphics) {
+@@ -34,6 +36,22 @@ void MasterSemaphore::Refresh() {
+ 	}
+ }
+ 
++uint64_t MasterSemaphore::Progress() {
++	if (m_progress_word == nullptr) {
++		Refresh();
++		return KnownGpuTick();
++	}
++	const uint64_t low     = __atomic_load_n(m_progress_word, __ATOMIC_ACQUIRE);
++	const uint64_t current = CurrentTick();
++	// The word holds the low half of a tick already handed out, below current: the high half is current's,
++	// or the one before when the low half wrapped since.
++	uint64_t progress = (current & ~uint64_t {0xffffffffu}) | low;
++	if (progress >= current) {
++		progress -= uint64_t {1} << 32u;
++	}
++	return std::max(KnownGpuTick(), progress);
++}
++
+ void MasterSemaphore::Wait(uint64_t tick) {
+ 	if (IsFree(tick)) {
+ 		return;
+diff --git a/src/graphics/host_gpu/renderer/masterSemaphore.h b/src/graphics/host_gpu/renderer/masterSemaphore.h
+index fc209a4d..41baa5f6 100644
+--- a/src/graphics/host_gpu/renderer/masterSemaphore.h
++++ b/src/graphics/host_gpu/renderer/masterSemaphore.h
+@@ -31,11 +31,19 @@ public:
+ 	void Refresh();
+ 	void Wait(uint64_t tick);
+ 
++	// Where the GPU is, as the word it writes at the end of each command buffer says (SetProgressWord), or as
++	// the driver says when it writes none. Execution only: the writes of that work may still sit in the GPU's
++	// caches, so memory is read and resources are reused after KnownGpuTick, which the kernel signals once the
++	// caches are written back. For the decisions of the scheduler, which asking the driver cost a system call.
++	void                   SetProgressWord(const uint32_t* word) noexcept { m_progress_word = word; }
++	[[nodiscard]] uint64_t Progress();
++
+ private:
+ 	GraphicContext&       m_graphics;
+ 	vk::Semaphore         m_semaphore = nullptr;
+ 	std::atomic<uint64_t> m_gpu_tick {0};
+ 	std::atomic<uint64_t> m_current_tick {1};
++	const uint32_t*       m_progress_word = nullptr; // the low word of the last tick the GPU finished
+ };
+ 
+ } // namespace Libs::Graphics

@@ -1,0 +1,164 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:25 +0000
+Subject: [PATCH] gameflex 0018: bound color targets and split mesh draws
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0018.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/graphics/host_gpu/renderer/debug.cpp      | 24 +++++++++++++++----
+ src/graphics/host_gpu/renderer/renderDraw.cpp | 18 +++++++++++---
+ .../host_gpu/shaders/gpu_mesh_indirect.task   |  5 ++--
+ .../frontend/translate/Translate.cpp          |  3 ++-
+ src/graphics/shader/recompiler/ir/ShaderIR.h  |  7 +++++-
+ 5 files changed, 45 insertions(+), 12 deletions(-)
+
+diff --git a/src/graphics/host_gpu/renderer/debug.cpp b/src/graphics/host_gpu/renderer/debug.cpp
+index c71a6a08..d9ad3763 100644
+--- a/src/graphics/host_gpu/renderer/debug.cpp
++++ b/src/graphics/host_gpu/renderer/debug.cpp
+@@ -14,11 +14,20 @@
+ 
+ namespace Libs::Graphics {
+ 
++// A slot is bound when the target mask enables it and it has an address and a format: a
++// COLOR_INVALID target is off, the color block drops what is exported to it (see
++// PipelineCache::GetGraphicsPrograms).
++static bool RenderTargetSlotBound(const HW::Context& hw, uint32_t mask, uint32_t slot) {
++	const auto& rt = hw.GetRenderTarget(slot);
++	return render_target_mask_slot(mask, slot) != 0 && rt.base.addr != 0 &&
++	       rt.info.format != Prospero::ChannelLayout::kInvalid;
++}
++
+ static uint32_t render_target_first_bound_slot(const CommandBuffer& buffer) {
+ 	const auto& hw   = buffer.GetRegisters();
+ 	const auto  mask = hw.GetRenderTargetMask();
+ 	for (uint32_t i = 0; i < 8; i++) {
+-		if (render_target_mask_slot(mask, i) != 0 && hw.GetRenderTarget(i).base.addr != 0) {
++		if (RenderTargetSlotBound(hw, mask, i)) {
+ 			return i;
+ 		}
+ 	}
+@@ -150,9 +159,9 @@ static bool RenderIsColorDimension(uint32_t dimension) {
+ static void RtCheck(const HW::RenderTarget& rt) {
+ 	if (rt.base.addr != 0) {
+ 		EXIT_NOT_IMPLEMENTED(rt.view.base_array_slice_index > rt.view.last_array_slice_index);
+-		// Native MSAA stores expanded samples, independent of FMASK metadata compression.
+-		EXIT_NOT_IMPLEMENTED(rt.info.fmask_compression_enable && rt.attrib.num_samples == 0 &&
+-		                     rt.attrib.num_fragments == 0);
++		// A single-sample target has no FMASK: the flag means nothing (Final Fantasy VII Rebirth sets
++		// it), and Kyty draws without FMASK anyway. Native MSAA stores expanded samples, independent
++		// of FMASK metadata compression.
+ 		if (rt.attrib.force_dest_alpha_to_one) {
+ 			static bool logged = false;
+ 			if (!logged) {
+@@ -680,7 +689,12 @@ void hw_check(const CommandBuffer& buffer) {
+ 	const auto& aa      = hw.GetAaSampleControl();
+ 	const auto& ac      = hw.GetAaConfig();
+ 
+-	RtCheck(rt);
++	// Only a target the draw writes is checked. Without one (a depth-only pass), slot 0 keeps
++	// whatever an earlier pass left there, and Final Fantasy VII Rebirth binds a COLOR_INVALID
++	// target at 0x1000 whose other fields mean nothing (tile mode 0x1c): Kyty stopped on them.
++	if (RenderTargetSlotBound(hw, hw.GetRenderTargetMask(), rt_slot)) {
++		RtCheck(rt);
++	}
+ 	VpCheck(vp, smc);
+ 	ClipCheck(c);
+ 	McCheck(mc);
+diff --git a/src/graphics/host_gpu/renderer/renderDraw.cpp b/src/graphics/host_gpu/renderer/renderDraw.cpp
+index 1d09754f..09088b47 100644
+--- a/src/graphics/host_gpu/renderer/renderDraw.cpp
++++ b/src/graphics/host_gpu/renderer/renderDraw.cpp
+@@ -1080,9 +1080,12 @@ void RenderExecutor::ExecutePreparedDraw(CommandBuffer& buffer, const DrawCallIn
+ 			return;
+ 		}
+ 		mesh_groups = (primitives - 1u) / mesh.primitives_per_group + 1u;
+-		if (mesh_groups > limits.maxMeshWorkGroupCount[0] ||
++		// More groups than one launch holds go in several launches, below.
++		const auto launch = std::min(mesh_groups,
++		                             ShaderRecompiler::IR::PushData::MeshGroupsPerLaunch);
++		if (launch > limits.maxMeshWorkGroupCount[0] ||
+ 		    draw.instance_count > limits.maxMeshWorkGroupCount[1] ||
+-		    static_cast<uint64_t>(mesh_groups) * draw.instance_count >
++		    static_cast<uint64_t>(launch) * draw.instance_count >
+ 		        limits.maxMeshWorkGroupTotalCount) {
+ 			EXIT("mesh draw exceeds host workgroup limits: %ux%u\n", mesh_groups,
+ 			     draw.instance_count);
+@@ -1211,7 +1214,16 @@ void RenderExecutor::ExecutePreparedDraw(CommandBuffer& buffer, const DrawCallIn
+ 	if (mesh_task) {
+ 		vk_buffer.drawMeshTasksEXT(emit.indirect.count, 1, 1);
+ 	} else if (mesh_active) {
+-		vk_buffer.drawMeshTasksEXT(mesh_groups, draw.instance_count, 1);
++		// Each launch says its first group; the first one's is the 0 pushed with the draw.
++		for (uint32_t first = 0; first < mesh_groups; first += PushData::MeshGroupsPerLaunch) {
++			if (first != 0) {
++				vk_buffer.pushConstants(pipeline.pipeline_layout, pipeline.push_stages,
++				                        PushData::MeshFirstGroupDword * sizeof(uint32_t),
++				                        sizeof(uint32_t), &first);
++			}
++			vk_buffer.drawMeshTasksEXT(std::min(mesh_groups - first, PushData::MeshGroupsPerLaunch),
++			                           draw.instance_count, 1);
++		}
+ 	} else if (args_buffer.first == nullptr) {
+ 		EmitDrawPrimitives(ucfg, vk_buffer, draw, emit);
+ 	} else if (draw.indexed) {
+diff --git a/src/graphics/host_gpu/shaders/gpu_mesh_indirect.task b/src/graphics/host_gpu/shaders/gpu_mesh_indirect.task
+index 9d31406f..ba82ccfa 100644
+--- a/src/graphics/host_gpu/shaders/gpu_mesh_indirect.task
++++ b/src/graphics/host_gpu/shaders/gpu_mesh_indirect.task
+@@ -28,7 +28,7 @@ layout(push_constant) uniform Push {
+ 	Params params;
+ };
+ 
+-taskPayloadSharedEXT uint payload[6];
++taskPayloadSharedEXT uint payload[7];
+ 
+ void main() {
+ 	Record   record        = Record(params.records + uint64_t(gl_WorkGroupID.x) * params.stride);
+@@ -49,7 +49,8 @@ void main() {
+ 	payload[2] = params.index_size;
+ 	payload[3] = uint(index_address);
+ 	payload[4] = uint(index_address >> 32);
+-	payload[5] = record.dwords[base + 1];
++	payload[5] = 0; // MeshFirstGroupDword: a record is one launch.
++	payload[6] = record.dwords[base + 1];
+ 	uint groups =
+ 	    count < params.primitive_size ? 0 : (count - params.primitive_size) / params.group_step + 1;
+ 	// Past the host launch limits, where direct draws exit, the record draws nothing.
+diff --git a/src/graphics/shader/recompiler/frontend/translate/Translate.cpp b/src/graphics/shader/recompiler/frontend/translate/Translate.cpp
+index 8d357dcb..664d6083 100644
+--- a/src/graphics/shader/recompiler/frontend/translate/Translate.cpp
++++ b/src/graphics/shader/recompiler/frontend/translate/Translate.cpp
+@@ -1209,7 +1209,8 @@ IR::Program TranslateProgram(const Decoder::Program& decoded, const CFG::Graph&
+ 				return entry_ir.ISub(lhs, minimum(lhs, rhs));
+ 			};
+ 			const auto local = builtin(IR::StageInputKind::LocalInvocationIndex);
+-			const auto group = builtin(IR::StageInputKind::WorkgroupId, 0);
++			const auto group = entry_ir.IAdd(builtin(IR::StageInputKind::WorkgroupId, 0),
++			                                 draw(IR::PushData::MeshFirstGroupDword));
+ 			const auto primitive_chunk = mesh.fast_launch ? group :
+ 			    entry_ir.IMul(group, u32(mesh.primitives_per_group));
+ 			const auto step  = u32(mesh.InputPrimitiveStep());
+diff --git a/src/graphics/shader/recompiler/ir/ShaderIR.h b/src/graphics/shader/recompiler/ir/ShaderIR.h
+index 6551c680..5f674497 100644
+--- a/src/graphics/shader/recompiler/ir/ShaderIR.h
++++ b/src/graphics/shader/recompiler/ir/ShaderIR.h
+@@ -363,7 +363,12 @@ static_assert(static_cast<uint32_t>(DescriptorBindingKind::Count) == 58u);
+ 
+ struct PushData {
+ 	static constexpr uint32_t DwordCount = 32;
+-	static constexpr uint32_t MeshDrawDwordCount = 5;
++	// Mesh draw parameters: vertex count, base vertex, index size, index address (two dwords),
++	// and the first group of the launch. A draw of more groups than one launch holds (the
++	// minimum Vulkan guarantees on every axis) is split; Final Fantasy VII Rebirth draws 135747.
++	static constexpr uint32_t MeshDrawDwordCount   = 6;
++	static constexpr uint32_t MeshFirstGroupDword  = 5;
++	static constexpr uint32_t MeshGroupsPerLaunch  = 65535;
+ 	// Indirect mesh draws read the draw parameters, then the record's first instance, from the
+ 	// task payload (gpu_mesh_indirect.task).
+ 	static constexpr uint32_t MeshTaskPayloadDwordCount = MeshDrawDwordCount + 1;

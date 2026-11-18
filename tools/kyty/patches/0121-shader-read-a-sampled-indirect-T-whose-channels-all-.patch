@@ -1,0 +1,106 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: nmzik <Nmzik@mail.ru>
+Date: Sat, 14 Nov 2026 17:57:25 +0100
+Subject: [PATCH] shader: read a sampled indirect T# whose channels all select
+ zero as null
+
+(cherry picked from commit 5391a8fb5d26e28441b62fed33c100985fa03fcb)
+---
+ src/graphics/shader/recompiler/ir/Serialize.h |  3 ++-
+ src/graphics/shader/recompiler/ir/ShaderIR.h  |  1 +
+ .../ir/passes/ResourceMaterialization.cpp     |  3 +++
+ .../recompiler/ir/passes/ResourceTracking.cpp |  1 +
+ tests/ResourceTrackingTests.cpp               | 19 ++++++++++++++++++-
+ 5 files changed, 25 insertions(+), 2 deletions(-)
+
+diff --git a/src/graphics/shader/recompiler/ir/Serialize.h b/src/graphics/shader/recompiler/ir/Serialize.h
+index 24e7bb2b..48bbf854 100644
+--- a/src/graphics/shader/recompiler/ir/Serialize.h
++++ b/src/graphics/shader/recompiler/ir/Serialize.h
+@@ -150,7 +150,8 @@ template <class S, class T> void Io(S& io, T& value) {
+ KYTY_IO_FIELDS(MemoryInfo, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x,
+                y, z)
+ KYTY_IO_FIELDS(BufferResource, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q)
+-KYTY_IO_FIELDS(ImageResource, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y)
++KYTY_IO_FIELDS(ImageResource, a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w,
++               x, y, z)
+ KYTY_IO_FIELDS(SamplerResource, a, b, c, d, e, f, g, h, i, j, k)
+ KYTY_IO_FIELDS(SampledResourcePair, a, b, c)
+ KYTY_IO_FIELDS(StageInput, a, b, c, d, e)
+diff --git a/src/graphics/shader/recompiler/ir/ShaderIR.h b/src/graphics/shader/recompiler/ir/ShaderIR.h
+index ee5c236a..b8e02531 100644
+--- a/src/graphics/shader/recompiler/ir/ShaderIR.h
++++ b/src/graphics/shader/recompiler/ir/ShaderIR.h
+@@ -159,6 +159,7 @@ struct ImageResource {
+ 	bool                          atomic            = false;
+ 	bool                          atomic64          = false;
+ 	bool                          unfiltered_access_only = true;
++	bool                          sample_access_only     = true; // Every use is a sample.
+ 	bool                          depth_compare     = false;
+ 	bool                          skip_degamma      = false; // A sampler reads sRGB as stored.
+ 	bool                          cube              = false;
+diff --git a/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp b/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp
+index 9dd1a3c1..e593f245 100644
+--- a/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp
++++ b/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp
+@@ -1742,7 +1742,10 @@ bool MaterializeResources(const ResourcePlan& program, const SrtRuntime& runtime
+ 			        program, image.source, i, 8u, image.r128 ? 4u : 8u, observed, snapshot, snapshot.images,
+ 			        specialization.images, [&](DescriptorValue& value) {
+ 				        // A broad heap also contains resources for other typed image operations.
++				        // A sample of a T# whose channels all select 0 reads 0 at any address.
+ 				        if (NullImageDescriptor(value) || !ValidImageDescriptor(value, image.r128) ||
++				            (image.sample_access_only && !image.depth_compare &&
++				             DescriptorImageSwizzle(value) == 0u) ||
+ 				            (bounded_table && DescriptorDimension(value, image.dimension) != image.dimension))
+ 					        value.dwords.fill(0u);
+ 				        return true;
+diff --git a/src/graphics/shader/recompiler/ir/passes/ResourceTracking.cpp b/src/graphics/shader/recompiler/ir/passes/ResourceTracking.cpp
+index b0439137..92739e1b 100644
+--- a/src/graphics/shader/recompiler/ir/passes/ResourceTracking.cpp
++++ b/src/graphics/shader/recompiler/ir/passes/ResourceTracking.cpp
+@@ -4164,6 +4164,7 @@ private:
+ 		image.written      = image.written || write;
+ 		image.atomic       = image.atomic || atomic;
+ 		image.unfiltered_access_only &= op == ValueOpcode::ImageRead || op == ValueOpcode::ImageWrite;
++		image.sample_access_only &= op == ValueOpcode::ImageSampleRaw;
+ 	}
+ 
+ 	uint32_t AddSampler(uint32_t source, uint32_t pc) {
+diff --git a/tests/ResourceTrackingTests.cpp b/tests/ResourceTrackingTests.cpp
+index 9c928107..ecca81ee 100644
+--- a/tests/ResourceTrackingTests.cpp
++++ b/tests/ResourceTrackingTests.cpp
+@@ -656,6 +656,7 @@ void TestExactUnfilteredImageCandidates() {
+     fixture->PlanAndTrack();
+     auto plan = ExtractResourcePlan(fixture->program);
+     const bool unfiltered = access == ValueOpcode::ImageRead || access == ValueOpcode::ImageWrite;
++    const bool sample = access == ValueOpcode::ImageSampleRaw;
+     Check(plan.info.images[0].unfiltered_access_only == unfiltered,
+           "image access classification admitted a sample, query or atomic");
+     const auto &source = *plan.descriptor_sources[plan.info.images[0].source].indirect_descriptor;
+@@ -684,8 +685,24 @@ void TestExactUnfilteredImageCandidates() {
+                              .read_specialization_memory = ReadLinearTestMemory};
+     ResourceSnapshot snapshot;
+     ResourceSpecialization specialization;
+-    Check(MaterializeResources(plan, runtime, snapshot, specialization) == unfiltered,
++    // A sample reads the zero-swizzle placeholder as null, in the last row and then the first.
++    Check(MaterializeResources(plan, runtime, snapshot, specialization) == (unfiltered || sample),
+           "mixed 1D/2D candidates violated the all-uses access guard");
++    if (sample) {
++      const auto rows = memory.words.begin() + 0x1000u / 4u;
++      for (const uint32_t null_image : {1u, 0u}) {
++        Check(MaterializeResources(plan, runtime, snapshot, specialization) &&
++                  snapshot.images.size() == 2u &&
++                  snapshot.images[null_image].dwords == std::array<uint32_t, 8>{} &&
++                  snapshot.images[1u - null_image].dwords == first &&
++                  specialization.images[null_image].dimension == Decoder::ImageDimension::Dim2D,
++              "a sampled zero-swizzle 1D placeholder did not read null under the 2D class");
++        std::swap_ranges(rows, rows + 8, rows + 31u * 8u);
++      }
++      plan.info.images[0].depth_compare = true;
++      Check(!MaterializeResources(plan, runtime, snapshot, specialization),
++            "a depth comparison read a zero-swizzle placeholder as null");
++    }
+     if (!unfiltered) continue;
+     Check(snapshot.images.size() == 2u && snapshot.images[1].dwords == placeholder &&
+               specialization.images[0].dimension == Decoder::ImageDimension::Dim2D &&
