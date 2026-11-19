@@ -576,16 +576,34 @@ func TestAPadIsReleasedEachTimeItChangesHands(t *testing.T) {
 	host.Submit(Command{Kind: CmdJoin, Username: "dave", SocketID: "sock-D"}, now)
 	expect("two joins", 1, 2)
 
-	host.Submit(Command{Kind: CmdGiveHandover, Username: "gino", SocketID: "sock-G", Target: "gixi"}, now)
+	host.Submit(Command{Kind: CmdRequestHandover, Username: "gixi", SocketID: "sock-X", Target: "gino"}, now)
+	host.Submit(Command{Kind: CmdGrantHandover, Username: "gino", SocketID: "sock-G"}, now)
 	expect("the owner lends", 1)
 	host.Beat("sock-X", true, now)
 	expect("a beat changes no hands")
 	host.Submit(Command{Kind: CmdReclaim, Username: "gino", SocketID: "sock-G"}, now)
 	expect("the owner takes it back", 1)
 
-	host.Submit(Command{Kind: CmdGiveHandover, Username: "dave", SocketID: "sock-D", Target: "gixi"}, now)
+	host.Submit(Command{Kind: CmdRequestHandover, Username: "gixi", SocketID: "sock-X", Target: "dave"}, now)
+	host.Submit(Command{Kind: CmdGrantHandover, Username: "dave", SocketID: "sock-D"}, now)
 	expect("a guest gives their place", 2)
 
 	host.Detach("sock-X", now)
 	expect("the new holder leaves", 2)
+}
+
+// UN COMPTE, DEUX ONGLETS (chantier 69) : chacun apprend que l'autre est là — la page n'offre « libérer la manette »
+// qu'alors.
+func TestEachTabKnowsItsOtherTabs(t *testing.T) {
+	host, rec := newHost(t, 4)
+	host.Attach("sock-A", "gino")
+	host.Submit(Command{Kind: CmdJoin, Username: "gino", SocketID: "sock-A"}, now)
+	if got := you(t, rec, "sock-A")["otherTabs"]; got != 0 {
+		t.Fatalf("one tab: otherTabs = %v, want 0", got)
+	}
+	host.Attach("sock-B", "gino")
+	host.Attach("sock-D", "dave")
+	if got := you(t, rec, "sock-A")["otherTabs"]; got != 1 {
+		t.Fatalf("two tabs: otherTabs = %v, want 1", got)
+	}
 }

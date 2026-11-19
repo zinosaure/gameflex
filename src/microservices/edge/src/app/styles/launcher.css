@@ -450,8 +450,11 @@ body { overflow: hidden; }
 .gf-row-stack { display: block; }
 .gf-row-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
 .gf-row-label { font-weight: 600; }
-.gf-row-help { color: var(--text-3); }
-.gf-row-value { color: var(--text-2); white-space: nowrap; }
+/* LES SOUS-TITRES D'UNE LIGNE — l'aide (`help`) comme la valeur (`value`) des liens, des listes et des renseignements —,
+   UN PEU PLUS PETITS que leur titre (le porteur, 2026-11-19 : « diminue la taille des sous-titres ») : une taille,
+   ici, pour toutes les lignes. */
+.gf-row-help { color: var(--text-3); font-size: .8em; }
+.gf-row-value { color: var(--text-2); white-space: nowrap; font-size: .8em; }
 .gf-row-chevron { color: var(--text-3); flex: 0 0 auto; }
 /* La fine barre d'un téléchargement sous le texte de sa ligne (NavRow, `progress`) : la `progress` de Bootstrap, 4 px. */
 .gf-progress { height: 4px; margin-top: .375rem; }

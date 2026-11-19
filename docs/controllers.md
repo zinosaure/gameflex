@@ -78,7 +78,8 @@ Change them in **Settings › Gamepads**, with *Keyboard* as the controller.
   does not reach the game.
 - **The tiles:** **Resume**, the **On-screen controller**, the **Game sound** and **Fullscreen** (in
   a web browser; the Android app is always fullscreen).
-- **Notifications:** what happened during the game, the latest first, five per page: someone
+- **Notifications:** what happened during the game, the latest first, two per page, each with how
+  long ago it happened: someone
   joining or leaving, a request for your controller, the answer to your own request. A request is
   answered here: touch it, then hand your controller over or keep it. Each new one rings a small
   bell at the top right of the game for a few seconds, or as long as a request waits for its
@@ -108,8 +109,10 @@ Change them in **Settings › Gamepads**, with *Keyboard* as the controller.
   temperature and battery come first. **Send to the TV** sends the game to a Chromecast on the same
   network.
 - **Leave:** **Reset the console** (the game starts over), and **Quit the game**, which asks what
-  happens to it: **Quit and leave the game running**, **Quit and pause the game**, or **Quit and end
-  the game** for everyone. On a retro console, **Save the state when leaving** keeps where you were.
+  happens to it: **Quit and end the game** for everyone, **Quit and leave the game running**, or
+  **Quit and pause the game**. When other people are playing, it starts on **Quit and leave the
+  game running**, so their game goes on. On a retro console, **Save the state when leaving** keeps
+  where you were.
 
 **Rewind and fast forward**, on a retro console, are two round buttons at the bottom left of the
 game: touch one to turn it on, again to turn it off, while you watch the game. **Rewind** steps back
@@ -153,11 +156,13 @@ an account does not see this section.
 it, give their place, or keep it. Without an answer, the request lapses; your own **Notifications**
 say what became of it.
 
-**Hand your controller over:**
+**Hand your controller over:** only to someone who asked for it, from **Players**. The player who
+started the game lends it: **Get the controller back** returns it. The others give their place.
 
-- the player who started the game can **Lend my controller**: someone else plays, and **Take my
-  controller back** returns it;
-- the others can **Give my place** to someone who is watching.
+**The controller tile**, at the top of the menu, says what you can do from this screen: **Take the
+controller (2/4)** — the controller you would get —, greyed out **No controller available** when
+every place is taken (**No controller left**), and with two tabs or devices of your own, **Release the controller** on the
+one that plays and **Get the controller back** on the other.
 
 **Invite people:**
 

@@ -233,25 +233,22 @@ func (host *Host) submit(command Command, now time.Time) (string, []Outcome) {
 			})
 		}
 
-		// A GIFT has a second human in it, and only one of the two asked for
-		// anything. Without this the recipient finds a pad in their hands with
-		// no idea where it came from — the state push moves the slot, it does
-		// not say who held it out. Addressed to the socket that now holds it,
-		// so a second tab of theirs is not told it is playing.
-		if outcome.Command.Kind == CmdGiveHandover && outcome.Err == nil && !outcome.Abandoned {
-			if socketID := host.recipientSocket(outcome.Command.Target); socketID != "" {
-				messages = append(messages, addressed{
-					socketID: socketID,
-					message: map[string]any{
-						"type":   "result",
-						"action": string(CmdGiveHandover),
-						"status": "received",
-						"from":   outcome.Command.Username,
-						// A loan or a place: the recipient's page says which.
-						"lent": host.session.Borrower() == outcome.Command.Target,
-					},
-				})
-			}
+		// AN ACCEPTED DEMAND reaches the one who asked, on the tab that asked
+		// (chantier 69 ; le porteur, 2026-11-19 : « quand la manette a été
+		// donnée au demandeur, le demandeur ne reçoit pas de notification ») :
+		// the state push moves the pad, it does not say who held it out.
+		if granted := outcome.Granted; granted != nil && granted.FromSocket != "" {
+			messages = append(messages, addressed{
+				socketID: granted.FromSocket,
+				message: map[string]any{
+					"type":   "result",
+					"action": string(CmdRequestHandover),
+					"status": "received",
+					"from":   granted.To,
+					// A loan or a place: the asker's page says which.
+					"lent": host.session.Borrower() == granted.From,
+				},
+			})
 		}
 	}
 
@@ -260,19 +257,6 @@ func (host *Host) submit(command Command, now time.Time) (string, []Outcome) {
 	host.changed()
 
 	return requestID, outcomes
-}
-
-// recipientSocket — the tab a pad just landed on: the place the recipient now
-// holds, or, for a loan, the tab that borrowed it. Callers hold the lock.
-func (host *Host) recipientSocket(username string) string {
-	if loan := host.session.loan(); loan != nil && loan.LentTo == username {
-		return loan.LentToSocket
-	}
-	if player := host.session.PlayerOf(username); player != nil {
-		return player.SocketID
-	}
-
-	return ""
 }
 
 // ControlledSlot — which pad this tab's keys drive, read under the lock (see
@@ -515,6 +499,9 @@ func (host *Host) stateMessages() []addressed {
 			// from the tab that borrowed it — may give it back.
 			"canReclaim": owner && loan != nil,
 			"canReturn":  loan != nil && loan.LentToSocket == participant.SocketID,
+			// HOW MANY OTHER TABS of this account are open here (chantier 69):
+			// the page offers « release the controller » for them only then.
+			"otherTabs": host.session.otherTabsOf(participant),
 		}
 		if playing {
 			you["slotId"] = host.session.PlayerOf(participant.Username).SlotID

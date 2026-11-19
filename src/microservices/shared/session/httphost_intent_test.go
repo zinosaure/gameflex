@@ -277,7 +277,9 @@ func TestTheKeysAndTheRumbleFollowTheLoan(t *testing.T) {
 	expect("before the loan", "viewer-gino", 1)
 	expect("before the loan", "viewer-gixi", 0)
 
-	gino.intent("give-handover", "gixi")
+	gixi.intent("request-handover", "gino")
+	gixi.next("result")
+	gino.intent("grant-handover", "")
 	if result := gino.next("result"); result["status"] != "granted" {
 		t.Fatalf("lend = %+v", result)
 	}

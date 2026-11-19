@@ -18,7 +18,7 @@ switch	streamex-switch	0237a9b88	citron_nightly-0237a9b88-linux-x86_64_v3.AppIma
 switch	streamex-switch-eden	d85bad8924	Eden-Linux-d85bad8924-amd64-clang-pgo.AppImage	-
 switch2	streamex-switch2	build-316	Lichii-build-316-x86_64-pgo.AppImage	-
 ps3	streamex-ps3	0.0.43-20607	rpcs3-v0.0.43-20607-fb6737b1_linux64.AppImage	-
-ps4	streamex-ps4	0.20.0-gameflex-c9669a7f	shadps4-linux-sdl-0.20.0.zip shadps4-gameflex-0.20.0	https://github.com/shadps4-emu/shadPS4@7c0b846d0579c7c13b4c2d76032227b68615d068 tools/shadps4/patches
+ps4	streamex-ps4	0.20.0-gameflex-435f4f87	shadps4-linux-sdl-0.20.0.zip shadps4-gameflex-0.20.0	https://github.com/shadps4-emu/shadPS4@7c0b846d0579c7c13b4c2d76032227b68615d068 tools/shadps4/patches
 ps5	streamex-ps5	2026-11-04-gameflex-30c6284	KytyPS5-2026-11-04-91c5820-Linux-x86_64.tar.gz kyty_emulator-gameflex-KytyPS5-2026-11-04-91c5820	https://github.com/KytyPS5/KytyPS5@91c5820c0cecb8ca024d691ca8750be811370591 tools/kyty/patches
 wiiu	streamex-wiiu	2.6	Cemu-2.6-x86_64.AppImage	-
 xbox	streamex-xbox	0.8.139	xemu-0.8.139-x86_64.AppImage	-

@@ -50,14 +50,14 @@ import NavRow, {
 // d'informations (la console, qui l'a lancée, depuis quand, le serveur qui la tient), le lien pour regarder (copier ou
 // envoyer, le QR code), la vidéo, et Quitter. Ni manette, ni prise de manette, ni sauvegarde, ni triche.
 
-// À QUI PASSER LA MANETTE : ceux qui regardent — la liste vient du child seul. À qui la DEMANDER : la section Joueurs
-// (PlayersRows), une ligne par manette.
-const giveableOf = (watchers, self) => (watchers || []).filter((username) => username && username !== self).map((username) => ({ username }));
+// LA MANETTE NE CHANGE DE MAINS QU'APRÈS UNE DEMANDE (chantier 69 ; le porteur, 2026-11-19 : « on ne peut pas savoir à
+// qui prêter s'il y a 10 personnes qui regardent. Pour passer la manette, il faut une demande avant ») : la section
+// Joueurs la demande (playersRows), la cloche et les Notifications y répondent. « Prêter ma manette » est supprimé.
 
 // Les sous-panneaux, par leur nom dans la pile de la page (PlayShell.jsx : `panels`).
-const SUBPANELS = ["states", "disk", "cheats", "give", "invite", "keyboard", "video", "link", "qr"];
+const SUBPANELS = ["states", "disk", "cheats", "invite", "keyboard", "video", "link", "qr"];
 
-export function PlayMenu({ session, user, input, isWatching, switchesStore, sessionSend, players, watchers, roster, departed, notifications, loan, context, panels, openPanel, closePanel, closeMenu, onQuit, watchOnly = false, hostName = "" }) {
+export function PlayMenu({ session, user, input, isWatching, switchesStore, sessionSend, players, roster, departed, notifications, loan, context, panels, openPanel, closePanel, closeMenu, onQuit, watchOnly = false, hostName = "" }) {
     const { t } = useTranslation();
     const switches = useSyncExternalStore(switchesStore.subscribe, switchesStore.getSnapshot);
     // Les réglages de la manette de CET APPAREIL : leur seule source, celle de Réglages › Manettes (#758).
@@ -111,8 +111,6 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
 
     const playing = isOwner && !isWatching;
     const emulates = session.platform === "retrogaming" || session.platform === "device";
-    const giveable = giveableOf(watchers, self);
-    const lending = isOwner;
     const freeSlots = session.openSlots ?? 0;
     const invitesAccounts = capabilities().invites === "accounts";
     // Le lien d'une partie : sa page dans le launcher — l'ouvrir, c'est la regarder. CHEZ SON HÔTE : une partie jouée chez
@@ -136,16 +134,6 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
     const askForPad = (username) => act(() => {
         sessionSend({ type: "requestslot", to: username });
         context.toast.open(t("play.handover.sent"));
-    });
-    const givePad = (username) => act(() => {
-        sessionSend({ type: "giveslot", to: username });
-        context.toast.open(t(lending ? "play.handover.lent" : "play.handover.given", { name: nameOf(username) }));
-    });
-    const confirmGive = (username) => ask({
-        title: t(lending ? "play.handover.lendTitle" : "play.handover.giveTitle"),
-        message: t(lending ? "play.handover.lendMessage" : "play.handover.giveMessage", { name: nameOf(username) }),
-        confirm: t(lending ? "play.handover.lend" : "play.handover.give"),
-        onConfirm: () => givePad(username),
     });
     const copyLink = async () => {
         if (await copyTextToClipboard(shareUrl)) {
@@ -172,8 +160,38 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
     const tone = (on) => t(on ? "settings.switchOn" : "settings.switchOff");
     // LES TUILES (direction C) : Reprendre, puis ce qu'on touche le plus en jouant — chacune là où son entrée
     // existait (mêmes conditions) ; une tuile qui règle s'allume avec son réglage, puis ferme le menu (`act`).
+    // PRENDRE OU LIBÉRER LA MANETTE, UNE TUILE (chantier 69 ; le porteur, 2026-11-19 : « quand le même joueur a 2 ou
+    // plusieurs onglets ouverts, le lien pour "prendre la manette" ou "libérer la manette" doit être dans une tuile ») :
+    // cet onglet regarde et peut jouer (sa partie, une place libre, ou sa place tenue par un autre de ses onglets — qui
+    // la libère alors, chantier 65) ; ou il joue alors qu'un autre de ses onglets regarde, et la rend pour lui.
+    // SON TEXTE DIT CE QUI ARRIVE (le porteur, 2026-11-19 : « le texte de la tuile "Prendre la manette" porte confusion »)
+    // : « Récupérer la manette » quand un autre onglet du même compte la tient ; « Prendre la manette (2/4) » pour qui
+    // regarde, la manette que le child lui donnera (la plus petite libre, la 1 gardée au propriétaire) ; grisée, « Pas de
+    // manette disponible », quand il n'y en a plus.
+    const mineElsewhere = players.some((player) => player.username === self);
+    const padsMax = roster.maxPlayers || consoleMaxPlayers || 0;
+    const held = new Set(players.map((player) => player.slot));
+    let firstFree = 0;
+    for (let slot = isOwner ? 1 : 2; slot <= padsMax && !firstFree; slot += 1) {
+        if (!held.has(slot)) {
+            firstFree = slot;
+        }
+    }
+    const watchingHere = isWatching && !watchOnly && !loan.canReturn;
+    const releases = !isWatching && !loan.canReclaim && loan.otherTabs > 0;
+    const take = () => act(() => sessionSend({ type: "requestslot" }));
+    const padTile = watchingHere
+        ? mineElsewhere
+            ? { id: "pm-take", icon: "bi-controller", tone: "green", label: t("play.retrieve"), value: t("play.retrieveTile"), primary: true, onClick: take }
+            : firstFree
+                ? { id: "pm-take", icon: "bi-controller", tone: "green", label: t("play.takeSlot", { slot: firstFree, max: padsMax }), value: t("play.joinTile"), primary: true, onClick: take }
+                : { id: "pm-take", icon: "bi-controller", tone: "slate", label: t("play.noPad"), value: t("play.noPadTile"), disabled: true }
+        : releases
+            ? { id: "pm-release", icon: "bi-box-arrow-right", tone: "green", label: t("play.release"), value: t("play.releaseTile"), onClick: () => act(() => sessionSend({ type: "releaseslot" })) }
+            : null;
     const tiles = [
         { id: "pm-resume", icon: "bi-play-fill", tone: "indigo", label: t("play.menu.resume"), value: playTime ? t("play.menu.resumeTileTime", { time: playTime }) : t("play.menu.resumeTile"), primary: true, onClick: closeMenu },
+        padTile,
         !isWatching && {
             // Le libellé court d'une tuile : la manette qu'elle montre (« Super Nintendo… ») allongeait sa rangée.
             id: "pm-pad", icon: "bi-phone-landscape", tone: "violet", label: t("play.pad.label"),
@@ -216,13 +234,8 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
     const together = [
         // PRENDRE LA MANETTE : tout le monde arrive en spectateur, le propriétaire aussi ; c'est le geste qui démarre
         // une partie, et le retour après un rechargement. Les autres rejoignent par une place libre de la section Joueurs.
-        isWatching && !watchOnly && isOwner && <NavRow key="join" id="pm-join" icon="bi-controller" tone="green" label={t("play.join")} help={t("play.joinHelp")} opens="action" onOpen={() => act(() => sessionSend({ type: "requestslot" }))} />,
         loan.canReclaim && <NavRow key="reclaim" id="pm-reclaim" icon="bi-arrow-counterclockwise" tone="green" label={t("play.handover.reclaim")} help={t("play.handover.reclaimHelp")} opens="action" onOpen={() => act(() => sessionSend({ type: "reclaimslot" }))} />,
         loan.canReturn && <NavRow key="return" id="pm-return" icon="bi-arrow-return-left" tone="green" label={t("play.handover.return")} help={t("play.handover.returnHelp")} opens="action" onOpen={() => act(() => sessionSend({ type: "returnslot" }))} />,
-        !isWatching && !loan.canReclaim && giveable.length > 0 && (
-            <NavRow key="give" id="pm-give" icon="bi-hand-index-thumb" tone="green" label={t(lending ? "play.handover.lendTitle" : "play.handover.giveTitle")} help={t(lending ? "play.handover.lendHelp" : "play.handover.giveHelp")}
-                opens={giveable.length === 1 ? "confirm" : "page"} onOpen={() => (giveable.length === 1 ? confirmGive(giveable[0].username) : openPanel("give"))} />
-        ),
         // LE PARTAGE, dès que quelqu'un peut rejoindre : sans adresse sur le réseau, le lien pointerait vers le
         // localhost de qui le reçoit (`canInvite`). Copier OU envoyer, jamais les deux.
         canInvite() && invitesAccounts && !watchOnly && <NavRow key="invite" id="pm-invite" icon="bi-person-plus" tone="green" label={t("play.invite.title")} help={t("play.invite.help")} onOpen={() => openPanel("invite")} />,
@@ -261,13 +274,13 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
         <>
             <SidePanel label={input.title || session.title || t("play.menu.title")} firstKey="pm-resume" onClose={closeMenu}>
                 <QuickTiles items={tiles} />
-                {/* LES NOTIFICATIONS DE LA PARTIE (chantier 68, Bell.jsx), en tête : toute la partie, la plus récente en haut, 5
-                    par page ; une demande en attente se répond ici. TOUJOURS LÀ, même vide (le porteur, 2026-11-19 : « fais
+                {/* LES NOTIFICATIONS DE LA PARTIE (chantier 68, Bell.jsx), en tête : toute la partie, la plus récente en haut, 2
+                    par page (le porteur, 2026-11-19) ; une demande en attente se répond ici. TOUJOURS LÀ, même vide (le porteur, 2026-11-19 : « fais
                     comme sur la page d'accueil ») : sa ligne « Aucune notification. ». Pas pour le spectateur sans compte. */}
                 {notifications && !watchOnly && (
                     <Section title={t("play.notifications.title")}>
                         {notifications.list.length > 0
-                            ? <Listing items={notifications.list} pageSize={5} render={(entry) => <NotificationRow key={entry.id} entry={entry} nameOf={nameOf} ask={ask} answer={(yes) => act(() => notifications.answer(entry.id, yes))} />} />
+                            ? <Listing items={notifications.list} pageSize={2} render={(entry) => <NotificationRow key={entry.id} entry={entry} now={now} nameOf={nameOf} ask={ask} answer={(yes) => act(() => notifications.answer(entry.id, yes))} />} />
                             : <EmptyState icon="bi-bell" text={t("notifications.none")} />}
                     </Section>
                 )}
@@ -296,9 +309,6 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
                         return <DiskPanel key={name} disks={disks} change={extra.disks?.change} context={context} onChange={setDisks} onClose={closePanel} />;
                     case "cheats":
                         return <CheatsPanel key={name} cheats={extra.cheats} context={context} onClose={closePanel} />;
-                    case "give":
-                        return <PeoplePanel key={name} label={t(lending ? "play.handover.lendTitle" : "play.handover.giveTitle")} help={t(lending ? "play.handover.lendHelp" : "play.handover.giveHelp")} empty={t("play.handover.noneToGive")}
-                            people={giveable.map((watcher) => ({ username: watcher.username, help: t("play.handover.isWatching") }))} nameOf={nameOf} onPick={confirmGive} picks="confirm" onClose={closePanel} />;
                     case "invite":
                         return <InvitePanel key={name} session={session} self={self} ask={ask} context={context} onClose={closePanel} onDone={closeMenu} />;
                     case "keyboard":
@@ -642,11 +652,20 @@ function playersRows({ players, roster, departed, consoleMax, now, self, t, name
 // une demande réglée avec son issue.
 // Son sous-titre, quand il nomme quelqu'un, se lit à l'affichage (`subtitle(nameOf)`) : le nom affiché arrive parfois après
 // la notification.
-function NotificationRow({ entry, nameOf, ask, answer }) {
-    const { t } = useTranslation();
+// QUAND ELLE EST ARRIVÉE, à la fin du sous-titre (le porteur, 2026-11-19 : « rajoute un time ago […] il y a trop de
+// notifications qui se ressemblent ») : « il y a 5 secondes », dans la langue de l'interface, à la seconde.
+function ago(at, now, language) {
+    const seconds = Math.max(0, Math.round((now - at) / 1000));
+    const format = new Intl.RelativeTimeFormat(language, { numeric: "always" });
+
+    return seconds < 60 ? format.format(-seconds, "second") : seconds < 3600 ? format.format(-Math.floor(seconds / 60), "minute") : format.format(-Math.floor(seconds / 3600), "hour");
+}
+
+function NotificationRow({ entry, now, nameOf, ask, answer }) {
+    const { t, i18n } = useTranslation();
     const outcome = entry.asks && entry.state !== "pending" ? t(`play.notifications.state.${entry.state}`) : "";
     const subtitle = typeof entry.subtitle === "function" ? entry.subtitle(nameOf) : entry.subtitle;
-    const help = [subtitle, outcome].filter(Boolean).join(" • ");
+    const help = [subtitle, outcome, ago(entry.at, now, i18n.language)].filter(Boolean).join(" • ");
 
     if (entry.asks && entry.state === "pending") {
         return (
@@ -656,22 +675,6 @@ function NotificationRow({ entry, nameOf, ask, answer }) {
     }
 
     return <InfoRow icon={entry.asks ? "bi-controller" : "bi-bell"} tone={entry.asks ? "green" : "sky"} label={entry.title} value={help} />;
-}
-
-function PeoplePanel({ label, help, empty, people, nameOf, onPick, picks, onClose }) {
-    const { t } = useTranslation();
-
-    return (
-        <SidePanel label={label} onClose={onClose}>
-            <Section title={t("play.handover.peopleTitle")} help={help}>
-            {people.length ? (
-                <Rows>
-                    {people.map((person) => <NavRow key={person.username} id={`pp-${person.username}`} lead={<Avatar name={nameOf(person.username)} />} label={nameOf(person.username)} help={person.help} opens={picks} onOpen={() => onPick(person.username)} />)}
-                </Rows>
-            ) : <EmptyState icon="bi-people" text={empty} />}
-            </Section>
-        </SidePanel>
-    );
 }
 
 // INVITER UN MEMBRE : une notification (en direct s'il est connecté, en push sinon) qui ouvre la partie.
@@ -823,8 +826,10 @@ function VideoPanel({ switches, set, platform, onClose }) {
 // skeleton.js).
 // UNE CONSOLE REMOTE PLAY SE MET EN VEILLE en partant, en deuxième choix (chantier 69 ; le porteur, 2026-11-19 : « envoyer
 // un signal d'arrêt à la console […] et le mettre en seconde position »).
-const quitChoices = (retro, remote = false) => ["kill", ...(remote ? ["standby"] : []), "leave", ...(retro ? ["pause"] : [])];
-const quitChoiceOf = (values, retro, remote = false) => (quitChoices(retro, remote).includes(values.onQuit) ? values.onQuit : "kill");
+// REMOTE PLAY N'A PAS « ARRÊTER LA PARTIE » (le porteur, 2026-11-19 : « c'est exactement ce que fait "Mettre la console en
+// veille et quitter" ») : la veille d'abord, puis partir en la laissant tourner.
+const quitChoices = (retro, remote = false) => (remote ? ["standby", "leave"] : ["kill", "leave", ...(retro ? ["pause"] : [])]);
+const quitChoiceOf = (values, retro, remote = false) => (quitChoices(retro, remote).includes(values.onQuit) ? values.onQuit : quitChoices(retro, remote)[0]);
 
 // Le corps de la fenêtre : le choix, et l'état à sauver d'un jeu rétro — retenus dans `store`, lu à la confirmation.
 function QuitChoice({ retro, remote, store }) {
@@ -853,10 +858,15 @@ export function useQuitFlow(options) {
     latest.current = options;
 
     return useCallback(() => {
-        const { session, isWatching, isOwner, borrowing, store } = latest.current;
+        const { session, isWatching, isOwner, borrowing, othersPlay, store } = latest.current;
         const canEnd = isOwner && !isWatching && !borrowing;
         const retro = session.platform === "retrogaming" || session.platform === "device";
         const remote = session.platform === "remoteplay";
+        // D'AUTRES JOUENT : le choix s'ouvre sur « Quitter et laisser la partie tourner » (le porteur, 2026-11-19 : « ça
+        // permettra de ne pas couper tout de suite la session des autres ») ; sinon sur le premier choix.
+        if (canEnd) {
+            store.setValues({ onQuit: othersPlay ? "leave" : quitChoices(retro, remote)[0] });
+        }
         const kind = borrowing ? "return" : isWatching ? "watch" : "leave";
 
         confirm({

@@ -90,6 +90,7 @@ func (server *Server) handleFacadeWebSocket(w http.ResponseWriter, r *http.Reque
 		Commands: map[string]func(*facade.Conn, facade.Request){
 			"launch":           server.facadeLaunch,
 			"session.stop":     server.facadeStop,
+			"session.standby":  server.facadeStandby,
 			"download":         server.facadeDownload,
 			"download.cancel":  server.facadeDownloadCancel,
 			"discovery.search": server.facadeDiscoverySearch,
@@ -360,8 +361,6 @@ func (server *Server) facadeStop(conn *facade.Conn, request facade.Request) {
 	var target struct {
 		Platform  string `json:"platform"`
 		SessionID string `json:"sessionId"`
-		// Standby — Remote Play : mettre la console en veille en arrêtant (chantier 69).
-		Standby bool `json:"standby"`
 	}
 	if json.Unmarshal(request.Data, &target) != nil || target.SessionID == "" {
 		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "missing session id"))
@@ -382,10 +381,27 @@ func (server *Server) facadeStop(conn *facade.Conn, request facade.Request) {
 	}
 
 	path := fmt.Sprintf("/api/v1/%s/sessions/%s/stop", target.Platform, target.SessionID)
-	if target.Standby && target.Platform == "remoteplay" {
-		path += "?standby=1"
-	}
 	status, answer := facade.Call(conn, auth.Middleware(server.config.JWTSecret, handler),
+		http.MethodPost, path, nil, map[string]string{"id": target.SessionID})
+
+	conn.Reply(request.ID, status, answer)
+}
+
+// facadeStandby — `{type:"session.standby", id, data:{sessionId}}` : met en veille la console d'une partie Remote Play,
+// SANS arrêter la partie (chantier 69 ; le porteur, 2026-11-19 : « c'est meilleur de voir la console s'éteindre avant
+// de quitter la session […] tant qu'on a de l'image la session ne se coupe pas ») : la console éteinte, la partie se
+// termine d'elle-même. Réservé à qui peut arrêter la partie.
+func (server *Server) facadeStandby(conn *facade.Conn, request facade.Request) {
+	var target struct {
+		SessionID string `json:"sessionId"`
+	}
+	if json.Unmarshal(request.Data, &target) != nil || target.SessionID == "" {
+		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "missing session id"))
+
+		return
+	}
+	path := fmt.Sprintf("/api/v1/remoteplay/sessions/%s/standby", target.SessionID)
+	status, answer := facade.Call(conn, auth.Middleware(server.config.JWTSecret, server.handleRemoteplayStandby),
 		http.MethodPost, path, nil, map[string]string{"id": target.SessionID})
 
 	conn.Reply(request.ID, status, answer)

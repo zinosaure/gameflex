@@ -460,52 +460,16 @@ func (session *Session) Watchers() []string {
 	return watchers
 }
 
-// newestSocketOf — which tab of theirs receives the pad, when someone is
-// handed one they did not ask for.
-//
-// A request carries its own socket: the tab that asked is the tab that plays.
-// A GIFT has no such socket, and the recipient may have three tabs open. The
-// newest wins, for the same reason it wins everywhere else in this model — it
-// is the one they are looking at. Older tabs keep watching, exactly as a
-// second tab always has.
-func (session *Session) newestSocketOf(username string) string {
-	socketID := ""
+// otherTabsOf — the tabs of the same account, this one aside (chantier 69).
+func (session *Session) otherTabsOf(tab Participant) int {
+	count := 0
 	for _, participant := range session.Participants {
-		if participant.Username == username {
-			socketID = participant.SocketID
+		if participant.Username == tab.Username && participant.SocketID != tab.SocketID {
+			count++
 		}
 	}
 
-	return socketID
-}
-
-// GiveTo hands this holder's slot to somebody who is watching — the gesture of
-// passing a controller across a sofa, which the queue had no verb for.
-//
-// Only the tab that HOLDS the slot may give it: `socketID` is checked, not
-// just the username, so a second tab of the same person cannot give away a pad
-// it does not hold. The recipient must already be present — a pad cannot be
-// pushed at somebody who is not there to receive it.
-func (session *Session) GiveTo(from, socketID, to string, now time.Time) (int, error) {
-	if to == "" {
-		return 0, ErrEmptyUsername
-	}
-	if !session.IsPlaying(from, socketID) {
-		return 0, ErrNotPlaying
-	}
-	if from == to {
-		return 0, ErrAlreadyPlaying
-	}
-	if session.PlayerOf(to) != nil {
-		return 0, ErrAlreadyPlaying
-	}
-
-	target := session.newestSocketOf(to)
-	if target == "" {
-		return 0, ErrSocketClosed
-	}
-
-	return session.Handover(from, to, target, now)
+	return count
 }
 
 // Leave removes a username from the queue whatever socket they were on — a

@@ -59,7 +59,10 @@ func TestALoanKeepsTheOwnersPlace(t *testing.T) {
 func TestALoanLeavesTheOtherPadsFree(t *testing.T) {
 	session := ready(t, 2, "sock-G", "sock-X", "sock-D")
 	mustJoin(t, session, "gino", "sock-G")
-	drain(session, now, Command{Kind: CmdGiveHandover, Username: "gino", SocketID: "sock-G", Target: "gixi"})
+	drain(session, now,
+		Command{Kind: CmdRequestHandover, Username: "gixi", SocketID: "sock-X", Target: "gino"},
+		Command{Kind: CmdGrantHandover, Username: "gino", SocketID: "sock-G"},
+	)
 
 	if slot, err := session.Join("dave", "sock-D", now); err != nil || slot != 2 {
 		t.Fatalf("join during a loan = (%d, %v), want (2, nil)", slot, err)
@@ -209,17 +212,19 @@ func TestAGuestGivesTheirPlace(t *testing.T) {
 	mustJoin(t, session, "gino", "sock-G")
 	mustJoin(t, session, "dave", "sock-D")
 
-	outcomes := drain(session, now, Command{Kind: CmdGiveHandover, Username: "dave", SocketID: "sock-D", Target: "gixi"})
-	if outcomes[0].Err != nil || outcomes[0].Slot != 2 {
-		t.Fatalf("give = (%d, %v), want (2, nil)", outcomes[0].Slot, outcomes[0].Err)
+	outcomes := drain(session, now,
+		Command{Kind: CmdRequestHandover, Username: "gixi", SocketID: "sock-X", Target: "dave"},
+		Command{Kind: CmdGrantHandover, Username: "dave", SocketID: "sock-D"},
+	)
+	if outcomes[1].Err != nil || outcomes[1].Slot != 2 {
+		t.Fatalf("grant = (%d, %v), want (2, nil)", outcomes[1].Slot, outcomes[1].Err)
 	}
 	if !session.IsPlaying("gixi", "sock-X") || session.PlayerOf("dave") != nil || session.Lent() {
 		t.Fatalf("players = %+v — gixi holds the place now, dave keeps nothing", session.Players)
 	}
 }
 
-// Une manette prêtée ne se redemande pas, ne se reprête pas et ne se passe
-// pas : seul son propriétaire la reprend.
+// Une manette prêtée ne se redemande pas : seul son propriétaire la reprend.
 func TestALentPadIsOnlyTakenBack(t *testing.T) {
 	session := lend(t)
 	session.OpenTab("sock-D", "dave")
@@ -229,8 +234,6 @@ func TestALentPadIsOnlyTakenBack(t *testing.T) {
 		want    error
 	}{
 		{Command{Kind: CmdRequestHandover, Username: "dave", SocketID: "sock-D", Target: "gino"}, ErrPadLent},
-		{Command{Kind: CmdGiveHandover, Username: "gino", SocketID: "sock-G", Target: "dave"}, ErrPadLent},
-		{Command{Kind: CmdGiveHandover, Username: "gixi", SocketID: "sock-X", Target: "dave"}, ErrNotPlaying},
 	}
 	for _, c := range cases {
 		if outcomes := drain(session, now, c.command); outcomes[0].Err != c.want {
@@ -239,17 +242,6 @@ func TestALentPadIsOnlyTakenBack(t *testing.T) {
 	}
 	if session.Borrower() != "gixi" {
 		t.Fatal("the loan must survive every refused attempt")
-	}
-}
-
-// L'emprunteur regarde : une personne, une manette.
-func TestTheOwnerLendsOnlyToSomebodyWatching(t *testing.T) {
-	session := ready(t, 4, "sock-G", "sock-D")
-	mustJoin(t, session, "gino", "sock-G")
-	mustJoin(t, session, "dave", "sock-D")
-
-	if outcomes := drain(session, now, Command{Kind: CmdGiveHandover, Username: "gino", SocketID: "sock-G", Target: "dave"}); outcomes[0].Err != ErrAlreadyPlaying {
-		t.Fatalf("lending to a player = %v, want ErrAlreadyPlaying", outcomes[0].Err)
 	}
 }
 
@@ -305,7 +297,8 @@ func TestEachTabIsToldWhatItCanDoWithALoan(t *testing.T) {
 	host.Attach("sock-G", "gino")
 	host.Attach("sock-X", "gixi")
 	host.Submit(Command{Kind: CmdJoin, Username: "gino", SocketID: "sock-G"}, now)
-	host.Submit(Command{Kind: CmdGiveHandover, Username: "gino", SocketID: "sock-G", Target: "gixi"}, now)
+	host.Submit(Command{Kind: CmdRequestHandover, Username: "gixi", SocketID: "sock-X", Target: "gino"}, now)
+	host.Submit(Command{Kind: CmdGrantHandover, Username: "gino", SocketID: "sock-G"}, now)
 
 	owner, borrower := you(t, rec, "sock-G"), you(t, rec, "sock-X")
 	if owner["isPlaying"] != true || owner["controls"] != 0 || owner["canReclaim"] != true || owner["canReturn"] != false {
@@ -339,7 +332,8 @@ func TestTheAFKQuestionDuringALoan(t *testing.T) {
 	host.Attach("sock-G", "gino")
 	host.Attach("sock-X", "gixi")
 	host.Submit(Command{Kind: CmdJoin, Username: "gino", SocketID: "sock-G"}, now)
-	host.Submit(Command{Kind: CmdGiveHandover, Username: "gino", SocketID: "sock-G", Target: "gixi"}, now)
+	host.Submit(Command{Kind: CmdRequestHandover, Username: "gixi", SocketID: "sock-X", Target: "gino"}, now)
+	host.Submit(Command{Kind: CmdGrantHandover, Username: "gino", SocketID: "sock-G"}, now)
 
 	// The owner keeps beating; nobody touches anything for 29 minutes.
 	clock := now
@@ -395,7 +389,8 @@ func TestAFrozenOwnerEndsTheLoanEvenWhileTheBorrowerPlays(t *testing.T) {
 	host.Attach("sock-G", "gino")
 	host.Attach("sock-X", "gixi")
 	host.Submit(Command{Kind: CmdJoin, Username: "gino", SocketID: "sock-G"}, now)
-	host.Submit(Command{Kind: CmdGiveHandover, Username: "gino", SocketID: "sock-G", Target: "gixi"}, now)
+	host.Submit(Command{Kind: CmdRequestHandover, Username: "gixi", SocketID: "sock-X", Target: "gino"}, now)
+	host.Submit(Command{Kind: CmdGrantHandover, Username: "gino", SocketID: "sock-G"}, now)
 
 	clock := now
 	for step := 0; step < 4; step++ {

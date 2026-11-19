@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-11-19
+
+### Added
+
+- **A controller tile** at the top of the game menu: **Take the controller (2/4)** shows which one you would get, **No
+  controller left** when every place is taken; with two tabs or devices of your own, **Release the controller**
+  on the one that plays and **Get the controller back** on the other.
+- **Each notification says when it happened** (*5 seconds ago*).
+- **Remote Play: put the console to sleep, then quit**: **Quit the game** offers **Put the console to sleep, then
+  quit**. You watch the console go to sleep, and the game ends once it is off. **Quit and end the game** is gone from
+  Remote Play: this choice does it.
+
+### Changed
+
+- **Notifications show two per page**, and the subtitles of the settings and menu lines are a little smaller.
+- **Quitting while others play** starts on **Quit and leave the game running**, so their game goes on.
+- **The controller changes hands only after a request**: **Lend my controller** and **Give my place**, which chose a
+  spectator without asking, are gone from the menu.
+
+### Fixed
+
+- **The one who asked for a controller is told when it is handed over.**
+- **Remote Play: a game ends by itself when the console is turned off.**
+- **Remote Play: after lending your controller, getting it back works again**: its buttons stayed dead.
+
 ## [0.16.0] - 2026-11-19
 
 ### Added

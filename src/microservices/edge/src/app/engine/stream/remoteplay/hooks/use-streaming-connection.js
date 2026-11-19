@@ -76,11 +76,6 @@ export function useStreamingConnection({
 	// attaches as a VIEWER via viewerService) — this is a fresh OWNER
 	// connection to a session that merely happens to already be started.
 	preCreatedSessionId,
-	// gaveAwayControl — B2: the page flips this true after accepting a
-	// kernel control request; the hook then stops sending input (the pad
-	// now belongs to the requester). The kernel is the authority — see
-	// Player.jsx's session.controlRequest prompt.
-	gaveAwayControl = false,
 }) {
 	const { t } = useTranslation();
 	// isConnected/isConnecting/connectionState/connectionStats/isStatsEnabled
@@ -106,9 +101,9 @@ export function useStreamingConnection({
 	const [webrtcSessionId, setWebrtcSessionId] = useState(null);
 	const [remotePlaySessionId, setRemotePlaySessionId] = useState(null);
 	const [isStalling, setIsStalling] = useState(false);
-	// Control handoff ("take control") — the owner starts in control; can be
-	// handed off to a viewer via the kernel (B2 — see Player.jsx's
-	// session.controlRequest prompt and gaveAwayControl above).
+	// LA MANETTE CHANGE DE MAINS PAR LE CHILD SEUL (chantier 69) : il sait quel onglet pilote (`controls`) et refuse
+	// les touches des autres. La page ne s'éteint plus elle-même en prêtant : ce drapeau-là n'était jamais remis, et
+	// « Reprendre ma manette » rendait une manette muette (le porteur, 2026-11-19).
 	// hasControlRef is what the actual input-sending code paths check
 	// (avoids stale closures); hasControl (state) is only for rendering the
 	// UI.
@@ -2117,18 +2112,6 @@ export function useStreamingConnection({
 		};
 	}, []);
 
-	// Control handoff (B2): the kernel is the authority — the page shows
-	// the prompt when the pool snapshot carries session.controlRequest, and
-	// flips gaveAwayControl after accepting. The hub event wiring that used
-	// to live here is gone: granted/denied/requested now travel as snapshot
-	// diffs (padSlots / controlRequest), and requesting control back is
-	// done from the Watch page like any viewer.
-	useEffect(() => {
-		if (gaveAwayControl) {
-			hasControlRef.current = false;
-			setHasControl(false);
-		}
-	}, [gaveAwayControl]);
 
 	return {
 		hasControl,

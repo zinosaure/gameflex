@@ -33,13 +33,6 @@ const (
 	CmdRequestHandover CommandKind = "request-handover"
 	CmdGrantHandover   CommandKind = "grant-handover"
 	CmdDenyHandover    CommandKind = "deny-handover"
-	// CmdGiveHandover — the holder passes the pad to somebody watching,
-	// unasked. The other three verbs all start from the person who WANTS the
-	// pad; this is the one that starts from the person who HAS it, which is
-	// how a controller actually changes hands in a room. remote-play is where
-	// its absence showed: one pad, JOIN structurally impossible, so handover
-	// is the only way it ever moves — and half the gesture did not exist.
-	CmdGiveHandover CommandKind = "give-handover"
 	// CmdReclaim — the owner takes their lent pad back ("take controller
 	// back"), when they want and without asking; CmdReturn — the borrower
 	// gives it back ("return controller back"). The two ends of a loan: the
@@ -79,6 +72,9 @@ type Outcome struct {
 	// Denied — the demand a holder just refused: its asker is told (host.go),
 	// who otherwise only saw it vanish from the state.
 	Denied *HandoverRequest
+	// Granted — the demand a holder just accepted: its asker is told who handed the pad over (host.go). The state
+	// push moves the pad, it does not say who held it out (chantier 69).
+	Granted *HandoverRequest
 }
 
 // HandoverRequest is the one pending demand of a session. One at a time: a
@@ -175,18 +171,6 @@ func (session *Session) apply(command Command, now time.Time) Outcome {
 
 	case CmdGrantHandover, CmdDenyHandover:
 		outcome = session.answerHandover(command, now, outcome)
-
-	case CmdGiveHandover:
-		// A gift settles any demand that was waiting on this holder: they no
-		// longer hold the pad, so an answer from them would mean nothing.
-		// Dropped rather than left to expire — a prompt still on screen for a
-		// pad that has moved is a lie the page would act on.
-		if pending := session.LiveHandoverAt(now); pending != nil && pending.To == command.Username {
-			session.PendingHandover = nil
-		}
-
-		slot, err := session.GiveTo(command.Username, command.SocketID, command.Target, now)
-		outcome.Slot, outcome.Err = slot, err
 
 	case CmdReclaim:
 		slot, err := session.Reclaim(command.Username, command.SocketID, now)
@@ -317,6 +301,9 @@ func (session *Session) answerHandover(command Command, now time.Time, outcome O
 
 	slot, err := session.Handover(request.To, request.From, request.FromSocket, now)
 	outcome.Slot, outcome.Err = slot, err
+	if err == nil {
+		outcome.Granted = request
+	}
 
 	return outcome
 }

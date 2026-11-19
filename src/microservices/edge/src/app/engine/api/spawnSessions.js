@@ -91,7 +91,11 @@ export function launchSession(game, consoleId, token, settings = null, host = nu
 //
 // Une commande du centre de messages (`session.stop`), plus trois routes :
 // la plateforme fait partie du message, le kernel aiguille.
-// `standby` : Remote Play, mettre la console en veille en arrêtant (chantier 69).
-export function stopSession(platform, sessionId, token, host = null, standby = false) {
-    return kernelRequest(kernelTarget(host, token), "session.stop", { platform, sessionId, ...(standby ? { standby: true } : {}) });
+export function stopSession(platform, sessionId, token, host = null) {
+    return kernelRequest(kernelTarget(host, token), "session.stop", { platform, sessionId });
+}
+
+// LA CONSOLE REMOTE PLAY EN VEILLE, la partie continue : elle se termine quand la console s'éteint (chantier 69).
+export function standbyConsole(sessionId, token, host = null) {
+    return kernelRequest(kernelTarget(host, token), "session.standby", { sessionId });
 }

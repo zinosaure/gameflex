@@ -13,7 +13,7 @@ import { markActivity, takeActivityStamp } from "../../engine/stream/shared/acti
 import { createSwitchesStore } from "../../engine/stream/shared/switches-store.js";
 import { requestCastSession, sendSessionIdToReceiver, endCastSession, getCurrentCastSession } from "../../engine/stream/onscreen/cast.js";
 import { TouchpadOnlyContext, PAD_COLUMN_WIDTH, PadLookContext } from "../../engine/stream/onscreen/Controllers.jsx";
-import { stopSession } from "../../engine/api/spawnSessions.js";
+import { standbyConsole, stopSession } from "../../engine/api/spawnSessions.js";
 import { setGameInputSuspended } from "../../engine/libs/gameInput.js";
 import { connectedGamepads } from "../../engine/libs/keyMapping.js";
 import { useScreenOrientation } from "../../libs/screenOrientation.js";
@@ -126,9 +126,8 @@ function usePictureInPictureOnHide(screenRef) {
 
 // L'ARRÊT POUR TOUT LE MONDE (réservé au propriétaire, le kernel en juge). Une partie de l'appareil
 // n'a pas de session sur un serveur : le `terminate` du hook l'arrête.
-// `standby` : une console Remote Play se met en veille avant l'arrêt (chantier 69).
-function stopForEveryone(session, token, standby = false) {
-    return session.platform === "device" ? Promise.resolve() : stopSession(session.platform, session.id, token, null, standby);
+function stopForEveryone(session, token) {
+    return session.platform === "device" ? Promise.resolve() : stopSession(session.platform, session.id, token);
 }
 
 // `watchOnly` (`#747`) : LE « WATCH » GRAND PUBLIC, celui que le Chromecast montre — personne n'a de jeton chez l'hôte
@@ -324,7 +323,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         setWatching(watching);
         setChildSlot(message.you?.slotId ?? null);
         setChildControls(message.you?.controls ?? 0);
-        setChildLoan({ canReclaim: message.you?.canReclaim === true, canReturn: message.you?.canReturn === true, lentTo: message.lentTo || "" });
+        setChildLoan({ canReclaim: message.you?.canReclaim === true, canReturn: message.you?.canReturn === true, lentTo: message.lentTo || "", otherTabs: message.you?.otherTabs || 0 });
         const players = (message.players ?? []).map((player) => ({ username: player.username, role: player.isOwner ? "owner" : "player", slot: player.slotId, lentTo: player.lentTo || "", joinedAt: player.joinedAt || null }));
         const maxPlayers = message.maxPlayers || 0;
         setBroadcastPlayers(players);
@@ -463,7 +462,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     // UN SEUL ENVOI pour le menu et les questions : le vocabulaire du menu, traduit en intentions du
     // child — lui seul décide qui joue.
     const sessionSend = useCallback((message) => {
-        const actions = { cedeslot: "grant-handover", slotrequestdenied: "deny-handover", giveslot: "give-handover", reclaimslot: "reclaim", returnslot: "return" };
+        const actions = { cedeslot: "grant-handover", slotrequestdenied: "deny-handover", reclaimslot: "reclaim", returnslot: "return", releaseslot: "leave" };
         const action = message.type === "requestslot" ? (message.to ? "request-handover" : "join") : actions[message.type];
 
         if (action) {
@@ -799,9 +798,19 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     // arrêter pour tout le monde (le propriétaire seulement). Sauver est une décision à part.
     const quit = async ({ onQuit, saveStateOnQuit: save }) => {
         const ownerHere = !isWatching && myRole === "owner";
-        // QUITTER ET METTRE LA CONSOLE EN VEILLE (Remote Play, chantier 69) : un arrêt, et la veille avant lui.
-        const standby = onQuit === "standby" && ownerHere && session.platform === "remoteplay";
-        const ends = (onQuit === "kill" || standby) && ownerHere;
+        // METTRE LA CONSOLE EN VEILLE ET QUITTER (Remote Play, chantier 69 ; le porteur, 2026-11-19 : « c'est meilleur de
+        // voir la console s'éteindre avant de quitter la session […] tant qu'on a de l'image la session ne se coupe pas ») :
+        // la console s'endort sous nos yeux, la page reste ; la console éteinte, la partie se termine d'elle-même et la
+        // page revient en arrière.
+        if (onQuit === "standby" && ownerHere && session.platform === "remoteplay") {
+            const answer = await standbyConsole(session.id, token).catch(() => null);
+            const failed = !answer || answer.ok === false;
+            closeMenu();
+            context.toast.open(t(failed ? "play.quit.standbyFailed" : "play.quit.standbySent"), { variant: failed ? "error" : undefined, duration: 6000 });
+
+            return;
+        }
+        const ends = onQuit === "kill" && ownerHere;
         const freezes = onQuit === "pause" && ownerHere && (session.platform === "retrogaming" || session.platform === "device");
 
         if (save && !isWatching && input.saveOnQuit) {
@@ -814,7 +823,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         }
         if (ends) {
             input.terminate?.();
-            stopForEveryone(session, token, standby).catch(() => context.toast.open(t("play.quit.stopFailed"), { variant: "error" }));
+            stopForEveryone(session, token).catch(() => context.toast.open(t("play.quit.stopFailed"), { variant: "error" }));
         } else {
             input.disconnect?.();
         }
@@ -847,7 +856,10 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     }, []);
     const openMenu = useCallback(() => setPanels((open) => (open.length ? open : ["menu"])), []);
     // QUITTER : la fenêtre de confirmation de Skeleton, le choix dans son corps (Menu.jsx, useQuitFlow) ; Quitter quitte.
-    const openQuit = useQuitFlow({ session, isWatching, isOwner: myRole === "owner", borrowing: childLoan.canReturn, store: quitStore, onConfirm: quit });
+    // D'autres jouent : un autre compte tient une manette, ou la mienne est prêtée.
+    const me = session.me?.username || user?.username;
+    const othersPlay = broadcastPlayers.some((player) => player.username !== me || (player.lentTo && player.lentTo !== me));
+    const openQuit = useQuitFlow({ session, isWatching, isOwner: myRole === "owner", borrowing: childLoan.canReturn, othersPlay, store: quitStore, onConfirm: quit });
 
     // UN PANNEAU OUVERT SUSPEND LE JEU, UNE PARTIE EN COURS SUSPEND LA NAVIGATION (#407, #408) : tant
     // qu'il y en a un, la croix, A et B le servent et le jeu n'entend rien (chaque plateforme relâche ce
@@ -1180,7 +1192,6 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
                         switchesStore={switchesStore}
                         sessionSend={sessionSend}
                         players={broadcastPlayers}
-                        watchers={broadcastWatchers}
                         roster={roster}
                         departed={departed}
                         notifications={notifications}

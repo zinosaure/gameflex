@@ -40,8 +40,12 @@ The **Remote Play** tab, at the top, shows each console with its state: **Online
   network. It is kept in this browser only.
 - **Busy · Watch** looks on while someone else plays.
 
-One player holds the controller at a time; the others watch, and the controller can be lent or
-given (see [Controllers and playing together](controllers.md)).
+One player holds the controller at a time; the others watch, and ask for it to play (see
+[Controllers and playing together](controllers.md)).
+
+**To finish,** **Quit the game** offers **Put the console to sleep, then quit**: you watch the
+console go to sleep, and the game ends by itself once it is off, as it does whenever the console is
+turned off. **Quit and leave the game running** leaves it on for the others.
 
 **Share it with a friend's GameFlex:** your Remote Play consoles show on a server you give access to. Which
 ones it can play is set in that access's **Console access** (see

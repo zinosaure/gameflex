@@ -497,8 +497,6 @@ func (httpHost *HTTPHost) recipientOf(command Command) string {
 		return command.Username
 	case CmdGrantHandover:
 		return httpHost.Host.PendingFrom(command.Username, time.Now())
-	case CmdGiveHandover:
-		return command.Target
 	}
 
 	return ""

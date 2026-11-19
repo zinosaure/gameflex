@@ -128,7 +128,6 @@ export function useRemotePlayInput({ screenRef, session, context, t, options = {
 		},
 	}).current;
 	const { token, user } = useAuth();
-	const [gaveAwayControl, setGaveAwayControl] = useState(false);
 	const isLikelyLan = useMemo(detectIsLikelyLan, []);
 
 	// Stable identity (useCallback, not a plain arrow function recreated
@@ -190,7 +189,6 @@ export function useRemotePlayInput({ screenRef, session, context, t, options = {
 		// set this yet (see extraProps.handover's own doc, use-remoteplay-
 		// input.js) — leave unset until that flow actually exists.
 		preCreatedSessionId: session.id,
-		gaveAwayControl,
 		onConnectionError: handleConnectionError,
 	});
 
@@ -260,10 +258,8 @@ export function useRemotePlayInput({ screenRef, session, context, t, options = {
 	// side follow-ups. No swap (single pad, the owner IS the only slot)
 	// and no free-slot join.
 	const onSlotGiveaway = useCallback(() => {
-		// THIS holder accepted a cede: the kernel already swapped the pool
-		// and pushed the new holder to the child (input gate) — this page
-		// just stops its own input attempts.
-		setGaveAwayControl(true);
+		// Rien de ce côté, comme streamex : le child a changé de main, il refuse les touches de cet onglet pendant le
+		// prêt et les reprend quand la manette revient (chantier 69).
 	}, []);
 	const hasFreeSlots = useCallback(() => 0, []);
 	const onMonitoringResource = useCallback((open, powerOnly = false) => {

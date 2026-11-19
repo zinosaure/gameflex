@@ -1571,22 +1571,13 @@
             "give": "Donner ma place",
             "keep": "Garder",
             "lentNotice": "Votre manette est prêtée à {{name}}.",
-            "reclaim": "Reprendre ma manette",
+            "reclaim": "Récupérer la manette",
             "reclaimHelp": "Elle vous revient ; la personne qui jouait repasse en spectatrice.",
             "return": "Rendre la manette",
             "returnHelp": "Elle retourne à qui vous l'a prêtée.",
             "sent": "Demande envoyée",
-            "lent": "Manette prêtée à {{name}}.",
-            "given": "Place donnée à {{name}}.",
             "lendTitle": "Prêter ma manette",
-            "giveTitle": "Donner ma place",
-            "lendMessage": "Prêter votre manette à {{name}} ? Vous gardez votre place, et vous la reprenez quand vous voulez.",
-            "giveMessage": "Donner votre place à {{name}} ? Vous passerez en spectateur.",
-            "lendHelp": "Quelqu'un qui regarde joue avec votre manette ; vous la reprenez quand vous voulez.",
-            "giveHelp": "Quelqu'un qui regarde prend votre place ; vous passez en spectateur.",
-            "noneToGive": "Personne ne regarde.",
-            "isWatching": "Regarde",
-            "peopleTitle": "Personnes"
+            "giveTitle": "Donner ma place"
         },
         "info": {
             "console": "Console",
@@ -1622,7 +1613,7 @@
             "what": "Que faire de la partie ?",
             "choice": {
                 "kill": "Quitter et arrêter la partie",
-                "standby": "Quitter et mettre la console en veille",
+                "standby": "Mettre la console en veille et quitter",
                 "leave": "Quitter et laisser la partie tourner",
                 "pause": "Quitter et mettre la partie en pause"
             },
@@ -1630,7 +1621,7 @@
                 "leave": "Vous partez, le jeu continue : vous le retrouverez là où il en est.",
                 "pause": "Le jeu se fige et vous attend ; revenir le reprend aussitôt.",
                 "kill": "La partie s'arrête pour tout le monde.",
-                "standby": "La partie s'arrête pour tout le monde, et la console passe en mode repos."
+                "standby": "La console s'endort sous vos yeux ; la partie se termine dès qu'elle est éteinte."
             },
             "save": "Sauvegarder l'état en partant",
             "saveHelp": "Pour reprendre plus tard exactement à ce moment.",
@@ -1640,11 +1631,12 @@
                 "watch": "Arrêter de regarder",
                 "return": "Rendre et quitter"
             },
-            "stopFailed": "La partie n'a pas pu s'arrêter."
+            "stopFailed": "La partie n'a pas pu s'arrêter.",
+            "standbySent": "La console se met en veille : la partie se terminera quand elle sera éteinte.",
+            "standbyFailed": "La console n'a pas pris la veille."
         },
         "loading": "Chargement…",
         "brand": "GameFlex",
-        "joinHelp": "Rejoindre la partie pour y jouer.",
         "states": {
             "title": "Sauvegardes d'état",
             "help": "Un emplacement garde un état : sauvegardez-y la partie, ou chargez, écrasez, supprimez le sien.",
@@ -1841,7 +1833,15 @@
             "ask": "Demander",
             "joinTitle": "Rejoindre la partie ?",
             "joinMessage": "Prendre une manette libre et jouer ?"
-        }
+        },
+        "joinTile": "Jouer sur cet écran",
+        "release": "Libérer la manette",
+        "releaseTile": "Pour votre autre onglet",
+        "retrieve": "Récupérer la manette",
+        "retrieveTile": "Depuis votre autre onglet",
+        "takeSlot": "Prendre la manette ({{slot}}/{{max}})",
+        "noPad": "Plus de manette disponible",
+        "noPadTile": "Toutes les manettes sont prises"
     },
     "form": {
         "noDate": "Aucun jour choisi",

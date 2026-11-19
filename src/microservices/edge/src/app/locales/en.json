@@ -1571,22 +1571,13 @@
             "give": "Give my place",
             "keep": "Keep it",
             "lentNotice": "Your controller is lent to {{name}}.",
-            "reclaim": "Take my controller back",
+            "reclaim": "Get the controller back",
             "reclaimHelp": "It comes back to you; whoever was playing goes back to watching.",
             "return": "Give the controller back",
             "returnHelp": "It goes back to whoever lent it.",
             "sent": "Request sent",
-            "lent": "Controller lent to {{name}}.",
-            "given": "Place given to {{name}}.",
             "lendTitle": "Lend my controller",
-            "giveTitle": "Give my place",
-            "lendMessage": "Lend your controller to {{name}}? You keep your place, and take it back whenever you like.",
-            "giveMessage": "Give your place to {{name}}? You will be watching afterwards.",
-            "lendHelp": "Someone watching plays with your controller; you take it back whenever you like.",
-            "giveHelp": "Someone watching takes your place; you go to watching.",
-            "noneToGive": "Nobody is watching.",
-            "isWatching": "Watching",
-            "peopleTitle": "People"
+            "giveTitle": "Give my place"
         },
         "info": {
             "console": "Console",
@@ -1622,7 +1613,7 @@
             "what": "What to do with the game?",
             "choice": {
                 "kill": "Quit and end the game",
-                "standby": "Quit and put the console to sleep",
+                "standby": "Put the console to sleep, then quit",
                 "leave": "Quit and leave the game running",
                 "pause": "Quit and pause the game"
             },
@@ -1630,7 +1621,7 @@
                 "leave": "You leave, the game goes on: you will find it where it is.",
                 "pause": "The game freezes and waits for you; coming back resumes it at once.",
                 "kill": "The game ends for everyone.",
-                "standby": "The game stops for everyone, and the console goes into rest mode."
+                "standby": "You watch the console go to sleep; the game ends as soon as it is off."
             },
             "save": "Save the state when leaving",
             "saveHelp": "To pick up later at exactly this moment.",
@@ -1640,11 +1631,12 @@
                 "watch": "Stop watching",
                 "return": "Give back and quit"
             },
-            "stopFailed": "The game could not be ended."
+            "stopFailed": "The game could not be ended.",
+            "standbySent": "The console is going to sleep: the game will end once it is off.",
+            "standbyFailed": "The console did not go to sleep."
         },
         "loading": "Loading…",
         "brand": "GameFlex",
-        "joinHelp": "Join the game to play.",
         "states": {
             "title": "Save states",
             "help": "A slot keeps a state: save the game in it, or load, overwrite or delete its own.",
@@ -1841,7 +1833,15 @@
             "ask": "Ask",
             "joinTitle": "Join the game?",
             "joinMessage": "Take a free controller and play?"
-        }
+        },
+        "joinTile": "Play on this screen",
+        "release": "Release the controller",
+        "releaseTile": "For your other tab",
+        "retrieve": "Get the controller back",
+        "retrieveTile": "From your other tab",
+        "takeSlot": "Take the controller ({{slot}}/{{max}})",
+        "noPad": "No controller left",
+        "noPadTile": "All controllers are taken"
     },
     "form": {
         "noDate": "No day chosen",

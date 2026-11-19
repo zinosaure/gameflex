@@ -40,28 +40,6 @@ const childEndWait = 10 * time.Second
 // handled=false: the child did not answer (or does not know the route) — the
 // caller falls back on its own stop. Otherwise status is the child's verdict:
 // 200 once the container is gone, 403 when the game is not theirs to end.
-// askConsoleStandby — demande au conteneur d'une partie Remote Play de mettre sa console en veille
-// (`/internal/remoteplay/standby`, avec le secret de cette session), juste avant de l'arrêter (chantier 69).
-func (server *Server) askConsoleStandby(ctx context.Context, sessionID string, port int) {
-	if port <= 0 || server.config.InternalSecret == "" {
-		return
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("http://%s:%d/internal/remoteplay/standby", server.config.PublicHost, port), nil)
-	if err != nil {
-		return
-	}
-	request.Header.Set("X-Internal-Secret", sharedauth.SessionSecret(server.config.InternalSecret, sessionID))
-	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
-	if err != nil {
-		slog.Warn("console standby: the session container did not answer", "session", sessionID, "error", err)
-
-		return
-	}
-	response.Body.Close()
-	slog.Info("console standby asked", "session", sessionID, "status", response.StatusCode)
-}
-
 func (server *Server) endThroughChild(ctx context.Context, sessionID, container string, port int, asking string, admin bool) (handled bool, status int) {
 	if port <= 0 || asking == "" || server.config.InternalSecret == "" {
 		return false, 0
@@ -115,4 +93,29 @@ func (server *Server) waitForExit(ctx context.Context, container string) {
 	if ctx.Err() == nil {
 		slog.Warn("le child a accepté l'arrêt mais ne sort pas — le kernel l'arrête", "container", container)
 	}
+}
+
+// askConsoleStandby — demande au conteneur d'une partie Remote Play de mettre sa console en veille
+// (`/internal/remoteplay/standby`, avec le secret de cette session) ; la partie continue (chantier 69). Rend le statut
+// de sa réponse, 0 sans réponse.
+func (server *Server) askConsoleStandby(ctx context.Context, sessionID string, port int) int {
+	if port <= 0 || server.config.InternalSecret == "" {
+		return 0
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		fmt.Sprintf("http://%s:%d/internal/remoteplay/standby", server.config.PublicHost, port), nil)
+	if err != nil {
+		return 0
+	}
+	request.Header.Set("X-Internal-Secret", sharedauth.SessionSecret(server.config.InternalSecret, sessionID))
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
+	if err != nil {
+		slog.Warn("console standby: the session container did not answer", "session", sessionID, "error", err)
+
+		return 0
+	}
+	response.Body.Close()
+	slog.Info("console standby asked", "session", sessionID, "status", response.StatusCode)
+
+	return response.StatusCode
 }

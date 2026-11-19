@@ -45,8 +45,9 @@ func TestLoanPingPong(t *testing.T) {
 		host.Submit(Command{Kind: CmdRequestHandover, Username: borrower, SocketID: borrowerSocket, Target: owner}, now)
 		host.Submit(Command{Kind: CmdGrantHandover, Username: owner, SocketID: ownerSocket}, now)
 
-		if result := rec.last(borrowerSocket, "result"); result == nil || result["status"] != "granted" {
-			failAt(t, round, "grant result = %+v, want granted", rec.last(borrowerSocket, "result"))
+		// The asker is told the pad is theirs, and by whom (chantier 69).
+		if result := rec.last(borrowerSocket, "result"); result == nil || result["status"] != "received" || result["from"] != owner || result["lent"] != true {
+			failAt(t, round, "grant result = %+v, want received from %s, lent", rec.last(borrowerSocket, "result"), owner)
 		}
 
 		// The borrower's NEW socket drives the pad, and only it.
