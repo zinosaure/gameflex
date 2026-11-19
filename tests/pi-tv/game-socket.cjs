@@ -4,7 +4,7 @@ let natives=[],calls=[];
 global.WebSocket=class {constructor(){natives.push(this)}close(){}send(v){calls.push(['native',v])}};
 let release;
 global.fetch=async(url,options)=>{calls.push([url,options]);if(url.endsWith('/poll'))return new Promise(r=>{release=r;options.signal.addEventListener('abort',()=>r({ok:true,json:async()=>({closed:true})}))});return {ok:true,json:async()=>url.endsWith('/socket-bridge')?{id:'fixture'}:{sent:true}}};
-let source=fs.readFileSync('src/webapp/src/app/gameflex/libs/GameSocket.js','utf8').replace(/^import .*;\n/gm,'').replace('export class GameSocket','class GameSocket').replace('export function gameSocket','function gameSocket');vm.runInThisContext(source+'\nglobal.GameSocket=GameSocket');
+let source=fs.readFileSync('src/webapp/src/app/gameflex/libs/GameSocket.js','utf8').replace(/^import .*;\r?\n/gm,'').replace('export class GameSocket','class GameSocket').replace('export function gameSocket','function gameSocket');vm.runInThisContext(source+'\nglobal.GameSocket=GameSocket');
 const tick=()=>new Promise(r=>setTimeout(r,5));
 (async()=>{
  const native=new GameSocket('wss://test/gameflex/api/v1/facade/ws?token=fixture');let opened=0;native.onopen=()=>opened++;natives[0].onopen();native.send('once');natives[0].onclose({code:1006,reason:'',wasClean:false});await tick();assert.equal(calls.filter(c=>c[0]!=='native').length,0);assert.equal(opened,1);

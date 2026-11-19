@@ -3,8 +3,8 @@
     "version": "1.0.0",
     "description": "GameFlex frontend (React/Webpack)",
     "scripts": {
-        "start": "webpack serve --mode development --host 0.0.0.0 --port 3000",
-        "build": "webpack --mode production",
+        "start": "webpack serve --config webpack.config.mjs --mode development --host 0.0.0.0 --port 3000",
+        "build": "webpack --config webpack.config.mjs --mode production",
         "lint": "eslint app --ext .js,.jsx",
         "lint:fix": "eslint app --ext .js,.jsx --fix"
     },

@@ -265,7 +265,7 @@ dépendances EGL/GLES/ffmpeg sur Pi. Le frontend modifié exige une reconstructi
 edge depuis ces sources ; les images publiées actuelles ne contiennent pas ces changements.
 Le fichier `docker-compose.build.yml` fournit déjà les recettes.
 L’overlay expérimental `deploy/pi-tv/arm64.build.yml` prépare les builds ARM64 de
-edge, kernel, credential et retrogaming avec des tags locaux. Il exige des références
+edge, kernel, credential, federation et retrogaming avec des tags locaux. Il exige des références
 ARM64 vérifiées pour gateway et remoteplay : leurs sources sont absentes du dépôt
 public, qui ne contient que leurs Dockerfiles. Ces binaires sont soumis à
 `LICENSE-BINARIES.md` et ne peuvent pas être reconstruits ou modifiés librement ici.

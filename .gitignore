@@ -8,6 +8,8 @@ src/webapp/src/node_modules/
 __pycache__/
 .npm/
 src/webapp/src/dist/
+src/microservices/edge/src/dist/
+src/microservices/edge/src/dist-federation/
 output/experience-preview.js
 output/experience-preview.css
 

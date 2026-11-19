@@ -17,7 +17,7 @@ COPY src/microservices/edge/src/package.json src/microservices/edge/src/package-
 RUN npm ci && npm cache clean --force
 COPY src/microservices/edge/src/app ./app
 COPY src/microservices/edge/src/public ./public
-COPY src/microservices/edge/src/webpack.config.js ./webpack.config.js
+COPY src/microservices/edge/src/webpack.config.mjs ./webpack.config.mjs
 COPY LICENSE ./LICENSE
 ARG GAMEFLEX_VERSION=0.0.0
 ARG GITHUB_COMMIT_SHA=dev

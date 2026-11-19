@@ -6,8 +6,11 @@ services:
     image: gameflex-local/edge:arm64-dev
     platform: linux/arm64
     build:
-      context: ./src
-      dockerfile: microservices/edge/Dockerfile
+      # Since v0.15 the edge build embeds the repository LICENSE, so its
+      # context is the repository root (the other Go services still use src/).
+      context: .
+      dockerfile: src/microservices/edge/Dockerfile
+      target: release
     pull_policy: never
   gameflex-kernel:
     image: gameflex-local/kernel:arm64-dev
@@ -27,6 +30,13 @@ services:
       context: ./src
       dockerfile: microservices/kernel/extras/credential/Dockerfile
       target: release
+    pull_policy: never
+  gameflex-federation:
+    image: gameflex-local/federation:arm64-dev
+    platform: linux/arm64
+    build:
+      context: .
+      dockerfile: src/microservices/federation/Dockerfile
     pull_policy: never
   gameflex-retrogaming:
     image: gameflex-local/retrogaming:arm64-dev

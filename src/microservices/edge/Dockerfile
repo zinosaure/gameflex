@@ -8,7 +8,7 @@
 #  dev (le modèle du kernel : la release d'abord, le dev en dernier).
 #
 #  L'interface vit dans src/, à côté du Go (app/, public/, package.json,
-#  webpack.config.js) : chantier 56, P2.
+#  webpack.config.mjs) : chantier 56, P2.
 #
 #  CONTEXTE : LA RACINE DU DÉPÔT (chantier 56, P3), comme les consoles de
 #  streamex. La page inscrit dans son bundle le fichier LICENSE du dépôt
@@ -35,7 +35,7 @@ RUN npm ci && npm cache clean --force
 
 COPY src/microservices/edge/src/app ./app
 COPY src/microservices/edge/src/public ./public
-COPY src/microservices/edge/src/webpack.config.js ./webpack.config.js
+COPY src/microservices/edge/src/webpack.config.mjs ./webpack.config.mjs
 COPY LICENSE ./LICENSE
 
 # Lus par webpack : la version de l'en-tête et build-info.json. Le dépôt n'est
@@ -91,7 +91,8 @@ RUN npm ci && npm cache clean --force
 
 COPY src/microservices/edge/src/app ./app
 COPY src/microservices/edge/src/public ./public
-COPY src/microservices/edge/src/webpack.config.js ./webpack.config.js
+COPY src/microservices/edge/src/webpack.config.mjs ./webpack.config.mjs
+COPY LICENSE ./LICENSE
 
 EXPOSE 3000
 

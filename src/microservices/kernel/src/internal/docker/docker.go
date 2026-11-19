@@ -921,7 +921,7 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 			ReadOnly: true,
 		},
 		{
-			Type:   mount.TypeBind,
+			Type: mount.TypeBind,
 			// Le dossier de la console : la Switch 2 (#644) range ses
 			// sauvegardes à part, sous saves/<compte>/streamex/switch2.
 			Source: streamexSaveDir(cfg.SavesHostDir(), spec.Username, gamesConsole),

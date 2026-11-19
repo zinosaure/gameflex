@@ -1,8 +1,8 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { GUIDES, openExternal, REPOSITORY_URL, repositoryFile } from "../../libs/links.js";
-// Le fichier LICENSE du dépôt, en texte (webpack.config.js : asset/source ; le compose le monte à /src/LICENSE).
-import LICENSE from "../../../LICENSE";
+// Le fichier LICENSE du dépôt, en texte (webpack.config.mjs : asset/source ; copié ou monté à /src/LICENSE).
+import LICENSE from "@gameflex-license";
 import SettingsPage, { usePageText } from "../SettingsPage.jsx";
 import NavRow, { BlockRow, Rows, Section } from "../../ui/Bricks.jsx";
 
