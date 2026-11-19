@@ -1,0 +1,574 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GameFlex Pi TV Experience API",
+    "version": "0.1.0",
+    "description": "API complémentaire locale ; aucun contrôle système ou TV."
+  },
+  "servers": [
+    {
+      "url": "/experience-api"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "État du processus seulement",
+        "responses": {
+          "200": {
+            "description": "Réponse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "scope": {
+                      "const": "process-only"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/interfaces": {
+      "get": {
+        "summary": "Identifiants stables des dix compositions",
+        "responses": {
+          "200": {
+            "description": "Réponse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "interfaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "minimal",
+                          "covers",
+                          "consoles",
+                          "favorites",
+                          "resume",
+                          "collections",
+                          "detail",
+                          "archives",
+                          "multiplayer",
+                          "dashboard"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/compatibility": {
+      "get": {
+        "summary": "Candidats Pi 5 et TV ARM32, sans garantie de performances",
+        "responses": {
+          "200": {
+            "description": "Réponse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/preferences": {
+      "get": {
+        "summary": "Préférences du compte vérifié par GameFlex ; interface null si premier accès",
+        "responses": {
+          "200": {
+            "description": "Réponse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "Remplacement atomique des préférences",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Preferences"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Enregistré",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Préférences invalides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Corps trop volumineux",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stockage indisponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/media": {
+      "get": {
+        "summary": "Manifestes publics et crédits du cache local",
+        "responses": {
+          "200": {
+            "description": "Réponse",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Artwork"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/media/{sha256}": {
+      "get": {
+        "summary": "Image locale vérifiée, aucune requête amont",
+        "parameters": [
+          {
+            "name": "sha256",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Image du cache",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Absente ou empreinte invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/planetemu/{console}": {
+      "get": {
+        "summary": "Titres Planetemu par console et lettre, cache local, aucun téléchargement de ROM",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "console",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9_-]+$"
+            }
+          },
+          {
+            "name": "letter",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Z0]$",
+              "default": "A"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Items title/source, état indisponible si non associé ; images uniquement du cache approuvé"
+          },
+          "400": {
+            "description": "Lettre invalide"
+          },
+          "401": {
+            "description": "Authentification requise"
+          }
+        }
+      }
+    },
+    "/v1/covers/{system}/{title}": {
+      "get": {
+        "summary": "Jaquette Libretro mise en cache, PNG uniquement, aucun contenu de jeu",
+        "parameters": [
+          {
+            "name": "system",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "title",
+            "in": "path",
+            "required": true,
+            "description": "Titre UTF-8 encodé en base64url, pas une URL",
+            "schema": {
+              "type": "string",
+              "maxLength": 800
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Image du cache local /v1/media/<sha256>"
+          },
+          "404": {
+            "description": "Pas de correspondance fiable ou fournisseur indisponible"
+          }
+        }
+      }
+    },
+    "/v1/tv/link": {
+      "get": {
+        "summary": "Phone approval page for Android TV association",
+        "responses": {
+          "200": {
+            "description": "HTML page; existing GameFlex authentication required to approve"
+          }
+        }
+      }
+    },
+    "/v1/tv/pairing": {
+      "post": {
+        "summary": "Create short-lived TV pairing with hashed polling secret",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "challenge"
+                ],
+                "properties": {
+                  "challenge": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pairing id, six-digit code and expiration; no credentials"
+          },
+          "400": {
+            "description": "Invalid input or rate limit"
+          }
+        }
+      }
+    },
+    "/v1/tv/pairing/approve": {
+      "post": {
+        "summary": "Approve the code using the authenticated existing account",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approved once"
+          },
+          "401": {
+            "description": "Verified GameFlex authentication required"
+          },
+          "400": {
+            "description": "Invalid, expired, used code or rate limit"
+          }
+        }
+      }
+    },
+    "/v1/tv/pairing/{id}/poll": {
+      "post": {
+        "summary": "Poll with the original secret; deliver existing JWT exactly once",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "pending, approved with accessToken once, or expired"
+          },
+          "400": {
+            "description": "Invalid polling secret"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Preferences": {
+        "type": "object",
+        "required": [
+          "interface"
+        ],
+        "properties": {
+          "interface": {
+            "type": "string",
+            "enum": [
+              "minimal",
+              "covers",
+              "consoles",
+              "favorites",
+              "resume",
+              "collections",
+              "detail",
+              "archives",
+              "multiplayer",
+              "dashboard"
+            ]
+          },
+          "favorites": {
+            "type": "array",
+            "maxItems": 2000,
+            "items": {
+              "type": "string",
+              "maxLength": 512
+            }
+          },
+          "history": {
+            "type": "array",
+            "maxItems": 40,
+            "items": {
+              "type": "string",
+              "maxLength": 512
+            }
+          },
+          "collections": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "games"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[\\w-]{1,80}$"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "games": {
+                  "type": "array",
+                  "maxItems": 2000,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 512
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Artwork": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "sourceImage": {
+            "type": "string"
+          },
+          "mime": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "author": {
+            "type": "string"
+          },
+          "license": {
+            "type": "string"
+          },
+          "licenseUrl": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "attribution": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "approved": {
+            "type": "boolean"
+          },
+          "fetchedAt": {
+            "type": "integer"
+          },
+          "reviewAfter": {
+            "type": "integer"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

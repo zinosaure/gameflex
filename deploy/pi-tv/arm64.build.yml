@@ -1,0 +1,44 @@
+# Experimental overlay for the OPEN services. Use with the root docker-compose.yml.
+# Build preparation only: never assume that the closed services have ARM64 releases.
+# Paths are resolved relative to the FIRST compose file (the repository root).
+services:
+  gameflex-edge:
+    image: gameflex-local/edge:arm64-dev
+    platform: linux/arm64
+    build:
+      context: ./src
+      dockerfile: microservices/edge/Dockerfile
+    pull_policy: never
+  gameflex-kernel:
+    image: gameflex-local/kernel:arm64-dev
+    platform: linux/arm64
+    build:
+      context: ./src
+      dockerfile: microservices/kernel/Dockerfile
+      target: release
+    pull_policy: never
+    environment:
+      GAMEFLEX_RETRO_IMAGE: gameflex-local/retrogaming:arm64-dev
+      GAMEFLEX_REMOTEPLAY_IMAGE: ${GAMEFLEX_REMOTEPLAY_ARM64_IMAGE:?An independently verified ARM64 remoteplay image is required}
+  gameflex-credential:
+    image: gameflex-local/credential:arm64-dev
+    platform: linux/arm64
+    build:
+      context: ./src
+      dockerfile: microservices/kernel/extras/credential/Dockerfile
+      target: release
+    pull_policy: never
+  gameflex-retrogaming:
+    image: gameflex-local/retrogaming:arm64-dev
+    platform: linux/arm64
+    build:
+      context: ./src
+      dockerfile: microservices/runtimes/retrogaming/Dockerfile
+      target: release
+    pull_policy: never
+  gameflex-gateway:
+    image: ${GAMEFLEX_GATEWAY_ARM64_IMAGE:?An independently verified ARM64 gateway image is required}
+    platform: linux/arm64
+  gameflex-remoteplay:
+    image: ${GAMEFLEX_REMOTEPLAY_ARM64_IMAGE:?An independently verified ARM64 remoteplay image is required}
+    platform: linux/arm64

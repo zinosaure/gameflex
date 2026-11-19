@@ -27,6 +27,7 @@ import { useConsoles, useConsolesLoaded } from '../contexts/ConsolesContext.jsx'
 import { apiUrl } from '../libs/serverBase.js';
 import { useSessionPool } from '../libs/SessionPool.js';
 import { buildStreamingUrl } from '../libs/sessionLinks.js';
+import { loadStreamingSettings } from '../libs/streamingSettingsStorage.js';
 import { listRoms, listCores, createSession } from '../api/retrogaming.js';
 import ExperienceView, { InterfacePicker, useDirectionalFocus } from './ExperienceView.jsx';
 import { interfaces, archivedAppearances, preferenceKey, readChoice, selectableInterfaces, migratePreference, legacyDestination, readLocalChoice, acceptRemoteChoice } from './interfaces.js';
@@ -313,7 +314,14 @@ function LibraryExperience({ consoleId = '' }) {
             const preferred=readGameOptions(gameSettingsScope,game).core;
             const core=preferred?available.find(item=>item.name===preferred):available[0];
             if(!core)throw new Error('L’émulateur choisi est indisponible. Modifiez les paramètres du jeu avec le bouton « … ».');
-            const reply=await createSession(game.consoleId,game.reference,game.title,core.name,'',user?.username,null,{resolution:'sd'});
+            const streamSettings=loadStreamingSettings(game.consoleId)||{
+                // 720p60 stays within the H.264 level 4.0 negotiated by the
+                // introduction; 1080p60 makes NVENC reject the stream.
+                resolution:['wii','gc'].includes(game.consoleId)?'720p':'540p',
+                frameRate:'60',
+                bitrate:'auto',
+            };
+            const reply=await createSession(game.consoleId,game.reference,game.title,core.name,'',user?.username,null,streamSettings);
             if(!reply.ok||!reply.data?.sessionId)throw new Error(reply.errorMessage||'Le lancement a échoué.');
             ctx.setData(data=>({...data,history:[gameKey(game),...data.history.filter(id=>id!==gameKey(game))].slice(0,40)}));
             navigate(buildStreamingUrl({sessionId:reply.data.sessionId,play:true}));

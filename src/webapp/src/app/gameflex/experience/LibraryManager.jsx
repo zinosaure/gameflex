@@ -10,6 +10,8 @@ export async function libraryRequest(token,path,options={}) {
     const timer=setTimeout(cancel,8000);
     try{
         const r=await fetch(apiUrl('/experience-api/v1/'+path),{...options,signal:abort.signal,cache:'no-store',headers:{...authHeaders(token),...(options.body?{'Content-Type':'application/json'}:{})},body:options.body?JSON.stringify(options.body):undefined});
+        const type=r.headers.get('content-type')||'';
+        if(!type.includes('application/json'))throw new Error(r.ok?'Réponse invalide du service de bibliothèque.':'Le service de bibliothèque est indisponible.');
         const data=await r.json();if(!r.ok)throw new Error(data.error||'Le serveur est indisponible.');return data;
     }finally{clearTimeout(timer);options.signal?.removeEventListener('abort',cancel);}
 }

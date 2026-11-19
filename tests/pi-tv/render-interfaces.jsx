@@ -1,6 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ExperienceView, { InterfacePicker } from '../../src/webapp/src/app/gameflex/experience/ExperienceView.jsx';
+import {SystemEmulatorAction} from '../../src/webapp/src/app/gameflex/experience/EmulatorUI.jsx';
 import {retroModes} from '../../src/webapp/src/app/gameflex/experience/RetroLibrary.jsx';
 import { interfaces } from '../../src/webapp/src/app/gameflex/experience/interfaces.js';
 import assert from 'node:assert/strict';
@@ -35,6 +36,15 @@ assert.ok(photoHtml.includes('gx-console-art'));
 assert.ok(photoHtml.includes('alt="Photo de NES"'));
 assert.ok(photoHtml.includes('Chargement de la photo'));
 console.log('Photos des consoles et crédits : rendu valide.');
+
+const missingEmulator=renderToStaticMarkup(<SystemEmulatorAction gameCount={24} consoleId="n64" state={{canInstall:true,hardware:{platform:'linux/aarch64'},items:[{consoleId:'n64',name:'ParaLLEl N64',installed:false,canInstall:true}]}} onInstall={()=>{}}/>);
+assert.ok(missingEmulator.includes('Télécharger mon émulateur'));
+assert.ok(missingEmulator.includes('Linux ARM64'));
+const readyEmulator=renderToStaticMarkup(<SystemEmulatorAction gameCount={24} consoleId="n64" state={{canInstall:true,hardware:{platform:'linux/aarch64'},items:[{consoleId:'n64',name:'ParaLLEl N64',installed:true,canInstall:true}]}} onInstall={()=>{}}/>);
+assert.ok(!readyEmulator.includes('Télécharger mon émulateur'));
+const noGamesEmulator=renderToStaticMarkup(<SystemEmulatorAction gameCount={0} consoleId="n64" state={{canInstall:true,hardware:{platform:'linux/aarch64'},items:[{consoleId:'n64',name:'ParaLLEl N64',installed:false,canInstall:true}]}} onInstall={()=>{}}/>);
+assert.ok(!noGamesEmulator.includes('Télécharger mon émulateur'));
+console.log('Émulateur manquant : action contextuelle et plateforme détectée valides.');
 
 for (const {id} of interfaces.filter(x=>!retroModes.includes(x.id))) {
  const html=renderToStaticMarkup(<ExperienceView mode={id} section="favorites" />);

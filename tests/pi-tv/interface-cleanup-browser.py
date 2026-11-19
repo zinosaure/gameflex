@@ -49,7 +49,7 @@ with sync_playwright() as p:
  assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
  page.goto(BASE+'?pack=1');page.locator('.gx-choice').nth(21).wait_for();assert page.locator('.gx-choice').count()==22
  assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
- page.get_by_role('searchbox').fill('Interface de test 22');assert page.locator('.gx-choice').count()==1
+ page.get_by_role('searchbox').fill('Grand écran accessible');assert page.locator('.gx-choice').count()==1
  results.append('deep links/subpath/mobile/22-entry selector search')
  browser.close()
 report={'passed':results,'publicWrites':0,'launch':'simulated transport; actual emulator tested separately'}

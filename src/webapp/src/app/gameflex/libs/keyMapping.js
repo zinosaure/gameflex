@@ -115,7 +115,21 @@ const DEFAULT_MAPPING_BY_CONTROLLER = {
     },
     gamecube: {
         "0": "A", "1": "B", "2": "X", "3": "Y",
-        "4": "L", "5": "R", "7": "Z", "9": "START",
+        // Dolphin's GameCube table is not the generic RetroPad shoulder
+        // table: L2/R2 are the full L/R presses, L3/R3 are the analog
+        // half-presses and RetroPad R is Z.  The former "Z" name had no
+        // RETRO_BUTTON_INDEX at all, so a physical pad's Z silently did
+        // nothing. Back is free on a GameCube pad and carries R½.
+        "4": "L2", "5": "R2", "6": "L3", "7": "R", "8": "R3", "9": "START",
+        "12": "DPAD_UP", "13": "DPAD_DOWN", "14": "DPAD_LEFT", "15": "DPAD_RIGHT",
+        ...DPAD_DIAGONAL_CHORDS,
+    },
+    // Dolphin's sideways-Wiimote table is deliberately not the generic
+    // RetroPad diamond: A/B/Y/X become Wii 2/1/B/A. Keep the primary action
+    // on the physical bottom button and the secondary action on the right.
+    wii: {
+        "0": "A", "1": "B", "2": "Y", "3": "X",
+        "7": "R2", "9": "START",
         "12": "DPAD_UP", "13": "DPAD_DOWN", "14": "DPAD_LEFT", "15": "DPAD_RIGHT",
         ...DPAD_DIAGONAL_CHORDS,
     },

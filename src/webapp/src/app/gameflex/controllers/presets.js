@@ -799,6 +799,122 @@ export const CONTROLLER_PRESETS = {
             ...DPAD_POSITIONS,
         ],
     },
+    gamecube: {
+        label: "Nintendo GameCube",
+        rumble: true,
+        buttons: [
+            // Dolphin follows the RetroPad contract: L/R are on L2/R2 and
+            // the GameCube Z button is on R1.  The labels below describe the
+            // real controller while `name` keeps the libretro input that the
+            // core actually reads.
+            ...replace_nameicontexts(PS_LEFT_SHOULDER_BUTTONS, {
+                "L2": { text: "L" },
+                // L3/R3 are Dolphin's L-Analog/R-Analog half-presses.  Keep
+                // the label compact: the old sentence escaped the circular
+                // button and made the whole streaming page scroll sideways.
+                "L1": { name: "L3", text: "L½" },
+            }),
+            ...replace_nameicontexts(PS_RIGHT_SHOULDER_BUTTONS, {
+                "R2": { text: "R" },
+                "R1": { name: "R3", text: "R½" },
+            }),
+            {
+                name: "R",
+                column: "center",
+                x: 0.5,
+                y: 0,
+                size: DEFAULT_BUTTON_SIZE * LARGE_BUTTON_SIZE,
+                xl: { x: 0.5, y: 0.42, size: DEFAULT_BUTTON_SIZE * LARGE_BUTTON_SIZE },
+                text: "Z",
+            },
+            {
+                name: "START",
+                column: "center",
+                x: 0.5,
+                y: 0.72,
+                size: DEFAULT_BUTTON_SIZE,
+                xl: { x: 0.5, y: 0.72, size: DEFAULT_BUTTON_SIZE * LARGE_BUTTON_SIZE },
+                icon: "fa-solid fa-play fs-6",
+            },
+            ...LEFT_STICK_POSITION,
+            ...RIGHT_STICK_POSITION,
+            // La vraie façade GameCube : A au centre, B à gauche, X à
+            // droite et Y au-dessus à gauche. Elle ne ressemble pas au
+            // losange Xbox/SNES que l'ancien profil N64 affichait.
+            {
+                name: "A", column: "right", x: 0.58, y: 0.64,
+                size: DEFAULT_BUTTON_SIZE * XXLARGE_BUTTON_SIZE,
+                xl: { x: 0.44, y: 0.56, size: DEFAULT_BUTTON_SIZE * XXLARGE_BUTTON_SIZE },
+                text: "A", group: "buttons",
+            },
+            {
+                name: "B", column: "right", x: 0.18, y: 0.73,
+                size: DEFAULT_BUTTON_SIZE,
+                xl: { x: 0.02, y: 0.7, size: DEFAULT_BUTTON_SIZE * LARGE_BUTTON_SIZE },
+                text: "B", group: "buttons",
+            },
+            {
+                name: "X", column: "right", x: 0.9, y: 0.47,
+                size: DEFAULT_BUTTON_SIZE,
+                xl: { x: 0.8, y: 0.34, size: DEFAULT_BUTTON_SIZE * LARGE_BUTTON_SIZE },
+                text: "X", group: "buttons",
+            },
+            {
+                name: "Y", column: "right", x: 0.28, y: 0.34,
+                size: DEFAULT_BUTTON_SIZE,
+                xl: { x: 0.12, y: 0.25, size: DEFAULT_BUTTON_SIZE * LARGE_BUTTON_SIZE },
+                text: "Y", group: "buttons",
+            },
+            ...DPAD_POSITIONS,
+        ],
+    },
+    wii: {
+        label: "Wii Remote (sideways)",
+        rumble: true,
+        buttons: [
+            // Mario Kart Wii emulates a Wiimote held sideways. Dolphin maps
+            // RetroPad A/B/Y/X to Wiimote 2/1/B/A respectively; showing A/B/X/Y
+            // here made the primary buttons look and feel reversed.
+            {
+                name: "START", column: "center", x: 0.5, y: 0.7,
+                size: DEFAULT_BUTTON_SIZE,
+                xl: { x: 0.5, y: 0.7, size: DEFAULT_BUTTON_SIZE * LARGE_BUTTON_SIZE },
+                text: "+",
+            },
+            {
+                name: "R2", column: "center", x: 0.5, y: 0,
+                size: DEFAULT_BUTTON_SIZE * LARGE_BUTTON_SIZE,
+                xl: { x: 0.5, y: 0.42, size: DEFAULT_BUTTON_SIZE * LARGE_BUTTON_SIZE },
+                text: "SECOUER",
+            },
+            ...LEFT_STICK_POSITION,
+            {
+                name: "A", column: "right", x: 0.7, y: 0.82,
+                size: DEFAULT_BUTTON_SIZE * XLARGE_BUTTON_SIZE,
+                xl: { x: 0.52, y: 0.68, size: DEFAULT_BUTTON_SIZE * XXLARGE_BUTTON_SIZE },
+                text: "2", group: "buttons",
+            },
+            {
+                name: "B", column: "right", x: 0.3, y: 0.82,
+                size: DEFAULT_BUTTON_SIZE * LARGE_BUTTON_SIZE,
+                xl: { x: 0.05, y: 0.68, size: DEFAULT_BUTTON_SIZE * LARGE_BUTTON_SIZE },
+                text: "1", group: "buttons",
+            },
+            {
+                name: "Y", column: "right", x: 0.22, y: 0.38,
+                size: DEFAULT_BUTTON_SIZE,
+                xl: { x: 0.0, y: 0.22, size: DEFAULT_BUTTON_SIZE * LARGE_BUTTON_SIZE },
+                text: "B", group: "buttons",
+            },
+            {
+                name: "X", column: "right", x: 0.66, y: 0.34,
+                size: DEFAULT_BUTTON_SIZE,
+                xl: { x: 0.5, y: 0.18, size: DEFAULT_BUTTON_SIZE * LARGE_BUTTON_SIZE },
+                text: "A", group: "buttons",
+            },
+            ...DPAD_POSITIONS,
+        ],
+    },
     genesis: {
         label: "Sega Genesis / Mega Drive",
         rumble: false,

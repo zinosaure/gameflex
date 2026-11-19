@@ -18,6 +18,13 @@ import (
 // le `if (environ_cb(GET_VARIABLE, …))` du cœur. Chacune a été trouvée sur le
 // serveur en lisant la source du cœur.
 var forcedVariables = map[string]map[string]string{
+	// ParaLLEl RDP demande Vulkan. Le frontal serveur ne fournit pas Vulkan :
+	// le cœur acceptait ensuite la ROM, puis mourait pendant le repli OpenGL
+	// avant la première image. Angrylion est le moteur logiciel du même cœur
+	// et fonctionne sans contexte graphique matériel, notamment sur le Pi ARM64.
+	"n64": {
+		"parallel-n64-gfxplugin": "angrylion",
+	},
 	// La DS attend un stylet (position absolue), pas une souris (relative) :
 	// sans « touch », l'écran du bas reste mort. « enabled » est le défaut
 	// annoncé de pointer_mouse, forcé quand même pour la raison ci-dessus :
@@ -317,6 +324,7 @@ func valueHeight(value string, native int) int {
 // logiciel, quand l'accepter ferait échouer le démarrage plus loin.
 func (e *Engine) acceptHWRender(data unsafe.Pointer) bool {
 	if !HWRenderAllowed(e.config.ConsoleID) {
+		e.hw = nil
 		log.Printf("[engine] rendu matériel refusé : pas accordé à la console %q", e.config.ConsoleID)
 		return false
 	}
@@ -329,11 +337,13 @@ func (e *Engine) acceptHWRender(data unsafe.Pointer) bool {
 	case gl_context.ContextTypeOpenGLES2, gl_context.ContextTypeOpenGLES3:
 	case gl_context.ContextTypeOpenGL, gl_context.ContextTypeOpenGLCore:
 		if runtime.GOOS == "android" {
+			e.hw = nil
 			log.Printf("[engine] rendu matériel refusé : OpenGL de bureau (type %d) demandé sur Android", request.ContextType)
 			return false
 		}
 	default:
 		// Vulkan, Direct3D… : aucun contexte pour eux.
+		e.hw = nil
 		log.Printf("[engine] rendu matériel refusé : contexte de type %d non pris en charge", request.ContextType)
 		return false
 	}

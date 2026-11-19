@@ -86,6 +86,7 @@ function PlaceButton({
 	const [dragging, setDragging] = useState(false);
 	const [offset, setOffset] = useState({ x: 0, y: 0 });
 	const size = isLandscape ? button.xl.size : button.size;
+	const x = isLandscape ? button.xl.x : button.x;
 	const ringRadius = size * 0.6;
 	const thumbSize = size * 0.6;
 	const updateFromEvent = (e) => {
@@ -126,7 +127,10 @@ function PlaceButton({
 			data-btn-analog={analog ? "true" : undefined}
 			style={{
 				position: "absolute",
-				left: `${isLandscape ? button.xl.x * 100 : button.x * 100}%`,
+				// Old saved layouts may contain coordinates that predate the
+				// current safe areas. Keep the whole control inside its column so
+				// a trigger can never become half invisible or widen the page.
+				left: `clamp(${size / 2}px, ${x * 100}%, calc(100% - ${size / 2}px))`,
 				top: `${isLandscape ? button.xl.y * 100 : button.y * 100}%`,
 				width: isLandscape ? button.xl.size : button.size,
 				height: isLandscape ? button.xl.size : button.size,
@@ -736,6 +740,7 @@ export default function ControllerLayout({
 						width: "100%",
 						height: height,
 						opacity: fetchedOpacity ?? opacity,
+						overflow: "hidden",
 						// In `style`, not as a bare `touchAction` attribute:
 						// React does not map that to the CSS property, it tries
 						// to set a DOM attribute of that name (and warns), so
@@ -751,7 +756,13 @@ export default function ControllerLayout({
 					onPointerCancel={handleSwipePointerEnd}
 					onLostPointerCapture={handleSwipePointerEnd}
 				>
-					<div className="position-absolute top-0 start-0 h-100 d-flex align-items-center">
+					<div
+						className="position-absolute top-0 h-100 d-flex align-items-center"
+						// The analog stick and diagonal d-pad targets extend beyond their
+						// 160 px zone. Keep a small landscape safe area so they remain
+						// visible instead of widening the document to the left.
+						style={{ left: isLandscape ? 32 : 0 }}
+					>
 						<ColumnZone
 							column="left"
 							buttons={drawn}
@@ -779,7 +790,16 @@ export default function ControllerLayout({
 							height={height}
 						/>
 					</div>
-					<div className="position-absolute top-0 end-0 h-100 d-flex align-items-center">
+					<div
+						className="position-absolute top-0 h-100 d-flex align-items-center"
+						// In landscape the largest right-column buttons are 60–75 px
+						// wide and some sit at x=.8. Anchoring their 160 px zone on the
+						// viewport edge let their last 18–30 px widen the document, which
+						// shifted the left d-pad off-screen. Give that zone one button
+						// radius of breathing room; portrait presets already carry their
+						// own safe x positions.
+						style={{ right: isLandscape ? 32 : 0 }}
+					>
 						<ColumnZone
 							column="right"
 							buttons={drawn}

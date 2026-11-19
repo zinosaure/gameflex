@@ -65,7 +65,7 @@ func (server *Server) serveStreamexChild(w http.ResponseWriter, r *http.Request)
 
 	proxy := httputil.NewSingleHostReverseProxy(&url.URL{
 		Scheme: "http",
-		Host:   server.config.PublicHost + ":" + strconv.Itoa(record.Port),
+		Host:   server.config.ReachableHost() + ":" + strconv.Itoa(record.Port),
 	})
 	proxy.ServeHTTP(w, r)
 }

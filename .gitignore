@@ -3,7 +3,13 @@
 
 # Isolated previews, dependency installs and local runtime data.
 .local/
+node_modules/
 src/webapp/src/node_modules/
+__pycache__/
+.npm/
+src/webapp/src/dist/
+output/experience-preview.js
+output/experience-preview.css
 
 # Local signed TV build outputs (signing keys remain outside version control).
 /output/android-tv/

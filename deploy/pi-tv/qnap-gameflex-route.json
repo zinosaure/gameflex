@@ -1,0 +1,12 @@
+{
+  "status": "prepared-not-applied",
+  "source": {"protocol": "HTTPS", "host": "loutrenas.myqnapcloud.com", "port": 2000},
+  "destination": {"protocol": "HTTP", "host": "192.168.1.63", "port": 2000},
+  "tls": "Use the existing valid certificate that includes loutrenas.myqnapcloud.com; do not export its private key",
+  "preserveHostAndPort": true,
+  "webSockets": true,
+  "maxRequestBodyBytes": null,
+  "idleTimeoutSeconds": 3600,
+  "modifyOtherRoutes": false,
+  "routerChanges": "Verify existing forwarding target before any change; explicit approval required"
+}

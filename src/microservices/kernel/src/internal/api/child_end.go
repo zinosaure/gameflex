@@ -46,7 +46,7 @@ func (server *Server) endThroughChild(ctx context.Context, sessionID, container 
 
 	body, _ := json.Marshal(map[string]any{"username": asking, "admin": admin})
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		childV4URL(server.config.PublicHost, port, "terminate"), bytes.NewReader(body))
+		childV4URL(server.config.ReachableHost(), port, "terminate"), bytes.NewReader(body))
 	if err != nil {
 		return false, 0
 	}

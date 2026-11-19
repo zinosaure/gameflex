@@ -1,3 +1,4 @@
+import {gameSocket} from '../../../libs/GameSocket.js';
 import { useCallback, useEffect, useRef, useMemo } from "react";
 import { wsUrl } from "../../../libs/serverBase.js";
 
@@ -51,7 +52,7 @@ export function useChildSessionWs({ sessionId, token, enabled, onState, onResult
             return undefined;
         }
 
-        const socket = new WebSocket(
+        const socket = gameSocket(
             wsUrl(`${childBase(sessionId)}/v4/ws?token=${encodeURIComponent(token)}`),
         );
         socketRef.current = socket;

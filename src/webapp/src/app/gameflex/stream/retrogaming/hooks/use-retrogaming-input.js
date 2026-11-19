@@ -11,6 +11,23 @@ import { triggerRumble } from "../../../libs/rumble.js";
 import { CONTROLLER_PRESETS } from "../../../controllers/presets.js";
 import { useSessionStats } from "../../shared/hooks/use-session-stats.js";
 import { markActivity } from "../../shared/activity-store.js";
+
+// Une Wiimote couchée est tournée d'un quart de tour antihoraire : son
+// « droite » physique pointe alors vers le haut de l'écran. Le dessin, le
+// clavier et une manette standard parlent tous dans les directions de
+// L'ÉCRAN ; on effectue donc la rotation inverse juste avant l'envoi au cœur.
+// Placé ici, après les profils enregistrés, le correctif vaut aussi pour les
+// anciens mappings déjà sauvegardés.
+const WII_SIDEWAYS_DPAD_BITS = {
+	[RETRO_BUTTON_INDEX.DPAD_UP]: RETRO_BUTTON_INDEX.DPAD_RIGHT,
+	[RETRO_BUTTON_INDEX.DPAD_RIGHT]: RETRO_BUTTON_INDEX.DPAD_DOWN,
+	[RETRO_BUTTON_INDEX.DPAD_DOWN]: RETRO_BUTTON_INDEX.DPAD_LEFT,
+	[RETRO_BUTTON_INDEX.DPAD_LEFT]: RETRO_BUTTON_INDEX.DPAD_UP,
+};
+
+export function retrogamingButtonForConsole(consoleId, index) {
+	return consoleId === "wii" ? (WII_SIDEWAYS_DPAD_BITS[index] ?? index) : index;
+}
 // v1 (chantier-3): the client-side input priority gate is gone. It existed
 // because every tab of a player kept its role, so the page had to decide
 // locally which one was driving. Input is now gated where it belongs —
@@ -196,9 +213,9 @@ export function useRetrogamingInput({ screenRef, session, context, t, options = 
 			// Only the tab holding the priority drives the pad (C2-P4d).
 			// Presses only. A RELEASE always goes through, even from a tab
 			markActivity();
-			sendButton(index, value);
+			sendButton(retrogamingButtonForConsole(session.consoleId, index), value);
 		},
-		[sendButton],
+		[sendButton, session.consoleId],
 	);
 	const sendAnalogWithActivity = useCallback(
 		(index, x, y) => {

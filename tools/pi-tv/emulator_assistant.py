@@ -7,9 +7,9 @@ from concurrent.futures import ThreadPoolExecutor
 from library import atomic_json
 from rom_import import FORMATS
 # These software-rendered cores require no proprietary BIOS for these systems.
-CORES={'nes':('quicknes','QuickNES','GPL-2.0'),'gbc':('gambatte','Gambatte','GPL-2.0'),'gba':('mgba','mGBA','MPL-2.0'),'snes':('snes9x','Snes9x','Snes9x non-commercial'),'megadrive':('genesis_plus_gx','Genesis Plus GX','non-commercial'),'sms':('genesis_plus_gx','Genesis Plus GX','non-commercial'),'atari2600':('stella2014','Stella 2014','GPL-2.0'),'atari7800':('prosystem','ProSystem','GPL-2.0'),'pce':('mednafen_pce_fast','Beetle PCE Fast','GPL-2.0'),'lynx':('mednafen_lynx','Beetle Lynx','GPL-2.0'),'wswan':('mednafen_wswan','Beetle WonderSwan','GPL-2.0'),'ngp':('mednafen_ngp','Beetle NeoPop','GPL-2.0')}
+CORES={'nes':('quicknes','QuickNES','GPL-2.0'),'gbc':('gambatte','Gambatte','GPL-2.0'),'gba':('mgba','mGBA','MPL-2.0'),'snes':('snes9x','Snes9x','Snes9x non-commercial'),'n64':('parallel_n64','ParaLLEl N64','GPL-2.0'),'nds':('desmume','DeSmuME','GPL-2.0'),'megadrive':('genesis_plus_gx','Genesis Plus GX','non-commercial'),'sms':('genesis_plus_gx','Genesis Plus GX','non-commercial'),'atari2600':('stella2014','Stella 2014','GPL-2.0'),'atari7800':('prosystem','ProSystem','GPL-2.0'),'pce':('mednafen_pce_fast','Beetle PCE Fast','GPL-2.0'),'lynx':('mednafen_lynx','Beetle Lynx','GPL-2.0'),'wswan':('mednafen_wswan','Beetle WonderSwan','GPL-2.0'),'ngp':('mednafen_ngp','Beetle NeoPop','GPL-2.0')}
 # Automatic installation is intentionally limited to audited, libre engines.
-INSTALLABLE={'nes','gbc','gba','atari2600','atari7800','pce','lynx','wswan','ngp'}
+INSTALLABLE={'nes','gbc','gba','n64','nds','atari2600','atari7800','pce','lynx','wswan','ngp'}
 ARCH={'aarch64':('aarch64',183),'arm64':('aarch64',183),'x86_64':('x86_64',62)}
 LOCK=threading.RLock();POOL=ThreadPoolExecutor(max_workers=1);JOBS={}
 class EmulatorError(ValueError):pass

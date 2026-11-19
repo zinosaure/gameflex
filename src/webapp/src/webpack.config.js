@@ -206,7 +206,7 @@ export default (env = {}) => ({
                     throw new Error(`proxy : ${shorter} recouvre ${longer} — renommer l'un des deux domaines`);
                 }
             }));
-            return SERVICES.map((service) => {
+            const proxies = SERVICES.map((service) => {
                 const target = process.env[service.target];
                 if (!target) {
                     throw new Error(`proxy : ${service.target} manque — l'adresse du service ${service.service}`);
@@ -247,6 +247,26 @@ export default (env = {}) => ({
                 }
                 return entry;
             });
+            // The experience service deliberately lives outside /api/v1: it
+            // serves the catalogue, folder picker, artwork and its WebSocket
+            // bridges under /experience-api/v1.  It therefore cannot be
+            // represented by api-domains.json, whose entries all expand to
+            // /api/v1/<domain>.  Keep this route next to the generated table
+            // so development and the PC image expose the complete app.
+            const experienceTarget = process.env.EXPERIENCE_BACKEND_PROXY_TARGET;
+            if (!experienceTarget) {
+                throw new Error('proxy : EXPERIENCE_BACKEND_PROXY_TARGET manque — l\'adresse du service experience');
+            }
+            proxies.push({
+                context: ['/experience-api'],
+                target: experienceTarget,
+                changeOrigin: true,
+                secure: false,
+                ws: true,
+                xfwd: true,
+                pathRewrite: { '^/experience-api': '' },
+            });
+            return proxies;
         })(),
         // ── /dev/checklist — outil de triage, DÉV UNIQUEMENT ─────────────
         //

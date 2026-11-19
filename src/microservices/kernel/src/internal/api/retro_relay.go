@@ -186,7 +186,7 @@ func (server *Server) handleRetroStreamWS(w http.ResponseWriter, r *http.Request
 	// the browser connection lives — the loop ends on the first success,
 	// and the browser closing drops the handler below it anyway.
 	var childConn *websocket.Conn
-	dialTarget := fmt.Sprintf("%s:%d", server.config.PublicHost, rec.record.Port)
+	dialTarget := fmt.Sprintf("%s:%d", server.config.ReachableHost(), rec.record.Port)
 	// The URL as logged: it names the path, never the token.
 	dialURL := "ws://" + dialTarget + childPath
 	// THE BROWSER'S TOKEN GOES TO THE CHILD, which judges who opens which of

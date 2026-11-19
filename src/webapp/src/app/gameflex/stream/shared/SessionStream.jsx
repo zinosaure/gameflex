@@ -509,7 +509,10 @@ export function SessionStream({
             // endroit qui compte vraiment : la sortie.
             ownRef.current?.cleanup?.();
         };
-    }, [sessionId, hasInput, username, maxAttempts, pictureTimeoutMs]);
+    // Ces options font partie du corps de l'offre et doivent déclencher une
+    // nouvelle négociation quand elles changent, y compris dans une PWA qui
+    // conserve le composant monté entre deux routes.
+    }, [sessionId, hasInput, username, maxAttempts, pictureTimeoutMs, quality, preview, launch]);
 
     return (
         <div style={{

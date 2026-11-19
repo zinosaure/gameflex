@@ -75,6 +75,10 @@ export const NES = makeController("nes");
 export const SNES = makeController("snes");
 // Nintendo 64 (N64)
 export const N64 = makeController("n64");
+// Nintendo GameCube
+export const GameCube = makeController("gamecube");
+// Nintendo Wii (Wiimote held sideways)
+export const Wii = makeController("wii");
 // Nintendo Switch (Joy-Con)
 export const JoyCon = makeController("joycon");
 // Xbox (360 layout)
@@ -219,11 +223,8 @@ export const RETRO_CONTROLLER_PRESET_MAP = {
     ps2: "dualshock",
     psp: "psp",
     n64: "n64",
-    // gc — le preset n64 s'appelle lui-même « Nintendo 64/GameCube », et il
-    // porte ce qu'une GameCube demande : Z sur une gâchette, et les C sur le
-    // stick droit (c'est le C-stick, sur cette console-là). Sans cette
-    // ligne, la GameCube tombait sur le pad générique.
-    gc: "n64",
+    gc: "gamecube",
+    wii: "wii",
     nds: "snes",
     switch: "joycon",
     // La Switch 2 (#644) : les mêmes boutons que la Switch.
@@ -262,7 +263,8 @@ export const PRESET_COMPONENT_BY_NAME = {
     nes: NES,
     snes: SNES,
     n64: N64,
-    gamecube: N64,
+    gamecube: GameCube,
+    wii: Wii,
     joycon: JoyCon,
     xbox: Xbox,
 };

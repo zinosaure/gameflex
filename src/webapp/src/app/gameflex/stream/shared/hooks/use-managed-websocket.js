@@ -1,3 +1,4 @@
+import {gameSocket} from '../../../libs/GameSocket.js';
 import { useCallback, useRef } from "react";
 
 // useManagedWebSocket — the WebSocket plumbing retro-gaming's and
@@ -22,7 +23,7 @@ export function useManagedWebSocket() {
     const sendJSONRef = useRef(null);
 
     const openManaged = useCallback((url, { onOpen, onMessage, onClose, onError } = {}) => {
-        const socket = new WebSocket(url);
+        const socket = gameSocket(url);
         wsRef.current = socket;
 
         const sendJSON = (message) => {

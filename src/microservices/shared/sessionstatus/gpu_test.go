@@ -28,6 +28,21 @@ func fakeGPU(t *testing.T, root, card, pci, vendor, render string, vram string) 
 	}
 }
 
+// fakePlatformGPU reproduit le V3D du Raspberry Pi : ce n'est pas une carte
+// PCI, donc sysfs ne lui donne aucun fichier vendor. Le pilote et le fabricant
+// ne sont annoncés que dans uevent, sous son périphérique de plateforme.
+func fakePlatformGPU(t *testing.T, root, card, platform, render string) {
+	t.Helper()
+	device := filepath.Join(root, "devices/platform/axi", platform)
+	os.MkdirAll(filepath.Join(device, "drm", card), 0o755)
+	os.MkdirAll(filepath.Join(device, "drm", render), 0o755)
+	os.WriteFile(filepath.Join(device, "uevent"), []byte("DRIVER=v3d\nOF_COMPATIBLE_0=brcm,2712-v3d\n"), 0o644)
+	os.MkdirAll(filepath.Join(root, "class/drm", card), 0o755)
+	if err := os.Symlink(filepath.Join("../../../devices/platform/axi", platform), filepath.Join(root, "class/drm", card, "device")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // LES CARTES DE L'HÔTE, dans l'ordre PCI — pas celui des numéros de card —,
 // avec leurs deux nœuds ; une sortie (card1-DP-1) et une carte de fabricant
 // inconnu n'en sont pas.
@@ -50,6 +65,17 @@ func TestGPUsInPCIOrderWithTheirNodes(t *testing.T) {
 		if gpus[i] != want[i] {
 			t.Errorf("carte %d : %+v, attendu %+v", i, gpus[i], want[i])
 		}
+	}
+}
+
+func TestGPUsRecognisesRaspberryPiV3D(t *testing.T) {
+	root := t.TempDir()
+	fakePlatformGPU(t, root, "card0", "1002000000.v3d", "renderD128")
+
+	gpus := GPUs(root)
+	want := []GPU{{PCI: "1002000000.v3d", Vendor: "Broadcom", Card: "card0", Render: "renderD128"}}
+	if len(gpus) != 1 || gpus[0] != want[0] {
+		t.Fatalf("GPU Raspberry Pi : %+v, attendu %+v", gpus, want)
 	}
 }
 

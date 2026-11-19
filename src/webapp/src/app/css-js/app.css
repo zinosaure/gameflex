@@ -113,6 +113,17 @@ html, body {
     --gameflex-visible-height: 100vh;
 }
 
+/* Une partie est une surface de jeu, jamais un document à sélectionner.
+ * Sur iOS/PWA, un doigt maintenu sur les statistiques ou entre deux boutons
+ * déclenchait la sélection bleue de Safari et volait ensuite le pointerup. */
+.gameflex-stream-shell,
+.gameflex-stream-shell * {
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    -webkit-touch-callout: none !important;
+    -webkit-user-drag: none;
+}
+
 @supports (height: 100dvh) {
     :root {
         --gameflex-visible-height: 100dvh;

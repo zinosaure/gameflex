@@ -1,3 +1,4 @@
+import {gameSocket} from '../libs/GameSocket.js';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useAuth } from "../profile/auth/AuthContext.jsx";
 import { homeWsUrl } from "../libs/serverBase.js";
@@ -35,7 +36,7 @@ export function PresenceProvider({ children }) {
         const connect = () => {
                         // Query param, not a header — browsers can't set custom headers
             // on a WebSocket handshake (see presence/routes.py's own doc).
-            ws = new WebSocket(homeWsUrl(`/api/v1/presence/ws?token=${encodeURIComponent(token)}`));
+            ws = gameSocket(homeWsUrl(`/api/v1/presence/ws?token=${encodeURIComponent(token)}`));
             wsRef.current = ws;
 
             ws.onmessage = (evt) => {

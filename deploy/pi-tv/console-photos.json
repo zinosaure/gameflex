@@ -1,0 +1,51 @@
+{
+  "provider": "Wikimedia Commons",
+  "consoles": {
+    "nes": "NES-Console-Set.jpg",
+    "snes": "SNES-Mod1-Console-Set.jpg",
+    "gbc": "Nintendo-Game-Boy-Color-FL.jpg",
+    "gba": "Nintendo-Game-Boy-Advance-Purple-FL.jpg",
+    "vb": "Virtual-Boy-Set.jpg",
+    "n64": "Nintendo-64-wController-L.jpg",
+    "nds": "Nintendo-DS-Lite-Black-Open.jpg",
+    "gc": "GameCube-Set.jpg",
+    "wii": "Wii-console.jpg",
+    "sms": "Sega-Master-System-Set.jpg",
+    "megadrive": "Sega-Mega-Drive-JP-Mk1-Console-Set.jpg",
+    "saturn": "Sega-Saturn-JP-Mk1-Console-Set.jpg",
+    "dreamcast": "Dreamcast-Console-Set.jpg",
+    "atari2600": "Atari-2600-Wood-4Sw-Set.jpg",
+    "atari7800": "Atari-7800-Console-Set.jpg",
+    "lynx": "Atari-Lynx-Handheld-Angled.jpg",
+    "jaguar": "Atari-Jaguar-Console-Set.jpg",
+    "pce": "PC-Engine-Console-Set.jpg",
+    "pcfx": "NEC-PC-FX-wController-R.jpg",
+    "neogeo": "Neo-Geo-AES-Console-Set.jpg",
+    "ngp": "Neo-Geo-Pocket-Anthra-Left.jpg",
+    "cps1": "CPS1 CPU.JPG",
+    "wswan": "WonderSwan-Black-Left.jpg",
+    "coleco": "ColecoVision-wController-L.jpg",
+    "vectrex": "Vectrex-Console-Set.jpg",
+    "c64": "Commodore-64-Computer-FL.jpg",
+    "amstrad": "Amstrad CPC464.jpg",
+    "zxspectrum": "ZXSpectrum48k.jpg",
+    "doom": "IBM PS2 MCA Model 70, front view.jpg",
+    "ps1": "PlayStation-SCPH-1000-with-Controller.jpg",
+    "ps2": "Sony-PlayStation-2-30001-wController-L.jpg",
+    "psp": "Psp-1000.jpg"
+  },
+  "external": [
+    {
+      "target": "cps2",
+      "provider": "Flickr",
+      "title": "cps2 marsmatrix",
+      "author": "o_o",
+      "source": "https://www.flickr.com/photos/19081668@N00/10481320",
+      "sourceImage": "https://live.staticflickr.com/5/10481320_953eb3be06_b.jpg",
+      "license": "CC BY-NC-SA 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-nc-sa/2.0/",
+      "usage": "non-commercial-only",
+      "discovery": "Openverse; license rechecked on the original Flickr page"
+    }
+  ]
+}

@@ -56,7 +56,11 @@ WORKDIR /src
 COPY ./microservices/runtimes/retrogaming/src/ ./
 RUN CGO_ENABLED=1 GOFLAGS=-mod=readonly go build -trimpath -ldflags "-s -w" -o /out/retrogaming ./cmd/retrogaming/
 
-FROM debian:bookworm-slim AS release
+# The official ARM64 Dolphin core is built with a current GCC/libstdc++.
+# Bookworm stops at GLIBCXX_3.4.30, so the core cannot even be dlopened there.
+# Trixie keeps the same glibc-based runtime contract while providing the
+# GLIBCXX_3.4.31/3.4.32 symbols required by Dolphin on Raspberry Pi 5.
+FROM debian:trixie-slim AS release
 
 # Même étiquette que l'image de dev : une image de partie n'a pas de conteneur
 # permanent, un élagage la ramasserait (voir plus bas).

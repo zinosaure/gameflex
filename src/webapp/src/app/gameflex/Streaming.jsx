@@ -574,6 +574,13 @@ export function StreamingShell({ t, user, token, session, context, setTerminateR
     const [introPhase, setIntroPhase] = useState(null);
     const [slowStart, setSlowStart] = useState(false);
     const [heldLong, setHeldLong] = useState(false);
+    // A failed LAN video path must give an actionable exit, never an endless blank screen.
+    useEffect(() => {
+        if (session.platform !== "retrogaming" || sawPicture || slowStart) return undefined;
+        const timeout = setTimeout(() => setTerminateReason("Le flux vidéo ne répond pas. Vérifiez l’accès UDP 9201–9300 au Pi sur le réseau local."), 60000);
+        return () => clearTimeout(timeout);
+    }, [session.platform, sawPicture, slowStart, setTerminateReason]);
+
     // Le flux de la partie, pour le fond de l'écran d'attente de celui qui la
     // rejoint : il n'a pas de lancement à suivre, c'est sa propre vidéo.
     const [shellStream, setShellStream] = useState(null);
@@ -1681,7 +1688,9 @@ export function StreamingShell({ t, user, token, session, context, setTerminateR
     return (
         <div
             ref={shellRef}
-            className="overflow-hidden"
+            className="overflow-hidden gameflex-stream-shell"
+            onContextMenu={(event) => event.preventDefault()}
+            onDragStart={(event) => event.preventDefault()}
             style={{
                 backgroundColor: "#000",
                 // 100% once this element IS the fullscreen box: the browser
