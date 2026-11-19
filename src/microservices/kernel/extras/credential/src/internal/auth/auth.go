@@ -59,6 +59,11 @@ type Claims struct {
 	// ici (LoadToken) comme au kernel (auth.Admit). Absente, elle vaut 0 : les
 	// jetons signés avant elle valent tant que le compte n'a rien coupé.
 	Gen int `json:"gen,omitempty"`
+	// Acc — L'ACCÈS DÉLIVRÉ par lequel le serveur ami a ouvert la session
+	// (chantier 66, l'identifiant de son jeton de catalogue) : le kernel ne
+	// lance que les consoles que cet accès laisse lancer. 0 : une connexion
+	// ordinaire.
+	Acc int64 `json:"acc,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -95,7 +100,7 @@ func sign(secret string, claims Claims) (string, error) {
 // (Fed) ; `sessions`, celle des sessions du compte (Gen) : réinitialisé, le
 // compte coupe aussi ces sessions-là, et le serveur de l'ami en rouvre une avec
 // le jeton, qui vaut encore.
-func CreateFederatedToken(secret string, userID int64, username, generation string, sessions int, lifetime time.Duration) (string, error) {
+func CreateFederatedToken(secret string, userID int64, username, generation string, sessions int, access int64, lifetime time.Duration) (string, error) {
 	if lifetime > TokenLifetime {
 		lifetime = TokenLifetime
 	}
@@ -104,6 +109,7 @@ func CreateFederatedToken(secret string, userID int64, username, generation stri
 		RoleLevel: RoleUser,
 		Fed:       generation,
 		Gen:       sessions,
+		Acc:       access,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   fmt.Sprintf("%d", userID),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(lifetime)),

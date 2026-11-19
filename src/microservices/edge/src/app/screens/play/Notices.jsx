@@ -10,7 +10,9 @@ import { useButton } from "../../libs/ui.js";
 // (sa copie de Skeleton, app/skeleton/skeleton.js, que Play.jsx lui fournit). Un avis s'efface seul (`duration`, 4 s ; 0 : il reste) ; une QUESTION
 // (`variant: "confirm"`) attend sa réponse, deux boutons. Une question qui demande la manette
 // (`takesPad` : « X demande votre manette ») prend la croix comme un panneau : la page suspend le jeu
-// (PlayShell.jsx), A répond oui, B non.
+// (PlayShell.jsx), A répond oui, B non. `expiresAfter` (ms) : une question qui se ferme seule, et ce silence
+// vaut non (chantier 65 : « un popup qui demande si on veut libérer la manette ou pas. Qui se ferme après 15
+// secondes »).
 
 const VARIANTS = { error: "text-bg-danger", warning: "text-bg-warning", success: "text-bg-success" };
 
@@ -39,7 +41,15 @@ function Notice({ notice, dismiss }) {
 
     useEffect(() => {
         if (asks) {
-            return undefined;
+            if (!notice.expiresAfter) {
+                return undefined;
+            }
+            const timer = setTimeout(() => {
+                dismiss(notice.id);
+                notice.onCancel?.();
+            }, notice.expiresAfter);
+
+            return () => clearTimeout(timer);
         }
         const timer = notice.duration === 0 ? null : setTimeout(() => dismiss(notice.id), notice.duration || 4000);
 

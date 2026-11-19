@@ -198,8 +198,8 @@ func (server *Server) handleRemoteplayThroughDoor(w http.ResponseWriter, r *http
 	// connue qu'ici, une fois l'appareil résolu (PS4, PS5 → rp-ps4, rp-ps5) —
 	// et AVANT la reprise d'une partie en cours, qui se rendait à quiconque la
 	// demandait.
-	if consoleID := "rp-" + strings.ToLower(device.HostType); !server.consoleGranted(r, consoleID) {
-		writeNotGranted(w, consoleID)
+	if consoleID := "rp-" + strings.ToLower(device.HostType); server.consoleRefusal(r, consoleID) != "" {
+		writeConsoleRefused(w, server.consoleRefusal(r, consoleID), consoleID)
 
 		return
 	}

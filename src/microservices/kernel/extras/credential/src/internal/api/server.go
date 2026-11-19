@@ -136,6 +136,9 @@ func (server *Server) routes() {
 	server.mux.HandleFunc("PATCH /api/v1/catalog-tokens/{id}", server.withUser(server.withAdmin(server.handleUpdateFederationToken)))
 	server.mux.HandleFunc("DELETE /api/v1/catalog-tokens/{id}", server.withUser(server.withAdmin(server.handleRevokeFederationToken)))
 	server.mux.HandleFunc("POST /internal/federation/verify", server.handleVerifyFederationToken)
+	// LES CONSOLES COUPÉES POUR TOUT LE SERVEUR (chantier 66) : la page les lit pour griser Jouer, l'administrateur les change.
+	server.mux.HandleFunc("GET /api/v1/console-switches", server.withUser(server.handleListConsoleSwitches))
+	server.mux.HandleFunc("PUT /api/v1/console-switches/{id}", server.withUser(server.withAdmin(server.handleSetConsoleSwitch)))
 
 	// LE JETON D'UN COMPTE (chantier 20) — pour JOUER ici depuis un autre
 	// serveur, à la place d'un identifiant et d'un mot de passe. L'administrateur

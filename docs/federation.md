@@ -65,9 +65,8 @@ federated accounts.
    you opened. Then, in **Settings › Federation › Delivered accesses**, open **Create a new access**.
 2. In **Who is it for?**, give a name you will recognize, such as *Marc's server*. It is shown next
    to your games on their side, and lets you cut off this access alone.
-3. To also show them your Remote Play consoles, turn on **Also share the consoles**. To let their
-   searches for game sheets use your metadata provider accounts, turn on **Also share my metadata
-   providers** (off by default: their searches count in your quota).
+3. To let their searches for game sheets use your metadata provider accounts, turn on **Also share
+   my metadata providers** (off by default: their searches count in your quota).
 4. Press **Create the invitation**.
 
    ![Create a new access: the name of the person it is for, and what to share](images/federation-token-create.png)
@@ -85,6 +84,19 @@ name you gave.
 **The address and the token instead:** turn on **Rather the address and the token**, then press **Create
 the token**. GameFlex shows a **Server address** and an **Access token**: send both, in a private
 message. The token is shown only once: if it is lost, revoke it and create another.
+
+### Choose the consoles of an access
+
+A new access lets its players launch every console, as long as their own account allows it. To
+restrict it, open the access in **Settings › Federation › Delivered accesses**, then **Console
+access**: one switch for all the retro consoles, one for each recent console and one for each
+Remote Play console, saved as soon as you flip it. Your games and your Remote Play consoles stay
+visible to that server; only launching them changes.
+
+To switch a console off for everyone at once, members of your server included, open **Settings ›
+Consoles**, the console, and turn off **Console enabled**. It is useful when your computer needs its
+graphics card for something else: the PlayStation 5 can go off while the retro consoles and Remote
+Play, which uses your real console, stay on.
 
 ## Add a friend's server
 
@@ -153,19 +165,31 @@ there (see [Federated servers and federated accounts](#federated-servers-and-fed
 **On your side:**
 
 3. Sign in on your friend's GameFlex page with that account. In **Settings › Profile ›
-   Federation › Create my token**, open **Use a QR code instead**: GameFlex shows an invitation for your
+   Federation › See my connection token**, open **Use a QR code instead**: GameFlex shows an invitation for your
    account, valid once within 12 hours. Copy its link, or download or share its QR.
 
-   ![Settings › Profile › Federation › Create my token, on the friend's server](images/federation-my-token.png)
+   ![Settings › Profile › Federation › See my connection token, on the friend's server](images/federation-my-token.png)
 
 4. Back on your own GameFlex, in **Settings › Profile › Federation › Sign in at federated
    servers**, open their server. Under **Play at <their server>**, on the **Invitation** tab, paste
    the link or choose the image of the QR, then press **Use this invitation**. You can also copy the
-   **Token** itself from their **Create my token** page and paste it on the **Token** tab. The same
+   **Token** itself from their **See my connection token** page and paste it on the **Token** tab. The same
    form shows in the settings of one of their games, when you have not signed in yet.
 
 5. The page now says which account you play under over there. Start one of their games with
    **Play**.
+
+When a game cannot start, its button says why instead of **Play**:
+
+| The button says | Because | What to do |
+|---|---|---|
+| **Sign-in required** | You have no account token for that server yet. | Press it: it opens the page where you paste it. |
+| **Console disabled** | That server has switched the console off for everyone. | Wait for its owner to switch it back on. |
+| **Federation disabled** | The access that server gave yours does not include that console. | Ask its owner to add it to your access. |
+| **Restricted access** | Your account does not include that console. | Ask the server's administrator to add it to your account. |
+
+The same words show on a game of your own server: **Console disabled** when you switched it off in
+**Settings › Consoles**, **Restricted access** when your account does not include it.
 
 The game starts on their server and plays in your page, like any other game.
 
@@ -243,7 +267,7 @@ another one before you download it.
 | *The token of this account is disabled over there* | Ask your friend to enable the token of your account. The invitation was not used up. |
 | *No QR could be read in this image* | Choose a sharper image, or paste the link instead. |
 | *Too many refused invitations* | Wait a few minutes, then try again. |
-| **Play at <their server>** refuses your account token | It was disabled, expired or regenerated: ask your friend to enable it again, then copy it from **Settings › Profile › Federation › Create my token** on their GameFlex. |
+| **Play at <their server>** refuses your account token | It was disabled, expired or regenerated: ask your friend to enable it again, then copy it from **Settings › Profile › Federation › See my connection token** on their GameFlex. |
 | A game is listed but unavailable there | Your account on their server has no access to this console (*Not on your account* on the server's page): they can grant it in **Settings › Members**. |
 | A download into the library waits | Games download one at a time: it waits its turn in the queue, shown in **Live**. |
 | A download says the file already exists | You already have one: delete yours first to take theirs. |

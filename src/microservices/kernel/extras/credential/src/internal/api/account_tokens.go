@@ -66,6 +66,9 @@ type TokenCaller struct {
 	Member  string
 	Kind    string
 	Address string
+	// Access — le jeton de catalogue que ce serveur tient de nous (chantier 66) : par quel accès il vient. Sans lui,
+	// pas de session — les consoles d'un accès ne se contournent pas en le taisant.
+	Access string
 }
 
 // trimmedTo — une valeur venue d'ailleurs, sans espaces autour, coupée à `limit` caractères.
@@ -323,6 +326,9 @@ type TokenAccount struct {
 
 var ErrTokenRefused = errors.New("token refused")
 
+// ErrAccessRefused — le serveur qui ouvre la session ne présente pas d'accès délivré valable (chantier 66).
+var ErrAccessRefused = errors.New("access refused")
+
 func (server *Server) AccountByToken(token string) (TokenAccount, error) {
 	if len(token) < 16 {
 		return TokenAccount{}, ErrTokenRefused
@@ -380,13 +386,18 @@ func (server *Server) handleFederationSession(w http.ResponseWriter, r *http.Req
 		Member  string `json:"member"`
 		Kind    string `json:"kind"`
 		Address string `json:"address"`
+		Access  string `json:"access"`
 	}
 	if !decodeBody(w, r, &body) {
 		return
 	}
-	session, account, err := server.FederatedSession(body.Token, TokenCaller{Name: body.From, Member: body.Member, Kind: body.Kind, Address: body.Address})
+	session, account, err := server.FederatedSession(body.Token, TokenCaller{Name: body.From, Member: body.Member, Kind: body.Kind, Address: body.Address, Access: body.Access})
 	if errors.Is(err, ErrTokenRefused) {
 		respondErrorCode(w, http.StatusUnauthorized, "auth_required", "Invalid token.")
+		return
+	}
+	if errors.Is(err, ErrAccessRefused) {
+		respondErrorCode(w, http.StatusForbidden, "access_refused", "No valid access of this server was presented.")
 		return
 	}
 	if err != nil {
@@ -414,12 +425,19 @@ func (server *Server) FederatedSession(token string, caller TokenCaller) (string
 	if err != nil {
 		return "", TokenAccount{}, err
 	}
+	access, err := server.verifyFederationToken(caller.Access)
+	if errors.Is(err, ErrCatalogTokenRefused) {
+		return "", TokenAccount{}, ErrAccessRefused
+	}
+	if err != nil {
+		return "", TokenAccount{}, err
+	}
 	var sessions int
 	if err := server.db.QueryRow(`SELECT session_generation FROM users WHERE id = ?`, account.UserID).Scan(&sessions); err != nil {
 		return "", TokenAccount{}, err
 	}
 	session, err := auth.CreateFederatedToken(server.config.JWTSecret, account.UserID, account.Username,
-		account.Generation, sessions, time.Until(account.ExpiresAt))
+		account.Generation, sessions, access.ID, time.Until(account.ExpiresAt))
 	if err != nil {
 		return "", TokenAccount{}, err
 	}

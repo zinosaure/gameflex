@@ -217,6 +217,22 @@ func (host *Host) submit(command Command, now time.Time) (string, []Outcome) {
 		}
 		messages = append(messages, addressed{socketID: outcome.Command.SocketID, message: result})
 
+		// A REFUSAL reaches the one who asked: without it their demand only
+		// vanished from the state, and the page could not say "no". `move`:
+		// the holder was their own other device (chantier 65).
+		if denied := outcome.Denied; denied != nil && denied.FromSocket != "" {
+			messages = append(messages, addressed{
+				socketID: denied.FromSocket,
+				message: map[string]any{
+					"type":   "result",
+					"action": string(CmdRequestHandover),
+					"status": "denied",
+					"from":   denied.To,
+					"move":   denied.From == denied.To,
+				},
+			})
+		}
+
 		// A GIFT has a second human in it, and only one of the two asked for
 		// anything. Without this the recipient finds a pad in their hands with
 		// no idea where it came from — the state push moves the slot, it does

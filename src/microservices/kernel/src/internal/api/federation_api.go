@@ -63,6 +63,9 @@ type tokenLabelKey struct{}
 // tokenScopesKey — ce que le porteur a le droit de faire.
 type tokenScopesKey struct{}
 
+// tokenConsolesKey — ce que l'accès du porteur laisse lancer (chantier 66).
+type tokenConsolesKey struct{}
+
 // scopeCatalog — lire le catalogue et télécharger un jeu ou un BIOS. La
 // seule portée qui existe, et le service d'identité n'en accorde pas
 // d'autre.
@@ -74,27 +77,23 @@ type tokenScopesKey struct{}
 // d'avoir été écrite là.
 const scopeCatalog = "catalog"
 
-// scopeDevices — voir la LISTE des consoles à distance de ce serveur
-// (chantier 9, C9-P2). Séparée de scopeCatalog exprès : la greffer sur elle
-// aurait élargi, sans que personne ne le décide, tous les jetons déjà
-// distribués. C'est le cas que le commentaire de requireScope annonce.
-//
-// Elle ouvre une liste, pas une console : lancer une session dessus demande
-// un COMPTE chez celui qui la tient.
-const scopeDevices = "devices"
+// LA PORTÉE `devices` EST PARTIE (chantier 66) : les consoles Remote Play se voient avec le catalogue, et y jouer suit
+// les consoles de l'accès (consoleRefusal) — ce que l'interrupteur « Partager aussi les consoles » ne disait pas.
 
 // scopeMetadataProviders — PARTAGER MES FOURNISSEURS DE MÉTADONNÉES (chantier 57, `#719` ; le porteur, 2026-11-15 :
 // « En plus de partager les jeux et consoles on propose de partager les fournisseurs metadata. Comme ça si je partage
 // à moi-même il n'y a pas de risques d'abus de quota »). Sans elle, ce serveur ne prête que les fiches de ses jeux ;
 // avec elle, sa recherche interroge aussi ses comptes (IGDB, SteamGridDB) pour un titre qu'il n'a pas, et relit le jeu
 // d'un de ses fournisseurs pour le porteur du jeton. Ses clés ne sortent jamais. Séparée de scopeCatalog pour la même
-// raison que scopeDevices : coupée par défaut, et aucun jeton déjà distribué ne s'élargit sans qu'on le décide.
+// raison : coupée par défaut, et aucun jeton déjà distribué ne s'élargit sans qu'on le décide.
 const scopeMetadataProviders = "metadata-providers"
 
 // verifiedToken — ce que le service d'identité rend d'un jeton valide.
 type verifiedToken struct {
 	Label  string
 	Scopes string
+	// Consoles — ce que cet accès laisse lancer (chantier 66).
+	Consoles []string
 }
 
 // verifyFederationToken demande au service d'identité si ce jeton existe.
@@ -128,14 +127,15 @@ func (server *Server) verifyFederationToken(token string) (verifiedToken, error)
 
 	var decoded struct {
 		Item struct {
-			Label  string `json:"label"`
-			Scopes string `json:"scopes"`
+			Label    string   `json:"label"`
+			Scopes   string   `json:"scopes"`
+			Consoles []string `json:"consoles"`
 		} `json:"item"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&decoded); err != nil {
 		return verifiedToken{}, err
 	}
-	return verifiedToken{Label: decoded.Item.Label, Scopes: decoded.Item.Scopes}, nil
+	return verifiedToken{Label: decoded.Item.Label, Scopes: decoded.Item.Scopes, Consoles: decoded.Item.Consoles}, nil
 }
 
 // identityRelay — porter un jeton à une route interne du service d'identité.
@@ -211,6 +211,7 @@ func (server *Server) federationAuth(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), tokenLabelKey{}, verified.Label)
 		ctx = context.WithValue(ctx, tokenScopesKey{}, verified.Scopes)
+		ctx = context.WithValue(ctx, tokenConsolesKey{}, verified.Consoles)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -243,6 +244,7 @@ func (server *Server) handleFederationListing(w http.ResponseWriter, r *http.Req
 		return
 	}
 	served.Header.Scopes = scopesOf(r)
+	served.Header.Consoles, served.Header.DisabledConsoles = server.consolesFor(r)
 	// Les disques internes avec la bibliothèque, comme une seule (chantier 23).
 	server.withInternalDisks(r.Context(), &served)
 	server.withFreshness(&served)
@@ -272,7 +274,8 @@ func (server *Server) handleFederationListingUpdated(w http.ResponseWriter, r *h
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"updatedAt": updatedAt, "scopes": scopesOf(r)})
+	consoles, disabled := server.consolesFor(r)
+	writeJSON(w, http.StatusOK, map[string]any{"updatedAt": updatedAt, "scopes": scopesOf(r), "consoles": consoles, "disabledConsoles": disabled})
 }
 
 // federationSession — une session ouverte ici par le jeton d'un compte.
@@ -307,9 +310,10 @@ func (server *Server) handleFederationSession(w http.ResponseWriter, r *http.Req
 		return
 	}
 	// QUI LE PRÉSENTE (#781) : le nom qu'il se donne et l'adresse vue — la liste des connexions faites avec ce jeton.
+	// PAR QUEL ACCÈS (chantier 66) : le jeton de catalogue que ce serveur tient de nous. Sans lui, pas de session.
 	response, err := server.identityPost("/internal/federation/session", map[string]string{
 		"token": token, "from": r.Header.Get("X-GameFlex-From"), "member": r.Header.Get("X-GameFlex-Member"),
-		"kind": r.Header.Get("X-GameFlex-Kind"), "address": claimedAddress(r),
+		"kind": r.Header.Get("X-GameFlex-Kind"), "address": claimedAddress(r), "access": r.Header.Get("X-GameFlex-Access"),
 	})
 	if err != nil {
 		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "cannot open a session: "+err.Error())
@@ -321,6 +325,10 @@ func (server *Server) handleFederationSession(w http.ResponseWriter, r *http.Req
 	case http.StatusOK:
 	case http.StatusUnauthorized:
 		writeErrorCode(w, http.StatusUnauthorized, "token_refused", "invalid account token")
+
+		return
+	case http.StatusForbidden:
+		writeErrorCode(w, http.StatusForbidden, "accessRefused", "no valid access of this server was presented")
 
 		return
 	default:
@@ -494,6 +502,22 @@ func tokenLabelOf(r *http.Request) string {
 }
 
 // scopesOf — ce que le jeton du porteur lui ouvre ici, une portée par entrée.
+// consolesFor — ce que l'accès du porteur laisse lancer ici, et les consoles coupées pour tout le serveur (chantier
+// 66) : l'ami grise son bouton Jouer d'après elles (« fédération désactivée », « console désactivée »). Jamais nuls :
+// une liste vide dit « rien ».
+func (server *Server) consolesFor(r *http.Request) (consoles, disabled []string) {
+	consoles, _ = r.Context().Value(tokenConsolesKey{}).([]string)
+	if consoles == nil {
+		consoles = []string{}
+	}
+	disabled = []string{}
+	if server.accounts != nil {
+		disabled = server.accounts.DisabledConsoles()
+	}
+
+	return consoles, disabled
+}
+
 func scopesOf(r *http.Request) []string {
 	granted, _ := r.Context().Value(tokenScopesKey{}).(string)
 	scopes := []string{}
@@ -608,7 +632,7 @@ func (server *Server) catalogRoutes(router chi.Router) {
 
 	// La LISTE des consoles à distance, et rien d'autre (chantier 9, C9-P2).
 	// Sa portée est distincte : un jeton de catalogue ne la voit pas.
-	router.Get("/remoteplay/devices", requireScope(scopeDevices, server.handleFederationDevices))
+	router.Get("/remoteplay/devices", requireScope(scopeCatalog, server.handleFederationDevices))
 
 	// TOUJOURS PAS DE LANCEMENT, ni streamex ni remoteplay, et ce n'est pas
 	// un oubli. Lancer une session démarre un conteneur sur CETTE machine ;

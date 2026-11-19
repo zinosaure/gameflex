@@ -43,8 +43,10 @@ The **Remote Play** tab, at the top, shows each console with its state: **Online
 One player holds the controller at a time; the others watch, and the controller can be lent or
 given (see [Controllers and playing together](controllers.md)).
 
-**Share it with a friend's GameFlex:** when you give their server access, turn on **Also share the consoles**
-(see [Federation](federation.md)). To play on it, they also need an account on your server.
+**Share it with a friend's GameFlex:** your Remote Play consoles show on a server you give access to. Which
+ones it can play is set in that access's **Console access** (see
+[Choose the consoles of an access](federation.md#choose-the-consoles-of-an-access)). To play on it, they also need
+an account on your server.
 
 ## Limitations
 

@@ -111,7 +111,8 @@
         "coreMissing": "The chosen emulator is not installed.",
         "biosMissing": "This console's BIOS is missing.",
         "adminOnly": "On this device, only an administrator starts a game.",
-        "emulatorNotHere": "This device doesn't have this console's emulator: play it on a federated server."
+        "emulatorNotHere": "This device doesn't have this console's emulator: play it on a federated server.",
+        "consoleDisabled": "This console is disabled on this server."
     },
     "game": {
         "play": "Play",
@@ -128,7 +129,11 @@
         "playerCount_other": "{{count}} players",
         "sources": "Sources:",
         "resume": "Resume",
-        "continue": "Continue"
+        "signInRequired": "Sign-in required",
+        "continue": "Continue",
+        "consoleDisabled": "Console disabled",
+        "federationDisabled": "Federation disabled",
+        "accessRestricted": "Restricted access"
     },
     "settings": {
         "metadataServersCount_one": "{{count}} server",
@@ -210,7 +215,7 @@
                 "help": "Change this account's password."
             },
             "token": {
-                "label": "Create my token",
+                "label": "See my connection token",
                 "help": "To play here from another server."
             },
             "language": {
@@ -999,17 +1004,10 @@
         "noListing": "not read yet",
         "vram": "{{name}} ({{gb}} GB)",
         "ram": "{{gb}} GB of memory",
-        "consolesGranted": "Remote Play consoles shared",
-        "consolesRefused": "Remote Play consoles not shared",
         "createHelp": "A token opens your games and BIOS files to a server with no account here, and nothing else.",
-        "devicesShared": "Consoles shared with {{label}}",
-        "devicesUnshared": "Consoles no longer shared with {{label}}",
-        "devicesLabel": "Also share the consoles",
-        "devicesHelp": "Shows your Remote Play consoles to this server. Playing on them still takes an account here.",
         "scope": {
             "metadata-providers": "Metadata providers",
-            "catalog": "Games",
-            "devices": "Consoles"
+            "catalog": "Games"
         },
         "create": "Create token",
         "createdTitle": "Token for {{label}}",
@@ -1080,7 +1078,6 @@
         "grantsTitle": "Shared with you",
         "grantsHelp": "What this server shares with yours.",
         "catalogHelp": "See and download its games, BIOS files and emulators.",
-        "devicesGrantHelp": "See its Remote Play consoles.",
         "providersGrantHelp": "Search for images and sheets with its provider accounts.",
         "connectionTitle": "Sharing",
         "connectionHelp": "Share games, consoles and metadata between your devices, with friends and with other GameFlex servers around the world.",
@@ -1099,7 +1096,14 @@
         "scopeMetadata": "Metadata",
         "allowed": "Allowed",
         "notAllowed": "Not allowed",
-        "connectionHelpServeOnly": "What this service lends to your devices and to other GameFlex servers."
+        "connectionHelpServeOnly": "What this service lends to your devices and to other GameFlex servers.",
+        "consolesAll": "All",
+        "consolesNone": "None",
+        "consolesSome": "Some",
+        "consolesSection": "Consoles",
+        "consolesRowHelp": "What accounts coming through this access can launch.",
+        "consolesPageHelp": "Accounts coming through this access only launch these consoles, on top of their own rights.",
+        "consolesGrantHelp": "What our access to this server lets us launch."
     },
     "invitations": {
         "create": "Create the invitation",
@@ -1308,7 +1312,12 @@
         "paramsFileState": "State",
         "paramsFileUnreadable": "Unreadable",
         "paramsFileAbsent": "Missing",
-        "sourceStreamex": "Official source (streamex packages)"
+        "sourceStreamex": "Official source (streamex packages)",
+        "switchTitle": "Availability",
+        "switchLabel": "Console enabled",
+        "switchHelp": "When disabled, nobody launches it on this server, from here or through federation.",
+        "switchedOn": "{{name}} enabled",
+        "switchedOff": "{{name}} disabled"
     },
     "gameAdmin": {
         "found_one": "{{count}} game",
@@ -1544,6 +1553,10 @@
             "noSlot": "No controller left in this game.",
             "claimFailed": "The controller could not be taken: the request expired.",
             "denied": "The controller was kept.",
+            "moveAsk": "To get the controller back, release it on the other device.",
+            "movePrompt": "Your other device is asking for the controller. Release it?",
+            "release": "Release",
+            "moveDenied": "Sorry, the controller was not released on the other device.",
             "lendPrompt": "{{name}} asks for your controller. Lend it?",
             "givePrompt": "{{name}} asks for your place. Give it?",
             "lend": "Lend",
@@ -2065,7 +2078,10 @@
             "alreadyRegistered": "This server is already in your list. The invitation was not used up.",
             "pairingClosed": "This server is not in discovery mode. Open it, then try again.",
             "notPairingCode": "A pairing code has 6 digits.",
-            "invalidLink": "This address leads to no server. Check it, then try again."
+            "invalidLink": "This address leads to no server. Check it, then try again.",
+            "consoleDisabled": "This console is disabled on this server.",
+            "federationDisabled": "This server does not allow this console through federation.",
+            "accessRefused": "This server does not recognise the access it gave us."
         }
     },
     "streaming": {

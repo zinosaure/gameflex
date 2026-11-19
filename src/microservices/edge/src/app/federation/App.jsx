@@ -267,7 +267,7 @@ const SERVICE_HOST = {
     base: "/",
     Page: ({ title, parent, children }) => <Page title={title} back={parent === null ? null : parent || "/"}>{children}</Page>,
     joins: false,
-    offers: { devices: false, providers: true },
+    offers: { consoles: false, providers: true },
     useIssues: () => true,
     useServerName: useServiceName,
     useOrigin: () => location.origin,

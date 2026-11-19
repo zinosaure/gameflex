@@ -76,6 +76,9 @@ type Outcome struct {
 	// error the caller did anything about: the world moved.
 	Abandoned bool
 	Err       error
+	// Denied — the demand a holder just refused: its asker is told (host.go),
+	// who otherwise only saw it vanish from the state.
+	Denied *HandoverRequest
 }
 
 // HandoverRequest is the one pending demand of a session. One at a time: a
@@ -222,8 +225,21 @@ func (session *Session) dropStaleHandover(now time.Time) {
 }
 
 func (session *Session) requestHandover(command Command, now time.Time) error {
-	if command.Target == "" || command.Target == command.Username {
+	if command.Target == "" {
 		return ErrNoSuchHolder
+	}
+	// MY OWN PLACE, FROM ANOTHER DEVICE (chantier 65, #793): the same person,
+	// on a phone while the PC holds the place, asks the PC to let it go. The
+	// tab that holds it answers; granted, the place moves (Takeover).
+	move := command.Target == command.Username
+	if move {
+		holder := session.PlayerOf(command.Username)
+		if holder == nil {
+			return ErrNoSuchHolder
+		}
+		if holder.SocketID == command.SocketID {
+			return ErrSameSocket
+		}
 	}
 	if session.LiveHandoverAt(now) != nil {
 		return ErrHandoverPending
@@ -232,8 +248,9 @@ func (session *Session) requestHandover(command Command, now time.Time) error {
 		return ErrNoSuchHolder
 	}
 	// A lent pad is not the owner's to give right now, and not the
-	// borrower's either: only its owner takes it back.
-	if session.IsOwner(command.Target) && session.Lent() {
+	// borrower's either: only its owner takes it back. Moving the owner's
+	// place keeps the loan with it (Takeover), so a move is not concerned.
+	if !move && session.IsOwner(command.Target) && session.Lent() {
 		return ErrPadLent
 	}
 
@@ -262,10 +279,23 @@ func (session *Session) answerHandover(command Command, now time.Time, outcome O
 
 		return outcome
 	}
+	// A move is answered by the tab that HOLDS the place, never by the one
+	// asking — both are the same person, so the username alone proves
+	// nothing.
+	move := request.From == request.To
+	if move {
+		if holder := session.PlayerOf(request.To); holder == nil || holder.SocketID != command.SocketID {
+			outcome.Err = ErrNotHolder
+
+			return outcome
+		}
+	}
 
 	session.PendingHandover = nil
 
 	if command.Kind == CmdDenyHandover {
+		outcome.Denied = request
+
 		return outcome
 	}
 
@@ -274,6 +304,13 @@ func (session *Session) answerHandover(command Command, now time.Time, outcome O
 	// abandon, never replay.
 	if !session.hasParticipant(request.FromSocket) || session.PlayerOf(request.To) == nil {
 		outcome.Abandoned = true
+
+		return outcome
+	}
+
+	if move {
+		slot, err := session.Takeover(request.To, request.FromSocket, now)
+		outcome.Slot, outcome.Err = slot, err
 
 		return outcome
 	}

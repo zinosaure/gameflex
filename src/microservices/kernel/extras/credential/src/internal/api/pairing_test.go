@@ -301,7 +301,7 @@ func TestPairingCodesNeedTheModeOfTheirKind(t *testing.T) {
 func TestPairingCodeIsRedeemedOnce(t *testing.T) {
 	server, _ := pairingServer(t)
 	as(server.withAdmin(server.handleOpenServerPairing), inviter, "", "")
-	code := newCode(t, server, inviter, `{"kind":"federation","label":"Marc","scopes":["catalog","devices"]}`)
+	code := newCode(t, server, inviter, `{"kind":"federation","label":"Marc","scopes":["catalog","metadata-providers"]}`)
 	_, link := createInvitation(t, server, inviter, `{"kind":"federation","label":"Lien"}`)
 
 	list := adminCall(server, server.handleListInvitations, http.MethodGet, "", "")
@@ -313,7 +313,7 @@ func TestPairingCodeIsRedeemedOnce(t *testing.T) {
 	}
 
 	redeemed, err := server.RedeemInvitation(code.Code, InvitationFederation, "Gamebox", "192.168.1.20")
-	if err != nil || redeemed.Identity != "Marc" || redeemed.Scopes != "catalog,devices" {
+	if err != nil || redeemed.Identity != "Marc" || redeemed.Scopes != "catalog,metadata-providers" {
 		t.Fatalf("échange : %+v %v", redeemed, err)
 	}
 	if recorder := internalCall(server, server.handleVerifyFederationToken, redeemed.Token); recorder.Code != http.StatusOK {

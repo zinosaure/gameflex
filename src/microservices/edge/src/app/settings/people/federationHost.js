@@ -16,7 +16,8 @@ import SettingsPage from "../SettingsPage.jsx";
 //   base          le chemin de l'accueil de la fédération ("/" pour le service)
 //   Page          le cadre d'une page : {title, parent, levels, enter, children}
 //   joins         les serveurs rejoints existent ici (GameFlex) ou non (le service)
-//   offers        ce qu'un accès peut prêter en plus des jeux : `devices` (les consoles), `providers` (les fournisseurs)
+//   offers        ce qu'un accès peut prêter en plus des jeux : `consoles` (ses consoles, à restreindre une à une, chantier 66),
+//                 `providers` (les fournisseurs). gameflex-federation ne prête aucune console : sa page n'en montre rien.
 //   useIssues     l'hôte émet-il des accès (un hook)
 //   useServerName, useOrigin, usePairing, useJoinedCount, useInApp   son nom, son adresse publique, le sujet `pairing`,
 //                 le nombre de serveurs rejoints, l'application ou non (des hooks)
@@ -27,7 +28,7 @@ export const GAMEFLEX_HOST = {
     base: "/settings/federation",
     Page: SettingsPage,
     joins: true,
-    offers: { devices: true, providers: true },
+    offers: { consoles: true, providers: true },
     useIssues: () => can(useData().capabilities, "issuesCatalogTokens"),
     useServerName: () => useData().capabilities?.serverName || "",
     useOrigin: () => useShareOrigin(),
@@ -45,6 +46,7 @@ export const GAMEFLEX_HOST = {
         listTokens: api.listCatalogTokens,
         createToken: api.createCatalogToken,
         updateTokenScopes: api.updateCatalogTokenScopes,
+        updateTokenConsoles: api.updateCatalogTokenConsoles,
         revokeToken: api.revokeCatalogToken,
         listInvitations: api.listInvitations,
         createInvitation: api.createInvitation,

@@ -105,6 +105,10 @@ type Store struct {
 	ready  bool
 	byName map[string]Account
 	now    func() time.Time
+	// accesses, disabled — les consoles de chaque accès délivré, et celles coupées pour tout le serveur (chantier 66),
+	// arrivées avec les comptes.
+	accesses map[int64][]string
+	disabled []string
 
 	// OnChange — appelé après chaque liste qui retire quelque chose.
 	OnChange func(Change)
@@ -248,6 +252,58 @@ func (store *Store) Grants(username string) (grants []string, known bool) {
 	return account.Consoles, true
 }
 
+// AccessGrants — ce que l'accès délivré `id` laisse lancer (chantier 66). `known` faux tant qu'aucune liste n'est
+// arrivée (la promesse de internal/auth : tout passe) ; un accès que la liste ne nomme pas — révoqué — n'ouvre rien.
+func (store *Store) AccessGrants(id int64) (grants []string, known bool) {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	if !store.ready {
+		return nil, false
+	}
+
+	return store.accesses[id], true
+}
+
+// DisabledConsoles — les consoles coupées pour tout le serveur (chantier 66) ; vide avant la première liste.
+func (store *Store) DisabledConsoles() []string {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	return append([]string{}, store.disabled...)
+}
+
+// ConsoleDisabled — cette console est-elle coupée pour tout le serveur ?
+func (store *Store) ConsoleDisabled(consoleID string) bool {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+
+	for _, id := range store.disabled {
+		if id == consoleID {
+			return true
+		}
+	}
+
+	return false
+}
+
+// SetRights — les accès et les consoles coupées d'une liste (chantier 66).
+func (store *Store) SetRights(accesses []Access, disabled []string) {
+	byID := make(map[int64][]string, len(accesses))
+	for _, access := range accesses {
+		byID[access.ID] = access.Consoles
+	}
+	store.mu.Lock()
+	store.accesses, store.disabled = byID, append([]string{}, disabled...)
+	store.mu.Unlock()
+}
+
+// Access — un accès délivré, tel que le service d'identité le décrit : ce qu'il laisse lancer.
+type Access struct {
+	ID       int64    `json:"id"`
+	Consoles []string `json:"consoles"`
+}
+
 // Follow — se tenir à la liste du service d'identité : ouvrir son canal,
 // remplacer la copie à chaque liste, et se reconnecter s'il tombe (une seconde,
 // puis le double, jusqu'à trente). Rend la main quand ctx se termine.
@@ -298,9 +354,11 @@ func (store *Store) follow(ctx context.Context, url, secret string) bool {
 			return received
 		}
 		var message struct {
-			Type     string    `json:"type"`
-			Accounts []Account `json:"accounts"`
-			Deleted  []string  `json:"deleted"`
+			Type             string    `json:"type"`
+			Accounts         []Account `json:"accounts"`
+			Deleted          []string  `json:"deleted"`
+			Accesses         []Access  `json:"accesses"`
+			DisabledConsoles []string  `json:"disabledConsoles"`
 		}
 		if json.Unmarshal(raw, &message) != nil {
 			continue
@@ -316,6 +374,7 @@ func (store *Store) follow(ctx context.Context, url, secret string) bool {
 		if message.Type != "accounts" {
 			continue
 		}
+		store.SetRights(message.Accesses, message.DisabledConsoles)
 		change := store.Replace(message.Accounts, message.Deleted...)
 		received = true
 		if !change.Empty() {

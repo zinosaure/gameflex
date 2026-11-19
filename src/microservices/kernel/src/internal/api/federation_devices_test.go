@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -131,7 +130,7 @@ func newFakeRemoteplay(t *testing.T, status string) *fakeRemoteplay {
 // la liste ne traverse (la clé d'appairage reste chez le pair), et un jeton de catalogue seul n'ouvre pas le socket.
 func TestPeerDevicesReachOurPageThroughOurChannel(t *testing.T) {
 	service := newFakeRemoteplay(t, "standby")
-	identity := newFakeIdentity(t, map[string]string{"catalogue": "catalog", "consoles": "devices"}, nil)
+	identity := newFakeIdentity(t, map[string]string{"catalogue": "catalog", "consoles": "catalog"}, nil)
 	peer := &Server{
 		config: config.Config{CredentialURL: identity.URL, InternalSecret: federationTestInternal, JWTSecret: facadeTestSecret,
 			RemoteplayControlURL: service.URL},
@@ -141,15 +140,7 @@ func TestPeerDevicesReachOurPageThroughOurChannel(t *testing.T) {
 	surface := httptest.NewServer(http.StripPrefix("/api/v1/federation", peer.federationRouter()))
 	t.Cleanup(surface.Close)
 
-	refused, response, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(surface.URL, "http")+"/api/v1/federation/remoteplay/devices",
-		http.Header{"Authorization": []string{"Bearer catalogue"}})
-	if err == nil {
-		refused.Close()
-		t.Fatal("le jeton de catalogue a ouvert le socket des consoles")
-	}
-	if response == nil || response.StatusCode != http.StatusForbidden {
-		t.Fatalf("le jeton de catalogue : %v, attendu 403", response)
-	}
+	// Le jeton de catalogue seul ouvre aussi ce socket depuis le chantier 66 : la portée `devices` est partie.
 
 	client, httpServer := facadeTestServer(t)
 	client.serverRegistry.items = []registeredServer{{ID: 3, Link: surface.URL, Token: "consoles", Hostname: "ami"}}

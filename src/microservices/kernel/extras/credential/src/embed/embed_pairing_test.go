@@ -34,7 +34,7 @@ func TestThePhoneHasBothModes(t *testing.T) {
 		t.Fatalf("le mode serveur : %d %s", answer.Code, answer.Body.String())
 	}
 	fed := call(t, service, http.MethodPost, "/api/v1/token-invitations/pairing/codes", root, map[string]any{
-		"kind": "federation", "label": "Salon", "scopes": []string{"devices"},
+		"kind": "federation", "label": "Salon", "scopes": []string{"metadata-providers"},
 	})
 	var fedEnvelope struct {
 		Item struct {
@@ -46,10 +46,10 @@ func TestThePhoneHasBothModes(t *testing.T) {
 		t.Fatalf("le code federation : %d %s", fed.Code, fed.Body.String())
 	}
 	joined, err := service.RedeemInvitation(fedEnvelope.Item.Code, "federation", "Salon", "192.0.2.11")
-	if err != nil || joined.Token == "" || joined.Scopes != "catalog,devices" {
+	if err != nil || joined.Token == "" || joined.Scopes != "catalog,metadata-providers" {
 		t.Fatalf("l'échange du code federation : %+v %v", joined, err)
 	}
-	if label, scopes, err := service.VerifyCatalogToken(joined.Token); err != nil || label != "Salon" || scopes != "catalog,devices" {
+	if label, scopes, err := service.VerifyCatalogToken(joined.Token); err != nil || label != "Salon" || scopes != "catalog,metadata-providers" {
 		t.Fatalf("le jeton délivré : %q %q %v", label, scopes, err)
 	}
 	if answer := call(t, service, http.MethodPatch, "/api/v1/users/1/token", root, map[string]any{"enabled": true, "duration": "1w"}); answer.Code != http.StatusOK {

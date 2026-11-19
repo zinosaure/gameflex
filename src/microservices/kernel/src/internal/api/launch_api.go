@@ -70,8 +70,8 @@ func (server *Server) handleUnifiedLaunch(w http.ResponseWriter, r *http.Request
 	if consoleID == "" {
 		consoleID = envelope.ConsoleIDSnake
 	}
-	if envelope.Platform != "remoteplay" && !server.consoleGranted(r, consoleID) {
-		writeNotGranted(w, consoleID)
+	if refusal := server.consoleRefusal(r, consoleID); envelope.Platform != "remoteplay" && refusal != "" {
+		writeConsoleRefused(w, refusal, consoleID)
 
 		return
 	}

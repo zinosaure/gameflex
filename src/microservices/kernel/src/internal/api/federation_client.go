@@ -118,7 +118,7 @@ func (server *Server) handleServerSession(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	session, err := server.peerSessions.At(entry.ID, entry.Link, member, token, remote.Caller{Name: server.federationHostname(), Member: member, Kind: "server"})
+	session, err := server.peerSessions.At(entry.ID, entry.Link, member, token, remote.Caller{Name: server.federationHostname(), Member: member, Kind: "server", Access: entry.Token})
 	if errors.Is(err, remote.ErrDenied) {
 		writeErrorCode(w, http.StatusForbidden, "accountRefused", "this server refused your token")
 
@@ -192,7 +192,7 @@ func (server *Server) handleSetServerAccount(w http.ResponseWriter, r *http.Requ
 
 		return
 	}
-	session, err := client.OpenSession(remote.Caller{Name: server.federationHostname(), Member: auth.Username(r.Context()), Kind: "server"})
+	session, err := client.OpenSession(remote.Caller{Name: server.federationHostname(), Member: auth.Username(r.Context()), Kind: "server", Access: entry.Token})
 	if errors.Is(err, remote.ErrDenied) {
 		writeErrorCode(w, http.StatusForbidden, "accountRefused", "this server refused this token")
 

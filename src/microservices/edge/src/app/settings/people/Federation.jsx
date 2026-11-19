@@ -13,6 +13,7 @@ import { toast } from "../../shell/Shell.jsx";
 import { Form, formContext, FormButton } from "../../ui/Forms.jsx";
 import { NotFound, useQueryState, useSettingsNavigation } from "../SettingsPage.jsx";
 import { useFederationHost, useFederationPaths } from "./federationHost.js";
+import { ConsoleGrantsSections } from "./Members.jsx";
 import NavRow, { ChoiceRow, CopyField, DangerSection, GuideSection, InfoRow, Listing, Note, Rows, Section, SubmitRow, SwitchRow, TextRow } from "../../ui/Bricks.jsx";
 
 // LA FÉDÉRATION, CÔTÉ ADMINISTRATEUR : CRÉER LA CONNEXION ENTRE SERVEURS, ET RIEN D'AUTRE (le porteur, 2026-11-16 :
@@ -84,17 +85,26 @@ function describeListing(listing, t, language) {
         machine.device, machine.cpu,
         machine.ramBytes && t("fed.ram", { gb: gigabytes(machine.ramBytes) }),
         ...(machine.gpus || []).map((gpu) => (gpu.vramBytes ? t("fed.vram", { name: gpu.name, gb: gigabytes(gpu.vramBytes) }) : gpu.name)),
-        (listing.scopes || []).includes("devices") ? t("fed.consolesGranted") : t("fed.consolesRefused"),
     ].filter(Boolean).join(" · ");
 }
 
 // Les droits d'un jeton émis ici, et leurs noms.
 const scopesOf = (item) => String(item.scopes || "").split(",").map((scope) => scope.trim()).filter(Boolean);
-// CE QU'UN JETON PARTAGE EN PLUS DES JEUX (le catalogue, toujours) : les consoles à distance (`devices`), et — l'option du
-// chantier 57, `#719` — les fournisseurs de métadonnées (`metadata-providers`) : avec elle, la recherche des fiches
-// d'ici interroge aussi nos comptes IGDB et SteamGridDB pour son porteur ; nos clés ne sortent jamais. Coupées par défaut.
+// CE QU'UN JETON PARTAGE EN PLUS DES JEUX (le catalogue, toujours) : l'option du chantier 57, `#719` — les fournisseurs de
+// métadonnées (`metadata-providers`) : avec elle, la recherche des fiches d'ici interroge aussi nos comptes IGDB et
+// SteamGridDB pour son porteur ; nos clés ne sortent jamais. Coupée par défaut. Les consoles ne sont plus une portée
+// (chantier 66) : chaque accès a sa liste, comme un membre (« Accès aux consoles »).
 const PROVIDERS = "metadata-providers";
-const scopesFor = ({ devices, providers }) => ["catalog", ...(devices ? ["devices"] : []), ...(providers ? [PROVIDERS] : [])];
+const scopesFor = ({ providers }) => ["catalog", ...(providers ? [PROVIDERS] : [])];
+// CE QU'UN ACCÈS LAISSE LANCER, en un mot (chantier 66) : toutes, aucune, ou le nombre de ses droits (« tout le rétro »
+// en est un). Nul : non dit.
+const consolesSummary = (granted, t) => {
+    if (!Array.isArray(granted)) {
+        return null;
+    }
+
+    return granted.includes("*") ? t("fed.consolesAll") : granted.length === 0 ? t("fed.consolesNone") : t("fed.consolesSome");
+};
 // Ce qu'ouvre une invitation (« Jeux · Consoles »), sous elle dans la liste des invitations en attente. Retiré par erreur
 // avec les sous-titres des accès (f786ab1d) : la liste des invitations s'effondrait dès qu'une attendait.
 const grantsOf = (item, t) => scopesOf(item).map((scope) => t(`fed.scope.${scope}`, { defaultValue: scope })).join(" · ");
@@ -401,7 +411,8 @@ function ServerPage() {
                             C'est toujours autorisé comme les jeux. C'est l'utilisation des fournisseurs metadata du serveur qui doit
                             être autorisée ») : la même portée que les jeux, `catalog`. */}
                         <InfoRow icon="bi-card-text" tone="green" label={t("fed.scopeMetadata")} help={t("fed.metadataHelp")} value={opened("catalog")} />
-                        <InfoRow icon="bi-playstation" tone={scopes.includes("devices") ? "green" : "slate"} label={t("fed.scope.devices")} help={t("fed.devicesGrantHelp")} value={opened("devices")} />
+                        <InfoRow icon="bi-playstation" tone={facts.granted?.length ? "green" : "slate"} label={t("members.consolesTitle")} help={t("fed.consolesGrantHelp")}
+                            value={consolesSummary(facts.granted, t)} />
                         <InfoRow icon="bi-images" tone={scopes.includes("metadata-providers") ? "green" : "slate"} label={t("fed.scopeProviders")} help={t("fed.providersGrantHelp")}
                             value={opened("metadata-providers")} />
                     </Rows>
@@ -422,8 +433,9 @@ function ServerPage() {
     );
 }
 
-// CE QU'OUVRE UN ACCÈS, écrit une fois pour « Créer un nouvel accès » et « Code d'appairage » (chantier 60) : pour qui,
-// partager aussi les consoles, partager aussi les fournisseurs de métadonnées.
+// CE QU'OUVRE UN ACCÈS, écrit une fois pour « Créer un nouvel accès » et « Code d'appairage » (chantier 60) : pour qui, et
+// partager aussi les fournisseurs de métadonnées. Ses consoles se restreignent ensuite sur sa page (chantier 66) : il naît
+// avec toutes.
 function AccessFields({ form, values, setValues }) {
     const { t } = useTranslation();
     const { offers } = useFederationHost();
@@ -431,15 +443,13 @@ function AccessFields({ form, values, setValues }) {
     return (
         <>
             <TextRow id="label" context={form} label={t("fed.forWho")} help={t("fed.forWhoHelp")} props={{ placeholder: t("fed.forWhoPlaceholder"), "data-key": "fd-label" }} />
-            {offers.devices && <SwitchRow id="fd-devices" label={t("fed.devicesLabel")} help={t("fed.devicesHelp")} checked={values.devices}
-                onChange={(devices) => setValues((previous) => ({ ...previous, devices }))} />}
             {offers.providers && <SwitchRow id="fd-providers" label={t("fed.providersLabel")} help={t("fed.providersHelp")} checked={values.providers}
                 onChange={(providers) => setValues((previous) => ({ ...previous, providers }))} />}
         </>
     );
 }
 
-// CRÉER UN ACCÈS : pour qui, partager aussi les consoles, partager aussi les fournisseurs de métadonnées (coupé par
+// CRÉER UN ACCÈS : pour qui, partager aussi les fournisseurs de métadonnées (coupé par
 // défaut, `#719`) ; une invitation (le chemin proposé), ou — l'interrupteur
 // « Plutôt le lien et le jeton » allumé (le porteur, 2026-11-14 : « Il est préférable de mettre en option (switch)
 // l'action "Plutôt lien et jeton". Au lieu d'avoir de bouton. ») — le lien et un jeton montré une seule fois, qui
@@ -452,7 +462,7 @@ function NewTokenPage() {
     const host = useFederationHost();
     const origin = host.useOrigin();
     const { back } = useSettingsNavigation();
-    const [values, setValues] = useState({ label: "", devices: false, providers: false, tokenInstead: false });
+    const [values, setValues] = useState({ label: "", providers: false, tokenInstead: false });
     const [pending, setPending] = useState(false);
     const [created, setCreated] = useState(null);
     const [invited, setInvited] = useState(null);
@@ -541,7 +551,7 @@ function NewPairingPage() {
     const host = useFederationHost();
     const pairing = host.usePairing();
     const { back } = useSettingsNavigation();
-    const [values, setValues] = useState({ label: "", devices: false, providers: false });
+    const [values, setValues] = useState({ label: "", providers: false });
     const [pending, setPending] = useState(false);
     const [created, setCreated] = useState(null);
     const form = formContext(values, setValues);
@@ -718,20 +728,20 @@ function InvitationPage() {
     );
 }
 
-// UN JETON ÉMIS : ce qu'il ouvre, sa dernière utilisation ; partager aussi les consoles, partager aussi les fournisseurs
-// de métadonnées (chacun appliqué à l'instant, comme avant) ; le révoquer. LA MÊME PAGE POUR gameflex-federation (le
+// UN JETON ÉMIS : ce qu'il ouvre, sa dernière utilisation ; ses consoles (« Accès aux consoles », chantier 66, une page à
+// part, `onConsoles`) ; partager aussi les fournisseurs de métadonnées (appliqué à l'instant) ; le révoquer. LA MÊME PAGE POUR gameflex-federation (le
 // porteur, 2026-11-18 : « Utilise la même page de Issued token […] car il manque des infos ») : ses sections, sans son
-// cadre. `offers` : ce que l'hôte peut prêter en plus de ses jeux — le service de fédération n'a ni consoles ni prêt de
-// ses fournisseurs : ni leurs lignes ni leurs interrupteurs. `onScopes(scopes)` → {ok, item, detail} ; `onRevoke()` →
-// {ok, detail} ; `onRevoked`, après. Le jeton : `{id, label, scopes: "a,b", last_used_at}`.
-export function IssuedTokenSections({ token, offers = { devices: true, providers: true }, onScopes = null, onRevoke, onRevoked }) {
+// cadre. `offers` : ce que l'hôte peut prêter en plus de ses jeux — le service de fédération ne prête aucune console : ni
+// leur ligne ni leur page. `onScopes(scopes)` → {ok, item, detail} ; `onConsoles()` ouvre la page de ses consoles ;
+// `onRevoke()` → {ok, detail} ; `onRevoked`, après. Le jeton : `{id, label, scopes: "a,b", consoles: [...], last_used_at}`.
+export function IssuedTokenSections({ token, offers = { consoles: true, providers: true }, onScopes = null, onConsoles = null, onRevoke, onRevoked }) {
     const { t, i18n } = useTranslation();
     const [current, setCurrent] = useState(null);
     const [pending, setPending] = useState(false);
     const shown = current || token;
-    const shared = { devices: scopesOf(shown).includes("devices"), providers: scopesOf(shown).includes(PROVIDERS) };
+    const shared = { providers: scopesOf(shown).includes(PROVIDERS) };
 
-    // Un partage de plus ou de moins (`name` : devices, providers) ; les autres restent ce qu'ils sont.
+    // Un partage de plus ou de moins (`name` : providers) ; les autres restent ce qu'ils sont.
     const setShared = async (name, next) => {
         const scopes = scopesFor({ ...shared, [name]: next });
         setPending(true);
@@ -747,7 +757,6 @@ export function IssuedTokenSections({ token, offers = { devices: true, providers
         setCurrent({ ...shown, scopes: answer.item?.scopes || scopes.join(",") });
     };
     const rows = [["catalog", "bi-collection", t("fed.scope.catalog")], ["catalog", "bi-card-text", t("fed.scopeMetadata")],
-        ...(offers.devices ? [["devices", "bi-playstation", t("fed.scope.devices")]] : []),
         ...(offers.providers ? [[PROVIDERS, "bi-images", t("fed.scopeProviders")]] : [])];
 
     return (
@@ -771,11 +780,12 @@ export function IssuedTokenSections({ token, offers = { devices: true, providers
                         value={shown.last_used_at ? dateTime(shown.last_used_at, i18n.language) : t("members.tokenNever")} />
                 </Rows>
             </Section>
-            {offers.devices && onScopes && (
-                <Section title={t("fed.scope.devices")}>
+            {/* SES CONSOLES (chantier 66) : la même page que celle d'un membre, une ligne qui l'ouvre et dit ce qu'il laisse lancer. */}
+            {offers.consoles && onConsoles && (
+                <Section title={t("fed.consolesSection")}>
                     <Rows>
-                        <SwitchRow id={`fd-dev-${shown.id}`} label={t("fed.devicesLabel")} help={t("fed.devicesHelp")} checked={shared.devices} disabled={pending}
-                            onChange={(next) => setShared("devices", next)} />
+                        <NavRow id={`fd-consoles-${shown.id}`} icon="bi-joystick" tone="indigo" label={t("members.consolesTitle")} help={t("fed.consolesRowHelp")}
+                            value={consolesSummary(shown.consoles, t)} onOpen={onConsoles} />
                     </Rows>
                 </Section>
             )}
@@ -800,13 +810,18 @@ export function IssuedTokenSections({ token, offers = { devices: true, providers
     );
 }
 
+// Les consoles qu'une page d'accès vient d'enregistrer (chantier 66) : la page de l'accès, rouverte avec le jeton qu'on
+// lui avait passé, les montre telles qu'elles sont maintenant.
+const savedConsoles = new Map();
+
 function TokenPage() {
-    const { ACCESSES } = useFederationPaths();
+    const { ACCESSES, at } = useFederationPaths();
     const { t } = useTranslation();
     const { tokenId } = useParams();
-    const { back } = useSettingsNavigation();
+    const { back, open } = useSettingsNavigation();
     const { api, offers } = useFederationHost();
-    const passed = usePassed("token", tokenId, () => loadTokens(api));
+    const loaded = usePassed("token", tokenId, () => loadTokens(api));
+    const passed = loaded && savedConsoles.has(String(loaded.id)) ? { ...loaded, consoles: savedConsoles.get(String(loaded.id)) } : loaded;
     const levels = useLevels();
 
     if (!passed) {
@@ -816,7 +831,41 @@ function TokenPage() {
     return (
         <Frame title={passed.label} parent={ACCESSES} levels={levels}>
             <IssuedTokenSections token={passed} offers={offers} onScopes={(scopes) => api.updateTokenScopes(passed.id, scopes)}
+                onConsoles={() => open(at(`tokens/${passed.id}/consoles`), `fd-consoles-${passed.id}`, { token: passed })}
                 onRevoke={() => api.revokeToken(passed.id)} onRevoked={() => back(ACCESSES)} />
+        </Frame>
+    );
+}
+
+// /settings/federation/tokens/<id>/consoles : CE QUE LES COMPTES VENUS PAR CET ACCÈS PEUVENT LANCER (chantier 66 ; le
+// porteur, 2026-11-19 : « je peux soit couper des consoles à certains accès délivrés ») — la page des consoles d'un
+// membre, les mêmes interrupteurs, enregistrés à leur changement. Un serveur de salon qui a besoin de son GPU coupe la PS5
+// à un ami d'un geste, sans toucher à ses comptes.
+function TokenConsolesPage() {
+    const { ACCESSES, at } = useFederationPaths();
+    const { t } = useTranslation();
+    const { tokenId } = useParams();
+    const { api } = useFederationHost();
+    const token = usePassed("token", tokenId, () => loadTokens(api));
+    const parent = at(`tokens/${tokenId}`);
+    const levels = { ...useLevels(), [parent]: token ? token.label : "…" };
+
+    if (!token) {
+        return <Waiting item={token} title={t("members.consolesTitle")} parent={ACCESSES} />;
+    }
+
+    return (
+        <Frame title={t("members.consolesTitle")} parent={parent} levels={levels}>
+            <ConsoleGrantsSections id="fdc" grants={savedConsoles.get(String(token.id)) || token.consoles || ["*"]} help={t("fed.consolesPageHelp")}
+                save={async (grants) => {
+                    const answer = await api.updateTokenConsoles(token.id, grants);
+
+                    if (answer.ok) {
+                        savedConsoles.set(String(token.id), answer.item?.consoles || grants);
+                    }
+
+                    return answer;
+                }} />
         </Frame>
     );
 }
@@ -826,7 +875,7 @@ function TokenPage() {
 // nous ont partagé leurs jeux et consoles ») — les accès délivrés (si l'hôte en émet : un serveur, un téléphone aussi depuis `#756`), les
 // serveurs rejoints —, chacune avec son nombre ; puis le guide. Rien sur le jeu chez un ami : c'est le Profil.
 function FederationPage() {
-    const { ACCESSES, JOINED } = useFederationPaths();
+    const { FEDERATION, ACCESSES, JOINED } = useFederationPaths();
     const { t } = useTranslation();
     const host = useFederationHost();
     const { open } = useSettingsNavigation();
@@ -861,7 +910,14 @@ function FederationPage() {
                 </Rows>
             </Section>
             {/* LE MODE SERVEUR (chantier 60) : un hôte qui émet des accès, serveur ou téléphone (`#756`). */}
-            {issues && <DiscoveryModeSection scope="server" pairing={pairing} />}
+            {issues && (
+                <DiscoveryModeSection scope="server" pairing={pairing}>
+                    <NavRow id="fd-mode-generate" icon="bi-key" tone="amber" label={t("fed.newAccess")} help={t("fed.newAccessHelp")}
+                        onOpen={() => open(`${FEDERATION}/new-token`, "fd-mode-generate")} />
+                    <NavRow id="fd-mode-pairing" icon="bi-123" tone="amber" label={t("pairing.code")} help={t("pairing.codeRowHelp")}
+                        onOpen={() => open(`${FEDERATION}/new-pairing`, "fd-mode-pairing")} />
+                </DiscoveryModeSection>
+            )}
             {/* JOUER SUR LES CONSOLES D'UN AMI N'EST PAS ICI (le porteur, 2026-11-16 : « Dans fédération (admin) retire la
                 section plus. On n'a pas besoin ça ici. C'est dans profile qu'il le faut ») : ni ligne, ni formulaire de
                 compte côté administrateur — Réglages › Profil › Fédération (MyFederation.jsx). */}
@@ -887,6 +943,7 @@ export function FederationRoutes() {
             {joins && <Route path="servers/:serverId" element={<ServerPage />} />}
             <Route path="invitations/:invitationId" element={<InvitationPage />} />
             <Route path="tokens/:tokenId" element={<TokenPage />} />
+            <Route path="tokens/:tokenId/consoles" element={<TokenConsolesPage />} />
             <Route path="*" element={<Navigate to={FEDERATION} replace />} />
         </Routes>
     );

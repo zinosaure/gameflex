@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { kernel } from "./api.js";
+import { allows } from "./data.jsx";
 
 // NOTRE COMPTE CHEZ UN SERVEUR FÉDÉRÉ (chantier 20) : notre kernel garde le jeton qu'on a collé une fois et ouvre une
 // session courte chez l'ami (`GET /servers/{id}/session` → `{token, expiresAt, username, displayName}`). La page la garde
@@ -64,6 +65,49 @@ export async function federationSession(serverId) {
     held.set(String(serverId), answer.data);
 
     return { ok: true, session: answer.data };
+}
+
+// IL FAUT D'ABORD S'AUTHENTIFIER CHEZ LUI : aucun jeton collé, ou un jeton qu'il refuse. Le bouton Jouer d'un jeu ou d'une
+// console de ce serveur dit alors « Connexion requise » et mène à la page du compte fédéré (le porteur, 2026-11-18 :
+// « actuellement le message d'erreur est "ce serveur ne répond pas" alors qu'il faut juste s'authentifier avant »).
+export const needsFederatedSignIn = (code) => code === "noFederatedAccount" || code === "accountRefused";
+
+// POURQUOI JOUER NE PEUT PAS (chantier 66 ; le porteur, 2026-11-19, « 4 états pour le bouton avec la fédération ») :
+// `consoleDisabled` (coupée pour tout son serveur), `federationDisabled` (l'accès que ce serveur nous a délivré ne
+// l'ouvre pas), `signIn` (pas encore de compte chez lui), `accessRestricted` (le compte n'a pas cette console) — dans
+// cet ordre : d'abord ce que rien ici ne lève. Null : on peut jouer. `console` : {id, method} ; `peer` : le serveur
+// fédéré du jeu (sa copie dit `granted` et `disabled`), ou null pour un jeu d'ici ; `peerSession` : useFederationSession.
+export const PLAY_BLOCK_LABELS = {
+    consoleDisabled: "game.consoleDisabled",
+    federationDisabled: "game.federationDisabled",
+    signIn: "game.signInRequired",
+    accessRestricted: "game.accessRestricted",
+};
+
+export function playBlock({ console, user, peer = null, peerSession = null }) {
+    if (!console) {
+        return null;
+    }
+    if (peer) {
+        const facts = peer.listing || {};
+
+        if ((facts.disabled || []).includes(console.id)) {
+            return "consoleDisabled";
+        }
+        if (Array.isArray(facts.granted) && !allows(facts.granted, console)) {
+            return "federationDisabled";
+        }
+        if (needsFederatedSignIn(peerSession?.code)) {
+            return "signIn";
+        }
+        if (Array.isArray(peerSession?.session?.consoles) && !allows(peerSession.session.consoles, console)) {
+            return "accessRestricted";
+        }
+    } else if (console.disabled) {
+        return "consoleDisabled";
+    }
+
+    return allows(user?.consoles, console) ? null : "accessRestricted";
 }
 
 // Coller le jeton de notre compte de là-bas, ou son invitation (notre kernel l'échange chez lui).

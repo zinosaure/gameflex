@@ -1,11 +1,12 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { allows, hostRefusal, matchesQuery, useAuth, useData } from "../../libs/data.jsx";
+import { hostRefusal, matchesQuery, useAuth, useData } from "../../libs/data.jsx";
 import { listRoms, romSource } from "../../libs/api.js";
 import { useScreenInput } from "../../libs/input.js";
 import { goUp, rememberGame } from "../../libs/memory.js";
-import { federationSession } from "../../libs/federation.js";
+import { federationSession, PLAY_BLOCK_LABELS, playBlock, useFederationSession } from "../../libs/federation.js";
+import { federatedAccountPath } from "../../settings/account/MyFederation.jsx";
 import { playPath, useLaunch } from "../../libs/play.js";
 import { GAME_STATUSES, STATUS_VARIANT, statusOf } from "../../libs/format.js";
 import { widthFor } from "../../libs/images.js";
@@ -291,7 +292,16 @@ export default function Library({ tab }) {
     const rom = romOf(game);
     // Le compte lance-t-il cette console, et l'hôte la lance-t-il (un téléphone : son administrateur seul, ses propres
     // émulateurs — hostRefusal, chantier 56) ? La raison se lit dans l'engrenage (GameSettings.jsx, noLaunch).
-    const playable = Boolean(console) && allows(user?.consoles, console) && !hostRefusal(console, rom, capabilities, isAdmin);
+    // L'hôte lance-t-il cette console (un téléphone : son administrateur seul, ses propres émulateurs) ? Le reste — coupée,
+    // fédération, compte — se dit sur le bouton (playBlock).
+    const playable = Boolean(console) && !hostRefusal(console, rom, capabilities, isAdmin);
+    // UN JEU D'UN AMI SANS COMPTE CHEZ LUI : « Connexion requise », qui mène à la page de notre compte fédéré là-bas.
+    const peerSession = useFederationSession(rom?.peer != null ? rom.peer : null);
+    const peerServer = rom?.peer != null ? (servers || []).find((server) => String(server.id) === String(rom.peer)) || null : null;
+    // LE BOUTON DIT POURQUOI IL NE JOUE PAS (chantier 66) : console désactivée, fédération désactivée, connexion requise,
+    // accès restreint. Seule « Connexion requise » se touche : elle mène à la page du compte fédéré.
+    const block = playBlock({ console, user, peer: peerServer, peerSession });
+    const signIn = playable && block === "signIn";
 
     // CE QUE FERA JOUER (voir l'en-tête) : une de mes parties, les sauvegardes du compte.
     const facts = useConsoleFacts(consoleId);
@@ -346,7 +356,9 @@ export default function Library({ tab }) {
     };
 
     const play = () => {
-        if (running) {
+        if (signIn && !running) {
+            navigate(federatedAccountPath(rom.peer));
+        } else if (running) {
             openPlay(running.id);
         } else if (retro && states.length) {
             setPanel("continue");
@@ -373,7 +385,7 @@ export default function Library({ tab }) {
         // A lance le jeu ; un bouton de l'en-tête en lumière (L2 / R2) fait le sien.
         activate: (element) => {
             if (rom && !element?.closest(".topbar")) {
-                if (running || (!busy && playable)) {
+                if (running || signIn || (!busy && playable && !block)) {
                     play();
                 }
 
@@ -446,8 +458,8 @@ export default function Library({ tab }) {
                     <div className="pactions d-flex align-items-center justify-content-between gap-2">
                         {/* UN BOUTON PORTE SOIT UN TEXTE, SOIT UNE ICÔNE (le porteur, 2026-11-13, Bricks.jsx) : Jouer est un
                             geste, en texte ; l'engrenage, une icône seule. */}
-                        <button type="button" className={`${button("main")} w-50 text-truncate`} data-nav data-key="f-play" disabled={!running && (Boolean(busy) || !playable)} onClick={play}>
-                            {t(running ? "game.resume" : hasSaves ? "game.continue" : "game.play")}
+                        <button type="button" className={`${button("main")} w-50 text-truncate`} data-nav data-key="f-play" disabled={!running && !signIn && (Boolean(busy) || !playable || Boolean(block))} onClick={play}>
+                            {t(running ? "game.resume" : block ? PLAY_BLOCK_LABELS[block] : hasSaves ? "game.continue" : "game.play")}
                         </button>
                         {/* L'engrenage : les informations et les réglages du jeu (GameSettings.jsx). */}
                         <button type="button" className={`${ICON_BUTTON} ${button("round")}`} data-nav data-key="f-settings" aria-haspopup="dialog"

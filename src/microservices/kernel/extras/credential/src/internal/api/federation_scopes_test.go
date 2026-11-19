@@ -25,12 +25,12 @@ func TestUnknownScopeIsRefused(t *testing.T) {
 // comparée segment par segment côté kernel, et deux jetons accordant la même
 // chose doivent se lire pareil.
 func TestScopesAreDeduplicatedAndOrdered(t *testing.T) {
-	granted, err := parseScopes([]string{ScopeDevices, ScopeCatalog, ScopeDevices, "  "})
+	granted, err := parseScopes([]string{ScopeMetadataProviders, ScopeCatalog, ScopeMetadataProviders, "  "})
 	if err != nil {
 		t.Fatalf("parseScopes : %v", err)
 	}
-	if granted != ScopeCatalog+","+ScopeDevices {
-		t.Fatalf("portées %q, attendu %q", granted, ScopeCatalog+","+ScopeDevices)
+	if granted != ScopeCatalog+","+ScopeMetadataProviders {
+		t.Fatalf("portées %q, attendu %q", granted, ScopeCatalog+","+ScopeMetadataProviders)
 	}
 }
 
@@ -40,7 +40,6 @@ func TestScopesAreDeduplicatedAndOrdered(t *testing.T) {
 // demandent seules ».
 func TestTheCatalogIsAlwaysGranted(t *testing.T) {
 	for asked, want := range map[string]string{
-		ScopeDevices:           ScopeCatalog + "," + ScopeDevices,
 		ScopeMetadataProviders: ScopeCatalog + "," + ScopeMetadataProviders,
 	} {
 		if granted, err := parseScopes([]string{asked}); err != nil || granted != want {
@@ -57,7 +56,15 @@ func TestMetadataProvidersIsGrantedOnlyWhenAsked(t *testing.T) {
 	if err != nil || granted != ScopeCatalog+","+ScopeMetadataProviders {
 		t.Fatalf("parseScopes = %q / %v, attendu %q", granted, err, ScopeCatalog+","+ScopeMetadataProviders)
 	}
-	if granted, _ := parseScopes([]string{ScopeCatalog, ScopeDevices}); granted != ScopeCatalog+","+ScopeDevices {
+	if granted, _ := parseScopes([]string{ScopeCatalog}); granted != ScopeCatalog {
 		t.Fatalf("sans la demander, la portée apparaît : %q", granted)
+	}
+}
+
+// LA PORTÉE `devices` N'EXISTE PLUS (chantier 66) : les consoles d'un accès la remplacent ; la demander est refusé,
+// comme toute portée inconnue.
+func TestTheDevicesScopeIsGone(t *testing.T) {
+	if _, err := parseScopes([]string{ScopeCatalog, "devices"}); err == nil {
+		t.Fatal("la portée devices a été acceptée")
 	}
 }

@@ -198,7 +198,9 @@ export function Topbar({ tab }) {
             {inputKind && (
                 <button type="button" className={`${ICON_BUTTON} ${toggle(shortcutsOpen)}`} data-nav data-key="shortcuts" aria-label={t("shortcuts.title")} title={t("shortcuts.title")}
                     aria-pressed={shortcutsOpen} onClick={() => setShortcutsOpen((open) => !open)}>
-                    <i className="bi bi-controller"></i>
+                    {/* L'ICÔNE INFO (le porteur, 2026-11-18 : « l'icône manette pour ouvrir le panneau des raccourcis. Tu peux
+                        le changer pour mettre l'icône Info "I" ? »). */}
+                    <i className="bi bi-info-lg"></i>
                 </button>
             )}
             <button type="button" className={`${ICON_BUTTON} ${toggle(tab === "settings")}`} data-nav data-key="gear" aria-label={t("settings.title")} aria-pressed={tab === "settings"} onClick={() => toggleSettings(navigate, location, tab)}>

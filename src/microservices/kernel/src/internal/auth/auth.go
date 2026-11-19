@@ -43,6 +43,10 @@ type Claims struct {
 	// (chantier 55) : une génération plus ancienne que celle de la liste des
 	// comptes ne passe plus la porte. Absente, 0.
 	Gen int `json:"gen,omitempty"`
+	// Acc — l'accès délivré par lequel le serveur ami a ouvert la session
+	// (chantier 66) : ne se lancent que les consoles que cet accès laisse
+	// lancer. 0, une connexion ordinaire.
+	Acc int64 `json:"acc,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -83,6 +87,7 @@ func Admit(claims Claims) (Claims, bool) {
 type usernameKey struct{}
 type roleKey struct{}
 type federatedKey struct{}
+type accessKey struct{}
 
 // RoleAdmin — le rang au-delà duquel on n'administre plus rien.
 const RoleAdmin = 1
@@ -164,6 +169,7 @@ func Middleware(secret string, next http.HandlerFunc) http.HandlerFunc {
 		ctx := context.WithValue(r.Context(), usernameKey{}, claims.Username)
 		ctx = context.WithValue(ctx, roleKey{}, claims.RoleLevel)
 		ctx = context.WithValue(ctx, federatedKey{}, claims.Fed != "")
+		ctx = context.WithValue(ctx, accessKey{}, claims.Acc)
 		next(w, r.WithContext(ctx))
 	}
 }
@@ -176,6 +182,13 @@ func IsAdmin(ctx context.Context) bool {
 	level, present := ctx.Value(roleKey{}).(int)
 
 	return present && level <= RoleAdmin
+}
+
+// Access — l'accès délivré d'une session fédérée (chantier 66) ; 0 pour une connexion ordinaire.
+func Access(ctx context.Context) int64 {
+	access, _ := ctx.Value(accessKey{}).(int64)
+
+	return access
 }
 
 // Federated — la session de l'appelant a-t-elle été ouverte par le jeton de son

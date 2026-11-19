@@ -493,29 +493,44 @@ function MemberTokenPage() {
 // gestes : le dernier dit l'état final ; un refus rend celui que le serveur a gardé (`saved`).
 function MemberConsoles({ member, locked }) {
     const { t } = useTranslation();
+    const admin = isAdministrator(member.role_level);
+
+    return (
+        <ConsoleGrantsSections id="mb" grants={member.consoles} all={admin} locked={locked}
+            help={t(admin ? "members.consolesAdmin" : "members.consolesHelp")}
+            save={(grants) => updateUser(member.id, { consoles: grants })} />
+    );
+}
+
+// LES INTERRUPTEURS DES CONSOLES — tout le rétro, chaque console streamex, chaque console Remote Play —, écrits UNE fois
+// pour un membre et pour un accès délivré (chantier 66 ; le porteur, 2026-11-19 : « un interrupteur pour tous les rétros,
+// chaque console streamex et remoteplay PS4 et PS5 (comme dans Settings/membres/accès aux consoles) »). Chaque
+// interrupteur part à son changement (`save(grants)` → {ok, detail}), dans l'ordre des gestes ; un refus rend l'état que
+// le serveur a gardé. `all` : tout allumé et grisé (un administrateur) ; `locked` : la raison d'une page grisée.
+export function ConsoleGrantsSections({ id, grants, all = false, locked = null, help, save }) {
+    const { t } = useTranslation();
     const { consoles } = useData();
     const streamex = (consoles || []).filter((entry) => entry.method === "streamex");
     const remoteplay = (consoles || []).filter((entry) => entry.method === "remoteplay");
     const streamexIds = streamex.map((entry) => entry.id);
     const remoteplayIds = remoteplay.map((entry) => entry.id);
-    const admin = isAdministrator(member.role_level);
-    // Le registre des consoles peut arriver après la page : tant que rien n'est touché, les cases suivent le compte.
+    // Le registre des consoles peut arriver après la page : tant que rien n'est touché, les cases suivent les droits.
     const [touched, setTouched] = useState(null);
-    const saved = useRef(member.consoles);
+    const saved = useRef(grants);
     const queue = useRef(Promise.resolve());
-    const values = touched || grantsToForm(member.consoles, streamexIds, remoteplayIds);
-    const shown = admin ? { retro: true, streamex: streamexIds, remoteplay: remoteplayIds } : values;
-    const greyed = admin || Boolean(locked) || consoles === null;
+    const values = touched || grantsToForm(grants, streamexIds, remoteplayIds);
+    const shown = all ? { retro: true, streamex: streamexIds, remoteplay: remoteplayIds } : values;
+    const greyed = all || Boolean(locked) || consoles === null;
 
     const change = (patch) => {
         const next = { ...values, ...patch };
-        const grants = formToGrants(next, streamexIds, remoteplayIds);
+        const asked = formToGrants(next, streamexIds, remoteplayIds);
         setTouched(next);
         queue.current = queue.current.then(async () => {
-            const answer = await updateUser(member.id, { consoles: grants });
+            const answer = await save(asked);
 
             if (answer.ok) {
-                saved.current = grants;
+                saved.current = asked;
 
                 return;
             }
@@ -523,17 +538,17 @@ function MemberConsoles({ member, locked }) {
             toast(answer.detail || t("members.saveFailed"));
         });
     };
-    const toggle = (kind, id) => (on) => change({ [kind]: on ? [...values[kind], id] : values[kind].filter((entry) => entry !== id) });
+    const toggle = (kind, consoleId) => (on) => change({ [kind]: on ? [...values[kind], consoleId] : values[kind].filter((entry) => entry !== consoleId) });
 
     const consoleRows = (kind, entries) => entries.map((entry) => (
-        <SwitchRow key={entry.id} id={`mb-${kind}-${entry.id}`} label={entry.name} checked={shown[kind].includes(entry.id)} disabled={greyed} onChange={toggle(kind, entry.id)} />
+        <SwitchRow key={entry.id} id={`${id}-${kind}-${entry.id}`} label={entry.name} checked={shown[kind].includes(entry.id)} disabled={greyed} onChange={toggle(kind, entry.id)} />
     ));
 
     return (
         <>
-            <Section title={t("tab.retrogaming")} help={[locked, t(admin ? "members.consolesAdmin" : "members.consolesHelp")].filter(Boolean).join(" ")}>
+            <Section title={t("tab.retrogaming")} help={[locked, help].filter(Boolean).join(" ")}>
                 <Rows>
-                    <SwitchRow id="mb-retro" label={t("members.consolesRetro")} help={t("members.consolesRetroHelp")} checked={shown.retro} disabled={greyed}
+                    <SwitchRow id={`${id}-retro`} label={t("members.consolesRetro")} help={t("members.consolesRetroHelp")} checked={shown.retro} disabled={greyed}
                         onChange={(retro) => change({ retro })} />
                 </Rows>
             </Section>

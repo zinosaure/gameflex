@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-19
+
+### Added
+
+- **Switch a console off for everyone**: **Settings › Consoles**, a console, **Console enabled**. Turned off, nobody
+  launches it on your server, members and friends alike, for instance while your computer needs its graphics card.
+- **Choose the consoles of a delivered access**: **Settings › Federation › Delivered accesses**, an access, **Console
+  access** — the same switches as a member's (all the retro consoles, each recent console, each Remote Play console).
+  A friend's server only launches what its access includes, on top of its players' own accounts.
+- **A switched-off console says so**: its games show **Console disabled** instead of **Play**.
+- **Take the controller back on another device**: opening your game on your phone while your computer holds the
+  controller asks the computer to release it; without an answer within 15 seconds, it stays where it is.
+- **Discovery mode leads to the forms**: while it is on, **Create a new access** and **Pairing code** show right under
+  it.
+
+### Changed
+
+- **Settings › Profile › Federation › See my connection token** (it was **Create my token**, although the token exists
+  already).
+- **A refused request for the controller is said to the one who asked**, who was not told before.
+
+### Removed
+
+- **Also share the consoles**, the switch of a delivered access that only showed the Remote Play consoles: they show
+  with the games now, and **Console access** decides what can be launched.
+
+### Fixed
+
+- **gameflex-federation no longer reports itself unhealthy**: its health check looked at the wrong port.
+
 ## [0.14.2] - 2026-11-18
 
 ### Fixed

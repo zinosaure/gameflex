@@ -198,7 +198,7 @@ func (server *Server) serveFederationDevices(w http.ResponseWriter, r *http.Requ
 			return false
 		}
 
-		return err != nil || hasScope(verified.Scopes, scopeDevices)
+		return err != nil || hasScope(verified.Scopes, scopeCatalog)
 	})
 }
 
@@ -1031,8 +1031,8 @@ type knownServer struct {
 }
 
 // peerListing — ce que la copie du listing d'un ami dit de lui (chantier 15) :
-// sa date, sa version, sa machine, ce que notre jeton nous ouvre chez lui
-// — « devices », c'est lancer ses jeux chez lui —, et ses jeux par console.
+// sa date, sa version, sa machine, ce que notre jeton nous ouvre chez lui, ses
+// jeux par console, et ce que notre accès y laisse lancer (chantier 66).
 // Absent tant qu'on n'a pas de copie.
 type peerListing struct {
 	UpdatedAt time.Time        `json:"updatedAt"`
@@ -1044,6 +1044,11 @@ type peerListing struct {
 	// « Bibliothèque (N) » les compte sans lire leurs listes. Sans lui, un
 	// téléphone sans jeu à lui voyait ce bouton grisé sur chaque console.
 	Consoles map[string]int `json:"consoles"`
+	// Granted, Disabled — ce que notre accès chez lui laisse lancer, et ce qu'il a coupé pour tout son serveur
+	// (chantier 66) : la page grise Jouer (« fédération désactivée », « console désactivée »). Granted nul : il ne
+	// l'a pas dit.
+	Granted  []string `json:"granted"`
+	Disabled []string `json:"disabled"`
 }
 
 // listingOf — l'en-tête de la copie d'un ami, à la forme de knownServer.
@@ -1061,7 +1066,13 @@ func (server *Server) listingOf(entry registeredServer) *peerListing {
 		consoles = map[string]int{}
 	}
 
-	return &peerListing{UpdatedAt: header.UpdatedAt, Server: header.Server, Machine: header.Machine, Scopes: scopes, Consoles: consoles}
+	disabled := header.DisabledConsoles
+	if disabled == nil {
+		disabled = []string{}
+	}
+
+	return &peerListing{UpdatedAt: header.UpdatedAt, Server: header.Server, Machine: header.Machine, Scopes: scopes, Consoles: consoles,
+		Granted: header.Consoles, Disabled: disabled}
 }
 
 // handleKnownServer — GET /api/v1/servers/{id} : CE serveur, vérifié chez lui

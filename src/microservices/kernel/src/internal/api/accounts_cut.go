@@ -183,21 +183,35 @@ func (server *Server) sessionRecord(sessionID, platform string) (container strin
 	return "", 0, "", false
 }
 
-// consoleGranted — ce compte peut-il lancer cette console ? Avant que la liste
-// des comptes n'arrive, oui : la promesse de internal/auth.
-func (server *Server) consoleGranted(r *http.Request, consoleID string) bool {
+// consoleRefusal — pourquoi cette console ne se lance pas pour cet appelant, ou "" : elle se lance. Avant que la liste
+// des comptes n'arrive, elle se lance : la promesse de internal/auth.
+//
+// TROIS REFUS, DANS CET ORDRE (chantier 66 ; le porteur, 2026-11-19, les textes du bouton Jouer) :
+//   - `consoleDisabled` — coupée pour tout le serveur, administrateur compris (« console désactivée ») ;
+//   - `federationDisabled` — la session vient d'un serveur ami dont l'accès délivré ne l'ouvre pas, ou plus
+//     (« fédération désactivée ») ;
+//   - `consoleNotGranted` — le compte n'a pas cette console (« accès restreint »).
+func (server *Server) consoleRefusal(r *http.Request, consoleID string) string {
 	if server.accounts == nil || consoleID == "" || consoleID == "keytest" {
-		return true
+		return ""
+	}
+	if server.accounts.ConsoleDisabled(consoleID) {
+		return "consoleDisabled"
+	}
+	if access := auth.Access(r.Context()); access != 0 {
+		if grants, known := server.accounts.AccessGrants(access); known && !consoles.Allows(grants, consoleID) {
+			return "federationDisabled"
+		}
 	}
 	grants, known := server.accounts.Grants(auth.Username(r.Context()))
-	if !known {
-		return true
+	if known && !consoles.Allows(grants, consoleID) {
+		return "consoleNotGranted"
 	}
 
-	return consoles.Allows(grants, consoleID)
+	return ""
 }
 
-// writeNotGranted — le refus, avec un code que la page traduit.
-func writeNotGranted(w http.ResponseWriter, consoleID string) {
-	writeErrorCode(w, http.StatusForbidden, "consoleNotGranted", "this account cannot launch "+consoleID)
+// writeConsoleRefused — le refus, avec le code que la page traduit.
+func writeConsoleRefused(w http.ResponseWriter, code, consoleID string) {
+	writeErrorCode(w, http.StatusForbidden, code, consoleID+" cannot be launched here: "+code)
 }

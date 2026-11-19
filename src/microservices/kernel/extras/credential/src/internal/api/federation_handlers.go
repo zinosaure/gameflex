@@ -32,6 +32,7 @@ import (
 	"sort"
 	"strings"
 
+	"gameflex/consoles"
 	"gameflex/credential/internal/auth"
 	"gameflex/credential/internal/config"
 )
@@ -57,19 +58,12 @@ const tokenPrefixLength = 8
 // jamais à porter cette question.
 const ScopeCatalog = "catalog"
 
-// ScopeDevices — voir la LISTE des consoles à distance de ce serveur : leur
-// nom, leur type, leur adresse, leur état. Rien de plus, et surtout aucune
-// clé (chantier 9, C9-P2).
-//
-// Séparée de ScopeCatalog, et ce n'est pas de la prudence de principe :
-// l'ajouter à la portée existante aurait élargi en silence TOUS les jetons
-// déjà distribués. Voir requireScope côté kernel, dont le commentaire dit
-// exactement ce qui arrive quand une route s'ajoute sans qu'on se demande à
-// qui elle s'ouvre.
-//
-// Voir la liste n'est pas jouer : lancer une session sur une de ces consoles
-// demande un COMPTE chez celui qui la tient, jamais ce jeton.
-const ScopeDevices = "devices"
+// LES CONSOLES D'UN ACCÈS (chantier 66, `#795`) remplacent la portée `devices`
+// du chantier 9, qui ne disait que « voir les consoles Remote Play ». Elles
+// vivent dans `federation_tokens.consoles`, au format des consoles d'un compte
+// (gameflex/consoles) : ce que les membres venus par cet accès peuvent lancer,
+// en plus de leurs propres droits. Les consoles Remote Play se voient avec le
+// catalogue ; y jouer suit cette liste.
 
 // ScopeMetadataProviders — PARTAGER MES FOURNISSEURS DE MÉTADONNÉES (chantier
 // 57, `#719` ; le porteur, 2026-11-15 : « En plus de partager les jeux et
@@ -78,8 +72,8 @@ const ScopeDevices = "devices"
 // recherche des fiches de ce serveur interroge aussi ses comptes (IGDB,
 // SteamGridDB) pour le porteur du jeton, pour un titre qu'il n'a pas ; ses
 // clés ne sortent jamais. Sans elle, il ne prête que les fiches de ses jeux.
-// Coupée par défaut, et séparée pour la même raison que ScopeDevices : aucun
-// jeton déjà distribué ne s'élargit sans qu'on le décide.
+// Coupée par défaut, et séparée : aucun jeton déjà distribué ne s'élargit sans
+// qu'on le décide.
 const ScopeMetadataProviders = "metadata-providers"
 
 // grantableScopes — ce qu'un administrateur peut accorder. Une portée
@@ -88,7 +82,6 @@ const ScopeMetadataProviders = "metadata-providers"
 // dirait avant que l'autre ne se plaigne.
 var grantableScopes = map[string]bool{
 	ScopeCatalog:           true,
-	ScopeDevices:           true,
 	ScopeMetadataProviders: true,
 }
 
@@ -130,6 +123,9 @@ type federationTokenResponse struct {
 	Label      string `json:"label"`
 	Prefix     string `json:"prefix"`
 	Scopes     string `json:"scopes"`
+	// Consoles — ce que cet accès laisse lancer (chantier 66), au format des
+	// consoles d'un compte : « * », « retro », `ps5`, `rp-ps5`…
+	Consoles   []string `json:"consoles"`
 	CreatedAt  any    `json:"created_at"`
 	LastUsedAt any    `json:"last_used_at"`
 	// Token n'est rempli qu'à la création, jamais dans une liste.
@@ -185,11 +181,14 @@ func (server *Server) handleCreateFederationToken(w http.ResponseWriter, r *http
 		return
 	}
 	id, _ := result.LastInsertId()
+	// Un accès de plus dans la copie des kernels (chantier 66).
+	server.accountsChanged()
 
 	respondItem(w, http.StatusCreated, federationTokenResponse{
-		ID:     id,
-		Label:  label,
-		Scopes: scopes,
+		ID:       id,
+		Label:    label,
+		Scopes:   scopes,
+		Consoles: []string{consoles.GrantAll},
 		Prefix: secret[:tokenPrefixLength],
 		// La seule et unique fois où il sort d'ici.
 		Token: secret,
@@ -199,7 +198,7 @@ func (server *Server) handleCreateFederationToken(w http.ResponseWriter, r *http
 // handleListFederationTokens — GET /api/v1/federation/tokens.
 func (server *Server) handleListFederationTokens(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	rows, err := server.db.Query(
-		`SELECT id, label, scopes, prefix, created_at, last_used_at FROM federation_tokens ORDER BY id DESC`,
+		`SELECT id, label, scopes, consoles, prefix, created_at, last_used_at FROM federation_tokens ORDER BY id DESC`,
 	)
 	if err != nil {
 		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
@@ -211,18 +210,21 @@ func (server *Server) handleListFederationTokens(w http.ResponseWriter, r *http.
 	for rows.Next() {
 		var item federationTokenResponse
 		var createdAt, lastUsedAt sql.NullString
-		if err := rows.Scan(&item.ID, &item.Label, &item.Scopes, &item.Prefix, &createdAt, &lastUsedAt); err != nil {
+		var granted string
+		if err := rows.Scan(&item.ID, &item.Label, &item.Scopes, &granted, &item.Prefix, &createdAt, &lastUsedAt); err != nil {
 			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		item.CreatedAt = isoDatetime(createdAt)
 		item.LastUsedAt = isoDatetime(lastUsedAt)
+		item.Consoles = consoles.SplitGrants(granted)
 		items = append(items, item)
 	}
 	respondItems(w, http.StatusOK, items, newPagination(len(items), 1, allItems))
 }
 
-// handleUpdateFederationToken — PATCH /api/v1/catalog-tokens/{id} {scopes}.
+// handleUpdateFederationToken — PATCH /api/v1/catalog-tokens/{id} {scopes?, consoles?}.
+// Les consoles (chantier 66) se changent seules, comme celles d'un membre : chaque interrupteur part à son changement.
 //
 // Change CE QU'UN JETON OUVRE, sans toucher au secret. Les deux sont
 // délibérément dissociés : le secret ne peut pas être réémis (la base n'en a
@@ -238,33 +240,58 @@ func (server *Server) handleListFederationTokens(w http.ResponseWriter, r *http.
 // qui pouvait déjà révoquer et recréer.
 func (server *Server) handleUpdateFederationToken(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	var body struct {
-		Scopes []string `json:"scopes"`
+		Scopes   *[]string `json:"scopes"`
+		Consoles *[]string `json:"consoles"`
 	}
 	if !decodeBody(w, r, &body) {
 		return
 	}
-
-	scopes, err := parseScopes(body.Scopes)
-	if err != nil {
-		respondValidationError(w, []map[string]any{{
-			"loc": []string{"body", "scopes"}, "msg": err.Error(), "type": "value_error",
-		}})
-		return
+	answer := federationTokenResponse{}
+	if body.Scopes != nil {
+		scopes, err := parseScopes(*body.Scopes)
+		if err != nil {
+			respondValidationError(w, []map[string]any{{
+				"loc": []string{"body", "scopes"}, "msg": err.Error(), "type": "value_error",
+			}})
+			return
+		}
+		if !server.updateFederationToken(w, r, `UPDATE federation_tokens SET scopes = ? WHERE id = ?`, scopes) {
+			return
+		}
+		answer.Scopes = scopes
+	}
+	if body.Consoles != nil {
+		granted, err := consoles.ParseGrants(*body.Consoles)
+		if err != nil {
+			respondValidationError(w, []map[string]any{{
+				"loc": []string{"body", "consoles"}, "msg": err.Error(), "type": "value_error",
+			}})
+			return
+		}
+		if !server.updateFederationToken(w, r, `UPDATE federation_tokens SET consoles = ? WHERE id = ?`, granted) {
+			return
+		}
+		answer.Consoles = consoles.SplitGrants(granted)
+		// Les kernels décident des lancements sur leur copie : elle change tout de suite.
+		server.accountsChanged()
 	}
 
-	result, err := server.db.Exec(
-		`UPDATE federation_tokens SET scopes = ? WHERE id = ?`, scopes, r.PathValue("id"),
-	)
+	respondItem(w, http.StatusOK, answer)
+}
+
+// updateFederationToken — une colonne d'un jeton ; false, la réponse d'erreur est partie.
+func (server *Server) updateFederationToken(w http.ResponseWriter, r *http.Request, statement, value string) bool {
+	result, err := server.db.Exec(statement, value, r.PathValue("id"))
 	if err != nil {
 		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
-		return
+		return false
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {
 		respondErrorCode(w, http.StatusNotFound, "not_found", "Token not found.")
-		return
+		return false
 	}
 
-	respondItem(w, http.StatusOK, federationTokenResponse{Scopes: scopes})
+	return true
 }
 
 // handleRevokeFederationToken — DELETE /api/v1/federation/tokens/{id}.
@@ -280,6 +307,8 @@ func (server *Server) handleRevokeFederationToken(w http.ResponseWriter, r *http
 		respondErrorCode(w, http.StatusNotFound, "not_found", "Token not found.")
 		return
 	}
+	// L'accès quitte la copie des kernels (chantier 66) : ses sessions ne lancent plus rien.
+	server.accountsChanged()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -349,10 +378,11 @@ var ErrCatalogTokenRefused = errors.New("catalog token refused")
 func (server *Server) verifyFederationToken(token string) (federationTokenResponse, error) {
 	var item federationTokenResponse
 	var createdAt, lastUsedAt sql.NullString
+	var granted string
 	err := server.db.QueryRow(
-		`SELECT id, label, scopes, prefix, created_at, last_used_at FROM federation_tokens WHERE token_hash = ?`,
+		`SELECT id, label, scopes, consoles, prefix, created_at, last_used_at FROM federation_tokens WHERE token_hash = ?`,
 		hashToken(token),
-	).Scan(&item.ID, &item.Label, &item.Scopes, &item.Prefix, &createdAt, &lastUsedAt)
+	).Scan(&item.ID, &item.Label, &item.Scopes, &granted, &item.Prefix, &createdAt, &lastUsedAt)
 	if errors.Is(err, sql.ErrNoRows) || token == "" {
 		return federationTokenResponse{}, ErrCatalogTokenRefused
 	}
@@ -366,6 +396,7 @@ func (server *Server) verifyFederationToken(token string) (federationTokenRespon
 
 	item.CreatedAt = isoDatetime(createdAt)
 	item.LastUsedAt = isoDatetime(lastUsedAt)
+	item.Consoles = consoles.SplitGrants(granted)
 
 	return item, nil
 }
@@ -376,6 +407,18 @@ func (server *Server) VerifyCatalogToken(token string) (label, scopes string, er
 	item, err := server.verifyFederationToken(token)
 
 	return item.Label, item.Scopes, err
+}
+
+// VerifyCatalogAccess — de même, avec ce que cet accès laisse lancer (chantier 66).
+func (server *Server) VerifyCatalogAccess(token string) (label, scopes string, granted []string, err error) {
+	item, err := server.verifyFederationToken(token)
+
+	return item.Label, item.Scopes, item.Consoles, err
+}
+
+// DisabledConsoles — les consoles coupées pour tout le serveur (chantier 66), pour un hôte qui embarque ce service.
+func (server *Server) DisabledConsoles() ([]string, error) {
+	return server.disabledConsoles()
 }
 
 // ── L'autre sens : les serveurs auxquels NOUS avons accès ────────────────

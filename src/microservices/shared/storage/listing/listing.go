@@ -149,9 +149,17 @@ type Header struct {
 	Server  *Server  `json:"server,omitempty"`
 	Machine *Machine `json:"machine,omitempty"`
 	// Scopes — ce que NOTRE jeton chez cet ami nous accorde (« catalog »,
-	// « devices ») : posé sur la COPIE, au téléchargement ; jamais publié par
-	// celui qui sert son listing.
+	// « metadata-providers ») : posé sur la COPIE, au téléchargement ; jamais
+	// publié par celui qui sert son listing.
 	Scopes []string `json:"scopes,omitempty"`
+	// Consoles — ce que NOTRE accès chez cet ami laisse lancer (chantier 66),
+	// au format des consoles d'un compte (« * », « retro », `ps5`, `rp-ps5`…) ;
+	// DisabledConsoles — les consoles qu'il a coupées pour tout son serveur.
+	// Posés par lui quand il sert la copie, comme les portées. Nuls : un
+	// listing qui ne les dit pas (le sien, une ressource) ; une liste vide :
+	// rien.
+	Consoles         []string `json:"consoles"`
+	DisabledConsoles []string `json:"disabledConsoles"`
 	// Statuses — le statut de chaque console qui en a un (chantier 30) : celui
 	// d'un jeu sans signalement. Absent : non testé.
 	Statuses map[string]string `json:"statuses,omitempty"`

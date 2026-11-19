@@ -400,6 +400,10 @@ export function DataProvider({ children, idle = false }) {
     // Relire les appareils Remote Play (après en avoir enregistré ou supprimé un, Réglages › Remote Play) : l'écran
     // Remote Play les montre sans recharger la page.
     const refreshDevices = useCallback(() => readDevices(capabilities).then(setDevices), [capabilities]);
+    // UNE CONSOLE COUPÉE OU RALLUMÉE POUR TOUT LE SERVEUR (chantier 66) : la page la grise ou la rend tout de suite.
+    const markConsoleDisabled = useCallback((id, disabled) => setConsoles((current) => (current
+        ? current.map((entry) => (entry.id === id ? { ...entry, disabled } : entry))
+        : current)), []);
 
     // Relire les serveurs fédérés (après en avoir ajouté ou retiré un, Réglages › Fédération).
     const refreshServers = useCallback(() => listServers().then((answer) => {
@@ -447,10 +451,10 @@ export function DataProvider({ children, idle = false }) {
 
     const value = useMemo(() => ({
         consoles, capabilities, disks, servers, serversRead, refreshServers, devices, refreshDevices, sessions, invites, dismissInvite, loadHere, patchHere, forgetHere, countOf, libraryCountOf,
-        refreshCounts, paramsConsoles, showEmpty, setShowEmpty, shownServers, hiddenServers, setServerShown,
+        refreshCounts, paramsConsoles, showEmpty, setShowEmpty, shownServers, hiddenServers, setServerShown, markConsoleDisabled,
         ownSessions: sessions.filter((session) => isOwnSession(session, user?.username)),
     }), [consoles, capabilities, disks, servers, serversRead, refreshServers, devices, refreshDevices, sessions, invites, dismissInvite, loadHere, patchHere, forgetHere, countOf, libraryCountOf,
-        refreshCounts, paramsConsoles, showEmpty, setShowEmpty, shownServers, hiddenServers, setServerShown, user]);
+        refreshCounts, paramsConsoles, showEmpty, setShowEmpty, shownServers, hiddenServers, setServerShown, markConsoleDisabled, user]);
 
     return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }

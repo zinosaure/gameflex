@@ -179,7 +179,19 @@ func (server *Server) accountsSnapshot() ([]byte, error) {
 		return nil, err
 	}
 
-	return json.Marshal(map[string]any{"type": "accounts", "accounts": accounts, "deleted": server.deleted.recent(time.Now())})
+	// LES ACCÈS DÉLIVRÉS ET LES CONSOLES COUPÉES (chantier 66) voyagent avec les comptes : le kernel décide d'un
+	// lancement sur cette copie, sans appel par requête.
+	accesses, err := server.accessesSnapshot()
+	if err != nil {
+		return nil, err
+	}
+	disabled, err := server.disabledConsoles()
+	if err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(map[string]any{"type": "accounts", "accounts": accounts, "deleted": server.deleted.recent(time.Now()),
+		"accesses": accesses, "disabledConsoles": disabled})
 }
 
 // accountsChanged — un compte ou son jeton vient de changer : la liste à jour

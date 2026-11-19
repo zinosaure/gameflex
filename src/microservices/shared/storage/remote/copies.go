@@ -222,6 +222,23 @@ func (copies *Copies) fresh(peer Peer, now bool) (listing.Header, error) {
 				header.Server.CatalogOnly = only
 			}
 		}
+		// LES CONSOLES QUE NOTRE ACCÈS OUVRE, ET CELLES QU'IL A COUPÉES (chantier 66) : la page grise Jouer d'après elles.
+		if fresh.Consoles != nil || fresh.DisabledConsoles != nil {
+			consoles, disabled := header.Consoles, header.DisabledConsoles
+			if fresh.Consoles != nil {
+				consoles = *fresh.Consoles
+			}
+			if fresh.DisabledConsoles != nil {
+				disabled = *fresh.DisabledConsoles
+			}
+			if !sameScopes(consoles, header.Consoles) || !sameScopes(disabled, header.DisabledConsoles) || (consoles == nil) != (header.Consoles == nil) {
+				if err := listing.SaveHeader(copies.Dir, key, func(copied *listing.Header) {
+					copied.Consoles, copied.DisabledConsoles = consoles, disabled
+				}); err == nil {
+					header.Consoles, header.DisabledConsoles = consoles, disabled
+				}
+			}
+		}
 		copies.remember(key, nil)
 
 		return header, nil

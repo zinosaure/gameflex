@@ -62,7 +62,10 @@ const closureOf = (pairing, scope) => [...(pairing?.closed || [])].reverse().fin
 // LA SECTION « MODE DÉCOUVERTE », une seule pour les deux modes (`scope` : "server" ou "account") : l'interrupteur, son
 // aide qui suit le sujet, et « Prolonger de 5 minutes » une fois ouvert. L'allumer passe par la fenêtre de Skeleton ;
 // l'éteindre ne demande rien, on n'y perd rien.
-export function DiscoveryModeSection({ scope, pairing }) {
+// `children` : des lignes de plus, montrées tant que le mode est ouvert — sur l'accueil de la fédération, les deux
+// formulaires qui acceptent une connexion (le porteur, 2026-11-18 : « Comme ça on va directement sur les formulaires
+// pour accepter une connexion »).
+export function DiscoveryModeSection({ scope, pairing, children }) {
     const { t, i18n } = useTranslation();
     const confirm = useConfirm();
     const { api } = useFederationHost();
@@ -116,6 +119,7 @@ export function DiscoveryModeSection({ scope, pairing }) {
                     }} />
                 {mode && <NavRow id={`pr-${scope}-extend`} icon="bi-clock-history" tone="indigo" label={t("pairing.extend")} help={t("pairing.extendHelp")}
                     pending={pending} opens="action" onOpen={open} />}
+                {mode && children}
             </Rows>
         </Section>
     );

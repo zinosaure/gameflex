@@ -111,7 +111,8 @@
         "coreMissing": "L'émulateur choisi n'est pas installé.",
         "biosMissing": "Il manque le BIOS de cette console.",
         "adminOnly": "Sur cet appareil, seul un administrateur lance une partie.",
-        "emulatorNotHere": "Cet appareil n'a pas l'émulateur de cette console : jouez-y chez un serveur fédéré."
+        "emulatorNotHere": "Cet appareil n'a pas l'émulateur de cette console : jouez-y chez un serveur fédéré.",
+        "consoleDisabled": "Cette console est désactivée sur ce serveur."
     },
     "game": {
         "play": "Jouer",
@@ -128,7 +129,11 @@
         "playerCount_other": "{{count}} joueurs",
         "sources": "Sources :",
         "resume": "Reprendre",
-        "continue": "Continuer"
+        "signInRequired": "Connexion requise",
+        "continue": "Continuer",
+        "consoleDisabled": "Console désactivée",
+        "federationDisabled": "Fédération désactivée",
+        "accessRestricted": "Accès restreint"
     },
     "settings": {
         "metadataServersCount_one": "{{count}} serveur",
@@ -210,7 +215,7 @@
                 "help": "Changer le mot de passe de ce compte."
             },
             "token": {
-                "label": "Créer mon jeton",
+                "label": "Voir mon jeton de connexion",
                 "help": "Pour jouer ici depuis un autre serveur."
             },
             "language": {
@@ -999,17 +1004,10 @@
         "noListing": "pas encore lu",
         "vram": "{{name}} ({{gb}} Go)",
         "ram": "{{gb}} Go de mémoire",
-        "consolesGranted": "consoles Remote Play partagées",
-        "consolesRefused": "consoles Remote Play non partagées",
         "createHelp": "Un jeton ouvre vos jeux et vos BIOS à un serveur sans compte ici, et rien d'autre.",
-        "devicesShared": "Consoles partagées avec {{label}}",
-        "devicesUnshared": "Consoles retirées à {{label}}",
-        "devicesLabel": "Partager aussi les consoles",
-        "devicesHelp": "Montre vos consoles Remote Play à ce serveur. Y jouer demande toujours un compte ici.",
         "scope": {
             "metadata-providers": "Fournisseurs de métadonnées",
-            "catalog": "Jeux",
-            "devices": "Consoles"
+            "catalog": "Jeux"
         },
         "create": "Créer le jeton",
         "createdTitle": "Jeton pour {{label}}",
@@ -1080,7 +1078,6 @@
         "grantsTitle": "Partagé avec vous",
         "grantsHelp": "Ce que ce serveur partage avec le vôtre.",
         "catalogHelp": "Voir et télécharger ses jeux, ses BIOS, ses émulateurs.",
-        "devicesGrantHelp": "Voir ses consoles Remote Play.",
         "providersGrantHelp": "Chercher des images et des fiches avec ses comptes de fournisseurs.",
         "connectionTitle": "Partage",
         "connectionHelp": "Permet le partage des jeux, des consoles et des métadonnées entre vos appareils, avec vos amis et d'autres serveurs GameFlex du monde entier.",
@@ -1099,7 +1096,14 @@
         "scopeMetadata": "Métadonnées",
         "allowed": "Autorisé",
         "notAllowed": "Pas autorisé",
-        "connectionHelpServeOnly": "Ce que ce service prête à vos appareils et à d'autres serveurs GameFlex."
+        "connectionHelpServeOnly": "Ce que ce service prête à vos appareils et à d'autres serveurs GameFlex.",
+        "consolesAll": "Toutes",
+        "consolesNone": "Aucune",
+        "consolesSome": "Certaines",
+        "consolesSection": "Consoles",
+        "consolesRowHelp": "Ce que les comptes venus par cet accès peuvent lancer.",
+        "consolesPageHelp": "Les comptes venus par cet accès ne lancent que ces consoles, en plus de leurs propres droits.",
+        "consolesGrantHelp": "Ce que notre accès à ce serveur permet de lancer."
     },
     "invitations": {
         "create": "Créer l'invitation",
@@ -1308,7 +1312,12 @@
         "paramsFileState": "État",
         "paramsFileUnreadable": "Illisible",
         "paramsFileAbsent": "Absent",
-        "sourceStreamex": "Source officielle (paquets streamex)"
+        "sourceStreamex": "Source officielle (paquets streamex)",
+        "switchTitle": "Disponibilité",
+        "switchLabel": "Console activée",
+        "switchHelp": "Désactivée, personne ne la lance sur ce serveur, ni d'ici ni par la fédération.",
+        "switchedOn": "{{name}} activée",
+        "switchedOff": "{{name}} désactivée"
     },
     "gameAdmin": {
         "found_one": "{{count}} jeu",
@@ -1544,6 +1553,10 @@
             "noSlot": "Plus de manette libre dans cette partie.",
             "claimFailed": "La manette n'a pas pu être prise : la demande a expiré.",
             "denied": "La manette a été gardée.",
+            "moveAsk": "Pour récupérer la manette, libérez-la sur l'autre appareil.",
+            "movePrompt": "Votre autre appareil demande la manette. La libérer ?",
+            "release": "Libérer",
+            "moveDenied": "Désolé, la manette n'a pas été libérée sur l'autre appareil.",
             "lendPrompt": "{{name}} demande votre manette. La lui prêter ?",
             "givePrompt": "{{name}} demande votre place. La lui donner ?",
             "lend": "Prêter",
@@ -2065,7 +2078,10 @@
             "alreadyRegistered": "Ce serveur est déjà dans votre liste. L'invitation n'a pas servi.",
             "pairingClosed": "Ce serveur n'est pas en mode découverte. Ouvrez-le, puis réessayez.",
             "notPairingCode": "Un code d'appairage a 6 chiffres.",
-            "invalidLink": "Cette adresse ne mène à aucun serveur. Vérifiez-la, puis réessayez."
+            "invalidLink": "Cette adresse ne mène à aucun serveur. Vérifiez-la, puis réessayez.",
+            "consoleDisabled": "Cette console est désactivée sur ce serveur.",
+            "federationDisabled": "Ce serveur ne permet pas de lancer cette console par la fédération.",
+            "accessRefused": "Ce serveur ne reconnaît pas l'accès qu'il nous a délivré."
         }
     },
     "streaming": {

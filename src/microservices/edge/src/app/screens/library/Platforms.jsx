@@ -6,7 +6,8 @@ import { focusElement, useScreenInput } from "../../libs/input.js";
 import { goDown, recalledGame } from "../../libs/memory.js";
 import { resolveUsers, subscribeFederatedDevices, wakeDevice } from "../../libs/api.js";
 import { useDeviceStatus } from "../../engine/stream/remoteplay/hooks/use-device-status.js";
-import { federationSession, peerHost } from "../../libs/federation.js";
+import { federationSession, peerHost, PLAY_BLOCK_LABELS, playBlock, useFederationSession } from "../../libs/federation.js";
+import { federatedAccountPath } from "../../settings/account/MyFederation.jsx";
 import { federatedId } from "../../libs/federatedHost.js";
 import { toast } from "../../shell/Shell.jsx";
 import { streamingService } from "../../engine/stream/remoteplay/service/streaming.service.js";
@@ -82,7 +83,7 @@ export default function Platforms({ tab }) {
     const params = useParams();
     const family = tabById(tab).family;
     const everything = usePlatforms();
-    const { libraryCountOf, refreshCounts, servers, showEmpty, sessions, capabilities } = useData();
+    const { libraryCountOf, refreshCounts, servers, showEmpty, sessions, capabilities, consoles } = useData();
     // L'ÉTAT EN DIRECT DES CONSOLES REMOTE PLAY D'ICI (le canal d'état du service, comme la webapp) : il passe devant la
     // liste lue au démarrage.
     const [live, setLive] = useState({});
@@ -214,6 +215,9 @@ export default function Platforms({ tab }) {
     }, []);
 
     const plat = plats[pager.target];
+    // LA CONSOLE REMOTE PLAY D'UN AMI SANS COMPTE CHEZ LUI : « Connexion requise » (libs/federation.js).
+    const shownPeer = plat?.kind === "device" ? deviceOf(plat)?.serverId || null : null;
+    const shownPeerSession = useFederationSession(shownPeer);
 
     // LE NOMBRE DE JEUX de la console affichée, ceux que montre sa bibliothèque — ici et chez
     // chaque serveur fédéré (data.jsx, libraryCountOf, la même source que le choix de cacher
@@ -285,6 +289,24 @@ export default function Platforms({ tab }) {
             return isOwnSession(session, user?.username) ? { kind: "resume", session } : { kind: "watch", session };
         }
 
+        // POURQUOI ELLE NE SE LANCE PAS (chantier 66) : console désactivée, fédération désactivée, connexion requise, accès
+        // restreint — les mêmes mots que le bouton d'un jeu (playBlock). Sa session n'est lue que pour la console affichée.
+        if (device) {
+            const consoleId = `rp-${String(device.hostType || "").toLowerCase()}`;
+            const registered = (consoles || []).find((entry) => entry.id === consoleId);
+            const peer = device.serverId ? (servers || []).find((entry) => String(entry.id) === String(device.serverId)) || null : null;
+            const block = playBlock({
+                console: { id: consoleId, method: "remoteplay", disabled: Boolean(registered?.disabled) },
+                user,
+                peer,
+                peerSession: peer && String(device.serverId) === String(shownPeer) ? shownPeerSession : null,
+            });
+
+            if (block) {
+                return { kind: block, serverId: device.serverId };
+            }
+        }
+
         // UNE CONSOLE REMOTE PLAY EST À TOUT COMPTE VALIDE, sur un serveur comme sur un téléphone (`#757` ; le porteur,
         // 2026-11-17 : « Les consoles fédérées sont accessibles à tout le monde avec un compte. Comme pour le serveur ») :
         // `onlyAdminsLaunch` ne garde que ce qui tourne SUR le téléphone (hostRefusal, les jeux).
@@ -310,9 +332,13 @@ export default function Platforms({ tab }) {
             connect(plat);
         } else if (action.kind === "wake") {
             wake(deviceOf(plat));
+        } else if (action.kind === "signIn") {
+            navigate(federatedAccountPath(action.serverId));
         }
     };
-    const REMOTE_LABELS = { resume: "game.resume", watch: "rp.watchBusy", play: "game.play", waking: "rp.turningOn", wake: "rp.turnOn", unreachable: "game.play" };
+    const REMOTE_LABELS = { resume: "game.resume", watch: "rp.watchBusy", play: "game.play", waking: "rp.turningOn", wake: "rp.turnOn", unreachable: "game.play", ...PLAY_BLOCK_LABELS };
+    // Les états où le bouton ne fait rien : il dit seulement pourquoi.
+    const REMOTE_INERT = ["waking", "unreachable", "consoleDisabled", "federationDisabled", "accessRestricted"];
     const [panel, setPanel] = useState(null);
 
     // SE CONNECTER À UN APPAREIL D'ICI (chantier 52, P6) : la commande `launch` du kernel (streamingService
@@ -473,7 +499,7 @@ export default function Platforms({ tab }) {
                     <>
                         {/* Le bouton suit l'état de la console (remoteAction) ; l'engrenage, ses informations et son flux. */}
                         <button type="button" className={`${button("main")} w-50 text-truncate`} data-nav data-key="b-rp"
-                            disabled={["waking", "unreachable"].includes(remoteAction(plat).kind)} onClick={() => runRemote(plat)}>
+                            disabled={REMOTE_INERT.includes(remoteAction(plat).kind)} onClick={() => runRemote(plat)}>
                             {t(REMOTE_LABELS[remoteAction(plat).kind])}
                         </button>
                         <button type="button" className={`${ICON_BUTTON} ${button("round")}`} data-nav data-key="b-info" aria-haspopup="dialog"

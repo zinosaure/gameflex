@@ -44,6 +44,25 @@ export function forgetPadOpacity(name) {
     }
 }
 
+// LE PAVÉ TACTILE SEUL, à côté d'une vraie manette (TouchpadSurface `alone`) : il suit la même opacité, et le menu montre
+// alors sa glissière (le porteur, 2026-11-18 : « pour PS4 et PS5, on ne peut pas diminuer l'opacité du touchpad qui est
+// sur l'écran »). Compté : un pavé qui part pendant qu'un autre arrive ne l'efface pas.
+let alonePads = 0;
+const aloneListeners = new Set();
+
+export function markTouchpadAlone(on) {
+    alonePads = Math.max(0, alonePads + (on ? 1 : -1));
+    aloneListeners.forEach((listener) => listener());
+}
+
+export function useTouchpadAlone() {
+    return useSyncExternalStore((listener) => {
+        aloneListeners.add(listener);
+
+        return () => aloneListeners.delete(listener);
+    }, () => alonePads > 0);
+}
+
 export function usePadOpacity() {
     return useSyncExternalStore(subscribe, () => current);
 }

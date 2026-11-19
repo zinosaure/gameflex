@@ -80,6 +80,9 @@ type Caller struct {
 	Name   string
 	Member string
 	Kind   string
+	// Access — notre jeton de catalogue chez lui (chantier 66) : par quel accès nous venons. Il ne lance que les consoles
+	// que cet accès ouvre, et n'ouvre aucune session sans lui.
+	Access string
 }
 
 // Identity est ce qu'un serveur dit de lui-même.
@@ -172,6 +175,7 @@ func (server *Server) send(ctx context.Context, method, path string, client *htt
 	request.Header.Set("Authorization", "Bearer "+server.token)
 	for header, value := range map[string]string{
 		"X-GameFlex-From": server.caller.Name, "X-GameFlex-Member": server.caller.Member, "X-GameFlex-Kind": server.caller.Kind,
+		"X-GameFlex-Access": server.caller.Access,
 	} {
 		if value != "" {
 			request.Header.Set(header, value)
@@ -389,6 +393,10 @@ type Freshness struct {
 	// CatalogOnly — dit par un serveur qui ne lance rien (gameflex-federation) ; absent chez un GameFlex. Comme les
 	// portées, il ne change pas la date du listing : la copie le prend sans tout re-télécharger.
 	CatalogOnly *bool `json:"catalogOnly,omitempty"`
+	// Consoles, DisabledConsoles — ce que notre accès laisse lancer chez lui, et ce qu'il a coupé pour tout le monde
+	// (chantier 66) : ils ne changent pas la date non plus. Nuls : non dits.
+	Consoles         *[]string `json:"consoles,omitempty"`
+	DisabledConsoles *[]string `json:"disabledConsoles,omitempty"`
 }
 
 // ListingUpdated — sa Freshness. Une LISTE, bornée court : un ami éteint ne

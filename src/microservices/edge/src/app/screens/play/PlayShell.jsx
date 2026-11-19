@@ -358,10 +358,25 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         if (message.status === "granted") {
             return;
         }
+        // MA PLACE EST SUR UN AUTRE APPAREIL (chantier 65) : le child refuse un second `join` du même compte. La page
+        // demande alors à l'autre appareil de la libérer — c'est lui qui répond.
+        if (message.action === "join" && message.reason === "already in the players queue") {
+            if (childSocketRef.current?.intent("request-handover", user?.username)) {
+                context.toast.open(t("play.handover.moveAsk"), { variant: "warning", duration: 6000 });
+            }
+
+            return;
+        }
+        // Un refus du détenteur : le mien sur l'autre appareil, ou celui de la personne à qui je l'ai demandée.
+        if (message.status === "denied") {
+            context.toast.open(t(message.move ? "play.handover.moveDenied" : "play.handover.denied"), { variant: "warning" });
+
+            return;
+        }
         // « abandoned » n'est pas un refus : le monde a bougé. Un refus dit pourquoi quand le child l'a nommé.
         const reasons = { "already playing in another session": "play.handover.playsElsewhere", "no slot available": "play.handover.noSlot" };
         context.toast.open(t(message.status === "abandoned" ? "play.handover.claimFailed" : reasons[message.reason] || "play.handover.denied"), { variant: "warning" });
-    }, [context, t, nameOf]);
+    }, [context, t, nameOf, user?.username]);
 
     const childSocket = useChildSessionWs({
         sessionId: childSessionId,
@@ -549,6 +564,9 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         return () => reportIdle();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [kernelPrivateReady]);
+    // Le socket, pour un résultat qui doit répondre par une autre intention (handleChildResult, chantier 65).
+    const childSocketRef = useRef(null);
+    childSocketRef.current = childSocket;
 
     // Un spectateur qui devient joueur retrouve la manette à l'écran — sauf s'il tient une vraie manette.
     useEffect(() => {
@@ -567,6 +585,27 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
             return;
         }
         slotPromptRef.current = request.from;
+        // MON AUTRE APPAREIL DEMANDE MA PLACE (chantier 65) : la libérer, ou la garder ; sans réponse en 15 s, gardée.
+        if (request.from === user?.username) {
+            context.toast.open(t("play.handover.movePrompt"), {
+                variant: "confirm",
+                takesPad: true,
+                expiresAfter: 15000,
+                confirmLabel: t("play.handover.release"),
+                cancelLabel: t("play.handover.keep"),
+                onConfirm: () => {
+                    slotPromptRef.current = null;
+                    sessionSend({ type: "cedeslot" });
+                    inputRef.current?.onSlotGiveaway?.();
+                },
+                onCancel: () => {
+                    slotPromptRef.current = null;
+                    sessionSend({ type: "slotrequestdenied" });
+                },
+            });
+
+            return;
+        }
         const lending = myRole === "owner";
         context.toast.open(t(lending ? "play.handover.lendPrompt" : "play.handover.givePrompt", { name: nameOf(request.from) }), {
             variant: "confirm",

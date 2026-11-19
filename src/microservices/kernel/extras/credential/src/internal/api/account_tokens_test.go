@@ -39,8 +39,18 @@ func tokenServer(t *testing.T) (*Server, *sql.DB) {
 		}
 	}
 
+	// L'ACCÈS DÉLIVRÉ du serveur qui ouvre les sessions de ces tests (chantier 66) : sans lui, pas de session.
+	if _, err := db.Exec(`INSERT INTO federation_tokens (label, scopes, token_hash, prefix, created_at) VALUES ('Serveur d''essai', 'catalog', ?, 'acces-du', '2026-11-19')`,
+		hashToken(testAccess)); err != nil {
+		t.Fatal(err)
+	}
+
 	return &Server{db: db, config: config.Config{InternalSecret: testInternalSecret, JWTSecret: "le-secret-des-jetons"}, pairing: newPairing(systemClock{})}, db
 }
+
+// testAccess — le jeton de catalogue que le serveur des tests présente en ouvrant une session.
+const testAccess = "acces-du-serveur-d-essai-0123456789"
+
 
 func tokenOf(t *testing.T, db *sql.DB, userID int64) string {
 	t.Helper()
@@ -57,6 +67,16 @@ func adminCall(server *Server, handler func(http.ResponseWriter, *http.Request, 
 	request := httptest.NewRequest(method, "/", strings.NewReader(body))
 	request.SetPathValue("id", id)
 	handler(recorder, request, auth.Principal{ID: 1, Username: "admin", RoleLevel: auth.RoleAdmin})
+
+	return recorder
+}
+
+// sessionCall — une session ouverte par le serveur des tests, avec son accès délivré (chantier 66).
+func sessionCall(server *Server, token string) *httptest.ResponseRecorder {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"token":"`+token+`","access":"`+testAccess+`"}`))
+	request.Header.Set("X-Internal-Secret", testInternalSecret)
+	server.handleFederationSession(recorder, request)
 
 	return recorder
 }
@@ -103,7 +123,7 @@ func TestATokenOpensNothingUntilEnabledForAWhile(t *testing.T) {
 	server, db := tokenServer(t)
 	token := tokenOf(t, db, 2)
 
-	if answer := internalCall(server, server.handleFederationSession, token); answer.Code != http.StatusUnauthorized {
+	if answer := sessionCall(server, token); answer.Code != http.StatusUnauthorized {
 		t.Fatalf("désactivé : %d, attendu 401", answer.Code)
 	}
 	if answer := adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true}`); answer.Code != http.StatusBadRequest {
@@ -112,13 +132,22 @@ func TestATokenOpensNothingUntilEnabledForAWhile(t *testing.T) {
 	if answer := adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1m"}`); answer.Code != http.StatusOK {
 		t.Fatalf("activé pour un mois : %d %s", answer.Code, answer.Body.String())
 	}
-	answer := internalCall(server, server.handleFederationSession, token)
+	answer := sessionCall(server, token)
 	if answer.Code != http.StatusOK || !strings.Contains(answer.Body.String(), `"username":"marc"`) || !strings.Contains(answer.Body.String(), `"consoles":["*"]`) {
 		t.Fatalf("actif : %d %s", answer.Code, answer.Body.String())
 	}
 
+	// SANS ACCÈS DÉLIVRÉ, PAS DE SESSION (chantier 66) : les consoles d'un accès ne se contournent pas en le taisant.
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"token":"`+token+`","access":"inconnu"}`))
+	request.Header.Set("X-Internal-Secret", testInternalSecret)
+	server.handleFederationSession(recorder, request)
+	if recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), "access_refused") {
+		t.Fatalf("un accès inconnu : %d %s, attendu 403 access_refused", recorder.Code, recorder.Body.String())
+	}
+
 	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":false}`)
-	if answer := internalCall(server, server.handleFederationSession, token); answer.Code != http.StatusUnauthorized {
+	if answer := sessionCall(server, token); answer.Code != http.StatusUnauthorized {
 		t.Fatalf("désactivé de nouveau : %d, attendu 401", answer.Code)
 	}
 }
@@ -131,7 +160,7 @@ func TestAnExpiredTokenIsRefused(t *testing.T) {
 	if _, err := db.Exec(`UPDATE account_tokens SET enabled = 1, expires_at = ? WHERE user_id = 2`, past); err != nil {
 		t.Fatal(err)
 	}
-	if answer := internalCall(server, server.handleFederationSession, token); answer.Code != http.StatusUnauthorized {
+	if answer := sessionCall(server, token); answer.Code != http.StatusUnauthorized {
 		t.Fatalf("échu : %d, attendu 401", answer.Code)
 	}
 }
@@ -142,7 +171,7 @@ func TestRegeneratingRetiresTheOldToken(t *testing.T) {
 	server, db := tokenServer(t)
 	old := tokenOf(t, db, 2)
 	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1w"}`)
-	internalCall(server, server.handleFederationSession, old)
+	sessionCall(server, old)
 
 	if answer := adminCall(server, server.handleRegenerateAccountToken, http.MethodPost, "2", ""); answer.Code != http.StatusOK {
 		t.Fatalf("régénérer : %d %s", answer.Code, answer.Body.String())
@@ -155,10 +184,10 @@ func TestRegeneratingRetiresTheOldToken(t *testing.T) {
 	if err := db.QueryRow(`SELECT use_count FROM account_tokens WHERE user_id = 2`).Scan(&uses); err != nil || uses != 0 {
 		t.Fatalf("compteur après régénération : %d / %v, attendu 0", uses, err)
 	}
-	if answer := internalCall(server, server.handleFederationSession, old); answer.Code != http.StatusUnauthorized {
+	if answer := sessionCall(server, old); answer.Code != http.StatusUnauthorized {
 		t.Fatalf("l'ancien : %d, attendu 401", answer.Code)
 	}
-	if answer := internalCall(server, server.handleFederationSession, fresh); answer.Code != http.StatusOK {
+	if answer := sessionCall(server, fresh); answer.Code != http.StatusOK {
 		t.Fatalf("le nouveau : %d, attendu 200 (l'état actif est gardé)", answer.Code)
 	}
 }
@@ -170,7 +199,7 @@ func TestATokenSessionIsNeverAdminAndCountsAConnection(t *testing.T) {
 	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "1", `{"enabled":true,"duration":"1d"}`)
 	token := tokenOf(t, db, 1)
 
-	answer := internalCall(server, server.handleFederationSession, token)
+	answer := sessionCall(server, token)
 	if answer.Code != http.StatusOK {
 		t.Fatalf("session : %d %s", answer.Code, answer.Body.String())
 	}
@@ -319,7 +348,7 @@ func TestTheKernelReceivesTheAccounts(t *testing.T) {
 func TestATokenSessionDiesWithItsToken(t *testing.T) {
 	server, db := tokenServer(t)
 	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1w"}`)
-	answer := internalCall(server, server.handleFederationSession, tokenOf(t, db, 2))
+	answer := sessionCall(server, tokenOf(t, db, 2))
 	var body struct {
 		Item struct {
 			AccessToken string `json:"access_token"`
@@ -351,7 +380,7 @@ func TestATokenSessionDiesWithItsToken(t *testing.T) {
 func TestATokenSessionCannotManageTheAccount(t *testing.T) {
 	server, db := tokenServer(t)
 	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1w"}`)
-	answer := internalCall(server, server.handleFederationSession, tokenOf(t, db, 2))
+	answer := sessionCall(server, tokenOf(t, db, 2))
 	var body struct {
 		Item struct {
 			AccessToken string `json:"access_token"`
@@ -419,7 +448,7 @@ func TestTheTokenListsItsConnections(t *testing.T) {
 		t.Helper()
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(
-			`{"token":"`+token+`","from":"`+from+`","member":"`+member+`","kind":"`+kind+`","address":"`+address+`"}`))
+			`{"token":"`+token+`","from":"`+from+`","member":"`+member+`","kind":"`+kind+`","address":"`+address+`","access":"`+testAccess+`"}`))
 		request.Header.Set("X-Internal-Secret", testInternalSecret)
 		server.handleFederationSession(recorder, request)
 		if recorder.Code != http.StatusOK {

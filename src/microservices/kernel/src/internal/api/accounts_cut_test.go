@@ -72,7 +72,7 @@ func TestALaunchNeedsTheConsole(t *testing.T) {
 	granted := func(username, consoleID string) bool {
 		var answer bool
 		handler := auth.Middleware(facadeTestSecret, func(w http.ResponseWriter, r *http.Request) {
-			answer = server.consoleGranted(r, consoleID)
+			answer = server.consoleRefusal(r, consoleID) == ""
 		})
 		request := httptest.NewRequest(http.MethodPost, "/api/v1/launch", nil)
 		request.Header.Set("Authorization", "Bearer "+facadeTestToken(t, username))
@@ -101,9 +101,59 @@ func TestALaunchNeedsTheConsole(t *testing.T) {
 // LE REFUS SE DIT AVEC UN CODE que la page traduit.
 func TestTheRefusalCarriesACode(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	writeNotGranted(recorder, "ps3")
+	writeConsoleRefused(recorder, "consoleNotGranted", "ps3")
 	if recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), `"errorCode":"consoleNotGranted"`) {
 		t.Fatalf("refus : %d %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+// CHANTIER 66 — UNE CONSOLE COUPÉE POUR TOUT LE SERVEUR, PUIS PAR L'ACCÈS D'UNE SESSION FÉDÉRÉE, PUIS PAR LE COMPTE :
+// trois refus, dans cet ordre, chacun son code (les textes du bouton Jouer).
+func TestTheThreeRefusalsComeInOrder(t *testing.T) {
+	server := &Server{}
+	refusal := func(claims auth.Claims, consoleID string) string {
+		var answer string
+		handler := auth.Middleware(facadeTestSecret, func(w http.ResponseWriter, r *http.Request) {
+			answer = server.consoleRefusal(r, consoleID)
+		})
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/launch", nil)
+		request.Header.Set("Authorization", "Bearer "+testToken(t, claims))
+		handler(httptest.NewRecorder(), request)
+
+		return answer
+	}
+
+	store := accounts.New()
+	server.accounts = store
+	auth.SetGate(store.Admit)
+	t.Cleanup(func() { auth.SetGate(nil) })
+	store.SetRights([]accounts.Access{{ID: 7, Consoles: []string{"retro", "rp-ps5"}}}, []string{"ps5"})
+	store.Replace([]accounts.Account{
+		{Username: "marc", RoleLevel: accounts.RoleUser, Consoles: []string{"*"}},
+		{Username: "lea", RoleLevel: accounts.RoleUser, Consoles: []string{"retro"}},
+	})
+	marc := auth.Claims{Username: "marc"}
+	viaAccess := auth.Claims{Username: "marc", Acc: 7}
+	viaRevoked := auth.Claims{Username: "marc", Acc: 8}
+
+	for _, check := range []struct {
+		claims  auth.Claims
+		console string
+		want    string
+	}{
+		{marc, "ps5", "consoleDisabled"},
+		{viaAccess, "ps5", "consoleDisabled"},
+		{marc, "ps4", ""},
+		{viaAccess, "ps4", "federationDisabled"},
+		{viaAccess, "nes", ""},
+		{viaAccess, "rp-ps5", ""},
+		{viaRevoked, "nes", "federationDisabled"},
+		{auth.Claims{Username: "lea"}, "snes", ""},
+		{auth.Claims{Username: "lea"}, "ps4", "consoleNotGranted"},
+	} {
+		if got := refusal(check.claims, check.console); got != check.want {
+			t.Fatalf("%s (accès %d) sur %s : %q, attendu %q", check.claims.Username, check.claims.Acc, check.console, got, check.want)
+		}
 	}
 }
 

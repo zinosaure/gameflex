@@ -48,7 +48,9 @@ USER federation
 VOLUME /data
 EXPOSE 8090
 
+# Le port d'écoute, celui que le service prend vraiment : le compose le change (10206, en réseau hôte), et une sonde
+# figée sur 8090 disait le service malade alors qu'il répondait.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO- http://localhost:8090/api/v1/health || exit 1
+    CMD wget -qO- "http://localhost:${FEDERATION_PORT:-8090}/api/v1/health" || exit 1
 
 CMD ["/app/federation"]

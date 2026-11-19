@@ -44,7 +44,7 @@ var (
 // nom et ses portées, un jeton que la vérification accepte, puis plus rien.
 func TestFederationInvitationIsRedeemedOnce(t *testing.T) {
 	server := invitationServer(t)
-	code, created := createInvitation(t, server, inviter, `{"kind":"federation","label":"Marc","scopes":["catalog","devices"]}`)
+	code, created := createInvitation(t, server, inviter, `{"kind":"federation","label":"Marc","scopes":["catalog","metadata-providers"]}`)
 	if code != http.StatusCreated || len(created.Code) < 22 {
 		t.Fatalf("création : %d, code %q", code, created.Code)
 	}
@@ -53,7 +53,7 @@ func TestFederationInvitationIsRedeemedOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if redeemed.Identity != "Marc" || redeemed.Scopes != "catalog,devices" || len(redeemed.Token) < 40 {
+	if redeemed.Identity != "Marc" || redeemed.Scopes != "catalog,metadata-providers" || len(redeemed.Token) < 40 {
 		t.Fatalf("échange : %+v", redeemed)
 	}
 	if recorder := internalCall(server, server.handleVerifyFederationToken, redeemed.Token); recorder.Code != http.StatusOK {
@@ -64,7 +64,8 @@ func TestFederationInvitationIsRedeemedOnce(t *testing.T) {
 		t.Fatalf("second échange : %v, attendu un refus", err)
 	}
 	var count int
-	_ = server.db.QueryRow(`SELECT COUNT(*) FROM federation_tokens`).Scan(&count)
+	// Celui de l'échange, hors l'accès du serveur des tests (tokenServer).
+	_ = server.db.QueryRow(`SELECT COUNT(*) FROM federation_tokens WHERE token_hash != ?`, hashToken(testAccess)).Scan(&count)
 	if count != 1 {
 		t.Fatalf("%d jetons de catalogue, attendu 1", count)
 	}

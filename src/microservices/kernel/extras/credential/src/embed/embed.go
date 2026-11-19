@@ -440,6 +440,9 @@ func (service *Service) RoleOf(token string) (int, error) {
 // ErrTokenRefused — ce jeton de compte ne vaut pas (ou plus) ici.
 var ErrTokenRefused = api.ErrTokenRefused
 
+// ErrAccessRefused — le serveur qui ouvre la session ne présente aucun accès délivré valable (chantier 66).
+var ErrAccessRefused = api.ErrAccessRefused
+
 // TokenAccount — le compte d'un jeton : son nom, comment il s'affiche, ce qu'il
 // peut lancer (`*`, `retro`, des identifiants).
 type TokenAccount struct {
@@ -516,6 +519,17 @@ var ErrCatalogTokenRefused = api.ErrCatalogTokenRefused
 // téléphone garde sa surface fédérée avec (`#756`).
 func (service *Service) VerifyCatalogToken(token string) (label, scopes string, err error) {
 	return service.api.VerifyCatalogToken(token)
+}
+
+// VerifyCatalogAccess — de même, avec les consoles que cet accès laisse lancer (chantier 66) : le téléphone les dit à
+// l'ami avec son listing.
+func (service *Service) VerifyCatalogAccess(token string) (label, scopes string, consoles []string, err error) {
+	return service.api.VerifyCatalogAccess(token)
+}
+
+// DisabledConsoles — les consoles coupées pour tout l'appareil (chantier 66).
+func (service *Service) DisabledConsoles() ([]string, error) {
+	return service.api.DisabledConsoles()
 }
 
 // ErrNoFederatedAccount — ce membre n'a pas collé de jeton pour ce serveur.

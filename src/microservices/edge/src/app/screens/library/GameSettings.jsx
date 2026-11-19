@@ -449,9 +449,12 @@ export function GearPanel({ console, game, rom, metadata, facts, playable, state
     const refused = hostRefusal(console, rom, capabilities, isAdmin);
     const server = serverInfo(console, rom, capabilities, peer, t);
 
-    if (!playable) {
+    if (!playable || !allows(user?.consoles, console)) {
         // Le compte ne lance pas cette console, ou l'hôte la refuse (un téléphone : hostRefusal).
         noLaunch = allows(user?.consoles, console) && refused ? refused : "consoleNotGranted";
+    } else if (!rom.peer && console.disabled) {
+        // Coupée pour tout le serveur (chantier 66, Réglages › Consoles).
+        noLaunch = "consoleDisabled";
     } else if (!rom.peer && facts && cores.selected && !cores.installed(cores.selected)) {
         noLaunch = "coreMissing";
     } else if (!rom.peer && bios.missing) {

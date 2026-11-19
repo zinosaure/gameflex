@@ -62,6 +62,9 @@ type Claims struct {
 	// serveur (chantier 20) : la génération de ce jeton. Vide, une connexion
 	// ordinaire.
 	Fed string `json:"fed,omitempty"`
+	// Acc — l'accès délivré par lequel le serveur ami a ouvert la session (chantier 66) : ne se lancent que les consoles
+	// que cet accès laisse lancer. 0, une connexion ordinaire.
+	Acc int64 `json:"acc,omitempty"`
 }
 
 // KeyPair — la paire qui signe et vérifie les jetons d'une installation,

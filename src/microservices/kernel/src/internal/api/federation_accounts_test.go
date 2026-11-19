@@ -246,10 +246,8 @@ func TestLeLienFaitListerEtUnCompteFaitJouer(t *testing.T) {
 	if status, _ := federationCall(t, surface, http.MethodGet, "/listing/updated", catalogOnly); status != http.StatusOK {
 		t.Fatalf("le catalogue, avec le jeton du lien = %d, attendu 200", status)
 	}
-	if status, _ := federationCall(t, surface, http.MethodGet, "/remoteplay/devices", catalogOnly); status != http.StatusForbidden {
-		t.Fatalf("les consoles à distance sans la portée = %d, attendu 403", status)
-	}
-	_, body = federationCall(t, surface, http.MethodGet, "/remoteplay/devices", catalogPlus)
+	// LES CONSOLES À DISTANCE SE VOIENT AVEC LE CATALOGUE (chantier 66) : y jouer suit les consoles de l'accès.
+	_, body = federationCall(t, surface, http.MethodGet, "/remoteplay/devices", catalogOnly)
 	lent, _ := body["data"].([]any)
 	if len(lent) != 2 || lent[0].(map[string]any)["rp_key"] != nil {
 		t.Fatalf("les consoles à distance, avec la portée = %v, attendu les deux, sans clé", body)

@@ -105,6 +105,8 @@ list, then **Get it** (see below).
 
 Open **Settings › Consoles**, then the console. Its page lists:
 
+- **Console enabled**: turned off, nobody launches this console on your server, members and friends
+  alike; its **Play** button says **Console disabled** until you turn it back on;
 - **Emulators**: the ones on this server, and the ones the console expects but does not have yet,
   marked *Not installed*. The one in colour is the one its games use. A recent console also lists
   the *Phone emulator* packages, which the Android app downloads from this server;

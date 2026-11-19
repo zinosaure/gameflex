@@ -471,7 +471,9 @@ export const TouchpadOnlyContext = createContext(null);
 // Sa taille, seul : celle du pavé de la manette entière, agrandie d'un cinquième (60 en portrait, 90 en paysage).
 // Fixée ici, et non tirée du gabarit : le pavé de la manette entière en paysage est bien plus grand (#758, presets.js)
 // et, seul, il couvrirait la partie qu'on joue à la vraie manette.
-const TOUCHPAD_ALONE_SIZE = { portrait: 60, landscape: 90 };
+// Plus gros qu'en paysage avec la manette à l'écran (180 de haut, presets.js) : à côté d'une vraie manette, le pavé
+// est la seule chose à toucher (le porteur, 2026-11-18). En portrait, la largeur de l'écran le borne.
+const TOUCHPAD_ALONE_SIZE = { portrait: 120, landscape: 220 };
 // En portrait, sous la vidéo, la vue discrète quand elle est allumée, et la
 // ligne qui la suit : il n'y a qu'un demi-écran sous une manette clipsée
 // (#410). La hauteur de la vue n'est définie qu'à un endroit, sa constante
@@ -491,7 +493,7 @@ const TOUCHPAD_ALONE_PLACE = {
 		bottom: `max(8px, calc(var(--gameflex-visible-height) - 56.25vw - var(--gameflex-stats-strip-height, 0px) - ${size + 32}px))`,
 		transform: "translateX(-50%)",
 	}),
-	landscape: (size) => ({ left: "50%", bottom: 110 - size / 2, transform: "translateX(-50%)" }),
+	landscape: (size) => ({ left: "50%", bottom: Math.max(8, 110 - size / 2), transform: "translateX(-50%)" }),
 };
 
 function ColumnZone({
@@ -885,7 +887,7 @@ export default function ControllerLayout({
 				button={touchpad}
 				callback={callbacks[touchpad.name]}
 				isLandscape={touchpadOnly === "landscape"}
-				alone={{ size: TOUCHPAD_ALONE_SIZE[touchpadOnly], place: TOUCHPAD_ALONE_PLACE[touchpadOnly] }}
+				alone={{ size: TOUCHPAD_ALONE_SIZE[touchpadOnly], place: TOUCHPAD_ALONE_PLACE[touchpadOnly], opacity: tunedOpacity ?? fetchedOpacity ?? opacity }}
 				look={look}
 			/>
 		) : null;

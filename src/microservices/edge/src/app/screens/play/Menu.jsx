@@ -11,7 +11,7 @@ import { formatDuration } from "../../libs/format.js";
 import { authHeaders, useConsoles } from "../../libs/sharedHost.js";
 import { focusElement } from "../../libs/input.js";
 import { setHapticFeedback, setRumbleEnabled, useGamepadPreferences } from "../../engine/libs/gamepadPreferences.js";
-import { setPadOpacity, usePadOpacity } from "../../engine/stream/onscreen/padOpacity.js";
+import { setPadOpacity, usePadOpacity, useTouchpadAlone } from "../../engine/stream/onscreen/padOpacity.js";
 import i18n from "../../i18n.js";
 import SidePanel from "../../shell/SidePanel.jsx";
 import { Form, FormButton, formContext } from "../../ui/Forms.jsx";
@@ -65,6 +65,8 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
     const device = useGamepadPreferences();
     // L'opacité de la manette à l'écran : celle de sa disposition en jeu (padOpacity.js), lue par la manette dessinée.
     const padOpacity = usePadOpacity();
+    // Une vraie manette : la manette à l'écran se cache, mais le pavé tactile (PS4, PS5) reste — sa glissière aussi.
+    const touchpadAlone = useTouchpadAlone();
     // L'orientation : l'application pivote son activité ; un navigateur, le plein écran et le verrou. Refusée, la ligne le dit.
     const turnsTheApp = can("screenOrientation");
     const [turnFailed, setTurnFailed] = useState(false);
@@ -204,7 +206,7 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
         !isWatching && switches.isControllerVisible && <SwitchRow key="haptic" id="pm-haptic" label={t("play.haptic.label")} help={t("play.haptic.help")} checked={device.hapticFeedback} onChange={setHapticFeedback} />,
         !isWatching && switches.isControllerVisible && <InvisibleSticksRow key="invisible-sticks" id="pm-invisible-sticks" />,
         // L'OPACITÉ (#758) : celle de « Modifier la disposition », pour la disposition en jeu ; la manette la suit aussitôt.
-        !isWatching && switches.isControllerVisible && padOpacity.name && <PadOpacityRow key="opacity" id="pm-pad-opacity" value={padOpacity.opacity ?? 1} onChange={setPadOpacity} />,
+        !isWatching && (switches.isControllerVisible || touchpadAlone) && padOpacity.name && <PadOpacityRow key="opacity" id="pm-pad-opacity" value={padOpacity.opacity ?? 1} onChange={setPadOpacity} />,
         !isWatching && session.consoleId === "ps1" && <SwitchRow key="dualshock" id="pm-dualshock" label={t("play.dualShock.label")} help={t("play.dualShock.help")} checked={switches.isDualShockController} onChange={(on) => set({ isDualShockController: on })} />,
         !watchOnly && <SwitchRow key="rumble" id="pm-rumble" label={t("play.rumble.label")} help={t("play.rumble.help")} checked={device.rumble} onChange={setRumbleEnabled} />,
         // LE CLAVIER, déclaré par la plateforme (#420) : streamex seul tape dans son émulateur.

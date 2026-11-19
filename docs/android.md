@@ -151,7 +151,7 @@ Good to know:
 The server's games appear in your libraries and in the catalog. To play them on the server, which
 streams them to the phone, sign in at that server once: **Settings › Profile › Federation › Sign in
 at federated servers**, with the invitation or the token of your account over there (**Settings ›
-Profile › Federation › Create my token** on the server). You can also copy a game to the phone, to
+Profile › Federation › See my connection token** on the server). You can also copy a game to the phone, to
 play it without the server.
 
 ## Remote Play: your PS4 or PS5

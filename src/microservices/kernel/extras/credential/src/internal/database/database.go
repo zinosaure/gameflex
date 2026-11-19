@@ -113,9 +113,9 @@ CREATE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint ON push_subscriptions
 -- label est obligatoire, et c'est le coeur de la décision : un jeton
 -- anonyme ne se révoque qu'en bloc et ne dit jamais qui consomme.
 -- scopes dit CE QUE le jeton ouvre : « catalog » (lire le catalogue,
--- télécharger), « devices » (voir la liste des consoles à distance d'ici),
--- « metadata-providers » (la recherche des fiches interroge aussi nos comptes
--- IGDB et SteamGridDB pour son porteur, chantier 57).
+-- télécharger, voir les consoles à distance d'ici), « metadata-providers » (la recherche des fiches interroge aussi nos comptes
+-- IGDB et SteamGridDB pour son porteur, chantier 57). consoles (chantier 66,
+-- colonne ajoutée plus bas) dit ce que les comptes venus par lui lancent.
 --
 -- Lancer une session n'est PAS de la lecture : ça démarre un conteneur avec
 -- sa limite mémoire, son bloc de ports ICE et son port alloué — du calcul
@@ -361,6 +361,30 @@ func Open() (*sql.DB, error) {
 	if err := ensureColumn(db, "users", "consoles", "VARCHAR(500) NOT NULL DEFAULT '*'"); err != nil {
 		db.Close()
 		return nil, err
+	}
+	// LES CONSOLES D'UN ACCÈS DÉLIVRÉ (chantier 66, `#795`) : le même format que celles d'un compte, « * » par défaut —
+	// l'administrateur restreint un accès comme un membre. Elles remplacent la portée `devices` (chantier 9), qui ne
+	// disait que « voir les consoles Remote Play » : retirée des jetons et des invitations.
+	if err := ensureColumn(db, "federation_tokens", "consoles", "VARCHAR(500) NOT NULL DEFAULT '*'"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	for _, table := range []string{"federation_tokens", "invitations"} {
+		if _, err := db.Exec(`UPDATE ` + table + ` SET scopes = trim(replace(replace(replace(',' || scopes || ',', ',devices,', ','), ',,', ','), ',,', ','), ',')
+			WHERE ',' || scopes || ',' LIKE '%,devices,%'`); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("drop the devices scope from %s: %w", table, err)
+		}
+	}
+	// LES CONSOLES COUPÉES POUR TOUT LE SERVEUR (chantier 66) : une ligne par console coupée — personne ne la lance,
+	// ni un membre d'ici, administrateur compris, ni un joueur venu par la fédération.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS disabled_consoles (
+		console_id     VARCHAR(40) PRIMARY KEY,
+		disabled_at    DATETIME,
+		disabled_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+	)`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("create disabled_consoles: %w", err)
 	}
 	// LES PARTAGES MONTÉS PAR APPAREIL SONT PARTIS (chantier 61, P6) : gameflex-federation les a remplacés — un appareil
 	// le rejoint comme un serveur fédéré. La table et ses identifiants partent avec eux, sans rien garder.

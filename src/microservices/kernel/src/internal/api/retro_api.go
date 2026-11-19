@@ -46,7 +46,31 @@ func (server *Server) retroCoresRoot() string { return filepath.Join(server.stor
 // (id, name, publisher, method, cores, maxPlayers) the frontend's menu,
 // emulator picker and player-slot logic depend on (gameflex-consoles).
 func (server *Server) handleConsolesRegistry(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, consoles.List())
+	disabled := []string{}
+	if server.accounts != nil {
+		disabled = server.accounts.DisabledConsoles()
+	}
+	writeJSON(w, http.StatusOK, withDisabled(consoles.List(), disabled))
+}
+
+// registryConsole — une console du registre, et si elle est coupée pour tout le serveur (chantier 66) : la page grise
+// son bouton Jouer (« console désactivée ») et Réglages › Consoles montre son interrupteur.
+type registryConsole struct {
+	consoles.Console
+	Disabled bool `json:"disabled,omitempty"`
+}
+
+func withDisabled(list []consoles.Console, disabled []string) []registryConsole {
+	off := map[string]bool{}
+	for _, id := range disabled {
+		off[id] = true
+	}
+	out := make([]registryConsole, 0, len(list))
+	for _, console := range list {
+		out = append(out, registryConsole{Console: console, Disabled: off[console.ID]})
+	}
+
+	return out
 }
 
 // handleRetroConsoles — {id, count} per console, cross-referenced with the

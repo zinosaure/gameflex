@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { Navigate, Route, Routes, useParams, useSearchParams } from "react-router-dom";
 import {
     consoleDefaults, deleteEmulatorPreset, deleteInstalled, deleteMetadataOrphan, fetchAvailability, fetchConsoleStatus, fetchRequired, listConsoleBackgrounds, listEmulatorParams,
-    listMetadataOrphans, metadataOrphanCoverPath, readToken, resetConsoleBackgrounds, searchConsoleBackgrounds, setConsoleBackground, setConsoleDefaults, setConsoleStatus, writeEmulatorParams,
+    listMetadataOrphans, metadataOrphanCoverPath, readToken, resetConsoleBackgrounds, searchConsoleBackgrounds, setConsoleBackground, setConsoleDefaults, setConsoleStatus, setConsoleSwitch,
+    writeEmulatorParams,
 } from "../../../libs/api.js";
 import { kernelReachable, kernelTarget, useKernelChannel, useKernelTopic } from "../../../libs/kernelChannel.js";
 import { useData } from "../../../libs/data.jsx";
@@ -133,9 +134,25 @@ function ItemRows({ section, consoleId, rows, inUse, page, onPage }) {
 function ConsolePage() {
     const { t } = useTranslation();
     const { consoleId } = useParams();
-    const { consoles, countOf } = useData();
+    const { consoles, countOf, markConsoleDisabled } = useData();
     const { open } = useSettingsNavigation();
     const entry = useEmulated().find((item) => item.id === consoleId);
+    const registered = (consoles || []).find((item) => item.id === consoleId);
+    const [switching, setSwitching] = useState(false);
+    // COUPER LA CONSOLE POUR TOUT LE SERVEUR (chantier 66) : personne ne la lance plus, ni d'ici ni par la fédération.
+    const switchConsole = async (enabled) => {
+        setSwitching(true);
+        const answer = await setConsoleSwitch(consoleId, enabled);
+        setSwitching(false);
+
+        if (!answer.ok) {
+            toast(answer.detail || t("settings.actionFailed"));
+
+            return;
+        }
+        markConsoleDisabled(consoleId, !enabled);
+        toast(t(enabled ? "consoles.switchedOn" : "consoles.switchedOff", { name: entry?.name || consoleId }));
+    };
     const [cores, setCores] = useState(undefined);
     const [bios, setBios] = useState(undefined);
     const [inUse, setInUse] = useState(null);
@@ -166,6 +183,15 @@ function ConsolePage() {
         <SettingsPage title={entry?.name || consoleId} parent="/settings/consoles">
             {consoles && !entry ? <NotFound /> : !entry ? <Section><Note className="mt-0">{t("settings.loading")}</Note></Section> : (
                 <>
+                    {/* « UN INTERRUPTEUR POUR COUPER LA CONSOLE DIRECTEMENT » (le porteur, 2026-11-19, chantier 66) : pour tout le
+                        serveur — ses joueurs, administrateur compris, et ceux de la fédération. Son bouton Jouer se grise
+                        partout (« Console désactivée »). */}
+                    <Section title={t("consoles.switchTitle")}>
+                        <Rows>
+                            <SwitchRow id={`cs-switch-${consoleId}`} label={t("consoles.switchLabel")} help={t("consoles.switchHelp")}
+                                checked={!registered?.disabled} disabled={switching || !registered} onChange={switchConsole} />
+                        </Rows>
+                    </Section>
                     <Section title={t("consoles.emulators")} help={t(streamex ? "consoles.emulatorsHelpStreamex" : "consoles.emulatorsHelp")}>
                         <ItemRows section="cores" consoleId={consoleId} rows={cores} inUse={inUse} page={read("coresPage")} onPage={(page) => update({ coresPage: page })} />
                     </Section>

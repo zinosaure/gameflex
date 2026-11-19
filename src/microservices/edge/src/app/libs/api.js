@@ -335,6 +335,10 @@ export const rescanServer = (id) => kernel(`/servers/${encodeURIComponent(id)}/r
 export const listCatalogTokens = () => credential("/catalog-tokens");
 export const createCatalogToken = (label, scopes) => credential("/catalog-tokens", jsonBody("POST", { label, scopes }));
 export const updateCatalogTokenScopes = (id, scopes) => credential(`/catalog-tokens/${id}`, jsonBody("PATCH", { scopes }));
+// Les consoles d'un accès délivré (chantier 66) : ce que les comptes venus par lui peuvent lancer, comme ceux d'un membre.
+export const updateCatalogTokenConsoles = (id, consoles) => credential(`/catalog-tokens/${id}`, jsonBody("PATCH", { consoles }));
+// Les consoles coupées pour tout le serveur (chantier 66) : couper ou rallumer une console.
+export const setConsoleSwitch = (id, enabled) => credential(`/console-switches/${encodeURIComponent(id)}`, jsonBody("PUT", { enabled }));
 export const revokeCatalogToken = (id) => credential(`/catalog-tokens/${id}`, { method: "DELETE" });
 export const createInvitation = ({ kind, label = "", scopes = [] }) => credential("/token-invitations", jsonBody("POST", kind === "account" ? { kind } : { kind, label, scopes }));
 export const listInvitations = () => credential("/token-invitations");

@@ -377,6 +377,8 @@ func (server *Server) deliverInvitation(kind, label, scopes string, createdBy sq
 	); err != nil {
 		return Redeemed{}, fmt.Errorf("create the catalogue token: %w", err)
 	}
+	// Un accès de plus dans la copie des kernels (chantier 66) : ses consoles y sont avant sa première partie.
+	server.accountsChanged()
 	slog.Info("invitation redeemed", "kind", kind, "label", label, "from", address)
 
 	return Redeemed{Kind: kind, Token: secret, Identity: label, Scopes: scopes}, nil
