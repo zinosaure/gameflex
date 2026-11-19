@@ -454,6 +454,9 @@ func (host *Host) stateMessages() []addressed {
 			"isOwner":  host.session.IsOwner(player.Username),
 			// Who drives this pad while it is lent — "" when its holder does.
 			"lentTo": player.LentTo,
+			// Since when they hold this pad: the menu's list of players shows
+			// each one's play time (chantier 68).
+			"joinedAt": player.JoinedAt.UTC().Format(time.RFC3339),
 		})
 	}
 
@@ -467,7 +470,10 @@ func (host *Host) stateMessages() []addressed {
 		// draw from, only `players`. One entry per person, not per tab.
 		"watchers":       host.session.Watchers(),
 		"availableSlots": host.session.AvailableSlots(),
-		"terminated":     host.session.Terminated,
+		// How many pads the console has: one row each in the menu's list of
+		// players, held or free (chantier 68).
+		"maxPlayers": host.session.MaxPlayers,
+		"terminated": host.session.Terminated,
 		// Why, when nobody ended it: the game itself stopped (#504).
 		"gameExited": host.session.GameExited,
 		// Who drives the owner's pad, "" when nobody borrowed it. The owner
@@ -478,7 +484,10 @@ func (host *Host) stateMessages() []addressed {
 		base["idleSince"] = host.session.IdleSince.UTC().Format(time.RFC3339)
 	}
 	if pending := host.session.PendingHandover; pending != nil {
-		base["pendingHandover"] = map[string]any{"from": pending.From, "to": pending.To}
+		// expiresAt: when the request lapses (HandoverTTL). The bell of the
+		// page stays up that long, and the asker's page says « no answer »
+		// once it has passed (chantier 68).
+		base["pendingHandover"] = map[string]any{"from": pending.From, "to": pending.To, "expiresAt": pending.AskedAt.Add(HandoverTTL).UTC().Format(time.RFC3339)}
 	}
 
 	out := make([]addressed, 0, len(host.session.Participants))

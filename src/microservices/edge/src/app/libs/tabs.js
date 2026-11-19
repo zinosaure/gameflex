@@ -32,6 +32,9 @@ const write = (key, value) => {
 
 export const tabById = (id) => TABS.find((tab) => tab.id === id) || null;
 
+// LA FICHE D'UN JEU DANS LA BIBLIOTHÈQUE : l'onglet de sa console (rétro ou streamex), sa console, le jeu.
+export const gameScreenPath = (console, reference) => `/${console.method === "streamex" ? "streamex" : "retrogaming"}/${encodeURIComponent(console.id)}/games/${encodeURIComponent(reference)}`;
+
 export const rememberTab = (id) => write(TAB_KEY, id);
 
 export const lastTabId = () => tabById(read(TAB_KEY))?.id || "retrogaming";

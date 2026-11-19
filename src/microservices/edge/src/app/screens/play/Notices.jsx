@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { focusElement, useScreenInput } from "../../libs/input.js";
 import { useButton } from "../../libs/ui.js";
 
 // LES AVIS DE LA PAGE DE JEU — les toasts de Bootstrap, en haut au centre, par-dessus la vidéo.
@@ -8,11 +7,8 @@ import { useButton } from "../../libs/ui.js";
 // Le moteur de la webapp les ouvre comme il ouvrait ceux de Skeleton (`context.toast.open(texte,
 // options)`) : ses hooks reçoivent ce `context`, et le Remote Play le lit par `Skeleton.context`
 // (sa copie de Skeleton, app/skeleton/skeleton.js, que Play.jsx lui fournit). Un avis s'efface seul (`duration`, 4 s ; 0 : il reste) ; une QUESTION
-// (`variant: "confirm"`) attend sa réponse, deux boutons. Une question qui demande la manette
-// (`takesPad` : « X demande votre manette ») prend la croix comme un panneau : la page suspend le jeu
-// (PlayShell.jsx), A répond oui, B non. `expiresAfter` (ms) : une question qui se ferme seule, et ce silence
-// vaut non (chantier 65 : « un popup qui demande si on veut libérer la manette ou pas. Qui se ferme après 15
-// secondes »).
+// (`variant: "confirm"`) attend sa réponse, deux boutons (« Toujours là ? »). Les demandes de manette n'en sont
+// plus : elles vont à la cloche et au menu (Bell.jsx, chantier 68).
 
 const VARIANTS = { error: "text-bg-danger", warning: "text-bg-warning", success: "text-bg-success" };
 
@@ -30,37 +26,22 @@ export function useNotices() {
     }, []);
     const context = useMemo(() => ({ toast: { open, close: dismiss } }), [open, dismiss]);
 
-    return { list, dismiss, context, takesPad: list.some((notice) => notice.takesPad) };
+    return { list, dismiss, context };
 }
 
 function Notice({ notice, dismiss }) {
     const { t } = useTranslation();
     const button = useButton();
     const asks = notice.variant === "confirm";
-    const ref = useRef(null);
 
     useEffect(() => {
         if (asks) {
-            if (!notice.expiresAfter) {
-                return undefined;
-            }
-            const timer = setTimeout(() => {
-                dismiss(notice.id);
-                notice.onCancel?.();
-            }, notice.expiresAfter);
-
-            return () => clearTimeout(timer);
+            return undefined;
         }
         const timer = notice.duration === 0 ? null : setTimeout(() => dismiss(notice.id), notice.duration || 4000);
 
         return () => clearTimeout(timer);
     }, [asks, notice, dismiss]);
-
-    useEffect(() => {
-        if (asks && notice.takesPad) {
-            focusElement(ref.current?.querySelector("[data-nav]"), true);
-        }
-    }, [asks, notice.takesPad]);
 
     const answer = (yes) => {
         dismiss(notice.id);
@@ -68,7 +49,7 @@ function Notice({ notice, dismiss }) {
     };
 
     return (
-        <div ref={ref} className={`toast show border-0 ${VARIANTS[notice.variant] || "text-bg-dark bg-opacity-75"}`} role={asks ? "alertdialog" : "status"} aria-live="polite">
+        <div className={`toast show border-0 ${VARIANTS[notice.variant] || "text-bg-dark bg-opacity-75"}`} role={asks ? "alertdialog" : "status"} aria-live="polite">
             <div className="toast-body">
                 <div>{notice.content}</div>
                 {asks && (
@@ -82,32 +63,15 @@ function Notice({ notice, dismiss }) {
     );
 }
 
-// La question qui tient la croix : B y répond non.
-function PadQuestion({ notice, dismiss }) {
-    useScreenInput({
-        back: () => {
-            dismiss(notice.id);
-            notice.onCancel?.();
-        },
-        switchTab: () => {},
-        select: () => {},
-        start: () => {},
-    });
-
-    return null;
-}
-
 export default function PlayNotices({ notices }) {
     const { list, dismiss } = notices;
-    const padQuestion = list.find((notice) => notice.takesPad);
 
     if (!list.length) {
         return null;
     }
 
     return (
-        <div className="toast-container position-absolute top-0 start-50 translate-middle-x p-3" style={{ zIndex: 1020 }} {...(padQuestion ? { "data-nav-layer": "" } : {})}>
-            {padQuestion && <PadQuestion notice={padQuestion} dismiss={dismiss} />}
+        <div className="toast-container position-absolute top-0 start-50 translate-middle-x p-3" style={{ zIndex: 1020 }}>
             {list.map((notice) => <Notice key={notice.id} notice={notice} dismiss={dismiss} />)}
         </div>
     );

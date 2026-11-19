@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { can, useData } from "../libs/data.jsx";
 import { useInputKind } from "../libs/glyphs.js";
 import Shortcuts from "./Shortcuts.jsx";
-import { lastTabPath, TABS } from "../libs/tabs.js";
+import { lastTabPath, tabById, TABS } from "../libs/tabs.js";
 import { BAR_EVENTS, focusHeader } from "../libs/input.js";
 import { ICON_BUTTON, useBarToggle } from "../libs/ui.js";
 import { useFederatedSessions } from "../libs/SessionPool.js";
@@ -63,14 +63,20 @@ function Clock() {
 // staging quand c'est du staging. ») : elle est dans le pied des Réglages (Settings.jsx).
 // Plus de « bêta » : edge est l'interface depuis la bascule (chantier 56, P5), une
 // interface principale qui se dirait en essai mentirait.
-function Brand() {
+// LA MARQUE MÈNE À EN DIRECT (chantier 68 ; le porteur, 2026-11-19 : « enlève dans le menu le lien "Live", la page sera
+// sous le lien "Gameflex (0)" — le brand name devient cliquable ») : l'onglet En direct n'a plus de lien à lui, c'est le
+// nom, avec le compte de l'onglet (les parties en direct et les invitations). Il reste une étape de L2 / R2, la première.
+function Brand({ active, count, onOpen }) {
     const { t } = useTranslation();
     const { capabilities } = useData();
 
     return (
-        <span className="brand">
-            GameFlex{can(capabilities, "staging") && <span className="badge text-bg-warning text-uppercase">{t("brand.staging")}</span>}
-        </span>
+        <button type="button" className="brand btn btn-link p-0 border-0 text-reset text-decoration-none" data-nav data-key="t-live" aria-label={t("tab.live")} title={t("tab.live")}
+            aria-current={active ? "page" : undefined} onClick={onOpen}>
+            GameFlex
+            <span className="badge rounded-pill text-bg-danger">{count}</span>
+            {can(capabilities, "staging") && <span className="badge text-bg-warning text-uppercase">{t("brand.staging")}</span>}
+        </button>
     );
 }
 
@@ -181,14 +187,13 @@ export function Topbar({ tab }) {
     // parcourent (le porteur, 2026-11-12) ; le doigt, la souris et Tab y vont toujours.
     return (
         <header className="topbar" data-nav-skip>
-            <Brand />
+            <Brand active={tab === "live"} count={count} onOpen={() => navigate(tabById("live").path)} />
             {/* Les onglets : la navigation soulignée de Bootstrap ; sur un écran étroit, la rangée défile. */}
             <nav className="tabs nav nav-underline flex-nowrap overflow-x-auto" ref={stripRef}>
-                {TABS.map((item) => (
+                {TABS.filter((item) => item.id !== "live").map((item) => (
                     <button key={item.id} type="button" className={`nav-link text-nowrap d-inline-flex align-items-center gap-2 ${tab === item.id ? "active" : ""}`} data-nav data-key={`t-${item.id}`}
                         disabled={off(item.id) && tab !== item.id} aria-current={tab === item.id ? "page" : undefined} onFocus={(event) => revealTab(event.currentTarget)} onClick={() => navigate(item.path)}>
                         {t(item.label)}
-                        {item.id === "live" && <span className="badge rounded-pill text-bg-danger">{count}</span>}
                     </button>
                 ))}
             </nav>

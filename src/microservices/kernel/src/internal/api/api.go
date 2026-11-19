@@ -707,6 +707,15 @@ func (server *Server) handleRemoteplayStop(w http.ResponseWriter, r *http.Reques
 		writeErrorCode(w, http.StatusNotFound, "session_not_found", "session not found")
 		return
 	}
+	// QUITTER EN METTANT LA CONSOLE EN VEILLE (`?standby=1`, chantier 69) : seulement par qui peut arrêter la partie, et
+	// avant de l'arrêter — le conteneur tient encore le canal de contrôle. Une veille qui échoue n'empêche pas l'arrêt.
+	if r.URL.Query().Get("standby") == "1" {
+		if !server.mayEndSession(sessionID, record.Owner, auth.Username(r.Context()), auth.IsAdmin(r.Context())) {
+			writeErrorCode(w, http.StatusForbidden, "not_your_session", "not your session")
+			return
+		}
+		server.askConsoleStandby(r.Context(), sessionID, record.Port)
+	}
 	if handled, status := server.endThroughChild(r.Context(), sessionID, record.Container, record.Port, auth.Username(r.Context()), auth.IsAdmin(r.Context())); handled {
 		if status == http.StatusForbidden {
 			writeErrorCode(w, http.StatusForbidden, "not_your_session", "not your session")

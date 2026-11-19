@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 09:26:54 +0100
+Subject: [PATCH] gameflex 0015: an equal-address image declared larger, its
+ subresources already cached, is a view
+
+---
+ src/video_core/texture_cache/texture_cache.cpp | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/video_core/texture_cache/texture_cache.cpp b/src/video_core/texture_cache/texture_cache.cpp
+index 4290ce36..7859b4d2 100644
+--- a/src/video_core/texture_cache/texture_cache.cpp
++++ b/src/video_core/texture_cache/texture_cache.cpp
+@@ -405,6 +405,17 @@ std::tuple<ImageId, int, int> TextureCache::ResolveOverlap(const ImageInfo& imag
+             return {merged_image_id, -1, -1};
+         }
+ 
++        // gameflex 0015: the same surface, declared larger. Same type, dimensions, pitch and tiling,
++        // and every requested subresource already lives in the cached image: only the guest size
++        // differs, by padding (FIFA 22 binds a 1-level 1920x1080 render target, 16 MiB, over the
++        // first level of an 11-level texture of 12 MiB at the same address). Use the cached image
++        // instead of reaching the unreachable below.
++        if (image_info.type == cache_image.info.type && image_info.size == cache_image.info.size &&
++            image_info.pitch == cache_image.info.pitch &&
++            cache_image.info.resources.Contains(image_info.resources)) {
++            return {merged_image_id ? merged_image_id : cache_image_id, -1, -1};
++        }
++
+         // Enhanced debug logging for unreachable case
+         // Calculate expected size based on format and dimensions
+         u64 expected_size =

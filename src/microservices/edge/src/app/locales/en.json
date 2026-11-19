@@ -102,6 +102,8 @@
     },
     "status": {
         "playable": "Playable",
+        "patched": "Playable with a patch",
+        "glitches": "Graphical glitches",
         "crashes": "Crashes in game",
         "unplayable": "Not playable",
         "untested": "Untested"
@@ -1442,10 +1444,14 @@
             "note": "Note",
             "noteHelp": "Optional: what happens, and where. It goes with the report, even when no status changes.",
             "history": "History",
-            "historyHelp": "Every report, the latest first, with each emulator's version at that time.",
+            "historyHelp": "Every report, the latest first, with each emulator's version at that time; tap one to delete it.",
             "historyEmpty": "No report yet.",
             "allEmulators": "all emulators",
-            "reportedBy": "{{by}}, {{at}}"
+            "reportedBy": "{{by}}, {{at}}",
+            "removeTitle": "Delete this report?",
+            "removeMessage": "The “{{status}}” report from {{at}} will be removed from the history; the game's status will follow the remaining ones.",
+            "remove": "Delete",
+            "removed": "Report deleted."
         },
         "noneHeavier": "No game of at least {{size}} MB.",
         "filterTitle": "Filters",
@@ -1473,7 +1479,11 @@
             "ftp": "FTP",
             "sftp": "SFTP"
         },
-        "officialKind": "GameFlex's streamex packages"
+        "officialKind": "GameFlex's streamex packages",
+        "editSheet": "Edit the game's page",
+        "editSheetHelp": "Its page in Settings › Consoles › Games: status, patch, appearance, information.",
+        "openInLibrary": "See its page in the library",
+        "openInLibraryHelp": "The game's page, where it is launched."
     },
     "layout": {
         "editorTitle": "Button positions",
@@ -1526,8 +1536,6 @@
         "conflict": "You are already playing {{title}} elsewhere: one game at a time.",
         "conflictGo": "Go back to it",
         "notFound": "This game cannot be found: it may have ended.",
-        "joined": "{{name}} joined the game",
-        "left": "{{name}} left the game",
         "afk": "No input for a while: touch the controller, or you lose it in {{seconds}} seconds.",
         "afkHere": "I'm here",
         "watching": "You are watching this game.",
@@ -1567,8 +1575,6 @@
             "reclaimHelp": "It comes back to you; whoever was playing goes back to watching.",
             "return": "Give the controller back",
             "returnHelp": "It goes back to whoever lent it.",
-            "ask": "Ask for the controller",
-            "askHelp": "Ask someone who plays for their controller.",
             "sent": "Request sent",
             "lent": "Controller lent to {{name}}.",
             "given": "Place given to {{name}}.",
@@ -1578,11 +1584,7 @@
             "giveMessage": "Give your place to {{name}}? You will be watching afterwards.",
             "lendHelp": "Someone watching plays with your controller; you take it back whenever you like.",
             "giveHelp": "Someone watching takes your place; you go to watching.",
-            "chooseHelp": "Choose whom to ask.",
-            "noneToAsk": "Nobody else is playing.",
             "noneToGive": "Nobody is watching.",
-            "isOwner": "Owner · controller {{slot}}",
-            "isPlayer": "Playing · controller {{slot}}",
             "isWatching": "Watching",
             "peopleTitle": "People"
         },
@@ -1606,7 +1608,7 @@
             "picture": "Picture and sound",
             "leave": "Leave",
             "quitHelpWatching": "Stop watching and go back to the library.",
-            "together": "With others",
+            "together": "Invitation",
             "resumeTile": "Back to the game",
             "resumeTileTime": "Back to the game · {{time}}",
             "info": "Information"
@@ -1620,13 +1622,15 @@
             "what": "What to do with the game?",
             "choice": {
                 "kill": "Quit and end the game",
+                "standby": "Quit and put the console to sleep",
                 "leave": "Quit and leave the game running",
                 "pause": "Quit and pause the game"
             },
             "help": {
                 "leave": "You leave, the game goes on: you will find it where it is.",
                 "pause": "The game freezes and waits for you; coming back resumes it at once.",
-                "kill": "The game ends for everyone."
+                "kill": "The game ends for everyone.",
+                "standby": "The game stops for everyone, and the console goes into rest mode."
             },
             "save": "Save the state when leaving",
             "saveHelp": "To pick up later at exactly this moment.",
@@ -1668,8 +1672,7 @@
         },
         "timeTravel": {
             "rewind": "Rewind",
-            "fastForward": "Fast forward",
-            "fastForwardHelp": "The game runs four times faster."
+            "fastForward": "Fast forward"
         },
         "cheats": {
             "title": "Cheats",
@@ -1803,6 +1806,41 @@
             "sent": "Invitation sent to {{name}}",
             "failed": "The invitation could not be sent.",
             "none": "No other member."
+        },
+        "notifications": {
+            "title": "Notifications",
+            "joined": "Joined the game",
+            "left": "Left the game",
+            "nameSlot": "{{name}} • {{slot}}/{{max}}",
+            "asked": "Request for controller {{slot}}/{{max}}",
+            "askedAny": "Controller request",
+            "accepted": "{{name}} accepted",
+            "refused": "{{name}} declined",
+            "noAnswer": "{{name}} did not answer",
+            "received": "Controller received",
+            "moveTitle": "Request to take the controller back",
+            "moveAsked": "Request to release the controller",
+            "lendAsked": "Request to hand over the controller",
+            "giveAsked": "Request to hand over the seat",
+            "otherDevice": "Your other device",
+            "state": {
+                "accepted": "accepted",
+                "refused": "declined",
+                "expired": "no answer"
+            }
+        },
+        "players": {
+            "title": "Players",
+            "nobody": "Nobody",
+            "place": "{{slot}}/{{max}}",
+            "connected": "connected",
+            "disconnected": "disconnected",
+            "free": "free slot",
+            "askTitle": "Ask for the controller?",
+            "askMessage": "Send {{name}} a request to take their controller?",
+            "ask": "Ask",
+            "joinTitle": "Join the game?",
+            "joinMessage": "Take a free controller and play?"
         }
     },
     "form": {

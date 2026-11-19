@@ -214,6 +214,7 @@ func (server *Server) routes() {
 	server.mux.HandleFunc("GET /internal/game-status/{console}", server.handleInternalGameStatus)
 	server.mux.HandleFunc("PUT /internal/game-status/{console}", server.handleInternalGameStatusConsole)
 	server.mux.HandleFunc("POST /internal/game-status/{console}/games/{game}", server.handleInternalGameStatusReport)
+	server.mux.HandleFunc("DELETE /internal/game-status/{console}/games/{game}", server.handleInternalGameStatusRemove)
 	server.mux.HandleFunc("GET /api/v1/presence/ws", server.handlePresenceWS)
 }
 

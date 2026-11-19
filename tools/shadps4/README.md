@@ -100,6 +100,35 @@ Hearts III* ne renonce plus à son démarrage : elle lance son fil, classe un ca
 l'adresse 2 × c (`0xc4` pour « b »), et shadPS4 s'arrêtait avant l'écran-titre. Chaque fonction rend désormais l'entrée
 0 d'une table Dinkumware de 257 `short`, dont l'entrée -1 est EOF. Au banc, les deux jeux retrouvent leur écran-titre.
 
+**0015 — une image à la même adresse, déclarée plus grande, dont les ressources sont déjà là** (`#770`,
+`texture_cache.cpp`, `ResolveOverlap`). *FIFA 22* s'arrêtait en jeu, à un moment variable, sur « Unresolvable image
+overlap with equal memory address » puis `UNREACHABLE` : il dessine dans une cible de rendu 1920×1080 à un seul niveau,
+déclarée sur 16 Mio, à l'adresse d'une texture du même format, des mêmes dimensions, du même pas et du même tuilage, à
+11 niveaux, sur 12 Mio. Tout ce qui est demandé existe déjà dans l'image en cache ; seule la taille déclarée diffère, de
+quelques mégaoctets de remplissage. L'image en cache sert alors de vue, au lieu d'atteindre le cas « impossible ».
+
+**0016 — les boucles des shaders bornées, sur demande** (`#770`, `emit_spirv.cpp`, `vk_pipeline_serialization.cpp`). Le
+pixel shader d'un dessin d'*EA Sports FC 27* boucle « tant que i < compte », le compte lu dans un tampon de constantes ;
+au chargement qui suit l'écran-titre, il y vaut une valeur immense et le GPU ne répond plus (`ring gfx timeout`, rapport
+de RADV : `docs/reports/2026-11-19-fc27-blocage-gpu/`). Avec `GAMEFLEX_SHADER_LOOP_LIMIT=N`, chaque boucle traduite reçoit
+un compteur, remis à zéro à son entrée et vérifié à son retour : elle s'arrête après N tours. Sans la variable, rien ne
+change. Un shader compilé avec une borne se range sous un autre nom dans le cache de shadPS4. Le réglage « Borne des
+boucles de shaders » la pose, par jeu.
+
+**0017 — une table de sauts dont la lecture écrase son propre index** (`#770`, `control_flow_graph.cpp`). Un compute
+shader d'*FC 27*, à l'écran du choix des maillots, fait un `switch` par une table de sauts :
+`s_load_dwordx2 s[20:21], s[22:23], s20` lit l'adresse du cas dans le registre même qui portait son numéro. La
+reconnaissance de la table (0012) exigeait que ce numéro reste vivant jusqu'au saut, refusait, et shadPS4 s'arrêtait sur
+« S_SETPC_B64 without a resolvable offset ». Cette lecture n'est jamais traduite (la table est lue à la compilation) :
+dans le shader traduit, le registre garde le numéro jusqu'au saut, et la forme est désormais acceptée. Quand un saut
+reste inconnu, le journal donne aussi toutes les instructions qui y mènent, avec les champs de leurs lectures scalaires.
+
+**0018 — un tampon de texels qui commence à l'intérieur d'une image** (`#770`, `buffer_cache.cpp`,
+`SynchronizeMemoryFromImage`). Au « Start Match » d'*FC 27*, un tampon de texels commence 0x30 octets après le début
+d'une image en cache, et shadPS4 s'arrêtait sur « Texel buffer aliases image subresources ». Les octets qui le précèdent
+appartiennent à la même image : elle est réécrite en entier, à sa propre adresse, tant que la zone mémoire du tampon la
+contient (sinon rien n'est recopié, avec un avertissement). Avec 0016 et 0017, le match d'*FC 27* se joue.
+
 ## Les fichiers
 
 | Fichier | Rôle |

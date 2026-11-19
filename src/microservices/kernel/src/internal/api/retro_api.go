@@ -917,6 +917,7 @@ func (server *Server) retroRouter() http.Handler {
 		// à tous par la liste ci-dessus.
 		guarded.Get("/{consoleId}/roms/{ref}/status", adminOnly(server.handleGameStatus))
 		guarded.Post("/{consoleId}/roms/{ref}/status", adminOnly(server.handleReportGame))
+		guarded.Delete("/{consoleId}/roms/{ref}/status", adminOnly(server.handleRemoveReport))
 		guarded.Get("/{consoleId}/status", adminOnly(server.handleGetConsoleStatus))
 		guarded.Post("/{consoleId}/status", adminOnly(server.handleConsoleStatus))
 		// LE DÉFAUT D'UNE CONSOLE (console_defaults.go, chantier 53) :

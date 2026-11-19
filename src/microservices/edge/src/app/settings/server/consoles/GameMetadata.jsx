@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { dropMetadataSource, fetchGameStatus, fetchMetadataSource, metadataCandidates, putManualImage, reportGameStatus, saveManualMetadata, searchGameImages } from "../../../libs/api.js";
+import { dropMetadataSource, fetchGameStatus, fetchMetadataSource, metadataCandidates, putManualImage, removeGameStatus, reportGameStatus, saveManualMetadata, searchGameImages } from "../../../libs/api.js";
 import { useData } from "../../../libs/data.jsx";
-import { GAME_STATUSES } from "../../../libs/format.js";
+import { GAME_STATUSES, STATUS_TONE } from "../../../libs/format.js";
 import { forgetGameImages, gamePath, useImage } from "../../../libs/images.js";
 import { forgetGameMetadata, setGameMetadata, useGameMetadata } from "../../../libs/metadata.js";
 import { toast } from "../../../shell/Shell.jsx";
@@ -497,6 +497,7 @@ function GameTextForm({ consoleId, reference, game = {}, fallbackTitle }) {
 function GameStatusForm({ consoleId, reference }) {
     const { t, i18n } = useTranslation();
     const { patchHere } = useData();
+    const confirm = useConfirm();
     const [answer, setAnswer] = useState(undefined);
     const [drafts, setDrafts] = useState({});
     const [note, setNote] = useState("");
@@ -562,6 +563,22 @@ function GameStatusForm({ consoleId, reference }) {
         }
     };
     const dated = (at) => (at ? new Date(at).toLocaleString(i18n.language === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "");
+    // RETIRER UN SIGNALEMENT (chantier 68 ; le porteur, 2026-11-19 : « il faut pouvoir supprimer les historiques ») : toucher
+    // sa ligne le demande (la fenêtre de Skeleton) ; le statut du jeu se recalcule de ceux qui restent.
+    const remove = (report) => confirm({
+        title: t("gameAdmin.statusForm.removeTitle"),
+        message: t("gameAdmin.statusForm.removeMessage", { status: t(`status.${report.status}`), at: dated(report.at) }),
+        confirmLabel: t("gameAdmin.statusForm.remove"),
+        onConfirm: async () => {
+            const settled = await removeGameStatus(consoleId, reference, report.at);
+            toast(settled.ok ? t("gameAdmin.statusForm.removed") : settled.errorMessage || t("settings.actionFailed"));
+
+            if (settled.ok) {
+                setAnswer(settled);
+                patchHere(consoleId, reference, { status: settled.data?.view || null });
+            }
+        },
+    });
 
     return (
         <>
@@ -594,9 +611,10 @@ function GameStatusForm({ consoleId, reference }) {
                 const versions = Object.entries(report.versions || {}).map(([name, version]) => `${name} ${version}`).join(", ");
 
                 return (
-                    <InfoRow key={`${report.at}-${index}`} icon="bi-clock-history" tone={STATUS_TONE[report.status] || "slate"}
+                    <NavRow key={`${report.at}-${index}`} id={`ms-history-${index}`} icon="bi-clock-history" tone={STATUS_TONE[report.status] || "slate"} opens="confirm"
                         label={`${t(`status.${report.status}`)} · ${report.emulators?.length ? report.emulators.join(", ") : t("gameAdmin.statusForm.allEmulators")}`}
-                        value={[report.note, t("gameAdmin.statusForm.reportedBy", { by: report.by, at: dated(report.at) }), versions].filter(Boolean).join(" — ")} />
+                        value={[report.note, t("gameAdmin.statusForm.reportedBy", { by: report.by, at: dated(report.at) }), versions].filter(Boolean).join(" — ")}
+                        onOpen={() => remove(report)} />
                 );
             }} />
         </Section>
@@ -604,8 +622,6 @@ function GameStatusForm({ consoleId, reference }) {
     );
 }
 
-// La couleur d'un signalement dans l'historique : celle du badge de son statut (STATUS_VARIANT), en pastille.
-const STATUS_TONE = { playable: "green", crashes: "amber", unplayable: "rose", untested: "slate" };
 
 // « OUBLIER UNE SOURCE » : la source choisie, puis le geste, son bouton dans l'encadré, qui demande d'abord (la fenêtre
 // de Skeleton). AUCUNE SOURCE N'EST CHOISIE D'AVANCE (le porteur, 2026-11-14 : « l'option par défaut doit être vide et

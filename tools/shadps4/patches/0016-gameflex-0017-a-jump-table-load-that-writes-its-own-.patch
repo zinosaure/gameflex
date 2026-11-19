@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 11:30:59 +0100
+Subject: [PATCH] gameflex 0017: a jump table load that writes its own index
+ register; log an unresolved S_SETPC_B64
+
+---
+ .../frontend/control_flow_graph.cpp           | 31 ++++++++++++++++++-
+ 1 file changed, 30 insertions(+), 1 deletion(-)
+
+diff --git a/src/shader_recompiler/frontend/control_flow_graph.cpp b/src/shader_recompiler/frontend/control_flow_graph.cpp
+index 6094d406..4249ad39 100644
+--- a/src/shader_recompiler/frontend/control_flow_graph.cpp
++++ b/src/shader_recompiler/frontend/control_flow_graph.cpp
+@@ -3,6 +3,7 @@
+ 
+ #include <algorithm>
+ #include <limits>
++#include <magic_enum/magic_enum.hpp>
+ #include "common/assert.h"
+ #include "common/logging/log.h"
+ #include "shader_recompiler/frontend/control_flow_graph.h"
+@@ -224,8 +225,15 @@ static std::optional<JumpTableInfo> ResolveJumpTable(std::span<const GcnInst> li
+     const u32 table_pc = pc_map[*base_getpc_index] + list[*base_getpc_index].length + *table_offset;
+ 
+     // Index computation: (min(x, N) << 3) + bias. It must still be live at the S_SETPC_B64.
++    // gameflex 0017: the table load may write its own index register (EA Sports FC 27:
++    // s_load_dwordx2 s[20:21], s[22:23], s20). That load is never translated (the table is read
++    // at compile time), so at the end of the block the register still holds the index.
+     auto index_writer = FindSgprWriter(list, *load_index, index_reg);
+-    if (!index_writer || FindSgprWriter(list, setpc_index, index_reg) != index_writer) {
++    auto live_writer = FindSgprWriter(list, setpc_index, index_reg);
++    if (live_writer == load_index) {
++        live_writer = index_writer;
++    }
++    if (!index_writer || live_writer != index_writer) {
+         return std::nullopt;
+     }
+     u32 bias = 0;
+@@ -306,6 +314,27 @@ void CFG::EmitLabels() {
+                     pc += inst.length;
+                     continue;
+                 } else {
++                    // gameflex 0017: the instructions that lead to it, so a new pattern can be
++                    // read in the log before the assertion stops the emulator.
++                    for (u32 j = 0; j <= i; j++) {
++                        const GcnInst& seen = inst_list[j];
++                        const auto operand = [](const InstOperand& op) {
++                            return fmt::format("{}:{:#x}", magic_enum::enum_name(op.field), op.code);
++                        };
++                        const bool smem = seen.category == InstCategory::ScalarMemory;
++                        LOG_ERROR(Render_Recompiler,
++                                  "S_SETPC_B64 context [{}] pc {:#x} {} dst {} src {} {} {}{}", j,
++                                  index_to_pc[j], magic_enum::enum_name(seen.opcode),
++                                  seen.dst_count > 0 ? operand(seen.dst[0]) : "-",
++                                  seen.src_count > 0 ? operand(seen.src[0]) : "-",
++                                  seen.src_count > 1 ? operand(seen.src[1]) : "-",
++                                  seen.src_count > 2 ? operand(seen.src[2]) : "-",
++                                  smem ? fmt::format(" smrd imm {} offset {:#x} count {}",
++                                                     static_cast<u32>(seen.control.smrd.imm),
++                                                     static_cast<u32>(seen.control.smrd.offset),
++                                                     static_cast<u32>(seen.control.smrd.count))
++                                       : "");
++                    }
+                     ASSERT_MSG(
+                         false,
+                         "S_SETPC_B64 without a resolvable offset at PC {:#x} (Index {}): Involved "

@@ -95,6 +95,13 @@ func AddGameStatusReport(db *sql.DB, consoleID, gameID string, report GameStatus
 	return err
 }
 
+// RemoveGameStatusReport — retire le signalement de cet instant (chantier 68).
+func RemoveGameStatusReport(db *sql.DB, consoleID, gameID string, at time.Time) error {
+	_, err := db.Exec(`DELETE FROM game_status_reports WHERE console_id = ? AND game_id = ? AND reported_at = ?`, consoleID, gameID, at.UTC())
+
+	return err
+}
+
 // SetGameStatusConsole — le statut de toute la console.
 func SetGameStatusConsole(db *sql.DB, consoleID, status, by string, at time.Time) error {
 	_, err := db.Exec(`INSERT INTO game_status_consoles (console_id, status, set_by, set_at) VALUES (?, ?, ?, ?)
@@ -178,6 +185,25 @@ func (server *Server) handleInternalGameStatusReport(w http.ResponseWriter, r *h
 		return
 	}
 	respondItem(w, http.StatusOK, map[string]bool{"saved": true})
+}
+
+// handleInternalGameStatusRemove — DELETE /internal/game-status/{console}/games/{game}?at=<RFC 3339> : retire un signalement.
+func (server *Server) handleInternalGameStatusRemove(w http.ResponseWriter, r *http.Request) {
+	if !server.internalCaller(w, r) {
+		return
+	}
+	at, err := time.Parse(time.RFC3339Nano, r.URL.Query().Get("at"))
+	if err != nil {
+		respondErrorCode(w, http.StatusBadRequest, "bad_request", "Invalid instant.")
+
+		return
+	}
+	if err := RemoveGameStatusReport(server.db, r.PathValue("console"), r.PathValue("game"), at); err != nil {
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
+
+		return
+	}
+	respondItem(w, http.StatusOK, map[string]bool{"removed": true})
 }
 
 // handleInternalGameStatusConsole — PUT /internal/game-status/{console} `{status, by, at}` : le statut de la console.

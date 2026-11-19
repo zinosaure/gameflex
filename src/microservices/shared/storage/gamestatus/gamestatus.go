@@ -37,20 +37,26 @@ import (
 	"gameflex/consoles"
 )
 
-// Les quatre statuts. Untested est aussi celui d'un jeu dont rien ne parle.
+// Les six statuts. Untested est aussi celui d'un jeu dont rien ne parle. Patched — jouable avec un correctif (le
+// porteur, 2026-11-19 : « jouable avec correctif », après jouable) : ses réglages de `patches/<console>/<identifiant>/`.
+// Glitches — il joue, mais son image a des défauts (le porteur, le même jour, pour Hogwarts Legacy sur Switch : « le jeu
+// joue mais le graphisme a des soucis ») : le correctif reste à trouver.
 const (
 	Untested   = "untested"
 	Playable   = "playable"
+	Patched    = "patched"
+	Glitches   = "glitches"
 	Crashes    = "crashes"
 	Unplayable = "unplayable"
 )
 
 // rank — l'ordre du MEILLEUR, quand les émulateurs d'une console ne disent
 // pas la même chose : « peut-on y jouer ? » — jouable d'abord, puis jouable
-// jusqu'à un plantage, puis inconnu, puis non.
-var rank = map[string]int{Playable: 4, Crashes: 3, Untested: 2, Unplayable: 1}
+// jusqu'à un plantage, puis inconnu, puis non. Jouable avec un correctif vient juste après jouable, puis jouable avec
+// des défauts d'image.
+var rank = map[string]int{Playable: 6, Patched: 5, Glitches: 4, Crashes: 3, Untested: 2, Unplayable: 1}
 
-// Valid — un des quatre statuts.
+// Valid — un des six statuts.
 func Valid(status string) bool {
 	_, ok := rank[status]
 
@@ -148,6 +154,10 @@ type View struct {
 	// Notes — les notes des signalements, de la plus récente à la plus
 	// ancienne.
 	Notes []Note `json:"notes,omitempty"`
+	// Note — le texte du statut : la note du signalement le plus récent, vide
+	// s'il n'en a pas (chantier 68 ; le porteur, 2026-11-19 : vider la note
+	// doit l'effacer de la fiche, pas montrer celle d'avant).
+	Note string `json:"note,omitempty"`
 }
 
 // Resolve — le statut d'un jeu de cette console : ses signalements, le plus
@@ -178,6 +188,13 @@ func Resolve(consoleID, consoleStatus string, reports []Report) View {
 	}
 
 	view := View{Status: others}
+	for index := len(reports) - 1; index >= 0; index-- {
+		if Valid(reports[index].Status) {
+			view.Note = reports[index].Note
+
+			break
+		}
+	}
 	cores := consoles.CoresFor(consoleID)
 	if len(cores) > 0 || len(named) > 0 {
 		view.Emulators = map[string]string{}
@@ -257,6 +274,8 @@ func sortedKeys(values map[string]string) []string {
 type Backend interface {
 	Console(consoleID string) (Console, error)
 	AddReport(consoleID, gameID string, report Report) error
+	// RemoveReport — retire le signalement de cet instant (`At`) ; rien quand il n'existe pas.
+	RemoveReport(consoleID, gameID string, at time.Time) error
 	SetConsole(consoleID, status, by string, at time.Time) error
 	Statuses() (map[string]string, error)
 }
@@ -306,6 +325,22 @@ func (s Store) Add(consoleID, gameID string, report Report) error {
 	report.Note = clip(strings.TrimSpace(report.Note), MaxNote)
 
 	return s.Backend.AddReport(consoleID, gameID, report)
+}
+
+// Remove — retire un signalement de l'historique d'un jeu, par son instant (chantier 68 ; le porteur, 2026-11-19 : « il
+// faut pouvoir supprimer les historiques »). Le statut du jeu se recalcule de ceux qui restent.
+func (s Store) Remove(consoleID, gameID string, at time.Time) error {
+	if err := checkConsole(consoleID); err != nil {
+		return err
+	}
+	if gameID == "" || at.IsZero() {
+		return fmt.Errorf("%w : jeu %q, instant %v", ErrInvalid, gameID, at)
+	}
+	if s.Backend == nil {
+		return ErrUnavailable
+	}
+
+	return s.Backend.RemoveReport(consoleID, gameID, at.UTC())
 }
 
 // SetConsole — le statut de toute la console.

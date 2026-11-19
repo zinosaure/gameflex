@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { getStoredToken, useAuth } from "./sharedHost.js";
-import { resolveUsers } from "./profileApi.js";
+import { useNames } from "./displayNames.js";
 import { getPublicSession } from "../engine/api/spawnSessions.js";
 import { homeOrigin, streamAuthToken } from "./serverBase.js";
 import { federatedId, federatedServers } from "./federatedHost.js";
@@ -17,53 +17,36 @@ import { kernelChannel, kernelReachable, useKernelChannel, useKernelTopic } from
 // sur le même socket que tout ce que la page demande à notre kernel — et un
 // par serveur fédéré qui nous ouvre une session (chantier 20). Le kernel pousse la liste à
 // l'abonnement puis à chaque changement ; rien n'est redemandé.
-const SessionPoolContext = createContext({ sessions: [], displayNames: {} });
+const SessionPoolContext = createContext({ sessions: [] });
 
 export function SessionPoolProvider({ children }) {
     const { token } = useAuth();
     const [sessions, setSessions] = useState([]);
-    // initiator AND every entry in players are only ever plain usernames —
-    // see internal/sessions' own doc on why (no server-side identity
-    // verification for either platform). Resolved to actual display_names
-    // here, once, for every consumer (LiveThumbnail.jsx, NotificationBell,
-    // Watch.jsx's per-player "request slot" list) instead of each one
-    // fetching independently — resolvedRef tracks which usernames have
-    // already been requested (found or not) so a WS push that doesn't
-    // introduce any NEW username is a no-op, not a re-fetch of the same
-    // names over and over.
-    const [displayNames, setDisplayNames] = useState({});
-    const resolvedRef = useRef(new Set());
 
-    useEffect(() => {
-        if (!token) return;
+    // LES NOMS AFFICHÉS des propriétaires, des joueurs et des spectateurs (libs/displayNames.js, la table de toute
+    // l'application).
+    const poolUsernames = useMemo(() => {
         const usernames = new Set();
         for (const s of sessions) {
             if (s.owner) usernames.add(s.owner);
-            const poolUsernames = (s.connectionPool || []).map((e) => e.username).filter(Boolean);
-            for (const p of poolUsernames) usernames.add(p);
+            for (const p of (s.connectionPool || []).map((e) => e.username).filter(Boolean)) usernames.add(p);
             // …and whoever holds a pad. Since chantier-4 the players come from
             // the CHILD's own state, mirrored into padSlots — they are not
-            // necessarily in connectionPool, which is the v1 view. Without
-            // this, the one list built entirely of players (the hand-over
-            // chooser) was the one list that never had a name to show.
+            // necessarily in connectionPool, which is the v1 view.
             for (const holder of Object.values(s.padSlots || {})) {
                 if (typeof holder === "string" && holder) usernames.add(holder);
             }
         }
-        const missing = [...usernames].filter((u) => !resolvedRef.current.has(u));
-        if (missing.length === 0) return;
-        missing.forEach((u) => resolvedRef.current.add(u));
-        resolveUsers(token, missing).then((result) => {
-            if (result.ok) setDisplayNames((prev) => ({ ...prev, ...result.item }));
-        });
-    }, [sessions, token]);
+        return [...usernames];
+    }, [sessions]);
+    const displayNames = useNames(token ? poolUsernames : []);
 
     // initiatorDisplayName always has something sensible to render even
     // before resolution finishes (or if it fails, or the username has no
     // matching account) — falls back to the raw username rather than
     // consumers needing their own `|| session.initiator` everywhere. Every
     // OTHER player's username (session.players) isn't enriched the same way
-    // here — displayNames is exposed directly (see useDisplayNames below) so
+    // here — the shared table (libs/displayNames.js, useNames) is read directly so
     // a consumer that needs to keep the raw username around too (e.g. the
     // façade slot-request flows, which must send the real username over
     // the wire, only the LABEL should show a display name) can resolve
@@ -105,7 +88,7 @@ export function SessionPoolProvider({ children }) {
     useKernelTopic(home, "sessions", null, (list) => setSessions(Array.isArray(list) ? list : []));
 
     return (
-        <SessionPoolContext.Provider value={{ sessions: enrichedSessions, displayNames }}>
+        <SessionPoolContext.Provider value={{ sessions: enrichedSessions }}>
             {children}
         </SessionPoolContext.Provider>
     );
@@ -217,15 +200,6 @@ export function useFederatedSessions() {
 // useSessionPool() — the whole live list (both platforms).
 export function useSessionPool() {
     return useContext(SessionPoolContext).sessions;
-}
-
-// useDisplayNames() — the raw {username: displayName} map, for a caller that
-// needs to resolve several usernames at once (e.g. Watch.jsx's per-player
-// "request slot" list, mapping over session.players) — a hook per username
-// in a loop would violate the Rules of Hooks; plain object lookups on this
-// map don't.
-export function useDisplayNames() {
-    return useContext(SessionPoolContext).displayNames;
 }
 
 // useSession(id) — a single session by id, or undefined if it doesn't exist

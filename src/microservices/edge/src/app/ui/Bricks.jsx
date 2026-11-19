@@ -788,14 +788,15 @@ export function useConfirm() {
     //
     // `whenClosed` : le geste attend que la fenêtre soit refermée — quitter une partie démonte la page de jeu, et la
     // fenêtre posée dans son élément en plein écran (skeleton.js) partirait avec elle avant d'avoir fini de se refermer.
-    return useCallback(function confirm({ title, message = null, body = null, confirmLabel, onConfirm, onCancel = null, then = null, whenClosed = false }, opener = document.activeElement) {
+    // `cancelLabel` : le mot du refus quand « Annuler » ne dit pas ce qu'il fait (une demande de manette : « Garder »).
+    return useCallback(function confirm({ title, message = null, body = null, confirmLabel, cancelLabel = null, onConfirm, onCancel = null, then = null, whenClosed = false }, opener = document.activeElement) {
         let release = () => {};
         let confirmed = false;
         const id = skeleton.modal.open(body || <span>{message || title}</span>, {
             variant: "confirm",
             title: message || body ? escapeHtml(title) : null,
             confirmLabel: escapeHtml(confirmLabel || title),
-            cancelLabel: escapeHtml(t("settings.cancel")),
+            cancelLabel: escapeHtml(cancelLabel || t("settings.cancel")),
             onConfirm: then || whenClosed ? () => { confirmed = true; } : onConfirm,
             onCancel,
             onClose: () => {

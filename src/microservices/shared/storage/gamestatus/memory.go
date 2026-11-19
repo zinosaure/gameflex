@@ -44,6 +44,24 @@ func (memory *Memory) AddReport(consoleID, gameID string, report Report) error {
 	return nil
 }
 
+func (memory *Memory) RemoveReport(consoleID, gameID string, at time.Time) error {
+	memory.mu.Lock()
+	defer memory.mu.Unlock()
+	console := memory.consoles[consoleID]
+	kept := []Report{}
+	for _, report := range console.Games[gameID] {
+		if !report.At.Equal(at) {
+			kept = append(kept, report)
+		}
+	}
+	if console.Games != nil {
+		console.Games[gameID] = kept
+		memory.consoles[consoleID] = console
+	}
+
+	return nil
+}
+
 func (memory *Memory) SetConsole(consoleID, status, by string, at time.Time) error {
 	memory.mu.Lock()
 	defer memory.mu.Unlock()

@@ -161,17 +161,20 @@ GameFlex keeps a list of what your library holds. After you copy files by hand, 
 
 ## Say which games play
 
-Every game shows a status on its page: **Playable**, **Crashes in game**, **Not playable** or
-**Untested**, the default. An administrator sets it:
+Every game shows a status on its page: **Playable**, **Playable with a patch** (it needs the
+settings of its patch), **Graphical glitches** (it plays, with faults in the picture), **Crashes in game**, **Not playable** or **Untested**, the default. An administrator sets it:
 
 - **for a whole console:** **Settings › Consoles**, the console, **Console status**. Every game of
   that console takes it, games added later included, except the ones with a status of their own;
 - **for one game:** **Settings › Consoles**, the console, **Games**, its source, the game, then
   **Fix the information**: choose its status for each emulator and, if you like, add a **Note**
   such as *crashes in chapter 2*. Its **History** keeps every report with the emulator's version at
-  that time.
+  that time; touch a report to delete it, and the status follows the ones left. From the game's
+  page in the library, **More › Edit the game's page** opens this page directly, and **See its page
+  in the library** takes you back.
 
-Players see the status on the game's page and in the catalog's filters. Friends who federate with
+Players see the status on the game's page, with the note of its latest report under it, and in the
+catalog's filters. Friends who federate with
 your server see your statuses too: they tell them what plays on your machine.
 
 ## Browse the catalog and keep favorites
@@ -201,7 +204,7 @@ role, even one that cannot launch a console.
   opens the same page as in the catalog. When its game is gone (removed from its source, its
   console removed, or its server no longer federated), the list says so, and its page lets you
   remove it.
-- **Live**, the first tab, shows them too, under the live games, ten per page: a favorite opens its
+- **Live** (the GameFlex name, at the top) shows them too, under the live games, ten per page: a favorite opens its
   game's page in the library, ready to play; one whose game is gone opens its page in
   **My favorites**.
 

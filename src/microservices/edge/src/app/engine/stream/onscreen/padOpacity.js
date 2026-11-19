@@ -16,6 +16,11 @@ import { saveButtonPositioning } from "../../../libs/profileApi.js";
 // comme celle par défaut (Layout.jsx). Les cinq emplacements pris, aucun en jeu : l'opacité ne vaut que pour cette page.
 const SAVE_AFTER_MS = 600;
 
+// L'OPACITÉ PAR DÉFAUT (chantier 68 ; le porteur, 2026-11-19 : « bouton manette virtuelle par défaut : 40% opacité ») :
+// celle d'une manette dont la disposition en jeu n'en a pas enregistré — la page de jeu, son menu, et l'éditeur de
+// disposition. Une seule valeur, lue partout.
+export const DEFAULT_PAD_OPACITY = 0.4;
+
 let current = { name: null, opacity: null, slot: null, slots: [], token: null };
 let timer = null;
 const listeners = new Set();

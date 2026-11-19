@@ -616,6 +616,11 @@ func (service *Service) AddGameStatusReport(consoleID, gameID string, report []b
 	return api.AddGameStatusReport(service.DB, consoleID, gameID, decoded)
 }
 
+// RemoveGameStatusReport — retire le signalement de cet instant.
+func (service *Service) RemoveGameStatusReport(consoleID, gameID string, at time.Time) error {
+	return api.RemoveGameStatusReport(service.DB, consoleID, gameID, at)
+}
+
 // SetGameStatusConsole — le statut de toute la console.
 func (service *Service) SetGameStatusConsole(consoleID, status, by string, at time.Time) error {
 	return api.SetGameStatusConsole(service.DB, consoleID, status, by, at)

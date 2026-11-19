@@ -90,6 +90,62 @@
         }
       }
     },
+    "radvDebug": {
+      "type": "select",
+      "label": "AMD driver workaround (RADV)",
+      "description": "Debug options of RADV, the AMD graphics driver, that work around a game which freezes the graphics processor; no effect with other drivers.",
+      "config": "Environment > RADV_DEBUG",
+      "value": "auto",
+      "options": {
+        "auto": "None",
+        "llvm": "llvm — the other shader compiler",
+        "nodcc": "nodcc — no colour compression",
+        "nohiz": "nohiz — no depth compression",
+        "zerovram": "zerovram — clear the memory it gives",
+        "nodcc,nohiz": "nodcc and nohiz together",
+        "hang": "hang — write a report of a freeze (slow)",
+        "hang,nocache": "hang,nocache — the report with the shaders (slower)"
+      },
+      "translations": {
+        "fr": {
+          "label": "Contournement du pilote AMD (RADV)",
+          "description": "Options de débogage de RADV, le pilote graphique AMD, qui contournent un jeu qui bloque le processeur graphique ; sans effet avec un autre pilote.",
+          "options": {
+            "auto": "Aucun",
+            "llvm": "llvm — l'autre compilateur de shaders",
+            "nodcc": "nodcc — sans compression des couleurs",
+            "nohiz": "nohiz — sans compression de la profondeur",
+            "zerovram": "zerovram — la mémoire remise à zéro",
+            "nodcc,nohiz": "nodcc et nohiz ensemble",
+            "hang": "hang — écrire un rapport du blocage (lent)",
+            "hang,nocache": "hang,nocache — le rapport avec les shaders (plus lent)"
+          }
+        }
+      }
+    },
+    "shaderLoopLimit": {
+      "type": "select",
+      "label": "Shader loop limit",
+      "description": "Stops a graphics loop after this many turns, for a game that freezes the graphics processor in an endless loop; Off for all other games.",
+      "config": "Environment > GAMEFLEX_SHADER_LOOP_LIMIT",
+      "value": "0",
+      "options": {
+        "0": "Off",
+        "256": "256",
+        "1024": "1024",
+        "4096": "4096",
+        "16384": "16384"
+      },
+      "translations": {
+        "fr": {
+          "label": "Borne des boucles de shaders",
+          "description": "Arrête une boucle graphique après ce nombre de tours, pour un jeu qui bloque le processeur graphique dans une boucle sans fin ; Désactivée pour tous les autres jeux.",
+          "options": {
+            "0": "Désactivée"
+          }
+        }
+      }
+    },
     "turnipDebug": {
       "type": "select",
       "label": "Adreno driver workaround (Turnip)",

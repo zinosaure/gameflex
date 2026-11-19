@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-19
+
+### Added
+
+- **Players, in the game menu**: one line per controller of the console, with who holds it and for how long, or a free
+  place. Signed in and watching, touch a player to ask for their controller, or a free place to join the game.
+- **A bell instead of pop-ups**: a request for your controller, someone joining or leaving, the answer to your own
+  request ring a small bell at the top right of the game, without covering it. The **Notifications** section, at the
+  top of the game menu, keeps them for the whole game, five per page; a request is answered from there.
+- **Rewind and fast forward on screen**: on a retro console, two buttons at the bottom left of the game turn them on
+  and off while you watch the game, without opening the menu.
+- **Edit the game's page**: from a game's page in the library, **More**, for an administrator; and back, **See its page
+  in the library** from **Settings › Consoles › Games**.
+- **Delete a report** from a game's status history: touch it in **Fix the information**; the status follows the
+  reports left.
+- **Two statuses**: **Playable with a patch** and **Graphical glitches**. **Settings › Consoles › Games** shows each
+  game's status and filters by status.
+- **PlayStation 4: EA Sports FC 27 plays its matches**, with its patch, and **FIFA 22** no longer stops during a match
+  and draws its pitch right.
+
+### Changed
+
+- **The on-screen controller is at 40 % opacity** by default.
+- **The GameFlex name leads to Live**, with the number of games and invitations; the **Live** tab is gone.
+- **The game menu**: **Save states** moves to **Game**, rewind and fast forward to the screen, and **With others** is
+  now **Invitation**.
+- **The texts over the game** (**You are watching this game**…) fade out like the menu button.
+- **A game's page shows the note of its status** under the badge.
+
+### Removed
+
+- **Ask for the controller**, in the game menu: the **Players** section does it.
+
+### Fixed
+
+- **Live shows display names**, not account names.
+- **Emptying a status note removes it** from the game's page; an older note no longer shows instead.
+
 ## [0.15.0] - 2026-11-19
 
 ### Added

@@ -90,6 +90,23 @@ func TestAttachTellsTheTabItsOwnSocketOnly(t *testing.T) {
 	}
 }
 
+// LA LISTE DES JOUEURS DU MENU (chantier 68) : une ligne par manette de la
+// console, et le temps de jeu de chacun — l'état dit les deux.
+func TestStateSaysPadsAndSinceWhenEachPlays(t *testing.T) {
+	host, rec := newHost(t, 4)
+	host.Attach("sock-G", "gino")
+	host.Submit(Command{Kind: CmdJoin, Username: "gino", SocketID: "sock-G"}, now)
+
+	state := rec.last("sock-G", "state")
+	if state["maxPlayers"] != 4 {
+		t.Fatalf("maxPlayers = %v, want 4", state["maxPlayers"])
+	}
+	players := state["players"].([]map[string]any)
+	if len(players) != 1 || players[0]["joinedAt"] != now.UTC().Format(time.RFC3339) {
+		t.Fatalf("players = %+v, want gino with joinedAt %s", players, now.UTC().Format(time.RFC3339))
+	}
+}
+
 // « Suis-je en train de jouer » est une question sur CET onglet, donc la
 // réponse est par socket — la page n'a jamais à comparer des identifiants.
 func TestStateAnswersPerTab(t *testing.T) {

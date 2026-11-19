@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { CONTROLLER_PRESETS } from "../../engine/controllers/presets.js";
 import ControllerLayout, { PadLookContext } from "../../engine/stream/onscreen/Controllers.jsx";
+import { DEFAULT_PAD_OPACITY } from "../../engine/stream/onscreen/padOpacity.js";
 import { PAD_LOOK } from "../../libs/padLook.jsx";
 import { credential } from "../../libs/api.js";
 import { toast } from "../../shell/Shell.jsx";
@@ -97,7 +98,7 @@ function LayoutEditor({ controllerName }) {
     const [selectedName, setSelectedName] = useState("");
     const [selectedGroup, setSelectedGroup] = useState("");
     const [isDefault, setIsDefault] = useState(false);
-    const [opacity, setOpacity] = useState(1);
+    const [opacity, setOpacity] = useState(DEFAULT_PAD_OPACITY);
     const [pending, setPending] = useState(false);
     // CE QU'ON TAPE dans X, Y ou la taille, tel quel : « 0. » s'écrit avant « 0.5 » ; la valeur ne
     // s'applique qu'une fois lisible, et le brouillon tombe quand la sélection change ou qu'on glisse.
@@ -111,7 +112,7 @@ function LayoutEditor({ controllerName }) {
     // emplacement vide s'enregistre toujours — c'est le créer. Les boutons se comparent clés triées : le serveur ne les
     // rend pas dans l'ordre du modèle.
     const saved = slots.find((slot) => slot.slot_index === slotIndex);
-    const isReplaced = !saved || isDefault !== Boolean(saved.is_default) || opacity !== (saved.opacity ?? 1) || canonical(layout) !== canonical(saved.layout?.length ? saved.layout : presetButtons(controllerName));
+    const isReplaced = !saved || isDefault !== Boolean(saved.is_default) || opacity !== (saved.opacity ?? DEFAULT_PAD_OPACITY) || canonical(layout) !== canonical(saved.layout?.length ? saved.layout : presetButtons(controllerName));
 
     useEffect(() => {
         let cancelled = false;
@@ -125,7 +126,7 @@ function LayoutEditor({ controllerName }) {
             // Une disposition vide (créée par la glissière d'opacité du menu d'une partie, padOpacity.js) est celle par défaut.
             setLayout(existing?.layout?.length ? existing.layout.map((button) => ({ ...button })) : presetButtons(controllerName));
             setIsDefault(existing ? existing.is_default : false);
-            setOpacity(existing ? existing.opacity ?? 1 : 1);
+            setOpacity(existing ? existing.opacity ?? DEFAULT_PAD_OPACITY : DEFAULT_PAD_OPACITY);
             setSelectedName("");
             setSelectedGroup("");
         });

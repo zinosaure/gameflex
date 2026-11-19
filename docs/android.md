@@ -112,8 +112,9 @@ While the app runs, other devices on **the same Wi-Fi** can join the games of yo
 1. Start the game on your phone.
 2. Open the game menu, then **Send the link** (or **Copy the link**, or show the **QR code**).
 3. Your friend opens the link in a browser. They arrive as a spectator, with no account needed. To
-   play, they sign in, then press **Take the controller**, or **Ask for the controller** when all
-   places are taken: you answer from your phone.
+   play, they sign in, then press **Take the controller**, or, when all places are taken, touch your
+   line in **Players**, in the game menu, to ask for your controller: a bell rings on your phone, and
+   you answer from its menu.
 
 **To let someone use GameFlex on their own device:** create an account for them in **Settings ›
 Members**. They open the address shown under **Invite to join** on the home screen, or in **Settings ›

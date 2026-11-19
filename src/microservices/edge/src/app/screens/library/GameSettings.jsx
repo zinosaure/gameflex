@@ -17,6 +17,7 @@ import { toast } from "../../shell/Shell.jsx";
 import SidePanel from "../../shell/SidePanel.jsx";
 import { FormButton } from "../../ui/Forms.jsx";
 import { GameBanner } from "./HeroArt.jsx";
+import { gameSettingsPath } from "../../settings/server/consoles/Games.jsx";
 import NavRow, { ChoiceRow, EmptyState, InfoRow, Note, QuickTiles, Rows, Section, SelectRow, SubmitRow } from "../../ui/Bricks.jsx";
 
 // L'ENGRENAGE D'UN JEU : « Informations et réglages » — ce que la fiche verrouillée
@@ -416,6 +417,7 @@ export function GearPanel({ console, game, rom, metadata, facts, playable, state
     const { t, i18n } = useTranslation();
     const { capabilities, servers } = useData();
     const { user, isAdmin } = useAuth();
+    const navigate = useNavigate();
     // Les ressources du serveur fédéré d'un jeu de console de bureau, lues à l'ouverture (serverInfo).
     const [peer, setPeer] = useState(null);
 
@@ -444,6 +446,7 @@ export function GearPanel({ console, game, rom, metadata, facts, playable, state
     const stream = streamOf(console.id);
     // Le statut du jeu, celui de la liste et de la fiche ; sans statut, il n'a pas été essayé.
     const status = statusOf(rom) || "untested";
+    const statusNote = rom?.status?.note || "";
     // Pourquoi la partie ne partirait pas d'ici (les cas de la webapp que le launcher sait voir).
     let noLaunch = "";
     const refused = hostRefusal(console, rom, capabilities, isAdmin);
@@ -544,8 +547,15 @@ export function GearPanel({ console, game, rom, metadata, facts, playable, state
                             panneau (le porteur, 2026-11-16 : « retirer les alerts » ; un renseignement est une ligne). */}
                         {noLaunch && <InfoRow icon="bi-slash-circle" tone="rose" label={t("gear.launch")} value={t(`noLaunch.${noLaunch}`)} />}
                         {details.map(([key, icon, label, value]) => <InfoRow key={key} icon={icon} label={label} value={value} />)}
-                        {/* Le statut, de la couleur de son badge (celle de la liste et de la fiche). */}
-                        <InfoRow icon="bi-patch-check" label={t("games.status")} value={<span className={`badge rounded-pill text-bg-${STATUS_VARIANT[status] || "secondary"}`}>{t(`status.${status}`)}</span>} />
+                        {/* Le statut, de la couleur de son badge (celle de la liste et de la fiche) ; SOUS LE BADGE, LE TEXTE DU
+                            STATUT (chantier 68 ; le porteur, 2026-11-19 : « rajoute le texte de la status en dessous du badge. Si
+                            pas de texte alors tu mets rien ») : la note du signalement le plus récent (`view.note`), rien quand il n'en a pas. */}
+                        <InfoRow icon="bi-patch-check" label={t("games.status")} value={(
+                            <>
+                                <span className={`badge rounded-pill text-bg-${STATUS_VARIANT[status] || "secondary"}`}>{t(`status.${status}`)}</span>
+                                {statusNote && <span className="d-block small text-body-secondary text-wrap mt-1">{statusNote}</span>}
+                            </>
+                        )} />
                         {/* Les joueurs, seulement quand une source le sait (libretro-database ; rien n'est déduit de la console). */}
                         {known.players > 0 && <InfoRow icon="bi-people" label={t("game.players")} value={String(known.players)} />}
                     </Rows>
@@ -573,6 +583,10 @@ export function GearPanel({ console, game, rom, metadata, facts, playable, state
                     <Rows>
                         <NavRow id="g-favorite" icon={favorite ? "bi-star-fill" : "bi-star"} tone="amber" label={t(favorite ? "favorites.remove" : "favorites.add")}
                             help={t("favorites.help")} pending={marking || !favorites.loaded} opens="action" onOpen={toggleFavorite} />
+                        {/* L'ALLER-RETOUR AVEC LES RÉGLAGES, pour un administrateur (chantier 68) : la page du jeu dans Réglages ›
+                            Consoles › Jeux, depuis sa source (cette machine, son disque, son serveur). */}
+                        {isAdmin && <NavRow id="g-admin" icon="bi-pencil-square" tone="slate" label={t("gameAdmin.editSheet")} help={t("gameAdmin.editSheetHelp")}
+                            onOpen={() => navigate(gameSettingsPath(console.id, { disk: rom.disk || null, peer: rom.peer || null }, rom.reference))} />}
                     </Rows>
                 </Section>
             </SidePanel>

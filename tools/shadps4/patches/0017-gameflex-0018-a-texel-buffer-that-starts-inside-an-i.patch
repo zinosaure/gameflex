@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 12:30:51 +0100
+Subject: [PATCH] gameflex 0018: a texel buffer that starts inside an image
+ writes the whole image back at its base
+
+EA Sports FC 27 binds a texel buffer 0x30 bytes past the base of a cached image when a match
+loads; SynchronizeMemoryFromImage asserted. The bytes before the buffer belong to the same image,
+so the image is tiled back into the arena at its own address.
+---
+ src/video_core/buffer_cache/buffer_cache.cpp | 17 +++++++++++++----
+ 1 file changed, 13 insertions(+), 4 deletions(-)
+
+diff --git a/src/video_core/buffer_cache/buffer_cache.cpp b/src/video_core/buffer_cache/buffer_cache.cpp
+index b20e382b..262351d0 100644
+--- a/src/video_core/buffer_cache/buffer_cache.cpp
++++ b/src/video_core/buffer_cache/buffer_cache.cpp
+@@ -499,10 +499,19 @@ bool BufferCache::SynchronizeMemoryFromImage(const Buffer* arena, VAddr device_a
+         return false;
+     }
+     Image& image = texture_cache.GetImage(image_id);
+-    ASSERT_MSG(device_addr == image.info.guest_address,
+-               "Texel buffer aliases image subresources {:x} : {:x}", device_addr,
+-               image.info.guest_address);
+-    const u64 arena_offset = arena->Offset(device_addr);
++    // gameflex 0018: a texel buffer may start inside an image (EA Sports FC 27, 0x30 bytes past
++    // its base, when a match loads). The bytes before it belong to that same image, so the whole
++    // image is written back at its own address, as long as the arena holds that address.
++    if (device_addr != image.info.guest_address) {
++        if (image.info.guest_address < arena->CpuAddr()) {
++            LOG_WARNING(Render_Vulkan, "Texel buffer {:#x} aliases image {:#x} before its arena",
++                        device_addr, image.info.guest_address);
++            return false;
++        }
++        LOG_INFO(Render_Vulkan, "Texel buffer {:#x} starts inside image {:#x}", device_addr,
++                 image.info.guest_address);
++    }
++    const u64 arena_offset = arena->Offset(image.info.guest_address);
+     boost::container::small_vector<vk::BufferImageCopy, 8> buffer_copies;
+     for (u32 mip = 0; mip < image.info.resources.levels; mip++) {
+         const auto& mip_info = image.info.mips_layout[mip];

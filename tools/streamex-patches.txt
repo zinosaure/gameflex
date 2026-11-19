@@ -2,6 +2,8 @@
 # dev, une ligne par correctif, dans le paquet `streamex-patches` de tools/streamex-packages.sh. Seulement les nôtres :
 # rien de ce qu'on trouve facilement ailleurs (le porteur, 2026-11-18 : le pack Cemu « CrashFix » de NSMBU reste dehors).
 ps4/CUSA00003
+ps4/CUSA27106
+ps4/CUSA57220
 ps5/PPSA10594
 ps5/PPSA17599
 ps5/PPSA21567

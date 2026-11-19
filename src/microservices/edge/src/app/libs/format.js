@@ -27,9 +27,11 @@ export function formatMegabytes(bytes) {
 }
 
 // Les statuts d'un jeu (chantier 30) : le serveur les calcule, `rom.status.status`.
-export const GAME_STATUSES = ["playable", "crashes", "unplayable", "untested"];
+export const GAME_STATUSES = ["playable", "patched", "glitches", "crashes", "unplayable", "untested"];
 // La couleur Bootstrap de chaque statut (son badge, son filtre).
-export const STATUS_VARIANT = { playable: "success", crashes: "warning", unplayable: "danger", untested: "secondary" };
+export const STATUS_VARIANT = { playable: "success", patched: "info", glitches: "primary", crashes: "warning", unplayable: "danger", untested: "secondary" };
+// La même couleur en pastille (Réglages : l'historique des signalements, la fiche d'un jeu).
+export const STATUS_TONE = { playable: "green", patched: "teal", glitches: "sky", crashes: "amber", unplayable: "rose", untested: "slate" };
 export const statusOf = (rom) => rom?.status?.status || "";
 
 // LE TEMPS DEPUIS UN DÉBUT (une partie : son `startedAt`), en HH:MM:SS ; vide sans début.

@@ -172,3 +172,38 @@ func TestLesSignalementsSimultanesSontTousGardes(t *testing.T) {
 		t.Fatalf("%d signalements gardés sur 20", got)
 	}
 }
+
+// LE TEXTE DU STATUT est la note du signalement le plus récent : sans note,
+// rien — pas celle d'un signalement plus ancien (chantier 68).
+func TestLeTexteDuStatutEstCeluiDuDernier(t *testing.T) {
+	first := report(Playable)
+	first.Note = "Hello world?"
+	if view := Resolve("ps1", "", []Report{first}); view.Note != first.Note {
+		t.Fatalf("note : %q", view.Note)
+	}
+	if view := Resolve("ps1", "", []Report{first, report(Playable)}); view.Note != "" {
+		t.Fatalf("la note d'avant reste : %q", view.Note)
+	}
+}
+
+// RETIRER UN SIGNALEMENT de l'historique (chantier 68) : par son instant ; le statut se recalcule de ceux qui restent.
+func TestRetirerUnSignalement(t *testing.T) {
+	store := Store{Backend: NewMemory()}
+	first, second := report(Crashes), report(Playable)
+	second.At = first.At.Add(time.Minute)
+	for _, r := range []Report{first, second} {
+		if err := store.Add("ps1", "jeu", r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Remove("ps1", "jeu", second.At); err != nil {
+		t.Fatal(err)
+	}
+	console, _ := store.Load("ps1")
+	if reports := console.Games["jeu"]; len(reports) != 1 || reports[0].Status != Crashes {
+		t.Fatalf("restent : %+v", reports)
+	}
+	if err := store.Remove("ps1", "jeu", time.Time{}); err == nil {
+		t.Fatal("un instant vide devait être refusé")
+	}
+}

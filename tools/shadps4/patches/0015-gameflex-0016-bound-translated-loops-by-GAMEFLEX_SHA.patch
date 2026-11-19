@@ -1,0 +1,159 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 11:12:01 +0100
+Subject: [PATCH] gameflex 0016: bound translated loops by
+ GAMEFLEX_SHADER_LOOP_LIMIT
+
+---
+ .../backend/spirv/emit_spirv.cpp              | 47 +++++++++++++++++++
+ .../backend/spirv/emit_spirv.h                |  4 ++
+ .../vk_pipeline_serialization.cpp             | 14 ++++--
+ 3 files changed, 61 insertions(+), 4 deletions(-)
+
+diff --git a/src/shader_recompiler/backend/spirv/emit_spirv.cpp b/src/shader_recompiler/backend/spirv/emit_spirv.cpp
+index c6c1d936..1d19f4f0 100644
+--- a/src/shader_recompiler/backend/spirv/emit_spirv.cpp
++++ b/src/shader_recompiler/backend/spirv/emit_spirv.cpp
+@@ -1,8 +1,11 @@
+ // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
++#include <cstdlib>
+ #include <mutex>
+ #include <span>
++#include <unordered_map>
++#include <unordered_set>
+ #include <type_traits>
+ #include <utility>
+ #include <vector>
+@@ -155,16 +158,44 @@ Id TypeId(const EmitContext& ctx, IR::Type type) {
+ }
+ 
+ void Traverse(EmitContext& ctx, const IR::Program& program) {
++    // gameflex 0016: a loop whose trip count comes from memory the game has not written yet (or
++    // that is stale) can spin billions of times and hang the GPU (EA Sports FC 27). With a limit,
++    // each loop gets a counter, reset when the loop is entered and checked at its back edge.
++    const u32 limit = LoopIterationLimit();
++    std::unordered_set<const IR::Block*> loop_headers;
++    std::unordered_map<const IR::Block*, Id> loop_counters;
++    if (limit != 0) {
++        const auto& list = program.syntax_list;
++        for (size_t i = 1; i < list.size(); ++i) {
++            if (list[i].type == IR::AbstractSyntaxNode::Type::Loop &&
++                list[i - 1].type == IR::AbstractSyntaxNode::Type::Block) {
++                loop_headers.insert(list[i - 1].data.block);
++            }
++        }
++    }
++    bool counters_declared = loop_headers.empty();
+     IR::Block* current_block{};
+     for (const IR::AbstractSyntaxNode& node : program.syntax_list) {
+         switch (node.type) {
+         case IR::AbstractSyntaxNode::Type::Block: {
+             const Id label{node.data.block->Definition<Id>()};
+             if (current_block) {
++                if (const auto it = loop_counters.find(node.data.block); it != loop_counters.end()) {
++                    ctx.OpStore(it->second, ctx.u32_zero_value);
++                }
+                 ctx.OpBranch(label);
+             }
+             current_block = node.data.block;
+             ctx.AddLabel(label);
++            if (!counters_declared) {
++                // Function variables open the first block of the function.
++                counters_declared = true;
++                const Id pointer{ctx.TypePointer(spv::StorageClass::Function, ctx.U32[1])};
++                for (const IR::Block* header : loop_headers) {
++                    loop_counters.emplace(header, ctx.AddLocalVariable(pointer, spv::StorageClass::Function,
++                                                                       ctx.u32_zero_value));
++                }
++            }
+             for (IR::Inst& inst : node.data.block->Instructions()) {
+                 EmitInst(ctx, &inst);
+             }
+@@ -200,6 +231,14 @@ void Traverse(EmitContext& ctx, const IR::Program& program) {
+             break;
+         case IR::AbstractSyntaxNode::Type::Repeat: {
+             Id cond{ctx.Def(node.data.repeat.cond)};
++            if (const auto it = loop_counters.find(node.data.repeat.loop_header);
++                it != loop_counters.end()) {
++                const Id count{ctx.OpIAdd(ctx.U32[1], ctx.OpLoad(ctx.U32[1], it->second),
++                                          ctx.ConstU32(1u))};
++                ctx.OpStore(it->second, count);
++                cond = ctx.OpLogicalAnd(ctx.U1[1], cond,
++                                        ctx.OpULessThan(ctx.U1[1], count, ctx.ConstU32(limit)));
++            }
+             const Id loop_header_label{node.data.repeat.loop_header->Definition<Id>()};
+             const Id merge_label{node.data.repeat.merge->Definition<Id>()};
+             ctx.OpBranchConditional(cond, loop_header_label, merge_label);
+@@ -752,4 +791,12 @@ void EmitSetM0(EmitContext& ctx) {
+     UNREACHABLE_MSG("Unreachable instruction");
+ }
+ 
++u32 LoopIterationLimit() {
++    static const u32 limit = [] {
++        const char* value = std::getenv("GAMEFLEX_SHADER_LOOP_LIMIT");
++        return value ? static_cast<u32>(std::strtoul(value, nullptr, 10)) : 0u;
++    }();
++    return limit;
++}
++
+ } // namespace Shader::Backend::SPIRV
+diff --git a/src/shader_recompiler/backend/spirv/emit_spirv.h b/src/shader_recompiler/backend/spirv/emit_spirv.h
+index 5b8da449..5f49cc4d 100644
+--- a/src/shader_recompiler/backend/spirv/emit_spirv.h
++++ b/src/shader_recompiler/backend/spirv/emit_spirv.h
+@@ -13,4 +13,8 @@ namespace Shader::Backend::SPIRV {
+ [[nodiscard]] std::vector<u32> EmitSPIRV(const Profile& profile, const RuntimeInfo& runtime_info,
+                                          const IR::Program& program, Bindings& binding);
+ 
++// gameflex 0016: the most iterations a translated loop may run each time it is entered, from
++// GAMEFLEX_SHADER_LOOP_LIMIT; 0 (unset) leaves loops unbounded, as upstream.
++[[nodiscard]] u32 LoopIterationLimit();
++
+ } // namespace Shader::Backend::SPIRV
+diff --git a/src/video_core/renderer_vulkan/vk_pipeline_serialization.cpp b/src/video_core/renderer_vulkan/vk_pipeline_serialization.cpp
+index 78f09616..fd83a28d 100644
+--- a/src/video_core/renderer_vulkan/vk_pipeline_serialization.cpp
++++ b/src/video_core/renderer_vulkan/vk_pipeline_serialization.cpp
+@@ -3,6 +3,7 @@
+ 
+ #include "common/serdes.h"
+ #include "core/emulator_settings.h"
++#include "shader_recompiler/backend/spirv/emit_spirv.h"
+ #include "shader_recompiler/frontend/fetch_shader.h"
+ #include "shader_recompiler/info.h"
+ #include "video_core/cache_storage.h"
+@@ -81,14 +82,20 @@ void RegisterShaderMeta(const Shader::Info& info,
+                                        fmt::format("{:#018x}", perm_hash), ar.TakeOff());
+ }
+ 
++// gameflex 0016: a binary compiled with a loop limit is not the one compiled without it.
++static std::string ShaderBinaryName(u64 pgm_hash, size_t perm_idx) {
++    const u32 limit = Shader::Backend::SPIRV::LoopIterationLimit();
++    return limit != 0 ? fmt::format("{:#018x}_{}_loops{}", pgm_hash, perm_idx, limit)
++                      : fmt::format("{:#018x}_{}", pgm_hash, perm_idx);
++}
++
+ void RegisterShaderBinary(std::vector<u32>&& spv, u64 pgm_hash, size_t perm_idx) {
+     if (!Storage::DataBase::Instance().IsOpened()) {
+         return;
+     }
+ 
+     Storage::DataBase::Instance().Save(Storage::BlobType::ShaderBinary,
+-                                       fmt::format("{:#018x}_{}", pgm_hash, perm_idx),
+-                                       std::move(spv));
++                                       ShaderBinaryName(pgm_hash, perm_idx), std::move(spv));
+ }
+ 
+ bool LoadShaderMeta(Serialization::Archive& ar, Shader::Info& info,
+@@ -256,8 +263,7 @@ bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage)
+ 
+     std::vector<u32> spv{};
+     Storage::DataBase::Instance().Load(Storage::BlobType::ShaderBinary,
+-                                       fmt::format("{:#018x}_{}", program->info.pgm_hash, perm_idx),
+-                                       spv);
++                                       ShaderBinaryName(program->info.pgm_hash, perm_idx), spv);
+     if (spv.empty()) {
+         return false;
+     }

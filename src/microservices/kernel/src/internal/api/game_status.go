@@ -110,6 +110,10 @@ func (statuses credentialStatuses) AddReport(consoleID, gameID string, report ga
 	return statuses.call(http.MethodPost, "/"+url.PathEscape(consoleID)+"/games/"+url.PathEscape(gameID), report, nil)
 }
 
+func (statuses credentialStatuses) RemoveReport(consoleID, gameID string, at time.Time) error {
+	return statuses.call(http.MethodDelete, "/"+url.PathEscape(consoleID)+"/games/"+url.PathEscape(gameID)+"?at="+url.QueryEscape(at.UTC().Format(time.RFC3339Nano)), nil, nil)
+}
+
 func (statuses credentialStatuses) SetConsole(consoleID, status, by string, at time.Time) error {
 	return statuses.call(http.MethodPut, "/"+url.PathEscape(consoleID), map[string]any{"status": status, "by": by, "at": at}, nil)
 }
@@ -263,7 +267,7 @@ func (server *Server) handleReportGame(w http.ResponseWriter, r *http.Request) {
 		Note      string   `json:"note"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !gamestatus.Valid(body.Status) {
-		writeErrorCode(w, http.StatusBadRequest, "bad_request", "status must be untested, playable, crashes or unplayable")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "status must be untested, playable, patched, glitches, crashes or unplayable")
 
 		return
 	}
@@ -317,6 +321,31 @@ func (server *Server) handleReportGame(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, server.gameStatusAnswer(r.Context(), consoleID, gameID))
 }
 
+// handleRemoveReport — DELETE /api/v1/retrogaming/{consoleId}/roms/{ref}/status?at=<RFC 3339> : retire un signalement
+// de l'historique (chantier 68) ; la réponse est le statut recalculé, comme après un signalement.
+func (server *Server) handleRemoveReport(w http.ResponseWriter, r *http.Request) {
+	consoleID, gameID := chi.URLParam(r, "consoleId"), chi.URLParam(r, "ref")
+	at, err := time.Parse(time.RFC3339Nano, r.URL.Query().Get("at"))
+	if err != nil {
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "at must be the instant of a report (RFC 3339)")
+
+		return
+	}
+	if err := server.statusStore().Remove(consoleID, gameID, at); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, gamestatus.ErrInvalid) {
+			status = http.StatusBadRequest
+		}
+		writeErrorCode(w, status, "status_failed", err.Error())
+
+		return
+	}
+	server.refreshConsoleRoms(consoleID)
+	slog.Info("game status report removed", "console", consoleID, "game", gameID, "at", at, "by", auth.Username(r.Context()))
+
+	writeJSON(w, http.StatusOK, server.gameStatusAnswer(r.Context(), consoleID, gameID))
+}
+
 // handleGetConsoleStatus — GET /api/v1/retrogaming/{consoleId}/status : le
 // statut de la console, qui l'a réglé et quand, sans les signalements.
 func (server *Server) handleGetConsoleStatus(w http.ResponseWriter, r *http.Request) {
@@ -343,7 +372,7 @@ func (server *Server) handleConsoleStatus(w http.ResponseWriter, r *http.Request
 		Status string `json:"status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !gamestatus.Valid(body.Status) {
-		writeErrorCode(w, http.StatusBadRequest, "bad_request", "status must be untested, playable, crashes or unplayable")
+		writeErrorCode(w, http.StatusBadRequest, "bad_request", "status must be untested, playable, patched, glitches, crashes or unplayable")
 
 		return
 	}

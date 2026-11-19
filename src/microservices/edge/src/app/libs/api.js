@@ -673,6 +673,8 @@ export const gameImagePath = (consoleId, reference, kind, width, game) => withGa
 const statusPath = (consoleId, reference) => `/retrogaming/${encodeURIComponent(consoleId)}/roms/${encodeURIComponent(reference)}/status`;
 export const fetchGameStatus = (consoleId, reference) => kernel(statusPath(consoleId, reference));
 export const reportGameStatus = (consoleId, reference, { status, emulators = [], note = "" }) => kernel(statusPath(consoleId, reference), postJson({ status, emulators, note }));
+// Retirer un signalement de l'historique, par son instant (chantier 68) : la réponse est le statut recalculé.
+export const removeGameStatus = (consoleId, reference, at) => kernel(`${statusPath(consoleId, reference)}?at=${encodeURIComponent(at)}`, { method: "DELETE" });
 // LE STATUT DE TOUTE UNE CONSOLE (chantier 30 ; chantier 56, A2) : `{status, by, at, default}` — celui que prend chaque
 // jeu sans statut à lui, y compris un jeu ajouté plus tard ; `status` vide quand l'administrateur n'en a pas posé (le
 // défaut de la console, `default`, vaut alors).

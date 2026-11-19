@@ -360,6 +360,8 @@ func (server *Server) facadeStop(conn *facade.Conn, request facade.Request) {
 	var target struct {
 		Platform  string `json:"platform"`
 		SessionID string `json:"sessionId"`
+		// Standby — Remote Play : mettre la console en veille en arrêtant (chantier 69).
+		Standby bool `json:"standby"`
 	}
 	if json.Unmarshal(request.Data, &target) != nil || target.SessionID == "" {
 		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "missing session id"))
@@ -380,6 +382,9 @@ func (server *Server) facadeStop(conn *facade.Conn, request facade.Request) {
 	}
 
 	path := fmt.Sprintf("/api/v1/%s/sessions/%s/stop", target.Platform, target.SessionID)
+	if target.Standby && target.Platform == "remoteplay" {
+		path += "?standby=1"
+	}
 	status, answer := facade.Call(conn, auth.Middleware(server.config.JWTSecret, handler),
 		http.MethodPost, path, nil, map[string]string{"id": target.SessionID})
 

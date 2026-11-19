@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Navigate, Route, Routes, useLocation, useParams, useSearchParams } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { copyFederatedSheet, deleteInstalled, deleteRom, gamePatch, listRoms } from "../../../libs/api.js";
 import { useData } from "../../../libs/data.jsx";
 import { downloadOutcome, downloadState, followDownload, queuedNotice, runDownload, useDownloads } from "../../../libs/downloads.js";
-import { formatMegabytes, formatSize } from "../../../libs/format.js";
+import { formatMegabytes, formatSize, GAME_STATUSES, STATUS_TONE, statusOf } from "../../../libs/format.js";
 import { gameMetadataStatus, useGameMetadata } from "../../../libs/metadata.js";
+import { gameScreenPath } from "../../../libs/tabs.js";
 import { toast } from "../../../shell/Shell.jsx";
 import { GameCover } from "../../../screens/library/HeroArt.jsx";
 import { GameAppearance, GameForget, GameImage, GameImageSearch, GameInfoForm, GameMatch, GameReset, IMAGE_KINDS } from "./GameMetadata.jsx";
@@ -57,6 +58,11 @@ const sourcePath = (consoleId, slug) => `${gamesPath(consoleId)}/${encodeURIComp
 const gamePagePath = (consoleId, slug, reference, page = "game", extra = {}) => `${sourcePath(consoleId, slug)}/${page}?${new URLSearchParams({ ref: reference, ...extra })}`;
 
 const HERE = "here";
+
+// LA PAGE D'UN JEU DANS LES RÉGLAGES, depuis sa fiche de la bibliothèque (chantier 68 ; le porteur, 2026-11-19 : « ça
+// permettra de faire les allers-retours plus facilement ») : sa source d'après le jeu (un disque, un serveur fédéré, ou
+// cette machine).
+export const gameSettingsPath = (consoleId, { disk = null, peer = null } = {}, reference) => gamePagePath(consoleId, peer ? `server-${peer}` : disk ? `disk-${disk}` : HERE, reference);
 // `{kind: "here" | "disk" | "server", id}`, ou null pour un segment qui ne désigne rien.
 const sourceOf = (slug) => {
     const match = /^(disk|server)-(.+)$/.exec(slug || "");
@@ -273,7 +279,11 @@ function SourcePage() {
     const downloads = useDownloads();
     const minSize = Math.max(0, Number(read("minSize")) || 0);
     const heaviest = read("sort") === "size";
-    const games = (answer?.games || []).filter((game) => !minSize || (game.sizeBytes || 0) >= minSize * MEGABYTE);
+    // LES STATUTS, UN INTERRUPTEUR CHACUN (le porteur, 2026-11-19), comme la bibliothèque d'une console : les écartés
+    // dans `?nostatus=`, tous montrés par défaut.
+    const hiddenStatuses = read("nostatus").split(",").filter(Boolean);
+    const games = (answer?.games || []).filter((game) => (!minSize || (game.sizeBytes || 0) >= minSize * MEGABYTE)
+        && !hiddenStatuses.includes(statusOf(game) || "untested"));
 
     if (heaviest) {
         games.sort((left, right) => (right.sizeBytes || 0) - (left.sizeBytes || 0));
@@ -307,12 +317,19 @@ function SourcePage() {
                     {answer && !answer.games ? <Note className="mt-0">{refusalOf(answer.failure, t)}</Note> : (
                         <Listing items={games} loading={answer === null} search={search} onSearch={(q) => update({ q })} page={read("page")} onPage={(page) => update({ page })}
                             placeholder={t("gameAdmin.search")} found={t("gameAdmin.found", { count: games.length })} empty={t(minSize ? "gameAdmin.noneHeavier" : "gameAdmin.none", { size: minSize })}
-                            filterCount={(minSize ? 1 : 0) + (heaviest ? 1 : 0)} filterTitle={t("gameAdmin.filterTitle")} filterHelp={t("gameAdmin.filterHelp")} filters={(
+                            filterCount={(minSize ? 1 : 0) + (heaviest ? 1 : 0) + hiddenStatuses.length} filterTitle={t("gameAdmin.filterTitle")} filterHelp={t("gameAdmin.filterHelp")} filters={(
                                 <>
                                     <RangeRow id="gs-min-size" min={0} max={1000} step={10} label={t("gameAdmin.minSize")} help={t("gameAdmin.minSizeHelp")}
                                         value={minSize} onChange={(value) => update({ minSize: Number(value) > 0 ? Math.round(Number(value)) : null, page: null })} />
                                     <SwitchRow id="gs-heaviest" label={t("gameAdmin.heaviest")} help={t("gameAdmin.heaviestHelp")} checked={heaviest}
                                         onChange={(on) => update({ sort: on ? "size" : null, page: null })} />
+                                    {GAME_STATUSES.map((status) => (
+                                        <SwitchRow key={status} id={`gs-status-${status}`} label={t(`status.${status}`)} checked={!hiddenStatuses.includes(status)}
+                                            onChange={(on) => {
+                                                const next = on ? hiddenStatuses.filter((entry) => entry !== status) : [...hiddenStatuses, status];
+                                                update({ nostatus: next.length ? next.join(",") : null, page: null });
+                                            }} />
+                                    ))}
                                 </>
                             )}
                             placeholderRow={() => <PlaceholderRow lead="cover" />}
@@ -323,7 +340,7 @@ function SourcePage() {
                                 return (
                                     <NavRow key={game.reference} id={key} icon="bi-disc" tone={peer && game.here ? "green" : "slate"} label={game.title}
                                         lead={<GameCover consoleId={consoleId} reference={game.reference} game={gameSourceOf(source)} />}
-                                        help={[peer && game.here ? t("gameAdmin.alreadyHere") : null, downloadState(downloading, t), formatSize(game.sizeBytes)].filter(Boolean).join(" · ")}
+                                        help={[t(`status.${statusOf(game) || "untested"}`), peer && game.here ? t("gameAdmin.alreadyHere") : null, downloadState(downloading, t), formatSize(game.sizeBytes)].filter(Boolean).join(" · ")}
                                         onOpen={() => open(gamePagePath(consoleId, slug, game.reference), key, { game })} />
                                 );
                             }} />
@@ -339,7 +356,9 @@ function SourcePage() {
 // retirer de son disque ou de la bibliothèque, dans « Danger » (ses sauvegardes restent : deleteRom n'y touche pas).
 function LocalGame({ consoleId, slug, source, game }) {
     const { t } = useTranslation();
-    const { refreshCounts } = useData();
+    const { refreshCounts, consoles } = useData();
+    const navigate = useNavigate();
+    const console = consoles.find((entry) => entry.id === consoleId);
     const { open, back } = useSettingsNavigation();
     const gameSource = gameSourceOf(source);
     const metadata = useGameMetadata(consoleId, game.reference, gameSource);
@@ -371,6 +390,9 @@ function LocalGame({ consoleId, slug, source, game }) {
                         <InfoRow icon="bi-tags" label={t("gameAdmin.fields.genres")} value={joined(metadata?.genres)} />
                         <InfoRow icon="bi-collection" label={t("gameAdmin.fields.series")} value={metadata?.series} />
                         <InfoRow icon="bi-upc" label={t("gameAdmin.fields.gameId")} value={patch?.gameId} />
+                        {/* SON STATUT (le porteur, 2026-11-19 : « dans la fiche du jeu […] tu peux rajouter le statut ? »). */}
+                        <InfoRow icon="bi-clipboard-check" tone={STATUS_TONE[statusOf(game) || "untested"]} label={t("games.status")}
+                            value={t(`status.${statusOf(game) || "untested"}`)} />
                         <InfoRow icon="bi-hdd" label={t("game.size")} value={formatSize(game.sizeBytes)} />
                     </Rows>
                 )}
@@ -383,6 +405,9 @@ function LocalGame({ consoleId, slug, source, game }) {
                     <NavRow id="gm-infos" icon="bi-pencil" label={t("gameAdmin.fixInfos")} help={t("gameAdmin.fixInfosHelp")} onOpen={page("infos", "gm-infos")} />
                     <NavRow id="gm-match" icon="bi-search" label={t("gameAdmin.wrongGame")} help={t("gameAdmin.matchHelp")} onOpen={page("match", "gm-match")} />
                     <NavRow id="gm-forget" icon="bi-eraser" label={t("gameAdmin.meta.forget")} help={t("gameAdmin.cacheHelp")} onOpen={page("forget", "gm-forget")} />
+                    {/* L'ALLER-RETOUR AVEC LA BIBLIOTHÈQUE (chantier 68) : sa fiche, là où on la joue. */}
+                    {console && <NavRow id="gm-library" icon="bi-collection-play" tone="green" label={t("gameAdmin.openInLibrary")} help={t("gameAdmin.openInLibraryHelp")}
+                        onOpen={() => navigate(gameScreenPath(console, game.reference))} />}
                 </Rows>
             </Section>
             {/* Réinitialiser la fiche couvre ses textes et ses images (les pages « Corriger les informations » et

@@ -18,15 +18,17 @@ import { setGameInputSuspended } from "../../engine/libs/gameInput.js";
 import { connectedGamepads } from "../../engine/libs/keyMapping.js";
 import { useScreenOrientation } from "../../libs/screenOrientation.js";
 import { usePhysicalGamepad } from "../../engine/libs/gamepadPresence.js";
-import { useDisplayNames } from "../../libs/SessionPool.js";
+import { useNames } from "../../libs/displayNames.js";
 import { onDeviceFailed, recentDeviceFailure } from "../../engine/libs/deviceStream.js";
 import { streamHostUsername } from "../../libs/serverBase.js";
 import { requestFullscreen, exitFullscreen, isFullscreen, isMobileDevice, isTabletDevice } from "../../libs/device-detection.js";
 import { getStoredUsername, useConsoles } from "../../libs/sharedHost.js";
 import { PAD_LOOK } from "../../libs/padLook.jsx";
 import { useMenuHotkey } from "../../libs/play.js";
+import { can } from "../../libs/capabilities.js";
 import { focusElement, suspendNavigation, useScreenInput } from "../../libs/input.js";
 import PlayLaunch from "./Launch.jsx";
+import { Bell, useSessionNotifications } from "./Bell.jsx";
 import PlayNotices from "./Notices.jsx";
 import { StatsPanel, StatsStrip, STATS_STRIP_HEIGHT } from "./Stats.jsx";
 import { PlayMenu, useQuitFlow } from "./Menu.jsx";
@@ -124,8 +126,9 @@ function usePictureInPictureOnHide(screenRef) {
 
 // L'ARRÊT POUR TOUT LE MONDE (réservé au propriétaire, le kernel en juge). Une partie de l'appareil
 // n'a pas de session sur un serveur : le `terminate` du hook l'arrête.
-function stopForEveryone(session, token) {
-    return session.platform === "device" ? Promise.resolve() : stopSession(session.platform, session.id, token);
+// `standby` : une console Remote Play se met en veille avant l'arrêt (chantier 69).
+function stopForEveryone(session, token, standby = false) {
+    return session.platform === "device" ? Promise.resolve() : stopSession(session.platform, session.id, token, null, standby);
 }
 
 // `watchOnly` (`#747`) : LE « WATCH » GRAND PUBLIC, celui que le Chromecast montre — personne n'a de jeton chez l'hôte
@@ -187,13 +190,33 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     const [gameExited, setGameExited] = useState(false);
     // Dit par la surface vidéo elle-même (GatewayWebRTC suit le compteur d'images).
     const [videoSilent, setVideoSilent] = useState(false);
-    const displayNames = useDisplayNames();
-    const nameOf = useCallback((username) => displayNames[username] || username, [displayNames]);
     const authorityGoneRef = useRef(null);
     useEffect(() => () => clearTimeout(authorityGoneRef.current), []);
     const [slotRequests, setSlotRequests] = useState([]);
     const [broadcastPlayers, setBroadcastPlayers] = useState([]);
     const [broadcastWatchers, setBroadcastWatchers] = useState([]);
+    // Les noms affichés de qui joue et de qui regarde, demandés au besoin (un spectateur qui vient d'arriver n'est pas
+    // dans la liste des parties).
+    const displayNames = useNames([session.owner, ...broadcastPlayers.map((player) => player.username), ...broadcastWatchers]);
+    const nameOf = useCallback((username) => displayNames[username] || username, [displayNames]);
+    // LA LISTE DES JOUEURS DU MENU (chantier 68) : les manettes de la console, son propriétaire, et depuis quand plus
+    // personne ne joue (le décompte de son arrêt).
+    const [roster, setRoster] = useState({ maxPlayers: 0, owner: "", idleSince: null });
+    // UN JOUEUR PARTI RESTE 30 SECONDES « DÉCONNECTÉ » DANS LA LISTE (le porteur, 2026-11-19 : « c'est juste pour la
+    // visuelle. En backend on ne change rien […] pour éviter de voir la disparition d'un joueur d'un seul coup ») — sa
+    // place est déjà libre pour le child ; il revient, sa ligne redevient la sienne.
+    const [departed, setDeparted] = useState([]);
+    const departedTimers = useRef(new Map());
+    useEffect(() => () => departedTimers.current.forEach(clearTimeout), []);
+    const playersRef = useRef([]);
+    // LES NOTIFICATIONS DE LA PARTIE ET LA CLOCHE (Bell.jsx) ; le son suit celui de la partie (posé plus bas, une fois
+    // ses réglages lus).
+    const soundRef = useRef(true);
+    const notifications = useSessionNotifications(soundRef);
+    const notify = notifications.push;
+    // MA DEMANDE DE MANETTE EN COURS : sa réponse (ou son silence) devient une notification.
+    const outgoingRef = useRef(null);
+    useEffect(() => () => clearTimeout(outgoingRef.current?.timer), []);
 
     const hasPhysicalGamepad = usePhysicalGamepad();
     // La surface qui passe en plein écran : l'image ET ce qui est posé dessus.
@@ -302,9 +325,29 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         setChildSlot(message.you?.slotId ?? null);
         setChildControls(message.you?.controls ?? 0);
         setChildLoan({ canReclaim: message.you?.canReclaim === true, canReturn: message.you?.canReturn === true, lentTo: message.lentTo || "" });
-        setBroadcastPlayers((message.players ?? []).map((player) => ({ username: player.username, role: player.isOwner ? "owner" : "player", slot: player.slotId, lentTo: player.lentTo || "" })));
+        const players = (message.players ?? []).map((player) => ({ username: player.username, role: player.isOwner ? "owner" : "player", slot: player.slotId, lentTo: player.lentTo || "", joinedAt: player.joinedAt || null }));
+        const maxPlayers = message.maxPlayers || 0;
+        setBroadcastPlayers(players);
         setBroadcastWatchers(message.watchers ?? []);
-        setSlotRequests(message.pendingHandover && message.pendingHandover.to === user?.username ? [{ from: message.pendingHandover.from }] : []);
+        setRoster({ maxPlayers, owner: message.owner || "", idleSince: message.idleSince || null });
+        const pending = message.pendingHandover;
+        setSlotRequests(pending && pending.to === user?.username ? [{ from: pending.from, expiresAt: Date.parse(pending.expiresAt) || Date.now() + 30000 }] : []);
+
+        // Les joueurs partis (pas le propriétaire : sa place l'attend, sa ligne le dit d'elle-même), et ceux revenus.
+        const held = new Set(players.map((player) => player.username));
+        const gone = playersRef.current.filter((player) => !held.has(player.username) && player.username !== message.owner);
+        playersRef.current = players;
+        setDeparted((current) => {
+            const kept = current.filter((entry) => !held.has(entry.username) && !gone.some((player) => player.username === entry.username));
+            return [...kept, ...gone.map((player) => ({ username: player.username, slot: player.slot }))];
+        });
+        for (const player of gone) {
+            clearTimeout(departedTimers.current.get(player.username));
+            departedTimers.current.set(player.username, setTimeout(() => {
+                departedTimers.current.delete(player.username);
+                setDeparted((current) => current.filter((entry) => entry.username !== player.username));
+            }, 30000));
+        }
         setKernelPrivateReady(true);
         setChildStateSeen(true);
 
@@ -321,18 +364,19 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         if (before) {
             for (const username of presents) {
                 if (!before.has(username) && username !== user?.username) {
-                    context.toast.open(t("play.joined", { name: nameOf(username) }));
+                    const slot = players.find((player) => player.username === username)?.slot;
+                    notify({ title: t("play.notifications.joined"), subtitle: (nameOf) => (slot ? t("play.notifications.nameSlot", { name: nameOf(username), slot, max: maxPlayers }) : nameOf(username)) });
                 }
             }
             for (const username of before) {
                 if (!presents.has(username) && username !== user?.username) {
-                    context.toast.open(t("play.left", { name: nameOf(username) }));
+                    notify({ title: t("play.notifications.left"), subtitle: (nameOf) => nameOf(username) });
                 }
             }
         }
 
         onWatchingChange?.(watching);
-    }, [onWatchingChange, user?.username, context, t, nameOf]);
+    }, [onWatchingChange, user?.username, notify, t, nameOf]);
 
     // « TOUJOURS LÀ ? » — la question du child à qui n'a rien touché depuis vingt-neuf minutes.
     // Toucher n'importe quoi y répond (le battement suivant porte `hadInput`) ; le bouton est pour qui
@@ -349,9 +393,21 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         });
     }, [context, t]);
 
+    // LA RÉPONSE À MA DEMANDE, une notification : « Demande pour récupérer la manette 3/4 — François a refusé ».
+    const settleOutgoing = useCallback((subtitle) => {
+        const outgoing = outgoingRef.current;
+        clearTimeout(outgoing?.timer);
+        outgoingRef.current = null;
+        notify({ title: outgoing ? t("play.notifications.asked", { slot: outgoing.slot, max: outgoing.max }) : t("play.notifications.askedAny"), subtitle });
+    }, [notify, t]);
+
     const handleChildResult = useCallback((message) => {
         if (message.status === "received") {
-            context.toast.open(t(message.lent ? "play.handover.lentToYou" : "play.handover.receivedFrom", { name: nameOf(message.from) }), { variant: "success" });
+            if (outgoingRef.current?.to === message.from) {
+                settleOutgoing((nameOf) => t("play.notifications.accepted", { name: nameOf(message.from) }));
+            } else {
+                notify({ title: t("play.notifications.received"), subtitle: (nameOf) => t(message.lent ? "play.handover.lentToYou" : "play.handover.receivedFrom", { name: nameOf(message.from) }) });
+            }
 
             return;
         }
@@ -369,14 +425,19 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         }
         // Un refus du détenteur : le mien sur l'autre appareil, ou celui de la personne à qui je l'ai demandée.
         if (message.status === "denied") {
-            context.toast.open(t(message.move ? "play.handover.moveDenied" : "play.handover.denied"), { variant: "warning" });
+            if (message.move) {
+                notify({ title: t("play.notifications.moveTitle"), subtitle: t("play.handover.moveDenied") });
+            } else {
+                const to = outgoingRef.current?.to;
+                settleOutgoing(to ? (nameOf) => t("play.notifications.refused", { name: nameOf(to) }) : t("play.handover.denied"));
+            }
 
             return;
         }
         // « abandoned » n'est pas un refus : le monde a bougé. Un refus dit pourquoi quand le child l'a nommé.
         const reasons = { "already playing in another session": "play.handover.playsElsewhere", "no slot available": "play.handover.noSlot" };
-        context.toast.open(t(message.status === "abandoned" ? "play.handover.claimFailed" : reasons[message.reason] || "play.handover.denied"), { variant: "warning" });
-    }, [context, t, nameOf, user?.username]);
+        settleOutgoing(t(message.status === "abandoned" ? "play.handover.claimFailed" : reasons[message.reason] || "play.handover.denied"));
+    }, [context, t, nameOf, user?.username, notify, settleOutgoing]);
 
     const childSocket = useChildSessionWs({
         sessionId: childSessionId,
@@ -408,7 +469,17 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         if (action) {
             childSocket.intent(action, message.to ?? null);
         }
-    }, [childSocket]);
+        // MA DEMANDE À UN JOUEUR : sans réponse avant que le child ne l'oublie (HandoverTTL, 30 s), « n'a pas donné suite ».
+        if (action === "request-handover" && message.to && message.to !== user?.username) {
+            clearTimeout(outgoingRef.current?.timer);
+            const slot = playersRef.current.find((player) => player.username === message.to)?.slot ?? "?";
+            const to = message.to;
+            outgoingRef.current = {
+                to, slot, max: roster.maxPlayers || "?",
+                timer: setTimeout(() => settleOutgoing((nameOf) => t("play.notifications.noAnswer", { name: nameOf(to) })), 31000),
+            };
+        }
+    }, [childSocket, user?.username, roster.maxPlayers, settleOutgoing, t]);
 
     // « JE SUIS VENU JOUER » (?play=1) — une INTENTION, jamais un droit : un join ordinaire, que le
     // child valide comme n'importe quel autre. Elle attend la réponse du CHILD lui-même
@@ -514,6 +585,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     });
     const switchesStore = switchesStoreRef.current;
     const switches = useSyncExternalStore(switchesStore.subscribe, switchesStore.getSnapshot);
+    soundRef.current = Boolean(switches.isSoundEnabled);
     useAdaptiveQuality({ screenRef, mode: switches.videoQuality, quality: { streams: switches.videoStreams, current: switches.videoCurrent, want: switches.videoWant }, paused: !introLive });
 
     usePictureInPictureOnHide(screenRef);
@@ -576,52 +648,44 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [drivesPad, hasPhysicalGamepad, switchesStore]);
 
-    // LA DEMANDE DE MANETTE adressée à celui qui la tient : le propriétaire PRÊTE (#274), un invité DONNE.
-    const slotPromptRef = useRef(null);
+    // LA DEMANDE DE MANETTE adressée à celui qui la tient : le propriétaire PRÊTE (#274), un invité DONNE. Plus de fenêtre
+    // par-dessus le jeu (chantier 68) : une notification, la cloche le temps qu'elle vaut, la réponse depuis le menu.
+    // MON AUTRE APPAREIL DEMANDE MA PLACE (chantier 65) : la libérer, ou la garder ; sans réponse en 15 s, gardée. Une
+    // demande d'un autre joueur s'éteint avec celle du child (HandoverTTL) : son silence n'est pas un refus envoyé.
+    const incomingRef = useRef(null);
     useEffect(() => {
         const request = slotRequests[0];
+        const open = incomingRef.current;
 
-        if (!request || isWatching || slotPromptRef.current === request.from) {
+        // Retirée (le demandeur est parti, la place a changé de main) : la notification ne se répond plus.
+        if (open && (!request || request.from !== open.from)) {
+            notifications.settle(open.id, { state: "expired" });
+            incomingRef.current = null;
+        }
+        if (!request || isWatching || incomingRef.current) {
             return;
         }
-        slotPromptRef.current = request.from;
-        // MON AUTRE APPAREIL DEMANDE MA PLACE (chantier 65) : la libérer, ou la garder ; sans réponse en 15 s, gardée.
-        if (request.from === user?.username) {
-            context.toast.open(t("play.handover.movePrompt"), {
-                variant: "confirm",
-                takesPad: true,
-                expiresAfter: 15000,
-                confirmLabel: t("play.handover.release"),
-                cancelLabel: t("play.handover.keep"),
-                onConfirm: () => {
-                    slotPromptRef.current = null;
-                    sessionSend({ type: "cedeslot" });
-                    inputRef.current?.onSlotGiveaway?.();
-                },
-                onCancel: () => {
-                    slotPromptRef.current = null;
-                    sessionSend({ type: "slotrequestdenied" });
-                },
-            });
-
-            return;
-        }
+        const moves = request.from === user?.username;
         const lending = myRole === "owner";
-        context.toast.open(t(lending ? "play.handover.lendPrompt" : "play.handover.givePrompt", { name: nameOf(request.from) }), {
-            variant: "confirm",
-            takesPad: true,
-            confirmLabel: t(lending ? "play.handover.lend" : "play.handover.give"),
-            cancelLabel: t("play.handover.keep"),
+        const id = notify({
+            asks: true,
+            title: t(moves ? "play.notifications.moveAsked" : lending ? "play.notifications.lendAsked" : "play.notifications.giveAsked"),
+            subtitle: moves ? t("play.notifications.otherDevice") : (nameOf) => nameOf(request.from),
+            expiresAt: moves ? Date.now() + 15000 : request.expiresAt,
+            confirm: {
+                title: t(moves ? "play.notifications.moveAsked" : lending ? "play.handover.lendTitle" : "play.handover.giveTitle"),
+                message: t(moves ? "play.handover.movePrompt" : lending ? "play.handover.lendPrompt" : "play.handover.givePrompt", { name: nameOf(request.from) }),
+                confirmLabel: t(moves ? "play.handover.release" : lending ? "play.handover.lend" : "play.handover.give"),
+                cancelLabel: t("play.handover.keep"),
+            },
             onConfirm: () => {
-                slotPromptRef.current = null;
                 sessionSend({ type: "cedeslot" });
                 inputRef.current?.onSlotGiveaway?.();
             },
-            onCancel: () => {
-                slotPromptRef.current = null;
-                sessionSend({ type: "slotrequestdenied" });
-            },
+            onCancel: () => sessionSend({ type: "slotrequestdenied" }),
+            onExpire: moves ? () => sessionSend({ type: "slotrequestdenied" }) : null,
         });
+        incomingRef.current = { id, from: request.from };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [slotRequests, isWatching]);
 
@@ -735,7 +799,9 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     // arrêter pour tout le monde (le propriétaire seulement). Sauver est une décision à part.
     const quit = async ({ onQuit, saveStateOnQuit: save }) => {
         const ownerHere = !isWatching && myRole === "owner";
-        const ends = onQuit === "kill" && ownerHere;
+        // QUITTER ET METTRE LA CONSOLE EN VEILLE (Remote Play, chantier 69) : un arrêt, et la veille avant lui.
+        const standby = onQuit === "standby" && ownerHere && session.platform === "remoteplay";
+        const ends = (onQuit === "kill" || standby) && ownerHere;
         const freezes = onQuit === "pause" && ownerHere && (session.platform === "retrogaming" || session.platform === "device");
 
         if (save && !isWatching && input.saveOnQuit) {
@@ -748,7 +814,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         }
         if (ends) {
             input.terminate?.();
-            stopForEveryone(session, token).catch(() => context.toast.open(t("play.quit.stopFailed"), { variant: "error" }));
+            stopForEveryone(session, token, standby).catch(() => context.toast.open(t("play.quit.stopFailed"), { variant: "error" }));
         } else {
             input.disconnect?.();
         }
@@ -788,7 +854,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     // qu'elle tenait, libs/gameInput.js) ; sans panneau et la manette en main, la navigation du launcher
     // se tait et plus rien n'a le focus. Une question qui demande la manette (« X demande votre
     // manette ») compte comme un panneau, et une fenêtre de Skeleton (la sortie) aussi.
-    const overlays = panels.length + (notices.takesPad ? 1 : 0) + Skeleton.useOverlayCount();
+    const overlays = panels.length + Skeleton.useOverlayCount();
     const playing = drivesPad && overlays === 0;
     useEffect(() => {
         suspendNavigation(playing);
@@ -856,9 +922,28 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     }, [openMenu]);
 
     const menuButtonVisible = useIdleVisibility(playing);
+    // LES TEXTES POSÉS SUR LA VIDÉO S'ESTOMPENT COMME LE BOUTON DU MENU (chantier 68 ; le porteur, 2026-11-19 : « les textes
+    // comme "you are watching" doivent disparaître auto (fade out) comme le bouton du menu ») — qu'on joue ou qu'on
+    // regarde : ils reviennent au même geste. Les boutons qui les suivent (reprendre la manette, la prendre) restent.
+    const overlayTextVisible = useIdleVisibility(true);
+    const overlayTextStyle = { opacity: overlayTextVisible ? 1 : 0, transition: "opacity 300ms ease" };
     const isPadVisible = Boolean(drivesPad && switches.isControllerVisible && controller?.Component);
     const menuButtonStyle = MENU_BUTTON_STYLE;
     const menuSlide = useSlideToOpen(openMenu);
+    // Le voyage dans le temps à l'écran (chantier 69) : ce que le cœur sait faire (`timeTravelProps`), pour le
+    // propriétaire qui joue ; les deux s'excluent, comme dans le menu d'avant.
+    const ownerPlays = myRole === "owner" && !isWatching && (session.platform === "retrogaming" || session.platform === "device");
+    const travel = input.extraProps?.timeTravelProps;
+    const timeTravel = !ownerPlays ? [] : [
+        can("rewind") && travel?.rewindSupported && {
+            key: "pw-rewind", icon: "bi-skip-backward", label: t("play.timeTravel.rewind"), on: Boolean(switches.isRewinding),
+            toggle: () => switchesStore.setValues({ isRewinding: !switches.isRewinding, ...(!switches.isRewinding ? { isFastForwarding: false } : {}) }),
+        },
+        travel?.fastForwardSupported && {
+            key: "pw-forward", icon: "bi-fast-forward", label: t("play.timeTravel.fastForward"), on: Boolean(switches.isFastForwarding),
+            toggle: () => switchesStore.setValues({ isFastForwarding: !switches.isFastForwarding, ...(!switches.isFastForwarding ? { isRewinding: false } : {}) }),
+        },
+    ].filter(Boolean);
 
     // L'écran du lancement couvre la page jusqu'à l'image du JEU et la manette prête ; un spectateur
     // (pas de lancement) attend l'image seule — il n'aura jamais de manette.
@@ -973,7 +1058,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
                         </PadLookContext.Provider>
                         {!isWatching && !drivesPad && childLoan.canReclaim && (
                             <div className="p-3 text-center small">
-                                <p>{t("play.handover.lentNotice", { name: nameOf(childLoan.lentTo) })}</p>
+                                <p style={overlayTextStyle}>{t("play.handover.lentNotice", { name: nameOf(childLoan.lentTo) })}</p>
                                 <button type="button" className={button("main")} data-nav data-key="pw-reclaim" onClick={() => sessionSend({ type: "reclaimslot" })}>{t("play.handover.reclaim")}</button>
                             </div>
                         )}
@@ -983,10 +1068,10 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
                                     partie qui n'a pas commencé, pas une partie en panne. */}
                                 {broadcastPlayers.length === 0 && session.owner === user?.username ? (
                                     <>
-                                        <p>{t("play.watchIdle")}</p>
+                                        <p style={overlayTextStyle}>{t("play.watchIdle")}</p>
                                         <button type="button" className={button("main")} data-nav data-key="pw-join" onClick={() => sessionSend({ type: "requestslot" })}>{t("play.join")}</button>
                                     </>
-                                ) : t("play.watching")}
+                                ) : <span style={overlayTextStyle}>{t("play.watching")}</span>}
                             </div>
                         )}
                     </div>
@@ -1027,6 +1112,21 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
                     }}>
                     <i className="bi bi-list"></i>
                 </button>
+                {/* RETOUR RAPIDE ET AVANCE RAPIDE, À L'ÉCRAN, EN BAS À GAUCHE (chantier 69 ; le porteur, 2026-11-19 : « il est
+                    préférable de mettre les boutons "rewind" et "fast forward" sur l'écran, comme le menu […] mais à gauche.
+                    […] des boutons enfoncés, et quand ils sont activés on doit voir ce qui se passe sur l'écran ») : deux
+                    bascules rondes (aria-pressed), pleines tant qu'elles agissent — elles ne s'estompent pas alors —, sinon
+                    elles suivent le bouton du menu. Les pouvoirs du propriétaire qui joue, quand le cœur les a. */}
+                {timeTravel.length > 0 && (
+                    <div className="position-absolute d-flex gap-2" style={{ bottom: menuButtonStyle.bottom, left: "max(12px, env(safe-area-inset-left))", zIndex: 1003 }}>
+                        {timeTravel.map(({ key, icon, label, on, toggle }) => (
+                            <button key={key} type="button" className="play-round" data-nav data-key={key} aria-pressed={on} aria-label={label} title={label}
+                                style={{ opacity: on || menuButtonVisible ? 1 : MENU_IDLE_OPACITY }} onClick={toggle}>
+                                <i className={`bi ${icon}`}></i>
+                            </button>
+                        ))}
+                    </div>
+                )}
                 {/* LA CHALEUR ET LA BATTERIE DE L'APPAREIL QU'ON TIENT, à gauche du bouton du menu, dans l'application
                     seulement (un navigateur n'en a pas) ; elles s'effacent et reviennent avec lui. */}
                 {isHandheld && !menuSlide.held && (statsResult?.device?.temperatureCelsius != null || statsResult?.device?.batteryPercent != null) && (
@@ -1069,6 +1169,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
                 )}
 
                 <PlayNotices notices={notices} />
+                <Bell visible={notifications.bellVisible && !panels.includes("menu")} onOpen={openMenu} />
 
                 {panels.includes("menu") && (
                     <PlayMenu
@@ -1080,6 +1181,9 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
                         sessionSend={sessionSend}
                         players={broadcastPlayers}
                         watchers={broadcastWatchers}
+                        roster={roster}
+                        departed={departed}
+                        notifications={notifications}
                         loan={childLoan}
                         context={context}
                         panels={panels}

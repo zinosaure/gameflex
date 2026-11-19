@@ -43,8 +43,10 @@ GameFlex on the phone, which plays its own games and streams them to the screens
   take it back when they are done, or give them your place for good. Someone watching can ask
   for the controller. It all works from a distance.
 - **Anyone can watch.** Send a link: friends watch your game live in their browser, without an
-  account. The **Live** tab shows the games being played right now, ready to watch or join, and
-  members you invite get a notification.
+  account. **Live**, behind the GameFlex name at the top, shows the games being played right now,
+  ready to watch or join, and members you invite get a notification. In a game, the menu lists the
+  players, and a small bell tells you who joins, leaves or asks for your controller, without
+  covering the game.
 - **No Internet needed with the phone.** The [Android app](docs/android.md) turns a phone into the
   console: friends nearby open its address in their browser and play with you, over the same
   Wi-Fi. On a train or a plane, the phone can share its own hotspot.
@@ -175,16 +177,15 @@ should work, but has not been tried.
     second at 540p, depending on the game; big games take a few minutes to start the first time (their
     shaders compile).
   - **PlayStation 4:** Final Fantasy VII Remake, Final Fantasy XV Pocket Edition, Grand Theft Auto
-    V, Kingdom Hearts III, Kingdom Hearts HD 2.8 Final Chapter Prologue, Driveclub, Sonic Mania
-    Plus.
+    V, Kingdom Hearts III, Kingdom Hearts HD 2.8 Final Chapter Prologue, Driveclub, FIFA 22, EA
+    Sports FC 27 (its matches play, with some stutter), Sonic Mania Plus. FIFA 22 and FC 27 need
+    their patch, which GameFlex offers.
   - **PlayStation 3:** Final Fantasy XIII. **Switch:** Mini Metro, EA Sports FC 27. **Switch 2:** The
     Legend of Zelda: Ocarina of Time, with its saves. **Wii U:** New Super Mario Bros. U (as a disc
     image and extracted). **Xbox:** Dead or Alive 3. **Xbox 360:** Halo 3.
   - **PC Ports:** The Legend of Zelda: Majora's Mask (Zelda 64: Recompiled).
 
-  Not yet playable: FIFA 22 (graphical glitches on the pitch) and EA Sports FC 27 (it stops after
-  its title screen) on PlayStation 4, Final Fantasy XVI (it stays on its loading screen), the
-  Marvel games. Every game is different: see the
+  Not yet playable: Final Fantasy XVI (it stays on its loading screen), the Marvel games. Every game is different: see the
   known limitations in [Consoles](docs/consoles.md).
 - **Remote Play:** with a PlayStation 5 (Black Myth: Wukong), from a phone. The PlayStation 4 has
   not been tried: we have none.

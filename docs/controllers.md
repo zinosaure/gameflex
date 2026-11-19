@@ -76,24 +76,30 @@ Change them in **Settings › Gamepads**, with *Keyboard* as the controller.
   to a faint outline and comes back at your next touch on the game screen. **Esc** on a keyboard,
   or, on a controller, hold **L2** and **Home** together for three seconds. While L2 is held, Home
   does not reach the game.
-- **The tiles:** **Resume**, **Save states** (save the game in a slot, load it later), the
-  **On-screen controller**, the **Game sound**, **Rewind** (retro consoles: step back through the
-  last seconds) and **Fullscreen** (in a web browser; the Android app is always fullscreen).
+- **The tiles:** **Resume**, the **On-screen controller**, the **Game sound** and **Fullscreen** (in
+  a web browser; the Android app is always fullscreen).
+- **Notifications:** what happened during the game, the latest first, five per page: someone
+  joining or leaving, a request for your controller, the answer to your own request. A request is
+  answered here: touch it, then hand your controller over or keep it. Each new one rings a small
+  bell at the top right of the game for a few seconds, or as long as a request waits for its
+  answer, instead of covering the game.
 - **Sound after a reload:** a web browser plays no sound on a page you have not touched yet — a
   game page you reload, or open from a link to watch. The page then shows **Tap the screen to turn
   on sound**, and the sound starts at your first touch, click or key press anywhere on it; a
   controller button does not count for the browser. The Android app plays it at once.
-- **Game:** on a retro console, **Fast forward** (the game runs four times faster) and **Cheats**
-  (Game Genie, Action Replay, GameShark…, kept on your account for each game); the **Disc** of a multi-disc game, and,
+- **Game:** on a retro console, **Save states** (save the game in a slot, load it later) and
+  **Cheats** (Game Genie, Action Replay, GameShark…, kept on your account for each game); the **Disc**
+  of a multi-disc game, and,
   on a recent console, **Type some text**, which types into the field the game has open, as a
   plugged-in keyboard would.
 - **Controller:** **Haptic feedback**, **Invisible sticks** and **Opacity** while the on-screen
   controller shows, **Rumble**, and **DualShock controller** on the first PlayStation. They are the
   same settings as in **Settings › Gamepads**: a change in one place shows in the other. **Opacity**
   is the one of the layout used in game (**Edit the layout**); with no layout of your own, it keeps
-  the default button positions.
-- **With others:** inviting people and handing the controller over (see
-  [Play together](#play-together)).
+  the default button positions, at 40 %.
+- **Players:** one line per controller of the console: who holds it and for how long, or a free
+  place (see [Play together](#play-together)).
+- **Invitation:** inviting people, sending the link, the QR code, and handing your controller over.
 - **Picture and sound:** **Video**, the stream this screen receives (see below); **Orientation**
   (on a phone or a tablet), the same setting as **Settings › Application › Orientation**, applied at
   once without stopping the game; **On-screen
@@ -105,8 +111,14 @@ Change them in **Settings › Gamepads**, with *Keyboard* as the controller.
   happens to it: **Quit and leave the game running**, **Quit and pause the game**, or **Quit and end
   the game** for everyone. On a retro console, **Save the state when leaving** keeps where you were.
 
+**Rewind and fast forward**, on a retro console, are two round buttons at the bottom left of the
+game: touch one to turn it on, again to turn it off, while you watch the game. **Rewind** steps back
+through the last seconds, **Fast forward** runs the game four times faster; one turns the other
+off. While one is on, it stays lit; otherwise both fade with the menu button.
+
 Save states, rewind, fast forward, cheats, the disc and resetting the console belong to the player
-who started the game.
+who started the game. The texts over the game, such as **You are watching this game**, fade out like
+the menu button and come back at your next touch.
 
 ## Picture quality
 
@@ -131,11 +143,15 @@ GameCube, Wii, Mega Drive, Saturn, Dreamcast, PlayStation 1 to 5, Xbox and Xbox 
 Switch; one on the PSP and in Remote Play; two on the others. Each one plays from their own device,
 wherever they are.
 
-**Join a game:** on **Live**, the first tab, press **Join** to play or **Watch** to look on. Inside
-the game, **Take the controller** takes a free place.
+**Join a game:** on **Live** (the GameFlex name, at the top), press **Join** to play or **Watch** to
+look on. Inside the game, the menu's **Players** section shows every controller: signed in and
+watching, touch a free place to join, or a player to ask for their controller. A player who just
+left shows as *disconnected* for a few seconds before their place frees. Someone watching without
+an account does not see this section.
 
-**When all places are taken:** **Ask for the controller**, in the game menu, asks a player for
-theirs. They answer from their screen: **Lend**, **Give my place**, or **Keep it**.
+**When you ask for a controller,** the player hears a bell and answers from their menu: they lend
+it, give their place, or keep it. Without an answer, the request lapses; your own **Notifications**
+say what became of it.
 
 **Hand your controller over:**
 

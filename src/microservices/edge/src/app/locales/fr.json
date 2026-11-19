@@ -102,6 +102,8 @@
     },
     "status": {
         "playable": "Jouable",
+        "patched": "Jouable avec correctif",
+        "glitches": "Glitchs graphiques",
         "crashes": "Plante en jeu",
         "unplayable": "Injouable",
         "untested": "Non testé"
@@ -1442,10 +1444,14 @@
             "note": "Note",
             "noteHelp": "Facultative : ce qui se passe, et où. Elle part avec le signalement, même sans statut changé.",
             "history": "Historique",
-            "historyHelp": "Chaque signalement, le plus récent d'abord, avec la version de chaque émulateur à ce moment.",
+            "historyHelp": "Chaque signalement, le plus récent d'abord, avec la version de chaque émulateur à ce moment ; touchez-en un pour le supprimer.",
             "historyEmpty": "Aucun signalement.",
             "allEmulators": "tous les émulateurs",
-            "reportedBy": "{{by}}, le {{at}}"
+            "reportedBy": "{{by}}, le {{at}}",
+            "removeTitle": "Supprimer ce signalement ?",
+            "removeMessage": "Le signalement « {{status}} » du {{at}} sera retiré de l'historique ; le statut du jeu suivra ceux qui restent.",
+            "remove": "Supprimer",
+            "removed": "Signalement supprimé."
         },
         "noneHeavier": "Aucun jeu d'au moins {{size}} Mo.",
         "filterTitle": "Filtres",
@@ -1473,7 +1479,11 @@
             "ftp": "FTP",
             "sftp": "SFTP"
         },
-        "officialKind": "Paquets streamex de GameFlex"
+        "officialKind": "Paquets streamex de GameFlex",
+        "editSheet": "Modifier la fiche du jeu",
+        "editSheetHelp": "Sa page dans Réglages › Consoles › Jeux : statut, correctif, apparence, informations.",
+        "openInLibrary": "Voir sa fiche dans la bibliothèque",
+        "openInLibraryHelp": "La fiche du jeu, là où on le lance."
     },
     "layout": {
         "editorTitle": "Position des boutons",
@@ -1526,8 +1536,6 @@
         "conflict": "Vous jouez déjà à {{title}} ailleurs : une partie à la fois.",
         "conflictGo": "Y retourner",
         "notFound": "Cette partie est introuvable : elle s'est peut-être terminée.",
-        "joined": "{{name}} a rejoint la partie",
-        "left": "{{name}} a quitté la partie",
         "afk": "Aucune action depuis un moment : touchez la manette, ou vous la perdrez dans {{seconds}} secondes.",
         "afkHere": "Je suis là",
         "watching": "Vous regardez cette partie.",
@@ -1567,8 +1575,6 @@
             "reclaimHelp": "Elle vous revient ; la personne qui jouait repasse en spectatrice.",
             "return": "Rendre la manette",
             "returnHelp": "Elle retourne à qui vous l'a prêtée.",
-            "ask": "Demander la manette",
-            "askHelp": "Demander sa manette à quelqu'un qui joue.",
             "sent": "Demande envoyée",
             "lent": "Manette prêtée à {{name}}.",
             "given": "Place donnée à {{name}}.",
@@ -1578,11 +1584,7 @@
             "giveMessage": "Donner votre place à {{name}} ? Vous passerez en spectateur.",
             "lendHelp": "Quelqu'un qui regarde joue avec votre manette ; vous la reprenez quand vous voulez.",
             "giveHelp": "Quelqu'un qui regarde prend votre place ; vous passez en spectateur.",
-            "chooseHelp": "Choisissez à qui demander.",
-            "noneToAsk": "Personne d'autre ne joue.",
             "noneToGive": "Personne ne regarde.",
-            "isOwner": "Propriétaire · manette {{slot}}",
-            "isPlayer": "Joue · manette {{slot}}",
             "isWatching": "Regarde",
             "peopleTitle": "Personnes"
         },
@@ -1606,7 +1608,7 @@
             "picture": "Image et son",
             "leave": "Sortir",
             "quitHelpWatching": "Arrêter de regarder et revenir à la bibliothèque.",
-            "together": "À plusieurs",
+            "together": "Invitation",
             "resumeTile": "Revenir au jeu",
             "resumeTileTime": "Revenir au jeu · {{time}}",
             "info": "Informations"
@@ -1620,13 +1622,15 @@
             "what": "Que faire de la partie ?",
             "choice": {
                 "kill": "Quitter et arrêter la partie",
+                "standby": "Quitter et mettre la console en veille",
                 "leave": "Quitter et laisser la partie tourner",
                 "pause": "Quitter et mettre la partie en pause"
             },
             "help": {
                 "leave": "Vous partez, le jeu continue : vous le retrouverez là où il en est.",
                 "pause": "Le jeu se fige et vous attend ; revenir le reprend aussitôt.",
-                "kill": "La partie s'arrête pour tout le monde."
+                "kill": "La partie s'arrête pour tout le monde.",
+                "standby": "La partie s'arrête pour tout le monde, et la console passe en mode repos."
             },
             "save": "Sauvegarder l'état en partant",
             "saveHelp": "Pour reprendre plus tard exactement à ce moment.",
@@ -1668,8 +1672,7 @@
         },
         "timeTravel": {
             "rewind": "Retour rapide",
-            "fastForward": "Avance rapide",
-            "fastForwardHelp": "Le jeu tourne quatre fois plus vite."
+            "fastForward": "Avance rapide"
         },
         "cheats": {
             "title": "Codes de triche",
@@ -1803,6 +1806,41 @@
             "sent": "Invitation envoyée à {{name}}",
             "failed": "L'invitation n'a pas pu partir.",
             "none": "Aucun autre membre."
+        },
+        "notifications": {
+            "title": "Notifications",
+            "joined": "A rejoint la partie",
+            "left": "A quitté la partie",
+            "nameSlot": "{{name}} • {{slot}}/{{max}}",
+            "asked": "Demande pour récupérer la manette {{slot}}/{{max}}",
+            "askedAny": "Demande de manette",
+            "accepted": "{{name}} a accepté",
+            "refused": "{{name}} a refusé",
+            "noAnswer": "{{name}} n'a pas donné suite",
+            "received": "Manette reçue",
+            "moveTitle": "Demande pour récupérer la manette",
+            "moveAsked": "Demande pour libérer la manette",
+            "lendAsked": "Demande pour céder la manette",
+            "giveAsked": "Demande pour céder la place",
+            "otherDevice": "Votre autre appareil",
+            "state": {
+                "accepted": "acceptée",
+                "refused": "refusée",
+                "expired": "sans réponse"
+            }
+        },
+        "players": {
+            "title": "Joueurs",
+            "nobody": "Personne",
+            "place": "{{slot}}/{{max}}",
+            "connected": "connecté",
+            "disconnected": "déconnecté",
+            "free": "place libre",
+            "askTitle": "Demander la manette ?",
+            "askMessage": "Envoyer à {{name}} une demande pour prendre sa manette ?",
+            "ask": "Demander",
+            "joinTitle": "Rejoindre la partie ?",
+            "joinMessage": "Prendre une manette libre et jouer ?"
         }
     },
     "form": {

@@ -3,7 +3,7 @@ import { useAuth } from "../../../libs/sharedHost.js";
 import { listButtonPositioning } from "../../../libs/profileApi.js";
 import { streamAuthToken } from "../../../libs/serverBase.js";
 import { getHapticFeedback, useGamepadPreferences } from "../../libs/gamepadPreferences.js";
-import { forgetPadOpacity, publishPadOpacity, usePadOpacity } from "./padOpacity.js";
+import { DEFAULT_PAD_OPACITY, forgetPadOpacity, publishPadOpacity, usePadOpacity } from "./padOpacity.js";
 import { logThrottled } from "../../../libs/log-store.js";
 import { CONTROLLER_PRESETS } from "../../controllers/presets.js";
 import TouchpadSurface from "./TouchpadSurface.jsx";
@@ -573,7 +573,7 @@ function ColumnZone({
 export default function ControllerLayout({
 	name = "default",
 	callbacks = {},
-	opacity = 0.9,
+	opacity = DEFAULT_PAD_OPACITY,
 	editable = false,
 	layoutOverride = null,
 	onLayoutChange = null,

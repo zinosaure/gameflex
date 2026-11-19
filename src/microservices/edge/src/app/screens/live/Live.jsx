@@ -5,7 +5,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { LAUNCH_BACKGROUND } from "../../engine/stream/shared/launch-backdrop.js";
 import { SessionStream } from "../../engine/stream/shared/SessionStream.jsx";
 import { stopSession } from "../../engine/api/spawnSessions.js";
-import { kernelCommand, resolveUsers, romSource } from "../../libs/api.js";
+import { kernelCommand, romSource } from "../../libs/api.js";
 import { isOwnSession, useAuth, useData } from "../../libs/data.jsx";
 import { useDownloads } from "../../libs/downloads.js";
 import { federatedHostOf, parseFederatedId } from "../../libs/federatedHost.js";
@@ -14,7 +14,8 @@ import { probeGameImage } from "../../libs/images.js";
 import { focusElement, useScreenInput } from "../../libs/input.js";
 import { playPath } from "../../libs/play.js";
 import { useFederatedSessions } from "../../libs/SessionPool.js";
-import { rememberTab } from "../../libs/tabs.js";
+import { useNames } from "../../libs/displayNames.js";
+import { gameScreenPath, rememberTab } from "../../libs/tabs.js";
 import { MUTED, SQUARE_ICON_BUTTON, useButton } from "../../libs/ui.js";
 import { hash, randomFrom, splitTitle } from "../../libs/visuals.js";
 import NavRow, { DownloadRow, EmptyRow, EmptyState, Listing, PlaceholderRow, Rows, Section, SplitRow, useConfirm } from "../../ui/Bricks.jsx";
@@ -465,7 +466,6 @@ function useShowcase(enabled) {
 }
 
 // LA FICHE D'UN JEU DANS LA BIBLIOTHÈQUE, celle où l'on joue : l'onglet de sa console, puis sa référence.
-const gameScreenPath = (console, reference) => `/${console.method === "streamex" ? "streamex" : "retrogaming"}/${encodeURIComponent(console.id)}/games/${encodeURIComponent(reference)}`;
 
 // UN JEU DE LA VITRINE : son image, son titre, sa console ; « Voir le jeu » ouvre sa fiche dans la Bibliothèque.
 function ShowcaseCard({ game, index }) {
@@ -540,7 +540,6 @@ export default function Live() {
     const removals = tasks.filter((entry) => entry.kind === "remove");
     const location = useLocation();
     const navigate = useNavigate();
-    const [names, setNames] = useState({});
     const stepRef = useRef(null);
     const showcase = useShowcase(sessions.length === 0);
     const owners = [...new Set(hereSessions.flatMap((session) => [session.owner, ...(session.connectionPool || []).map((entry) => entry.username)]).filter((name) => name && name !== "anonymous"))].sort().join(",");
@@ -549,22 +548,9 @@ export default function Live() {
         rememberTab("live");
     }, []);
 
-    // Les noms affichés des comptes des parties (le service des comptes) ; leur identifiant tant qu'on ne les a pas.
-    useEffect(() => {
-        if (!owners) {
-            return undefined;
-        }
-        let cancelled = false;
-        resolveUsers(owners.split(",")).then((answer) => {
-            if (!cancelled && answer.ok && answer.item) {
-                setNames(answer.item);
-            }
-        });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [owners]);
+    // Les noms affichés des comptes des parties (SessionPool, qui redemande ce qui a échoué) ; leur identifiant tant
+    // qu'on ne les a pas.
+    const names = useNames(owners ? owners.split(",") : []);
 
     // L'arrivée : depuis la cloche, la section Notifications (sa première invitation, sinon son titre ramené en vue) ;
     // sinon le premier bouton de la page. Une page de favoris tournée (`?favorites=`) n'est pas une arrivée : la lumière
