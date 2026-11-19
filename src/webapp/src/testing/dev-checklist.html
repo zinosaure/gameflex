@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Triage — reste à faire</title>
+<!--
+    Outil de DÉV, servi par le middleware `dev-checklist` du serveur webpack
+    (webpack.config.js, devServer.setupMiddlewares) à /dev/checklist. Hors de
+    public/ : jamais copié dans dist/ ni embarqué dans l'APK.
+
+    Il lit la liste vivante ELLE-MÊME (docs/roadmap/reste-a-faire.md, montée
+    dans le conteneur) — plus de copie JSON qui dérive. Les numéros sont
+    permanents, écrits dans le fichier. Trois états :
+      à faire     - [ ] `#n`
+      en recette  - [x] `#n` *(en recette)*   Claude a fini, à valider
+      validé      - [x] `#n`
+    Valider, refuser et rouvrir RÉÉCRIVENT le fichier. Les signalements
+    (« je pense que c'est fait ») et les notes vivent dans testing/checkings/,
+    git-ignoré.
+
+    L'onglet Optimisations montre la section du même nom de la liste, sans
+    ce qui est déjà validé : une piste ajoutée là y apparaît d'elle-même.
+-->
+<style>
+:root {
+    --ground: #eef0f4; --surface: #fff; --surface-2: #f7f8fb;
+    --ink: #15181e; --ink-2: #3f4652; --muted: #6a7280;
+    --hairline: #d8dce4; --hairline-2: #e6e9ef;
+    --accent: #b4501f; --accent-soft: #f6ece6;
+    --done: #0f6f68; --done-soft: #e4f1ef;
+    --review: #2a5bb8; --review-soft: #e8eefa;
+    --decide: #8a6108; --decide-soft: #f8f0dc;
+    --focus: #1f6feb;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --ground: #12151a; --surface: #191d24; --surface-2: #1f242c;
+        --ink: #e9ecf1; --ink-2: #bcc3cf; --muted: #8b93a1;
+        --hairline: #2c323c; --hairline-2: #242a33;
+        --accent: #e2823f; --accent-soft: #2a1d14;
+        --done: #4fbfb2; --done-soft: #12272a;
+        --review: #7aa7ff; --review-soft: #172238;
+        --decide: #d9a63c; --decide-soft: #272012;
+        --focus: #5b9dff;
+    }
+}
+* { box-sizing: border-box; }
+body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 15px/1.55 "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 960px; margin: 0 auto; padding: 0 20px 96px; }
+header { padding: 36px 0 20px; }
+h1 {
+    font-size: clamp(26px, 4vw, 36px); font-weight: 700; letter-spacing: -0.02em;
+    line-height: 1.1; margin: 0 0 10px; text-wrap: balance;
+}
+.lede { color: var(--ink-2); max-width: 66ch; margin: 0 0 14px; }
+.source { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 12px; color: var(--muted); }
+
+.bar {
+    position: sticky; top: 0; z-index: 20; background: var(--surface);
+    border: 1px solid var(--hairline); border-radius: 10px; padding: 12px 14px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+    box-shadow: 0 6px 18px -14px rgba(0,0,0,.3);
+}
+.tally { display: flex; align-items: baseline; gap: 7px; }
+.tally b {
+    font-family: ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums;
+    font-size: 21px; font-weight: 500;
+}
+.tally.todo b { color: var(--ink); }
+.tally.recette b { color: var(--review); }
+.tally.fait b { color: var(--done); }
+.tally span { color: var(--muted); font-size: 13px; }
+.track { flex: 1 1 110px; min-width: 90px; height: 5px; background: var(--hairline-2); border-radius: 99px; overflow: hidden; display: flex; }
+.track i { display: block; height: 100%; width: 0; transition: width .25s ease; }
+.track .f { background: var(--done); }
+.track .r { background: var(--review); }
+@media (prefers-reduced-motion: reduce) { .track i { transition: none; } }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip, .act {
+    font: 500 12.5px/1 inherit; padding: 7px 11px; cursor: pointer;
+    background: transparent; color: var(--ink-2); border: 1px solid var(--hairline);
+    border-radius: 99px; display: inline-flex; gap: 6px; align-items: baseline;
+}
+.chip i { font-style: normal; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--muted); }
+.act { border-radius: 7px; background: var(--surface-2); color: var(--ink); }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chip[aria-pressed="true"] i { color: inherit; opacity: .85; }
+@media (prefers-color-scheme: dark) { .chip[aria-pressed="true"] { color: #17120d; } }
+.act:hover { border-color: var(--accent); color: var(--accent); }
+.sync { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--muted); margin-left: auto; }
+.sync.warn { color: var(--decide); }
+.sync.ok { color: var(--done); }
+
+section { margin-top: 32px; }
+.sec-head { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
+.sec-head h2 { font-size: 14.5px; font-weight: 600; letter-spacing: .02em; margin: 0; text-transform: uppercase; }
+.cnt { font-family: ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); margin-left: auto; }
+.sub { font-size: 12px; color: var(--muted); font-style: italic; padding: 12px 0 2px 68px; }
+
+.row {
+    display: grid; grid-template-columns: 58px 1fr; gap: 0 10px; align-items: start;
+    padding: 13px 12px 13px 6px; border-bottom: 1px solid var(--hairline-2);
+    border-left: 3px solid transparent;
+}
+.row:hover { background: var(--surface-2); }
+.row.recette { border-left-color: var(--review); background: var(--review-soft); }
+.row.fait { border-left-color: var(--done); }
+.row.fait .title { color: var(--ink-2); }
+.num { font-family: ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--muted); padding-top: 3px; text-align: right; }
+.row.recette .num { color: var(--review); font-weight: 600; }
+.body { min-width: 0; }
+.title { display: block; }
+code {
+    font-family: ui-monospace, Menlo, monospace; font-size: .88em;
+    background: var(--surface-2); border: 1px solid var(--hairline-2);
+    border-radius: 4px; padding: .5px 4px; overflow-wrap: break-word;
+}
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 7px; }
+.pill { font: 600 10.5px/1 ui-monospace, Menlo, monospace; letter-spacing: .04em; text-transform: uppercase; padding: 4px 7px; border-radius: 4px; }
+.pill.todo { color: var(--muted); border: 1px solid var(--hairline); }
+.pill.recette { background: var(--review); color: #fff; }
+@media (prefers-color-scheme: dark) { .pill.recette { color: #0d1526; } }
+.pill.fait { background: var(--done-soft); color: var(--done); }
+.pill.signale { background: var(--decide-soft); color: var(--decide); }
+.more { font: 500 11.5px/1 inherit; background: none; border: 0; padding: 0; cursor: pointer; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.line { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--muted); }
+.tag { font: 500 10.5px/1 ui-monospace, Menlo, monospace; letter-spacing: .03em; text-transform: uppercase; padding: 4px 7px; border-radius: 4px; background: var(--decide-soft); color: var(--decide); }
+.full { display: none; margin-top: 9px; padding: 11px 13px; background: var(--surface); border: 1px solid var(--hairline-2); border-radius: 8px; color: var(--ink-2); font-size: 14px; max-width: 72ch; overflow-wrap: break-word; }
+.full.open { display: block; }
+.note {
+    display: none; margin-top: 9px; width: 100%; max-width: 72ch; font: 400 13.5px/1.5 inherit;
+    color: var(--ink); background: var(--surface); border: 1px solid var(--hairline);
+    border-radius: 7px; padding: 8px 10px; resize: vertical;
+}
+.note.open { display: block; }
+.acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.btn { font: 600 12.5px/1 inherit; padding: 8px 13px; border-radius: 7px; cursor: pointer; border: 1px solid var(--hairline); background: var(--surface); color: var(--ink); }
+.btn.go { background: var(--done); border-color: var(--done); color: #fff; }
+@media (prefers-color-scheme: dark) { .btn.go { color: #07201d; } }
+.btn.no { color: var(--accent); border-color: var(--accent); }
+.btn.quiet { font-weight: 500; color: var(--ink-2); padding: 6px 10px; }
+.btn:disabled { opacity: .5; cursor: progress; }
+.signal { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.box {
+    appearance: none; -webkit-appearance: none; width: 18px; height: 18px; margin: 0;
+    border: 1.5px solid var(--hairline); border-radius: 5px; background: var(--surface);
+    cursor: pointer; position: relative;
+}
+.box:checked { background: var(--decide); border-color: var(--decide); }
+.box:checked::after {
+    content: ""; position: absolute; left: 5px; top: 1px; width: 5px; height: 10px;
+    border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(42deg);
+}
+.box:focus-visible, .chip:focus-visible, .act:focus-visible, .more:focus-visible, .note:focus-visible, .btn:focus-visible {
+    outline: 2px solid var(--focus); outline-offset: 2px;
+}
+.empty { padding: 28px 4px; color: var(--muted); }
+footer { margin-top: 42px; padding-top: 18px; border-top: 1px solid var(--hairline); color: var(--muted); font-size: 13px; max-width: 70ch; }
+#boot { padding: 28px 0; color: var(--muted); font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+@media (max-width: 560px) {
+    .row { grid-template-columns: 44px 1fr; padding-right: 4px; }
+    .sync { margin-left: 0; width: 100%; }
+    .sub { padding-left: 0; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+    <header>
+        <h1>Triage — ce qui reste à faire</h1>
+        <p class="lede">Ce que Claude a fini arrive <strong>en recette</strong> : vérifie, puis
+        <strong>valide</strong> ou <strong>refuse</strong> (avec une note qui dit pourquoi — il la
+        lira). Sur un item encore à faire, « je pense que c'est fait » le lui signale sans rien
+        fermer : il vérifie dans le code avant de cocher.</p>
+        <p class="source">
+            source : docs/roadmap/reste-a-faire.md · <span id="total">…</span> items · numéros
+            permanents, jusqu'au <span id="maxId">…</span> · notes : testing/checkings/
+        </p>
+    </header>
+
+    <div class="bar">
+        <div class="tally recette"><b id="nRecette">0</b><span>à valider</span></div>
+        <div class="tally todo"><b id="nTodo">0</b><span>à faire</span></div>
+        <div class="tally fait"><b id="nFait">0</b><span>validés</span></div>
+        <div class="track" aria-hidden="true"><i class="f" id="fillF"></i><i class="r" id="fillR"></i></div>
+        <div class="chips" role="group" aria-label="Filtrer">
+            <button class="chip" data-f="recette" aria-pressed="false">À valider <i></i></button>
+            <button class="chip" data-f="todo" aria-pressed="false">À faire <i></i></button>
+            <button class="chip" data-f="optim" aria-pressed="false">Optimisations <i></i></button>
+            <button class="chip" data-f="signale" aria-pressed="false">Signalés par toi <i></i></button>
+            <button class="chip" data-f="fait" aria-pressed="false">Validés <i></i></button>
+            <button class="chip" data-f="tout" aria-pressed="false">Tout <i></i></button>
+        </div>
+        <button class="act" id="copy">Copier pour Claude</button>
+        <span class="sync" id="sync">chargement…</span>
+    </div>
+
+    <div id="boot">Lecture de /dev/checklist/items…</div>
+    <div id="list"></div>
+
+    <footer>
+        <p>Les items marqués <span class="tag">à trancher</span> attendent une décision, pas du
+        travail : écris-la en note. Un item « sans n° » a été ajouté sans numéro — il ne peut
+        pas changer d'état ici tant que Claude ne lui en a pas donné un.</p>
+    </footer>
+</div>
+
+<script>
+(function () {
+    "use strict";
+
+    var BASE = "/dev/checklist";
+    var KEY = "gameflex-triage-v2";
+    var LABEL = { todo: "à faire", recette: "en recette", fait: "validé" };
+    var DONE = { valider: "validé", refuser: "renvoyé à faire", rouvrir: "rouvert" };
+    /* La section de la liste qui fait l'onglet — son en-tête le dit. */
+    var OPTIM = "Optimisations";
+    var ITEMS = [];
+    var state = { signales: {}, notes: {} };
+    var filter = null;
+    var timer = null;
+
+    function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+    function md(s) {
+        return esc(s)
+            .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+            .replace(/`([^`]+)`/g, "<code>$1</code>")
+            .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    }
+    function el(tag, cls) { var e = document.createElement(tag); if (cls) { e.className = cls; } return e; }
+    function button(cls, text) { var b = el("button", cls); b.type = "button"; b.textContent = text; return b; }
+    function flag(t, cls) {
+        var e = document.getElementById("sync");
+        e.textContent = t;
+        e.className = "sync" + (cls ? " " + cls : "");
+    }
+    function json(r) {
+        return r.json().then(function (b) {
+            if (!r.ok) { throw new Error((b && b.error) || ("HTTP " + r.status)); }
+            return b;
+        });
+    }
+
+    /* Repli : si le POST échoue (serveur redémarré), rien n'est perdu. */
+    function keepLocal() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+    function readLocal() {
+        try { var raw = localStorage.getItem(KEY); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+    }
+
+    function post() {
+        return fetch(BASE + "/state", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ signales: state.signales, notes: state.notes })
+        }).then(json);
+    }
+    function save() {
+        keepLocal();
+        clearTimeout(timer);
+        flag("enregistrement…");
+        timer = setTimeout(function () {
+            post().then(function () { flag("enregistré", "ok"); })["catch"](function (e) {
+                flag("non enregistré — " + e.message + " (gardé dans ce navigateur)", "warn");
+            });
+        }, 450);
+    }
+    function saveNow() { clearTimeout(timer); keepLocal(); return post(); }
+
+    function signaled(it) { return it.statut === "todo" && it.id !== null && !!state.signales[it.id]; }
+    function optim(it) { return it.section === OPTIM && it.statut !== "fait"; }
+    function visible(it) {
+        if (filter === "tout") { return true; }
+        if (filter === "signale") { return signaled(it); }
+        if (filter === "optim") { return optim(it); }
+        return it.statut === filter;
+    }
+    function counts() {
+        var c = { todo: 0, recette: 0, fait: 0, signale: 0, optim: 0, tout: ITEMS.length };
+        ITEMS.forEach(function (it) {
+            c[it.statut]++;
+            if (signaled(it)) { c.signale++; }
+            if (optim(it)) { c.optim++; }
+        });
+        return c;
+    }
+
+    function refresh() {
+        return fetch(BASE + "/items").then(json).then(function (items) { ITEMS = items; render(); });
+    }
+
+    function move(it, action, buttons) {
+        buttons.forEach(function (b) { b.disabled = true; });
+        flag("#" + it.id + " : " + action + "…");
+        (action === "refuser" ? saveNow() : Promise.resolve()).then(function () {
+            return fetch(BASE + "/transition", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: it.id, action: action, expect: it.statut })
+            }).then(json);
+        }).then(function () {
+            flag("#" + it.id + " " + DONE[action] + " — la liste est réécrite", "ok");
+            return refresh();
+        })["catch"](function (e) {
+            flag("#" + it.id + " : " + e.message, "warn");
+            return refresh();
+        });
+    }
+
+    function row(it) {
+        var r = el("div", "row " + it.statut);
+        var num = el("div", "num");
+        num.textContent = it.id === null ? "sans n°" : "#" + it.id;
+
+        var body = el("div", "body");
+        var title = el("div", "title");
+        title.innerHTML = md(it.court);
+        body.appendChild(title);
+
+        var meta = el("div", "meta");
+        var pill = el("span", "pill " + it.statut);
+        pill.textContent = LABEL[it.statut];
+        meta.appendChild(pill);
+        if (signaled(it)) {
+            var sp = el("span", "pill signale");
+            sp.textContent = "signalé fait";
+            meta.appendChild(sp);
+        }
+        var full = el("div", "full");
+        full.innerHTML = md(it.complet);
+        if (it.complet.length > it.court.length + 4) {
+            var more = button("more", "tout le texte");
+            more.addEventListener("click", function () {
+                full.classList.toggle("open");
+                more.textContent = full.classList.contains("open") ? "replier" : "tout le texte";
+            });
+            meta.appendChild(more);
+        }
+        var ln = el("span", "line");
+        ln.textContent = "l." + it.ligne;
+        meta.appendChild(ln);
+        if (/à trancher|Discussion avec/i.test(it.complet)) {
+            var tg = el("span", "tag");
+            tg.textContent = "à trancher";
+            meta.appendChild(tg);
+        }
+        var noteBtn = button("more", "note");
+        meta.appendChild(noteBtn);
+        body.appendChild(meta);
+        body.appendChild(full);
+
+        var note = el("textarea", "note");
+        note.rows = 2;
+        note.placeholder = it.statut === "recette"
+            ? "ce qui ne va pas — Claude la lira avant de reprendre"
+            : "fait autrement, remplacé par…, ou la décision";
+        noteBtn.addEventListener("click", function () {
+            note.classList.toggle("open");
+            if (note.classList.contains("open")) { note.focus(); }
+        });
+        body.appendChild(note);
+
+        if (it.id !== null) {
+            var nv = state.notes[it.id] || "";
+            note.value = nv;
+            if (nv) { note.classList.add("open"); }
+            note.addEventListener("input", function () {
+                var v = note.value.trim();
+                if (v) { state.notes[it.id] = v; } else { delete state.notes[it.id]; }
+                save();
+            });
+
+            var acts = el("div", "acts");
+            if (it.statut === "todo") {
+                var lab = el("label", "signal");
+                var cb = el("input", "box");
+                cb.type = "checkbox";
+                cb.checked = !!state.signales[it.id];
+                lab.appendChild(cb);
+                lab.appendChild(document.createTextNode("Je pense que c'est fait"));
+                cb.addEventListener("change", function () {
+                    if (cb.checked) { state.signales[it.id] = true; } else { delete state.signales[it.id]; }
+                    save();
+                    render();
+                });
+                acts.appendChild(lab);
+            } else if (it.statut === "recette") {
+                var ok = button("btn go", "Valider");
+                var no = button("btn no", "Refuser");
+                ok.addEventListener("click", function () { move(it, "valider", [ok, no]); });
+                no.addEventListener("click", function () {
+                    if (!(state.notes[it.id] || "").trim()) {
+                        note.classList.add("open");
+                        note.focus();
+                        flag("#" + it.id + " : écris d'abord pourquoi dans la note", "warn");
+                        return;
+                    }
+                    move(it, "refuser", [ok, no]);
+                });
+                acts.appendChild(ok);
+                acts.appendChild(no);
+            } else {
+                var re = button("btn quiet", "Rouvrir");
+                re.addEventListener("click", function () { move(it, "rouvrir", [re]); });
+                acts.appendChild(re);
+            }
+            body.appendChild(acts);
+        }
+
+        r.appendChild(num);
+        r.appendChild(body);
+        return r;
+    }
+
+    function render() {
+        var c = counts();
+        document.getElementById("nTodo").textContent = c.todo;
+        document.getElementById("nRecette").textContent = c.recette;
+        document.getElementById("nFait").textContent = c.fait;
+        document.getElementById("total").textContent = ITEMS.length;
+        document.getElementById("maxId").textContent = "#" + ITEMS.reduce(function (m, it) { return Math.max(m, it.id || 0); }, 0);
+        var pct = function (n) { return (ITEMS.length ? n / ITEMS.length * 100 : 0) + "%"; };
+        document.getElementById("fillF").style.width = pct(c.fait);
+        document.getElementById("fillR").style.width = pct(c.recette);
+        document.querySelectorAll(".chip").forEach(function (b) {
+            b.setAttribute("aria-pressed", String(b.dataset.f === filter));
+            b.querySelector("i").textContent = c[b.dataset.f];
+        });
+
+        var perSec = {};
+        ITEMS.forEach(function (it) { if (visible(it)) { perSec[it.section] = (perSec[it.section] || 0) + 1; } });
+
+        var list = document.getElementById("list");
+        list.textContent = "";
+        var frag = document.createDocumentFragment();
+        var curSec = null, curSub = null, box = null, shown = 0;
+        ITEMS.forEach(function (it) {
+            if (!visible(it)) { return; }
+            shown++;
+            if (it.section !== curSec) {
+                var sec = el("section");
+                var head = el("div", "sec-head");
+                var h2 = el("h2");
+                h2.textContent = it.section;
+                var cnt = el("span", "cnt");
+                cnt.textContent = perSec[it.section];
+                head.appendChild(h2);
+                head.appendChild(cnt);
+                sec.appendChild(head);
+                box = el("div");
+                sec.appendChild(box);
+                frag.appendChild(sec);
+                curSec = it.section;
+                curSub = null;
+            }
+            if (it.sous && it.sous !== curSub) {
+                var sub = el("div", "sub");
+                sub.textContent = it.sous;
+                box.appendChild(sub);
+                curSub = it.sous;
+            }
+            box.appendChild(row(it));
+        });
+        if (!shown) {
+            var empty = el("p", "empty");
+            empty.textContent = "Rien ici.";
+            frag.appendChild(empty);
+        }
+        list.appendChild(frag);
+    }
+
+    document.querySelectorAll(".chip").forEach(function (c) {
+        c.addEventListener("click", function () { filter = c.dataset.f; render(); });
+    });
+
+    document.getElementById("copy").addEventListener("click", function () {
+        var ids = function (pred) { return ITEMS.filter(pred).map(function (i) { return "#" + i.id; }); };
+        var parts = [];
+        var rec = ids(function (i) { return i.statut === "recette"; });
+        var sig = ids(signaled);
+        if (rec.length) { parts.push("Encore en recette : " + rec.join(", ")); }
+        if (sig.length) { parts.push("Je pense que c'est fait : " + sig.join(", ")); }
+        ITEMS.forEach(function (i) { if (i.id !== null && state.notes[i.id]) { parts.push("#" + i.id + " : " + state.notes[i.id]); } });
+        var txt = parts.length ? parts.join("\n") : "Rien à signaler.";
+        if (navigator.clipboard) { navigator.clipboard.writeText(txt)["catch"](function () {}); }
+        flag("copié (" + parts.length + " ligne" + (parts.length > 1 ? "s" : "") + ")", "ok");
+    });
+
+    /* Sans sondage : la liste est relue quand on revient sur l'onglet — c'est là
+       qu'on s'attend à voir ce que Claude a mis en recette entre-temps. */
+    window.addEventListener("focus", function () { if (ITEMS.length) { refresh()["catch"](function () {}); } });
+
+    Promise.all([
+        fetch(BASE + "/items").then(json),
+        fetch(BASE + "/state").then(json)["catch"](function () { return null; })
+    ]).then(function (res) {
+        ITEMS = res[0];
+        var server = res[1];
+        var local = readLocal();
+        /* Le serveur fait foi ; le local ne sert que s'il n'a rien. */
+        if (server && (Object.keys(server.signales || {}).length || Object.keys(server.notes || {}).length)) {
+            state.signales = server.signales || {};
+            state.notes = server.notes || {};
+            flag("chargé", "ok");
+        } else if (local) {
+            state.signales = local.signales || {};
+            state.notes = local.notes || {};
+            flag("repris de ce navigateur", "warn");
+        } else {
+            flag("prêt");
+        }
+        filter = counts().recette ? "recette" : "todo";
+        document.getElementById("boot").remove();
+        render();
+    })["catch"](function (e) {
+        document.getElementById("boot").textContent = "Impossible de lire la liste — " + e.message;
+        flag("hors service", "warn");
+    });
+})();
+</script>
+</body>
+</html>

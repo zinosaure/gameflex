@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+	<head>
+		<title id="document-title">GameFlex</title>
+		<meta charset="UTF-8" />
+		<!-- viewport-fit=cover: without it, iOS Safari reserves space for its
+		     own UI outside what CSS considers "the viewport" once fullscreen/
+		     notched — the classic cause of content needing a scroll to reach
+		     the bottom in fullscreen mode (reported on the PS5 streaming
+		     panel after toggling fullscreen on mobile). -->
+		<meta
+			name="viewport"
+			content="width=device-width, height=device-height, initial-scale=1, viewport-fit=cover" />
+		<meta name="description" content="Self-hosted cloud gaming — your consoles, in any browser." />
+		<meta name="theme-color" content="#0d1117" />
+
+		<link rel="manifest" href="/manifest.json" />
+		<!-- A real 32px favicon: the file that used to sit here was ZERO
+		     bytes, so every tab fell back to whatever the browser invents.
+		     The 192 stays for platforms that want a bigger one. -->
+		<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png" />
+		<link rel="icon" type="image/png" sizes="192x192" href="/images/icon-192.png" />
+		<link rel="apple-touch-icon" href="/images/icon-192.png" />
+
+	</head>
+
+	<body>
+		<div id="root"></div>
+	</body>
+</html>
