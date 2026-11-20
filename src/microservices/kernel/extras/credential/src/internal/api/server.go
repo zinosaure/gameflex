@@ -6,6 +6,7 @@ package api
 import (
 	"database/sql"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -272,7 +273,29 @@ func allowsCrossOrigin(path string) bool {
 		}
 	}
 
-	return strings.HasPrefix(path, "/api/v1/controller-mapping/")
+	if strings.HasPrefix(path, "/api/v1/controller-mapping/") {
+		return true
+	}
+	for _, family := range crossOriginAdminFamilies {
+		if path == family || strings.HasPrefix(path, family+"/") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// crossOriginAdminFamilies — ce que les réglages d'un serveur fédéré administré d'ici appellent (chantier 73) : les
+// membres, les accès délivrés et leurs invitations, les serveurs rejoints, les consoles coupées, les fournisseurs de
+// métadonnées. Chaque route y garde sa garde : une session venue d'ailleurs n'y est administrateur que si son
+// propriétaire l'a autorisé.
+var crossOriginAdminFamilies = []string{
+	"/api/v1/users",
+	"/api/v1/catalog-tokens",
+	"/api/v1/token-invitations",
+	"/api/v1/server-registry",
+	"/api/v1/console-switches",
+	"/api/v1/metadata-services",
 }
 
 func handleAuthPreflight(w http.ResponseWriter, r *http.Request) {
@@ -284,6 +307,11 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		// Le pré-vol d'une route ouverte aux autres origines : sans lui, le navigateur n'envoie jamais la requête.
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 	}
 	server.mux.ServeHTTP(w, r)
 }
@@ -313,6 +341,14 @@ func (server *Server) withAdmin(next func(http.ResponseWriter, *http.Request, au
 		if !principal.IsAdmin() {
 			respondErrorCode(w, http.StatusForbidden, "admin_only", "Admin access required.")
 			return
+		}
+		// L'ADMINISTRATION À DISTANCE LAISSE SA TRACE (chantier 73 ; le porteur : « oui, ce serait mieux ») : qui, depuis
+		// quel accès délivré (donc quel serveur ami), quoi.
+		if principal.Federated && r.Method != http.MethodGet {
+			var from string
+			_ = server.db.QueryRow(`SELECT label FROM federation_tokens WHERE id = ?`, principal.Access).Scan(&from)
+			slog.Info("remote administration", "username", principal.Username, "access", principal.Access, "from", from,
+				"method", r.Method, "path", r.URL.Path)
 		}
 		next(w, r, principal)
 	}

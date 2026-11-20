@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { gameImagePath, readToken } from "./api.js";
+import { gameImagePath, readToken, remoteTargetNow } from "./api.js";
 
 // LES IMAGES D'UN JEU — `GET /api/v1/retrogaming/{console}/roms/{ref}/images/{kind}?w=`
 // (chantier 49), `kind` ∈ icon (carrée), background (16:9), logo (transparent) — et
@@ -29,7 +29,9 @@ const pump = () => {
         }
         running += 1;
         entry.state = "loading";
-        const token = readToken();
+        // Une image d'un serveur fédéré administré d'ici (chantier 73) : son jeton à lui.
+        const remote = remoteTargetNow();
+        const token = remote && entry.path.startsWith(remote.origin) ? remote.token : readToken();
         // `no-cache` : toujours revalider (If-None-Match ou If-Modified-Since), comme la route le demande — y compris une
         // copie gardée du temps où elle répondait `max-age=86400`, qu'un navigateur aurait sinon resservie jusqu'à un jour.
         fetch(entry.path, { cache: "no-cache", headers: token ? { Authorization: `Bearer ${token}` } : {} })
@@ -169,7 +171,16 @@ export const widthFor = (cssWidth) => {
 
 // L'état d'une image : `undefined` tant qu'on ne sait pas, `null` sans image,
 // sinon `{url, type}` (l'adresse locale, le type reçu). `path` nul n'en demande rien.
-export function useImage(path) {
+// Chez un serveur fédéré administré d'ici (chantier 73), ses images : son adresse devant le chemin, qui les garde aussi à
+// part des nôtres dans le cache.
+const remoteImage = (path) => {
+    const remote = remoteTargetNow();
+
+    return remote && typeof path === "string" && path.startsWith("/api/") ? `${remote.origin}${path}` : path;
+};
+
+export function useImage(given) {
+    const path = remoteImage(given);
     const [, redraw] = useState(0);
     const entry = path ? entryFor(path) : null;
 

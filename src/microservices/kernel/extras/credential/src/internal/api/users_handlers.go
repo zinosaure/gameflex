@@ -132,7 +132,13 @@ func (server *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (server *Server) handleMe(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
-	respondItem(w, http.StatusOK, server.fetchUserResponse(principal.ID))
+	user := server.fetchUserResponse(principal.ID)
+	// LE RANG DE CETTE SESSION, pas celui du compte (chantier 73) : ouverte depuis un serveur fédéré, elle n'est
+	// administrateur que si son propriétaire l'a autorisé — la page du serveur ami lit ici s'il peut administrer.
+	if principal.Federated {
+		user.RoleLevel = principal.RoleLevel
+	}
+	respondItem(w, http.StatusOK, user)
 }
 
 func (server *Server) handleUpdateMe(w http.ResponseWriter, r *http.Request, principal auth.Principal) {

@@ -189,7 +189,10 @@ const toCounts = (answer) => (answer.ok && Array.isArray(answer.data)
 const readDevices = (declared) => Promise.all([declared.pairsConsoles !== false ? listDevices() : Promise.resolve({ ok: true, data: [] }), listFederatedDevices()])
     .then(([own, federated]) => [...(own.ok ? own.data || [] : []), ...(federated.ok ? federated.data || [] : [])]);
 
-export function DataProvider({ children, idle = false }) {
+// `remote` : LES DONNÉES D'UN SERVEUR FÉDÉRÉ QU'ON ADMINISTRE D'ICI (chantier 73) — les mêmes listes, lues chez lui
+// (libs/api.js, la cible posée par settings/Settings.jsx › RemoteAdmin), sans les abonnements du canal, qui parlent
+// à notre kernel.
+export function DataProvider({ children, idle = false, remote = false }) {
     const { user } = useAuth();
     const [consoles, setConsoles] = useState(null);
     const [capabilities, setCapabilities] = useState({});
@@ -262,7 +265,7 @@ export function DataProvider({ children, idle = false }) {
         };
     }, [idle]);
 
-    useEffect(() => (idle || !channelReady ? undefined : subscribeSessions(setSessions)), [idle, channelReady]);
+    useEffect(() => (idle || remote || !channelReady ? undefined : subscribeSessions(setSessions)), [idle, remote, channelReady]);
 
     // LES CONSOLES QUI ONT DES RÉGLAGES D'ÉMULATEUR (Réglages › Stockage ›
     // Paramètres des émulateurs, #347) : la liste n'est servie qu'aux
@@ -282,7 +285,7 @@ export function DataProvider({ children, idle = false }) {
             cancelled = true;
         };
     }, [idle, user]);
-    useEffect(() => (idle ? undefined : subscribeInvites((invite) => setInvites((previous) => [...previous, invite]))), [idle]);
+    useEffect(() => (idle || remote ? undefined : subscribeInvites((invite) => setInvites((previous) => [...previous, invite]))), [idle, remote]);
     const dismissInvite = useCallback((id) => setInvites((previous) => previous.filter((invite) => invite.id !== id)), []);
 
     // LES JEUX « ICI » D'UNE CONSOLE : la bibliothèque ET chaque disque interne

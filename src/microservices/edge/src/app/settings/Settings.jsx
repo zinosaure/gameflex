@@ -1,8 +1,9 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Navigate, Route, Routes } from "react-router-dom";
-import { can, useAuth, useData } from "../libs/data.jsx";
-import { returnToAppHome } from "../libs/api.js";
+import { Navigate, Route, Routes, useParams } from "react-router-dom";
+import { can, DataProvider, useAuth, useData } from "../libs/data.jsx";
+import { returnToAppHome, setRemoteTarget } from "../libs/api.js";
+import { adminThere, REMOTE_PAGES, RemoteAdminContext } from "../libs/remoteAdmin.js";
 import { COFFEE_URL, EXTERNAL, openExternal, REPOSITORY_URL } from "../libs/links.js";
 import { toast } from "../shell/Shell.jsx";
 import { ProfileRoutes } from "./account/Profile.jsx";
@@ -160,6 +161,71 @@ const PAGES = {
 
 export const settingsPath = (key) => `/settings/${PAGES[key][0].replace("/*", "")}`;
 
+
+// /settings/remote/<serveur>/* : LES MÊMES PAGES, CHEZ UN SERVEUR FÉDÉRÉ (chantier 73). La session de mon compte de
+// là-bas (peerHost) ; administrateur là-bas seulement si je l'y ai autorisé (son jeton, « Administration à distance ») —
+// sinon la page le dit et ne montre rien. Tant qu'elle est ouverte, chaque appel des Réglages part chez lui
+// (setRemoteTarget) ; la quitter le rend à ce serveur.
+function RemoteAdmin() {
+    const { t } = useTranslation();
+    const { serverId } = useParams();
+    const { servers } = useData();
+    const server = (servers || []).find((entry) => String(entry.id) === serverId);
+    const [state, setState] = useState({ phase: "loading" });
+    const home = `/settings/federation/servers/${encodeURIComponent(serverId)}`;
+    const name = server ? server.hostname || server.name || server.label || server.link : "";
+
+    useEffect(() => {
+        if (!server) {
+            return undefined;
+        }
+        let cancelled = false;
+        adminThere(server).then((answer) => {
+            if (cancelled) {
+                return;
+            }
+            if (!answer.ok) {
+                setState({ phase: answer.host ? "notAdmin" : "refused" });
+
+                return;
+            }
+            setRemoteTarget(answer.host);
+            setState({ phase: "ready" });
+        });
+
+        return () => {
+            cancelled = true;
+            setRemoteTarget(null);
+        };
+    }, [server?.id]);
+
+    if (state.phase !== "ready") {
+        return (
+            <SettingsPage title={name || t("remoteAdmin.title")} parent={home}>
+                <Section>
+                    <Note className="mt-0">{state.phase === "loading" ? t("settings.loading") : t(state.phase === "notAdmin" ? "remoteAdmin.notAdmin" : "remoteAdmin.unreachable")}</Note>
+                </Section>
+            </SettingsPage>
+        );
+    }
+
+    return (
+        <RemoteAdminContext.Provider value={{ serverId, name, home }}>
+            {/* SES DONNÉES, PAS LES NÔTRES : consoles, disques, serveurs rejoints, consoles Remote Play — lues chez lui. */}
+            <DataProvider remote>
+            <Routes>
+                {REMOTE_PAGES.map(({ key }) => {
+                    const [path, Page] = PAGES[key];
+
+                    return <Route key={key} path={path} element={<Page />} />;
+                })}
+                <Route path="*" element={<Navigate to={home} replace />} />
+            </Routes>
+            </DataProvider>
+        </RemoteAdminContext.Provider>
+    );
+}
+
 // LA LISTE, en direction C (validée par le porteur le 2026-11-13) : « Mon compte » — la carte du compte, seule (elle
 // ouvre Profil, qui tient le mot de passe, le jeton et les sauvegardes) —, les tuiles de ce que tout compte voit, puis
 // les groupes en lignes, et « Session » en bas. CHAQUE GROUPE A SON TITRE (le porteur, 2026-11-13 : « chaque section
@@ -236,6 +302,7 @@ export default function Settings() {
     return (
         <Routes>
             <Route index element={<SettingsList groups={groups} />} />
+            <Route path="remote/:serverId/*" element={<RemoteAdmin />} />
             {Object.entries(PAGES).map(([key, [path, Page]]) => (
                 <Route key={key} path={path} element={available.has(key) ? <Page /> : <Navigate to="/settings" replace />} />
             ))}

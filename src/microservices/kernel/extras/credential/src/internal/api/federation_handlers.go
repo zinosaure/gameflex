@@ -28,6 +28,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
@@ -119,15 +120,19 @@ func parseScopes(asked []string) (string, error) {
 }
 
 type federationTokenResponse struct {
-	ID         int64  `json:"id"`
-	Label      string `json:"label"`
-	Prefix     string `json:"prefix"`
-	Scopes     string `json:"scopes"`
+	ID     int64  `json:"id"`
+	Label  string `json:"label"`
+	Prefix string `json:"prefix"`
+	Scopes string `json:"scopes"`
 	// Consoles — ce que cet accès laisse lancer (chantier 66), au format des
 	// consoles d'un compte : « * », « retro », `ps5`, `rp-ps5`…
-	Consoles   []string `json:"consoles"`
-	CreatedAt  any    `json:"created_at"`
-	LastUsedAt any    `json:"last_used_at"`
+	Consoles []string `json:"consoles"`
+	// RemoteAdmin — la session qu'un administrateur d'ici ouvre par cet accès garde son rang (chantier 73) : coupé par
+	// défaut, accordé accès par accès — le porteur, 2026-11-20 : « je ne veux pas que ma smart TV puisse avoir la
+	// possibilité de faire du remote admin ».
+	RemoteAdmin bool `json:"remote_admin"`
+	CreatedAt   any  `json:"created_at"`
+	LastUsedAt  any  `json:"last_used_at"`
 	// Token n'est rempli qu'à la création, jamais dans une liste.
 	Token string `json:"token,omitempty"`
 }
@@ -140,10 +145,15 @@ func hashToken(token string) string {
 // handleCreateFederationToken — POST /api/v1/federation/tokens {label}.
 func (server *Server) handleCreateFederationToken(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	var body struct {
-		Label  string   `json:"label"`
-		Scopes []string `json:"scopes"`
+		Label       string   `json:"label"`
+		Scopes      []string `json:"scopes"`
+		RemoteAdmin bool     `json:"remote_admin"`
 	}
 	if !decodeBody(w, r, &body) {
+		return
+	}
+	// L'ADMINISTRATION À DISTANCE (chantier 73) ne s'accorde jamais depuis une session venue d'ailleurs.
+	if body.RemoteAdmin && refuseFederated(w, principal) {
 		return
 	}
 
@@ -172,9 +182,9 @@ func (server *Server) handleCreateFederationToken(w http.ResponseWriter, r *http
 
 	secret := config.RandomToken(32)
 	result, err := server.db.Exec(
-		`INSERT INTO federation_tokens (label, scopes, token_hash, prefix, created_at, created_by_id)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		label, scopes, hashToken(secret), secret[:tokenPrefixLength], now(), principal.ID,
+		`INSERT INTO federation_tokens (label, scopes, remote_admin, token_hash, prefix, created_at, created_by_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		label, scopes, body.RemoteAdmin, hashToken(secret), secret[:tokenPrefixLength], now(), principal.ID,
 	)
 	if err != nil {
 		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
@@ -185,11 +195,12 @@ func (server *Server) handleCreateFederationToken(w http.ResponseWriter, r *http
 	server.accountsChanged()
 
 	respondItem(w, http.StatusCreated, federationTokenResponse{
-		ID:       id,
-		Label:    label,
-		Scopes:   scopes,
-		Consoles: []string{consoles.GrantAll},
-		Prefix: secret[:tokenPrefixLength],
+		ID:          id,
+		Label:       label,
+		Scopes:      scopes,
+		RemoteAdmin: body.RemoteAdmin,
+		Consoles:    []string{consoles.GrantAll},
+		Prefix:      secret[:tokenPrefixLength],
 		// La seule et unique fois où il sort d'ici.
 		Token: secret,
 	})
@@ -198,7 +209,7 @@ func (server *Server) handleCreateFederationToken(w http.ResponseWriter, r *http
 // handleListFederationTokens — GET /api/v1/federation/tokens.
 func (server *Server) handleListFederationTokens(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	rows, err := server.db.Query(
-		`SELECT id, label, scopes, consoles, prefix, created_at, last_used_at FROM federation_tokens ORDER BY id DESC`,
+		`SELECT id, label, scopes, consoles, prefix, created_at, last_used_at, remote_admin FROM federation_tokens ORDER BY id DESC`,
 	)
 	if err != nil {
 		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
@@ -211,7 +222,7 @@ func (server *Server) handleListFederationTokens(w http.ResponseWriter, r *http.
 		var item federationTokenResponse
 		var createdAt, lastUsedAt sql.NullString
 		var granted string
-		if err := rows.Scan(&item.ID, &item.Label, &item.Scopes, &granted, &item.Prefix, &createdAt, &lastUsedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Label, &item.Scopes, &granted, &item.Prefix, &createdAt, &lastUsedAt, &item.RemoteAdmin); err != nil {
 			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
@@ -223,7 +234,9 @@ func (server *Server) handleListFederationTokens(w http.ResponseWriter, r *http.
 	respondItems(w, http.StatusOK, items, newPagination(len(items), 1, allItems))
 }
 
-// handleUpdateFederationToken — PATCH /api/v1/catalog-tokens/{id} {scopes?, consoles?}.
+// handleUpdateFederationToken — PATCH /api/v1/catalog-tokens/{id} {scopes?, consoles?, remote_admin?}.
+// L'administration à distance (chantier 73) ne se change jamais depuis une session venue d'ailleurs : un accès ne
+// s'accorde pas lui-même ce rang, ni ne l'accorde à un autre.
 // Les consoles (chantier 66) se changent seules, comme celles d'un membre : chaque interrupteur part à son changement.
 //
 // Change CE QU'UN JETON OUVRE, sans toucher au secret. Les deux sont
@@ -240,10 +253,14 @@ func (server *Server) handleListFederationTokens(w http.ResponseWriter, r *http.
 // qui pouvait déjà révoquer et recréer.
 func (server *Server) handleUpdateFederationToken(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	var body struct {
-		Scopes   *[]string `json:"scopes"`
-		Consoles *[]string `json:"consoles"`
+		Scopes      *[]string `json:"scopes"`
+		Consoles    *[]string `json:"consoles"`
+		RemoteAdmin *bool     `json:"remote_admin"`
 	}
 	if !decodeBody(w, r, &body) {
+		return
+	}
+	if body.RemoteAdmin != nil && refuseFederated(w, principal) {
 		return
 	}
 	answer := federationTokenResponse{}
@@ -273,6 +290,19 @@ func (server *Server) handleUpdateFederationToken(w http.ResponseWriter, r *http
 		}
 		answer.Consoles = consoles.SplitGrants(granted)
 		// Les kernels décident des lancements sur leur copie : elle change tout de suite.
+		server.accountsChanged()
+	}
+	if body.RemoteAdmin != nil {
+		allowed := "0"
+		if *body.RemoteAdmin {
+			allowed = "1"
+		}
+		if !server.updateFederationToken(w, r, `UPDATE federation_tokens SET remote_admin = ? WHERE id = ?`, allowed) {
+			return
+		}
+		answer.RemoteAdmin = *body.RemoteAdmin
+		slog.Info("remote administration", "username", principal.Username, "access", r.PathValue("id"), "allowed", *body.RemoteAdmin)
+		// Le rang des sessions de cet accès change tout de suite, au kernel aussi.
 		server.accountsChanged()
 	}
 
@@ -380,9 +410,9 @@ func (server *Server) verifyFederationToken(token string) (federationTokenRespon
 	var createdAt, lastUsedAt sql.NullString
 	var granted string
 	err := server.db.QueryRow(
-		`SELECT id, label, scopes, consoles, prefix, created_at, last_used_at FROM federation_tokens WHERE token_hash = ?`,
+		`SELECT id, label, scopes, consoles, prefix, created_at, last_used_at, remote_admin FROM federation_tokens WHERE token_hash = ?`,
 		hashToken(token),
-	).Scan(&item.ID, &item.Label, &item.Scopes, &granted, &item.Prefix, &createdAt, &lastUsedAt)
+	).Scan(&item.ID, &item.Label, &item.Scopes, &granted, &item.Prefix, &createdAt, &lastUsedAt, &item.RemoteAdmin)
 	if errors.Is(err, sql.ErrNoRows) || token == "" {
 		return federationTokenResponse{}, ErrCatalogTokenRefused
 	}

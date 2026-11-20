@@ -399,6 +399,26 @@ func Open() (*sql.DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("seed account tokens: %w", err)
 	}
+	// ADMINISTRER CE SERVEUR DEPUIS SES SERVEURS FÉDÉRÉS (chantier 73) : accordé ACCÈS PAR ACCÈS, coupé par défaut — le
+	// porteur, 2026-11-20 : « je ne veux pas que ma smart TV puisse avoir la possibilité de faire du remote admin ».
+	// Il remplace l'interrupteur de chaque jeton de compte, puis celui de tout le serveur, essayés le même jour.
+	if err := ensureColumn(db, "federation_tokens", "remote_admin", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	// …et voyage avec l'invitation ou le code d'appairage jusqu'à l'accès qu'ils font naître.
+	if err := ensureColumn(db, "invitations", "remote_admin", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if _, err := db.Exec(`DROP TABLE IF EXISTS remote_administration`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("drop remote_administration: %w", err)
+	}
+	if err := dropColumn(db, "account_tokens", "remote_admin"); err != nil {
+		db.Close()
+		return nil, err
+	}
 	// Invite list sorting — existing databases predate the column.
 	if err := ensureColumn(db, "users", "last_login", "DATETIME"); err != nil {
 		db.Close()
@@ -459,6 +479,22 @@ func Open() (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+// dropColumn — retire une colonne qui n'a plus d'usage, si elle est encore là.
+func dropColumn(db *sql.DB, table, column string) error {
+	var present int
+	if err := db.QueryRow(fmt.Sprintf("SELECT count(*) FROM pragma_table_info('%s') WHERE name = ?", table), column).Scan(&present); err != nil {
+		return fmt.Errorf("inspect %s: %w", table, err)
+	}
+	if present == 0 {
+		return nil
+	}
+	if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", table, column)); err != nil {
+		return fmt.Errorf("drop %s.%s: %w", table, column, err)
+	}
+
+	return nil
 }
 
 func ensureColumn(db *sql.DB, table, column, definition string) error {

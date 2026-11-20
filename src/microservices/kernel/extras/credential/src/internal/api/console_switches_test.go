@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -119,4 +121,77 @@ func TestTheDevicesScopeLeavesStoredTokens(t *testing.T) {
 	if scopes != "catalog,metadata-providers" {
 		t.Fatalf("portées : %q, attendu catalog,metadata-providers", scopes)
 	}
+}
+
+// ADMINISTRER DEPUIS UN SERVEUR FÉDÉRÉ (chantier 73) : coupé par défaut, la session ouverte par le jeton d'un
+// administrateur n'est que joueur ; autorisé par son propriétaire, elle garde son rang ; coupé de nouveau, elle le perd
+// tout de suite.
+func TestRemoteAdministrationIsGrantedPerAccess(t *testing.T) {
+	server, db := tokenServer(t)
+	var id int64
+	if err := db.QueryRow(`SELECT id FROM users WHERE username = 'admin'`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, strconv.FormatInt(id, 10), `{"enabled":true,"duration":"1m"}`)
+	answer := sessionCall(server, tokenOf(t, db, id))
+	var body struct {
+		Item struct {
+			AccessToken string `json:"access_token"`
+		} `json:"item"`
+	}
+	if answer.Code != http.StatusOK || json.Unmarshal(answer.Body.Bytes(), &body) != nil {
+		t.Fatalf("session : %d %s", answer.Code, answer.Body.String())
+	}
+	role := func() int {
+		principal, err := auth.LoadToken(db, server.config.JWTSecret, body.Item.AccessToken)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return principal.RoleLevel
+	}
+	if got := role(); got != auth.RoleUser {
+		t.Fatalf("coupé par défaut : rang %d, attendu joueur", got)
+	}
+	// /auth/me le dit aussi : c'est là que la page du serveur ami lit s'il peut administrer.
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
+	request.Header.Set("Authorization", "Bearer "+body.Item.AccessToken)
+	recorder := httptest.NewRecorder()
+	server.withUser(server.handleMe)(recorder, request)
+	if !strings.Contains(recorder.Body.String(), `"role_level":2`) {
+		t.Fatalf("/auth/me d'une session non autorisée : %s, attendu le rang de joueur", recorder.Body.String())
+	}
+	var access int64
+	if err := db.QueryRow(`SELECT id FROM federation_tokens WHERE token_hash = ?`, hashToken(testAccess)).Scan(&access); err != nil {
+		t.Fatal(err)
+	}
+	// Un AUTRE accès qui l'a reçu ne vaut rien pour celui-ci (le porteur : « pas ma smart TV »).
+	_, _ = db.Exec(`INSERT INTO federation_tokens (label, token_hash, prefix, scopes, created_at) VALUES ('tv', 'x', 'x', 'catalog', '2026-11-20')`)
+	_, _ = db.Exec(`UPDATE federation_tokens SET remote_admin = 1 WHERE label = 'tv'`)
+	if got := role(); got != auth.RoleUser {
+		t.Fatalf("un autre accès autorisé : rang %d, attendu joueur", got)
+	}
+	accessID := strconv.FormatInt(access, 10)
+	// Jamais depuis une session venue d'ailleurs.
+	refused := httptest.NewRecorder()
+	server.handleUpdateFederationToken(refused, withID(httptest.NewRequest(http.MethodPatch, "/", strings.NewReader(`{"remote_admin":true}`)), accessID),
+		auth.Principal{ID: id, Username: "admin", RoleLevel: auth.RoleAdmin, Federated: true})
+	if refused.Code != http.StatusForbidden {
+		t.Fatalf("depuis une session venue d'ailleurs : %d, attendu 403", refused.Code)
+	}
+	if answer := adminCall(server, server.handleUpdateFederationToken, http.MethodPatch, accessID, `{"remote_admin":true}`); answer.Code != http.StatusOK {
+		t.Fatalf("allumer : %d %s", answer.Code, answer.Body.String())
+	}
+	if got := role(); got != auth.RoleAdmin {
+		t.Fatalf("autorisé : rang %d, attendu administrateur", got)
+	}
+	adminCall(server, server.handleUpdateFederationToken, http.MethodPatch, accessID, `{"remote_admin":false}`)
+	if got := role(); got != auth.RoleUser {
+		t.Fatalf("coupé de nouveau : rang %d, attendu joueur", got)
+	}
+}
+
+func withID(request *http.Request, id string) *http.Request {
+	request.SetPathValue("id", id)
+
+	return request
 }

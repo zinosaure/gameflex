@@ -996,7 +996,12 @@
         "memory": "{{size}} de mémoire"
     },
     "fed": {
-        "providersLabel": "Partager aussi mes fournisseurs de métadonnées",
+        "shareAs": "Partager par",
+        "shareAsHelp": "Un jeton et une adresse à copier, montrés une seule fois, ou une invitation à scanner ou à envoyer.",
+        "shareToken": "Jeton classique",
+        "shareQr": "QR code",
+        "remoteRights": "Droits à distance",
+        "providersLabel": "Fournisseurs de métadonnées à distance",
         "providersHelp": "Ce serveur cherche aussi des images et des fiches avec vos comptes IGDB et SteamGridDB, sans voir vos clés. Ses recherches comptent dans votre quota.",
         "providersShared": "Fournisseurs de métadonnées partagés avec {{label}}",
         "providersUnshared": "Fournisseurs de métadonnées retirés à {{label}}",
@@ -1059,7 +1064,6 @@
         "joinMethodTitle": "Méthode",
         "joinMethod": "Rejoindre par",
         "joinMethodHelp": "Ce que votre ami vous a envoyé.",
-        "tokenInsteadHelp": "Une adresse et un jeton à copier, montrés une seule fois, au lieu d'une invitation.",
         "createToken": "Créer le jeton",
         "serversHelp": "Les serveurs dont vous voyez et téléchargez les jeux.",
         "tokensHelp": "Chaque accès ouvre vos jeux à un serveur, jusqu'à ce que vous le révoquiez.",
@@ -1109,7 +1113,6 @@
     },
     "invitations": {
         "create": "Créer l'invitation",
-        "tokenInstead": "Plutôt l'adresse et le jeton",
         "federationTitle": "Invitation pour {{label}}",
         "accountTitle": "Mon invitation",
         "revealHelp": "Envoyez-la à votre ami : il scanne le QR code ou colle le lien dans son GameFlex.",
@@ -2551,5 +2554,15 @@
             "help": "Les comptes qui font les fiches des jeux qui n'en ont pas.",
             "listHelp": "Un jeu d'un disque qui a déjà sa fiche la garde. Pour les autres, le service fait la fiche avec ces comptes."
         }
+    },
+    "remoteAdmin": {
+        "title": "Administration à distance",
+        "switchHelp": "Un de vos administrateurs qui utilise cet accès gère aussi ce serveur depuis le sien. Coupé, il ne fait que jouer.",
+        "allowed": "Administration à distance autorisée pour {{label}}.",
+        "refused": "Administration à distance coupée pour {{label}}.",
+        "notAdmin": "Votre compte n'administre pas ce serveur depuis ici. Sur ce serveur, un administrateur doit autoriser l'administration à distance dans l'accès délivré à votre serveur.",
+        "unreachable": "Ce serveur ne vous ouvre pas de session : collez d'abord votre jeton de compte de chez lui.",
+        "section": "Partagé avec vous en tant qu'administrateur",
+        "sectionHelp": "Ses réglages, modifiés d'ici, chez lui."
     }
 }

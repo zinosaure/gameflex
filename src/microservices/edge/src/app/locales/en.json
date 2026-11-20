@@ -996,7 +996,12 @@
         "memory": "{{size}} of memory"
     },
     "fed": {
-        "providersLabel": "Also share my metadata providers",
+        "shareAs": "Share with",
+        "shareAsHelp": "A token and an address to copy, shown only once, or an invitation to scan or send.",
+        "shareToken": "Classic token",
+        "shareQr": "QR code",
+        "remoteRights": "Remote rights",
+        "providersLabel": "Remote metadata providers",
         "providersHelp": "This server also searches for images and sheets with your IGDB and SteamGridDB accounts, without seeing your keys. Its searches count against your quota.",
         "providersShared": "Metadata providers shared with {{label}}",
         "providersUnshared": "Metadata providers no longer shared with {{label}}",
@@ -1059,7 +1064,6 @@
         "joinMethodTitle": "Method",
         "joinMethod": "Join with",
         "joinMethodHelp": "What your friend sent you.",
-        "tokenInsteadHelp": "An address and a token to copy, shown only once, instead of an invitation.",
         "createToken": "Create the token",
         "serversHelp": "The servers whose games you can see and download.",
         "tokensHelp": "Each access opens your games to one server, until you revoke it.",
@@ -1109,7 +1113,6 @@
     },
     "invitations": {
         "create": "Create the invitation",
-        "tokenInstead": "Rather the address and the token",
         "federationTitle": "Invitation for {{label}}",
         "accountTitle": "My invitation",
         "revealHelp": "Send it to your friend: they scan the QR code or paste the link into their GameFlex.",
@@ -2551,5 +2554,15 @@
             "help": "The accounts that make the sheets of games that have none.",
             "listHelp": "A game on a disk that already has its sheet keeps it. For the others, the service makes the sheet with these accounts."
         }
+    },
+    "remoteAdmin": {
+        "title": "Remote administration",
+        "switchHelp": "One of your administrators using this access also manages this server from theirs. Off, they can only play.",
+        "allowed": "Remote administration allowed for {{label}}.",
+        "refused": "Remote administration turned off for {{label}}.",
+        "notAdmin": "Your account does not administer this server from here. On that server, an administrator must allow remote administration in the access given to your server.",
+        "unreachable": "This server opens no session for you: paste your account token from there first.",
+        "section": "Shared with you as an admin",
+        "sectionHelp": "Its settings, changed from here, on that server."
     }
 }

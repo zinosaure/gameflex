@@ -378,7 +378,7 @@ func randomPairingCode() (string, error) {
 // createPairingCode — un code de cette sorte, pour l'auteur. Son échéance est
 // la plus proche de deux dates : deux minutes, ou la fin de son mode. Il
 // remplace le code vivant de son auteur, dans la même transaction.
-func (server *Server) createPairingCode(kind, label, scopes string, userID any, principal auth.Principal) (invitationResponse, error) {
+func (server *Server) createPairingCode(kind, label, scopes string, remoteAdmin bool, userID any, principal auth.Principal) (invitationResponse, error) {
 	state := server.pairing
 	state.mu.Lock()
 	defer state.mu.Unlock()
@@ -416,9 +416,9 @@ func (server *Server) createPairingCode(kind, label, scopes string, userID any, 
 			return invitationResponse{}, err
 		}
 		result, err := transaction.Exec(
-			`INSERT INTO invitations (kind, code_hash, label, scopes, user_id, expires_at, created_at, created_by_id, pairing)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
-			kind, hashToken(code), label, scopes, userID, pairingStamp(expiresAt), now(), principal.ID,
+			`INSERT INTO invitations (kind, code_hash, label, scopes, remote_admin, user_id, expires_at, created_at, created_by_id, pairing)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+			kind, hashToken(code), label, scopes, remoteAdmin, userID, pairingStamp(expiresAt), now(), principal.ID,
 		)
 		if err != nil {
 			if strings.Contains(err.Error(), "UNIQUE") {
@@ -532,11 +532,12 @@ func (server *Server) redeemPairingCode(code, kind, from, address string) (Redee
 		id                       int64
 		label, scopes, expiresAt string
 		userID, createdBy        sql.NullInt64
+		remoteAdmin              bool
 	)
 	err := server.db.QueryRow(
-		`SELECT id, label, scopes, user_id, expires_at, created_by_id FROM invitations WHERE code_hash = ? AND kind = ? AND pairing = 1`,
+		`SELECT id, label, scopes, remote_admin, user_id, expires_at, created_by_id FROM invitations WHERE code_hash = ? AND kind = ? AND pairing = 1`,
 		hashToken(code), kind,
-	).Scan(&id, &label, &scopes, &userID, &expiresAt, &createdBy)
+	).Scan(&id, &label, &scopes, &remoteAdmin, &userID, &expiresAt, &createdBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return refuse()
 	}
@@ -572,7 +573,7 @@ func (server *Server) redeemPairingCode(code, kind, from, address string) (Redee
 	server.logins.succeed(limiterKey, address)
 	server.usedPairingCode(id, from, address)
 
-	return server.deliverInvitation(kind, label, scopes, createdBy, account, accountToken, address)
+	return server.deliverInvitation(kind, label, scopes, remoteAdmin, createdBy, account, accountToken, address)
 }
 
 // handleOpenServerPairing — POST /api/v1/token-invitations/pairing/server/open.
@@ -620,9 +621,10 @@ func (server *Server) handleCloseAccountPairing(w http.ResponseWriter, r *http.R
 // plus son mode ouvert : 409 `pairingClosed` sinon. Le code n'en sort qu'une fois.
 func (server *Server) handleCreatePairingCode(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	var body struct {
-		Kind   string   `json:"kind"`
-		Label  string   `json:"label"`
-		Scopes []string `json:"scopes"`
+		Kind        string   `json:"kind"`
+		Label       string   `json:"label"`
+		Scopes      []string `json:"scopes"`
+		RemoteAdmin bool     `json:"remote_admin"`
 	}
 	if !decodeBody(w, r, &body) {
 		return
@@ -674,7 +676,7 @@ func (server *Server) handleCreatePairingCode(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	created, err := server.createPairingCode(body.Kind, label, scopes, userID, principal)
+	created, err := server.createPairingCode(body.Kind, label, scopes, body.RemoteAdmin && body.Kind == InvitationFederation, userID, principal)
 	if errors.Is(err, ErrPairingClosed) {
 		respondErrorCode(w, http.StatusConflict, "pairingClosed", "Discovery mode is off.")
 

@@ -7,7 +7,7 @@ import { MyInvitation, useShareOrigin } from "../../screens/access/Invitation.js
 import { DiscoveryModeSection, PairingReveal, usePairing } from "../../screens/access/Pairing.jsx";
 import { toast } from "../../shell/Shell.jsx";
 import SettingsPage, { PROFILE, usePageText, useSettingsNavigation } from "../SettingsPage.jsx";
-import NavRow, { CopyField, GuideSection, Note, Rows, Section } from "../../ui/Bricks.jsx";
+import NavRow, { CopyField, GuideSection, Note, Rows, Section, SwitchRow } from "../../ui/Bricks.jsx";
 
 // MON JETON — « Créer mon jeton », sous Réglages › Profil › Fédération (le porteur, 2026-11-16, 2.1 ; MyFederation.jsx)
 // (chantier 20, Profile.jsx de la webapp) : un administrateur l'active pour une
@@ -63,8 +63,12 @@ export function TokenPage() {
         }
 
         if (isAdmin && user?.id) {
-            return <MemberToken member={{ id: user.id, username: user.username, display_name: user.display_name, token: state }} more={qr}
-                onChanged={(changed) => setAnswer((current) => ({ ...current, token: changed.token }))} />;
+            return (
+                <>
+                    <MemberToken member={{ id: user.id, username: user.username, display_name: user.display_name, token: state }} more={qr}
+                        onChanged={(changed) => setAnswer((current) => ({ ...current, token: changed.token }))} />
+                </>
+            );
         }
 
         return (

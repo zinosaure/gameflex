@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, Route, Routes, useParams, useSearchParams } from "react-router-dom";
 import {
-    consoleDefaults, deleteEmulatorPreset, deleteInstalled, deleteMetadataOrphan, fetchAvailability, fetchConsoleStatus, fetchRequired, listConsoleBackgrounds, listEmulatorParams,
+    remoteTargetNow, consoleDefaults, deleteEmulatorPreset, deleteInstalled, deleteMetadataOrphan, fetchAvailability, fetchConsoleStatus, fetchRequired, listConsoleBackgrounds, listEmulatorParams,
     listMetadataOrphans, metadataOrphanCoverPath, readToken, resetConsoleBackgrounds, searchConsoleBackgrounds, setConsoleBackground, setConsoleDefaults, setConsoleStatus, setConsoleSwitch,
     writeEmulatorParams,
 } from "../../../libs/api.js";
@@ -1138,7 +1138,8 @@ function OrphansPage() {
 
     // Tant que le kernel lit les empreintes : son sujet dit quand c'est fait.
     const token = readToken();
-    const channel = useKernelChannel(reading && kernelReachable(token) ? kernelTarget(null, token) : null);
+    // Chez un serveur fédéré administré d'ici (chantier 73), son canal à lui.
+    const channel = useKernelChannel(reading && kernelReachable(token) ? remoteTargetNow() || kernelTarget(null, token) : null);
     useKernelTopic(channel, reading ? `metadata-orphans/${consoleId}` : null, null, (state) => {
         if (state?.ready) {
             setReadAgain((count) => count + 1);

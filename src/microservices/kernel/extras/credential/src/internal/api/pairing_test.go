@@ -512,3 +512,33 @@ func TestPairingCodeOutsideAnyModeIsLocked(t *testing.T) {
 		t.Fatalf("route interne : %d %s", recorder.Code, recorder.Body.String())
 	}
 }
+
+// L'ADMINISTRATION À DISTANCE CHOISIE À LA CRÉATION (chantier 73) suit l'invitation et le code d'appairage jusqu'à l'accès
+// qu'ils font naître ; coupée, l'accès naît sans. Jamais accordée depuis une session venue d'ailleurs.
+func TestRemoteAdministrationTravelsWithInvitationAndPairingCode(t *testing.T) {
+	server, _ := pairingServer(t)
+	rightOf := func(token string) int {
+		var allowed int
+		_ = server.db.QueryRow(`SELECT remote_admin FROM federation_tokens WHERE token_hash = ?`, hashToken(token)).Scan(&allowed)
+		return allowed
+	}
+	_, link := createInvitation(t, server, inviter, `{"kind":"federation","label":"Tablette","remote_admin":true}`)
+	redeemed, err := server.RedeemInvitation(link.Code, InvitationFederation, "", "a")
+	if err != nil || rightOf(redeemed.Token) != 1 {
+		t.Fatalf("invitation avec l'administration : %v, droit %d", err, rightOf(redeemed.Token))
+	}
+	_, plain := createInvitation(t, server, inviter, `{"kind":"federation","label":"Télé"}`)
+	if redeemed, _ := server.RedeemInvitation(plain.Code, InvitationFederation, "", "a"); rightOf(redeemed.Token) != 0 {
+		t.Fatal("une invitation sans l'administration la donne")
+	}
+	as(server.withAdmin(server.handleOpenServerPairing), inviter, "", "")
+	code := newCode(t, server, inviter, `{"kind":"federation","label":"Téléphone","remote_admin":true}`)
+	if redeemed, err := server.RedeemInvitation(code.Code, InvitationFederation, "Gamebox", "a"); err != nil || rightOf(redeemed.Token) != 1 {
+		t.Fatalf("code d'appairage avec l'administration : %v", err)
+	}
+	federated := inviter
+	federated.Federated = true
+	if code, _ := createInvitation(t, server, federated, `{"kind":"federation","label":"x","remote_admin":true}`); code != http.StatusForbidden {
+		t.Fatalf("depuis une session venue d'ailleurs : %d, attendu 403", code)
+	}
+}

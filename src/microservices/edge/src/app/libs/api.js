@@ -171,7 +171,18 @@ function kernelAnswer(status, body) {
 // Le kernel : `{ok, status, data, errorMessage, errorCode}`. `host` — un serveur fédéré (`{origin, token}`,
 // libs/federation.js) : la même route chez lui, sous notre compte de là-bas ; un 401 de sa part
 // ne ferme pas la session d'ici.
-export async function kernel(path, options = {}, host = null) {
+// LE SERVEUR VISÉ PAR LES RÉGLAGES (chantier 73) : sous `/settings/remote/<serveur>/…`, chaque appel au kernel et au
+// service des comptes part chez lui, avec la session de mon compte de là-bas (`{origin, token}`) — posé par la page
+// distante (settings/RemoteAdmin.jsx), retiré en la quittant. Un seul endroit le décide, jamais page par page.
+let remoteTarget = null;
+export const setRemoteTarget = (target) => {
+    remoteTarget = target;
+};
+// La cible du moment, pour qui ouvre son propre canal (`kernelTarget`) : null en local.
+export const remoteTargetNow = () => remoteTarget;
+
+export async function kernel(path, options = {}, given = null) {
+    const host = given || remoteTarget;
     const used = readToken();
     let response;
 
@@ -207,15 +218,20 @@ export async function kernel(path, options = {}, host = null) {
 // 410, jamais 401 : ouvert par quelqu'un de connecté, il ne le déconnecte pas.
 export async function credential(path, options = {}) {
     const used = readToken();
+    const target = remoteTarget;
     let response;
 
     try {
-        response = await fetch(`/api/v1${path}`, { ...options, headers: headers(options.headers) });
+        response = await fetch(target ? `${target.origin}/api/v1${path}` : `/api/v1${path}`, {
+            ...options,
+            headers: target ? { Authorization: `Bearer ${target.token}`, ...(options.headers || {}) } : headers(options.headers),
+        });
     } catch {
         return { ok: false, status: 0, item: null, detail: explained("serverUnreachable") };
     }
 
-    if (path !== "/auth/login") {
+    // Un 401 du serveur visé ne ferme pas la session d'ici.
+    if (path !== "/auth/login" && !target) {
         lose(response.status, used);
     }
 
@@ -333,21 +349,26 @@ export const redeemServerCode = (link, code) => kernel("/servers/redeem", jsonBo
 export const fetchServer = (id) => kernel(`/servers/${encodeURIComponent(id)}`);
 export const rescanServer = (id) => kernel(`/servers/${encodeURIComponent(id)}/rescan`, { method: "POST" });
 export const listCatalogTokens = () => credential("/catalog-tokens");
-export const createCatalogToken = (label, scopes) => credential("/catalog-tokens", jsonBody("POST", { label, scopes }));
+// `remoteAdmin` : l'administration à distance par cet accès, choisie dès sa création (chantier 73) ; elle suit aussi
+// l'invitation et le code d'appairage jusqu'à l'accès qu'ils font naître.
+export const createCatalogToken = (label, scopes, remoteAdmin = false) => credential("/catalog-tokens", jsonBody("POST", { label, scopes, remote_admin: remoteAdmin }));
 export const updateCatalogTokenScopes = (id, scopes) => credential(`/catalog-tokens/${id}`, jsonBody("PATCH", { scopes }));
 // Les consoles d'un accès délivré (chantier 66) : ce que les comptes venus par lui peuvent lancer, comme ceux d'un membre.
 export const updateCatalogTokenConsoles = (id, consoles) => credential(`/catalog-tokens/${id}`, jsonBody("PATCH", { consoles }));
+// L'ADMINISTRATION À DISTANCE PAR CET ACCÈS (chantier 73) : coupée par défaut, accordée accès par accès.
+export const updateCatalogTokenRemoteAdmin = (id, allowed) => credential(`/catalog-tokens/${id}`, jsonBody("PATCH", { remote_admin: allowed }));
 // Les consoles coupées pour tout le serveur (chantier 66) : couper ou rallumer une console.
 export const setConsoleSwitch = (id, enabled) => credential(`/console-switches/${encodeURIComponent(id)}`, jsonBody("PUT", { enabled }));
 export const revokeCatalogToken = (id) => credential(`/catalog-tokens/${id}`, { method: "DELETE" });
-export const createInvitation = ({ kind, label = "", scopes = [] }) => credential("/token-invitations", jsonBody("POST", kind === "account" ? { kind } : { kind, label, scopes }));
+export const createInvitation = ({ kind, label = "", scopes = [], remoteAdmin = false }) => credential("/token-invitations",
+    jsonBody("POST", kind === "account" ? { kind } : { kind, label, scopes, remote_admin: remoteAdmin }));
 export const listInvitations = () => credential("/token-invitations");
 // LE CODE D'APPAIRAGE (chantier 60) : ouvrir ou prolonger un mode découverte (`server`, `account`), le fermer ; créer un
 // code (rendu cette fois-là seulement), l'annuler. Son état revient par le sujet `pairing` (screens/access/Pairing.jsx).
 export const openPairing = (scope) => credential(`/token-invitations/pairing/${scope}/open`, { method: "POST" });
 export const closePairing = (scope) => credential(`/token-invitations/pairing/${scope}/close`, { method: "POST" });
-export const createPairingCode = ({ kind, label = "", scopes = [] }) => credential("/token-invitations/pairing/codes",
-    jsonBody("POST", kind === "account" ? { kind } : { kind, label, scopes }));
+export const createPairingCode = ({ kind, label = "", scopes = [], remoteAdmin = false }) => credential("/token-invitations/pairing/codes",
+    jsonBody("POST", kind === "account" ? { kind } : { kind, label, scopes, remote_admin: remoteAdmin }));
 export const cancelPairingCode = (id) => credential(`/token-invitations/pairing/codes/${id}`, { method: "DELETE" });
 export const revokeInvitation = (id) => credential(`/token-invitations/${id}`, { method: "DELETE" });
 
@@ -713,7 +734,14 @@ export const wakeDevice = (deviceId, host = null) => kernel(`/playstation/wake/$
 export const subscribeSessions = (onList) => subscribeTopic("sessions", (data) => onList((Array.isArray(data) ? data : []).filter((session) => session.consoleId !== "keytest")));
 
 // L'adresse du canal du kernel, le jeton en paramètre (une poignée de main WebSocket ne porte pas d'en-tête).
+// LE CANAL DU KERNEL VISÉ : le nôtre, ou celui du serveur fédéré qu'on administre d'ici (chantier 73) — une commande
+// (un téléchargement) partie de ses réglages se fait chez lui, pas sur cet appareil.
 const facadeAddress = () => {
+    if (remoteTarget) {
+        const origin = new URL(remoteTarget.origin);
+
+        return `${origin.protocol === "https:" ? "wss:" : "ws:"}//${origin.host}/api/v1/facade/ws?token=${encodeURIComponent(remoteTarget.token)}`;
+    }
     const token = readToken();
 
     return `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/api/v1/facade/ws${token ? `?token=${encodeURIComponent(token)}` : ""}`;

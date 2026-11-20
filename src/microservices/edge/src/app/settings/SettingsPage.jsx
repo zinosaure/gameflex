@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { toRemote, useRemoteAdmin } from "../libs/remoteAdmin.js";
 import { focusElement, useScreenInput } from "../libs/input.js";
 import { ButtonPlace, MUTED } from "../libs/ui.js";
 import { PageHeader, Section } from "../ui/Bricks.jsx";
@@ -75,6 +76,8 @@ export function useSettingsNavigation() {
     const navigate = useNavigate();
     const location = useLocation();
     const depth = location.state?.settingsDepth || 0;
+    // Chez un serveur fédéré (chantier 73), chaque adresse des Réglages reste chez lui.
+    const remote = useRemoteAdmin();
 
     return {
         // Ouvrir une page : retenir l'entrée (`key`, son data-key), garder l'écran d'où l'on est venu aux réglages.
@@ -82,11 +85,11 @@ export function useSettingsNavigation() {
             if (key) {
                 openedFrom.set(location.pathname, key);
             }
-            navigate(path, { state: { ...state, fromScreen: location.state?.fromScreen, settingsDepth: depth + 1 } });
+            navigate(toRemote(path, remote), { state: { ...state, fromScreen: location.state?.fromScreen, settingsDepth: depth + 1 } });
         },
         back: (parent) => (depth > 0
             ? navigate(-1)
-            : navigate(parent, { replace: true, state: { fromScreen: location.state?.fromScreen } })),
+            : navigate(toRemote(parent, remote), { replace: true, state: { fromScreen: location.state?.fromScreen } })),
     };
 }
 
@@ -180,7 +183,10 @@ export default function SettingsPage({ title, parent = "/settings", enter = null
             titles.set(path, label);
         }
     }
-    const trail = useTrail(parent || "");
+    // Chez un serveur fédéré : pas de fil d'Ariane (ses adresses sont les nôtres), la pastille à sa place.
+    const remote = useRemoteAdmin();
+    const localTrail = useTrail(parent || "");
+    const trail = remote ? [] : localTrail;
 
     if (parent) {
         titles.set(location.pathname, title);
@@ -200,7 +206,7 @@ export default function SettingsPage({ title, parent = "/settings", enter = null
                         haut, la même sur chaque écran, reste un écran. */}
                     <ButtonPlace.Provider value="settings">
                         <div ref={box} className="settings-box w-100 mx-auto">
-                            <PageHeader title={title} onBack={goBack} trail={parent ? trail : []} enter={enter} />
+                            <PageHeader title={title} onBack={goBack} trail={parent ? trail : []} enter={enter} remote={remote?.name || ""} />
                             {children}
                         </div>
                     </ButtonPlace.Provider>

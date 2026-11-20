@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { remoteRoot, REMOTE_PAGES, useAdminThere, useRemoteAdmin } from "../../libs/remoteAdmin.js";
 import {
     addServerRegistry, checkFederationServer, listServerRegistry, redeemServerCode, redeemServerInvitation, removeServerRegistry, rescanServer,
 } from "../../libs/api.js";
@@ -362,9 +363,12 @@ function ServerPage() {
     const { t, i18n } = useTranslation();
     const { serverId } = useParams();
     const { refreshServers } = useData();
-    const { back } = useSettingsNavigation();
+    const { back, open } = useSettingsNavigation();
     const levels = useLevels();
     const server = usePassed("server", serverId, () => loadServers(refreshServers, t, i18n.language));
+    const remote = useRemoteAdmin();
+    const adminThereNow = useAdminThere(remote ? null : server);
+    const adminHere = !remote && adminThereNow;
 
     if (!server) {
         return <Waiting item={server} title={t("fed.joinedTitle")} parent={JOINED} />;
@@ -418,6 +422,19 @@ function ServerPage() {
                     </Rows>
                 </Section>
             )}
+            {/* PARTAGÉ AVEC VOUS EN TANT QU'ADMINISTRATEUR (chantier 73) : ses réglages, ouverts d'ici chez lui — seulement si mon
+                compte de là-bas y est administrateur et l'a autorisé. JAMAIS depuis une page distante elle-même (le porteur :
+                « éviter les cycles infinis ») : chez un serveur fédéré, ses propres serveurs rejoints n'en ont pas. */}
+            {adminHere && (
+                <Section title={t("remoteAdmin.section")} help={t("remoteAdmin.sectionHelp")}>
+                    <Rows>
+                        {REMOTE_PAGES.map((entry) => (
+                            <NavRow key={entry.key} id={`fd-admin-${entry.key}`} icon={entry.icon} tone={entry.tone} label={t(`settings.items.${entry.key}.label`)}
+                                help={t(`settings.items.${entry.key}.help`)} onOpen={() => open(`${remoteRoot(server.id)}/${entry.path}`, `fd-admin-${entry.key}`)} />
+                        ))}
+                    </Rows>
+                </Section>
+            )}
             <DangerSection id={`fd-del-${server.id}`} help={t("fed.removeHelp")} label={t("fed.remove")} question={`${t("fed.removeConfirm")} ${server.label}`}
                 onConfirm={async () => {
                     const answer = await removeServerRegistry(server.id);
@@ -436,25 +453,35 @@ function ServerPage() {
 // CE QU'OUVRE UN ACCÈS, écrit une fois pour « Créer un nouvel accès » et « Code d'appairage » (chantier 60) : pour qui, et
 // partager aussi les fournisseurs de métadonnées. Ses consoles se restreignent ensuite sur sa page (chantier 66) : il naît
 // avec toutes.
-function AccessFields({ form, values, setValues }) {
+function AccessName({ form }) {
+    const { t } = useTranslation();
+
+    return <TextRow id="label" context={form} label={t("fed.forWho")} help={t("fed.forWhoHelp")} props={{ placeholder: t("fed.forWhoPlaceholder"), "data-key": "fd-label" }} />;
+}
+
+// LES DROITS À DISTANCE D'UN ACCÈS NEUF (le porteur, 2026-11-20 : « pareil, avec une section pour le "Remote rights" ») —
+// les mêmes lignes que sur la page de l'accès (IssuedTokenSections) : les fournisseurs de métadonnées, et l'administration
+// à distance (chantier 73), coupées par défaut. Jamais depuis une page distante : le service des comptes la refuse.
+function RemoteRightsRows({ values, setValues }) {
     const { t } = useTranslation();
     const { offers } = useFederationHost();
+    const remote = useRemoteAdmin();
 
     return (
         <>
-            <TextRow id="label" context={form} label={t("fed.forWho")} help={t("fed.forWhoHelp")} props={{ placeholder: t("fed.forWhoPlaceholder"), "data-key": "fd-label" }} />
             {offers.providers && <SwitchRow id="fd-providers" label={t("fed.providersLabel")} help={t("fed.providersHelp")} checked={values.providers}
                 onChange={(providers) => setValues((previous) => ({ ...previous, providers }))} />}
+            {offers.remoteAdmin && !remote && <SwitchRow id="fd-remote-admin" label={t("remoteAdmin.title")} help={t("remoteAdmin.switchHelp")} checked={values.remoteAdmin}
+                onChange={(remoteAdmin) => setValues((previous) => ({ ...previous, remoteAdmin }))} />}
         </>
     );
 }
 
-// CRÉER UN ACCÈS : pour qui, partager aussi les fournisseurs de métadonnées (coupé par
-// défaut, `#719`) ; une invitation (le chemin proposé), ou — l'interrupteur
-// « Plutôt le lien et le jeton » allumé (le porteur, 2026-11-14 : « Il est préférable de mettre en option (switch)
-// l'action "Plutôt lien et jeton". Au lieu d'avoir de bouton. ») — le lien et un jeton montré une seule fois, qui
-// restent sur la page jusqu'à « J'ai copié ». UN bouton, dont le libellé suit l'interrupteur (« Créer l'invitation »,
-// « Créer le jeton ») : il dit ce qu'on obtiendra.
+// CRÉER UN ACCÈS : comment le partager — « Partager par » : « Jeton classique » (le lien et un jeton montré une seule
+// fois, qui restent sur la page jusqu'à « J'ai copié ») ou « QR code » (une invitation, le chemin proposé) ; un choix
+// segmenté comme celui de Remote Play › Ajouter une console, en tête du formulaire (le porteur, 2026-11-20 ; il remplace
+// l'interrupteur « Plutôt le lien et le jeton »). Puis pour qui, et ses droits à distance (RemoteRightsRows), coupés par
+// défaut. UN bouton, dont le libellé suit le choix (« Créer l'invitation », « Créer le jeton ») : il dit ce qu'on obtiendra.
 function NewTokenPage() {
     const { ACCESSES } = useFederationPaths();
     const { t } = useTranslation();
@@ -462,7 +489,7 @@ function NewTokenPage() {
     const host = useFederationHost();
     const origin = host.useOrigin();
     const { back } = useSettingsNavigation();
-    const [values, setValues] = useState({ label: "", providers: false, tokenInstead: false });
+    const [values, setValues] = useState({ label: "", providers: false, remoteAdmin: false, share: "qr" });
     const [pending, setPending] = useState(false);
     const [created, setCreated] = useState(null);
     const [invited, setInvited] = useState(null);
@@ -473,7 +500,7 @@ function NewTokenPage() {
 
     const invite = async () => {
         setPending(true);
-        const answer = await host.api.createInvitation({ kind: "federation", label, scopes: scopes() });
+        const answer = await host.api.createInvitation({ kind: "federation", label, scopes: scopes(), remoteAdmin: values.remoteAdmin });
         setPending(false);
 
         if (!answer.ok || !answer.item) {
@@ -486,7 +513,7 @@ function NewTokenPage() {
 
     const create = async () => {
         setPending(true);
-        const answer = await host.api.createToken(label, scopes());
+        const answer = await host.api.createToken(label, scopes(), values.remoteAdmin);
         setPending(false);
 
         if (!answer.ok || !answer.item) {
@@ -522,16 +549,23 @@ function NewTokenPage() {
                     event.preventDefault();
 
                     if (label && !pending) {
-                        (values.tokenInstead ? create : invite)();
+                        (values.share === "token" ? create : invite)();
                     }
                 } }}>
                     <Section title={t("fed.accessTitle")}>
                         <Rows>
-                            <AccessFields form={form} values={values} setValues={setValues} />
-                            <SwitchRow id="fd-token-instead" label={t("invitations.tokenInstead")} help={t("fed.tokenInsteadHelp")} checked={values.tokenInstead}
-                                onChange={(tokenInstead) => setValues((previous) => ({ ...previous, tokenInstead }))} />
+                            {/* JETON CLASSIQUE OU QR CODE (le porteur, 2026-11-20 : « remplacer le switch par un bouton radio group
+                                comme dans remote play/add console ») — le QR code, l'invitation, reste le chemin proposé. */}
+                            <ChoiceRow id="fd-share" label={t("fed.shareAs")} help={t("fed.shareAsHelp")} value={values.share}
+                                options={[["token", t("fed.shareToken")], ["qr", t("fed.shareQr")]]} onChange={(share) => setValues((previous) => ({ ...previous, share }))} />
+                            <AccessName form={form} />
+                        </Rows>
+                    </Section>
+                    <Section title={t("fed.remoteRights")}>
+                        <Rows>
+                            <RemoteRightsRows values={values} setValues={setValues} />
                             <SubmitRow>
-                                <FormButton id="fd-create" label={t(values.tokenInstead ? "fed.createToken" : "invitations.create")} isReplaced={Boolean(label)} pending={pending} />
+                                <FormButton id="fd-create" label={t(values.share === "token" ? "fed.createToken" : "invitations.create")} isReplaced={Boolean(label)} pending={pending} />
                             </SubmitRow>
                         </Rows>
                     </Section>
@@ -541,7 +575,7 @@ function NewTokenPage() {
     );
 }
 
-// LE CODE D'APPAIRAGE D'UN ACCÈS (chantier 60) : le mode serveur en tête, puis ce qu'ouvre l'accès (AccessFields) et
+// LE CODE D'APPAIRAGE D'UN ACCÈS (chantier 60) : le mode serveur en tête, puis le nom de l’accès (AccessName), ses droits à distance (RemoteRightsRows) et
 // « Créer le code », grisé tant que le mode serveur est fermé. Le code créé prend la page (PairingReveal) ; servi, la
 // page revient à la liste des accès, où le nouvel accès apparaît.
 function NewPairingPage() {
@@ -551,7 +585,7 @@ function NewPairingPage() {
     const host = useFederationHost();
     const pairing = host.usePairing();
     const { back } = useSettingsNavigation();
-    const [values, setValues] = useState({ label: "", providers: false });
+    const [values, setValues] = useState({ label: "", providers: false, remoteAdmin: false });
     const [pending, setPending] = useState(false);
     const [created, setCreated] = useState(null);
     const form = formContext(values, setValues);
@@ -560,7 +594,7 @@ function NewPairingPage() {
 
     const create = async () => {
         setPending(true);
-        const answer = await host.api.createPairingCode({ kind: "federation", label, scopes: scopesFor(values) });
+        const answer = await host.api.createPairingCode({ kind: "federation", label, scopes: scopesFor(values), remoteAdmin: values.remoteAdmin });
         setPending(false);
 
         if (!answer.ok || !answer.item) {
@@ -592,7 +626,12 @@ function NewPairingPage() {
                     } }}>
                         <Section title={t("fed.accessTitle")} help={open ? null : t("pairing.createNeedsMode")}>
                             <Rows>
-                                <AccessFields form={form} values={values} setValues={setValues} />
+                                <AccessName form={form} />
+                            </Rows>
+                        </Section>
+                        <Section title={t("fed.remoteRights")}>
+                            <Rows>
+                                <RemoteRightsRows values={values} setValues={setValues} />
                                 <SubmitRow>
                                     <FormButton id="fd-pairing-create" label={t("pairing.create")} isReplaced={Boolean(label)} disabled={!open} pending={pending} />
                                 </SubmitRow>
@@ -734,8 +773,9 @@ function InvitationPage() {
 // cadre. `offers` : ce que l'hôte peut prêter en plus de ses jeux — le service de fédération ne prête aucune console : ni
 // leur ligne ni leur page. `onScopes(scopes)` → {ok, item, detail} ; `onConsoles()` ouvre la page de ses consoles ;
 // `onRevoke()` → {ok, detail} ; `onRevoked`, après. Le jeton : `{id, label, scopes: "a,b", consoles: [...], last_used_at}`.
-export function IssuedTokenSections({ token, offers = { consoles: true, providers: true }, onScopes = null, onConsoles = null, onRevoke, onRevoked }) {
+export function IssuedTokenSections({ token, offers = { consoles: true, providers: true }, onScopes = null, onConsoles = null, onRemoteAdmin = null, onRevoke, onRevoked }) {
     const { t, i18n } = useTranslation();
+    const remote = useRemoteAdmin();
     const [current, setCurrent] = useState(null);
     const [pending, setPending] = useState(false);
     const shown = current || token;
@@ -789,11 +829,29 @@ export function IssuedTokenSections({ token, offers = { consoles: true, provider
                     </Rows>
                 </Section>
             )}
-            {offers.providers && onScopes && (
-                <Section title={t(`fed.scope.${PROVIDERS}`)}>
+            {/* LES DROITS À DISTANCE (le porteur, 2026-11-20) : les fournisseurs de métadonnées, et l'administration de ce
+                serveur depuis celui qui tient l'accès (chantier 73) — accordée ACCÈS PAR ACCÈS, coupée par défaut : « je ne
+                veux pas que ma smart TV puisse avoir la possibilité de faire du remote admin ». Jamais changée depuis une
+                page distante : le service des comptes la refuse à une session venue d'ailleurs. */}
+            {((offers.providers && onScopes) || (offers.remoteAdmin && onRemoteAdmin && !remote)) && (
+                <Section title={t("fed.remoteRights")}>
                     <Rows>
-                        <SwitchRow id={`fd-prov-${shown.id}`} label={t("fed.providersLabel")} help={t("fed.providersHelp")} checked={shared.providers} disabled={pending}
-                            onChange={(next) => setShared("providers", next)} />
+                        {offers.providers && onScopes && (
+                            <SwitchRow id={`fd-prov-${shown.id}`} label={t("fed.providersLabel")} help={t("fed.providersHelp")} checked={shared.providers} disabled={pending}
+                                onChange={(next) => setShared("providers", next)} />
+                        )}
+                        {offers.remoteAdmin && onRemoteAdmin && !remote && (
+                            <SwitchRow id={`fd-admin-${shown.id}`} label={t("remoteAdmin.title")} help={t("remoteAdmin.switchHelp")} checked={Boolean(shown.remote_admin)} disabled={pending}
+                                onChange={async (next) => {
+                                    setPending(true);
+                                    const answer = await onRemoteAdmin(next);
+                                    setPending(false);
+                                    toast(answer.ok ? t(next ? "remoteAdmin.allowed" : "remoteAdmin.refused", { label: shown.label }) : answer.detail || t("settings.actionFailed"));
+                                    if (answer.ok) {
+                                        setCurrent({ ...shown, remote_admin: next });
+                                    }
+                                }} />
+                        )}
                     </Rows>
                 </Section>
             )}
@@ -832,6 +890,7 @@ function TokenPage() {
         <Frame title={passed.label} parent={ACCESSES} levels={levels}>
             <IssuedTokenSections token={passed} offers={offers} onScopes={(scopes) => api.updateTokenScopes(passed.id, scopes)}
                 onConsoles={() => open(at(`tokens/${passed.id}/consoles`), `fd-consoles-${passed.id}`, { token: passed })}
+                onRemoteAdmin={api.updateTokenRemoteAdmin ? (allowed) => api.updateTokenRemoteAdmin(passed.id, allowed) : null}
                 onRevoke={() => api.revokeToken(passed.id)} onRevoked={() => back(ACCESSES)} />
         </Frame>
     );

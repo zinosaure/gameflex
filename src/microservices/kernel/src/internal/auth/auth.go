@@ -63,10 +63,10 @@ type Claims struct {
 // sessions que porte le jeton (`gen`, chantier 55) : un compte qui a coupé ses
 // sessions — réinitialisé, un nouveau mot de passe, « déconnecter les autres
 // appareils » — ne laisse plus passer celles d'avant.
-var gate func(username, subject, fed string, generation, claimedRole int) (int, bool)
+var gate func(username, subject, fed string, access int64, generation, claimedRole int) (int, bool)
 
 // SetGate — la porte, posée au démarrage par le serveur.
-func SetGate(admit func(username, subject, fed string, generation, claimedRole int) (int, bool)) {
+func SetGate(admit func(username, subject, fed string, access int64, generation, claimedRole int) (int, bool)) {
 	gate = admit
 }
 
@@ -75,7 +75,7 @@ func Admit(claims Claims) (Claims, bool) {
 	if gate == nil {
 		return claims, true
 	}
-	role, ok := gate(claims.Username, claims.Subject, claims.Fed, claims.Gen, claims.RoleLevel)
+	role, ok := gate(claims.Username, claims.Subject, claims.Fed, claims.Acc, claims.Gen, claims.RoleLevel)
 	if !ok {
 		return Claims{}, false
 	}

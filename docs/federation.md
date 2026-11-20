@@ -63,15 +63,19 @@ federated accounts.
 1. Open GameFlex through the address your friend will use to reach it (its public HTTPS address,
    see [Play away from home](remote-access.md)): the **Server address** GameFlex gives is the address
    you opened. Then, in **Settings › Federation › Delivered accesses**, open **Create a new access**.
-2. In **Who is it for?**, give a name you will recognize, such as *Marc's server*. It is shown next
+2. Keep **Share with** on **QR code**.
+3. In **Who is it for?**, give a name you will recognize, such as *Marc's server*. It is shown next
    to your games on their side, and lets you cut off this access alone.
-3. To let their searches for game sheets use your metadata provider accounts, turn on **Also share
-   my metadata providers** (off by default: their searches count in your quota).
-4. Press **Create the invitation**.
+4. Under **Remote rights**, two switches, both off by default:
+   - **Remote metadata providers** lets their searches for game sheets use your metadata provider
+     accounts (their searches count in your quota);
+   - **Remote administration** lets one of your administrators who comes through this access manage
+     your server from theirs (see [Manage your server from another one](#manage-your-server-from-another-one)).
+5. Press **Create the invitation**.
 
-   ![Create a new access: the name of the person it is for, and what to share](images/federation-token-create.png)
+   ![Create a new access: how to share it, who it is for, and its remote rights](images/federation-token-create.png)
 
-5. GameFlex shows the invitation: a **QR code** and its **Invitation link**. Send it to your friend
+6. GameFlex shows the invitation: a **QR code** and its **Invitation link**. Send it to your friend
    in a private message: **Download the QR** and send the image, **Share**, or copy the link. It
    works once, within 12 hours; after that, create another one.
 
@@ -81,9 +85,11 @@ Until your friend uses it, the invitation waits under **Delivered accesses › P
 accesses**, where you can revoke it. Once used, it becomes one of the delivered accesses, with the
 name you gave.
 
-**The address and the token instead:** turn on **Rather the address and the token**, then press **Create
-the token**. GameFlex shows a **Server address** and an **Access token**: send both, in a private
+**The address and the token instead:** choose **Share with › Classic token**, then press **Create the
+token**. GameFlex shows a **Server address** and an **Access token**: send both, in a private
 message. The token is shown only once: if it is lost, revoke it and create another.
+
+A pairing code (**Delivered accesses › Pairing code**) offers the same **Remote rights**.
 
 ### Choose the consoles of an access
 
@@ -97,6 +103,23 @@ To switch a console off for everyone at once, members of your server included, o
 Consoles**, the console, and turn off **Console enabled**. It is useful when your computer needs its
 graphics card for something else: the PlayStation 5 can go off while the retro consoles and Remote
 Play, which uses your real console, stay on.
+
+### Manage your server from another one
+
+Your own devices join your server like a friend's server would: your phone, your tablet, your TV. With **Remote
+administration** on the access of a device, you manage your server from that device's GameFlex:
+
+1. On your server, in **Settings › Federation › Delivered accesses**, open the access of the device and turn on
+   **Remote administration** (under **Remote rights**). Leave it off on a device that other people use, such as a TV.
+2. On the device, your administrator account must be signed in at your server (**Settings › Profile › Federation ›
+   Sign in at federated servers**).
+3. On the device, open **Settings › Federation › Joined servers** and your server: the section **Shared with you as an
+   admin** opens its **Members**, **Federation**, **Consoles**, **Remote Play**, **Logs** and **Rescan everything**.
+   Their title carries the server's name, in orange: what you change there changes on your server.
+
+Your server writes each change made this way in its log, with the access it came through. Turning **Remote
+administration** off brings the sessions of that access back to playing at once. It is never changed from a remote
+page.
 
 ## Add a friend's server
 
@@ -239,7 +262,7 @@ can run it alone: `./launch.sh federation`.
 3. Its home page works like **Settings › Federation** in GameFlex, for what it lends:
    **Delivered accesses** creates an access for a device or a server (an invitation with its QR
    code, or the address and a token) or a pairing code while **Discovery mode** is on, lists the
-   accesses with when each was last used, and revokes them. **Also share my metadata providers**,
+   accesses with when each was last used, and revokes them. **Remote metadata providers**,
    on an access or when you create it, lets that device or server search sheets and images with
    the service's IGDB and SteamGridDB accounts (step 5), without seeing the keys. In GameFlex, add it
    like a friend's server ([Add a friend's server](#add-a-friends-server)). It joins no server itself.

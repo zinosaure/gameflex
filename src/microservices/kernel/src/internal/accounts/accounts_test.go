@@ -29,7 +29,7 @@ const twoAccounts = `{"type":"accounts","accounts":[
 // du service d'identité n'empêche pas de jouer.
 func TestBeforeAnyListEveryValidTokenPasses(t *testing.T) {
 	store := New()
-	if role, ok := store.Admit("inconnu", "", "", 0, 1); !ok || role != 1 {
+	if role, ok := store.Admit("inconnu", "", "", 0, 0, 1); !ok || role != 1 {
 		t.Fatalf("avant la liste : %d / %v, attendu 1 / true", role, ok)
 	}
 	if _, known := store.Grants("inconnu"); known {
@@ -42,10 +42,10 @@ func TestBeforeAnyListEveryValidTokenPasses(t *testing.T) {
 func TestAfterTheListTheAccountDecides(t *testing.T) {
 	store := New()
 	store.Replace(list(t, twoAccounts))
-	if _, ok := store.Admit("supprime", "", "", 0, 1); ok {
+	if _, ok := store.Admit("supprime", "", "", 0, 0, 1); ok {
 		t.Fatal("un compte absent de la liste est entré")
 	}
-	if role, ok := store.Admit("marc", "", "", 0, 1); !ok || role != RoleUser {
+	if role, ok := store.Admit("marc", "", "", 0, 0, 1); !ok || role != RoleUser {
 		t.Fatalf("marc, jeton qui le dit administrateur : %d / %v, attendu 2 / true", role, ok)
 	}
 	if grants, known := store.Grants("marc"); !known || len(grants) != 1 || grants[0] != "ps3" {
@@ -58,17 +58,17 @@ func TestAfterTheListTheAccountDecides(t *testing.T) {
 func TestATokenSessionFollowsItsToken(t *testing.T) {
 	store := New()
 	store.Replace(list(t, twoAccounts))
-	if role, ok := store.Admit("marc", "", "bbbb2222", 0, 1); !ok || role != RoleUser {
+	if role, ok := store.Admit("marc", "", "bbbb2222", 0, 0, 1); !ok || role != RoleUser {
 		t.Fatalf("bonne génération : %d / %v", role, ok)
 	}
-	if _, ok := store.Admit("marc", "", "cccc3333", 0, 2); ok {
+	if _, ok := store.Admit("marc", "", "cccc3333", 0, 0, 2); ok {
 		t.Fatal("une génération régénérée depuis est entrée")
 	}
-	if _, ok := store.Admit("admin", "", "aaaa1111", 0, 1); ok {
+	if _, ok := store.Admit("admin", "", "aaaa1111", 0, 0, 1); ok {
 		t.Fatal("un jeton désactivé a ouvert une session")
 	}
 	store.now = func() time.Time { return time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC) }
-	if _, ok := store.Admit("marc", "", "bbbb2222", 0, 2); ok {
+	if _, ok := store.Admit("marc", "", "bbbb2222", 0, 0, 2); ok {
 		t.Fatal("un jeton échu a ouvert une session")
 	}
 }
@@ -153,7 +153,7 @@ func TestTheStoreFollowsTheIdentityChannel(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("la seconde liste n'a rien coupé")
 	}
-	if _, ok := store.Admit("marc", "", "", 0, 2); ok {
+	if _, ok := store.Admit("marc", "", "", 0, 0, 2); ok {
 		t.Fatal("marc, supprimé, est admis")
 	}
 }
@@ -163,15 +163,15 @@ func TestTheStoreFollowsTheIdentityChannel(t *testing.T) {
 func TestARecreatedAccountRefusesTheTokensOfTheOldOne(t *testing.T) {
 	store := New()
 	store.Replace(list(t, twoAccounts))
-	if _, ok := store.Admit("marc", "2", "", 0, 2); !ok {
+	if _, ok := store.Admit("marc", "2", "", 0, 0, 2); !ok {
 		t.Fatal("le jeton de marc (id 2) a été refusé")
 	}
 	store.Replace(list(t, `{"type":"accounts","accounts":[
 	{"id":3,"username":"marc","role_level":2,"consoles":["ps3"]}]}`))
-	if _, ok := store.Admit("marc", "2", "", 0, 2); ok {
+	if _, ok := store.Admit("marc", "2", "", 0, 0, 2); ok {
 		t.Fatal("le jeton de l'ancien marc (id 2) a ouvert une session au nouveau (id 3)")
 	}
-	if _, ok := store.Admit("marc", "3", "", 0, 2); !ok {
+	if _, ok := store.Admit("marc", "3", "", 0, 0, 2); !ok {
 		t.Fatal("le jeton du nouveau marc a été refusé")
 	}
 }
@@ -182,19 +182,19 @@ func TestARecreatedAccountRefusesTheTokensOfTheOldOne(t *testing.T) {
 // aussi, le jeton neuf d'un appareil pouvant arriver avant la liste qui le dit.
 func TestAnOlderSessionGenerationIsRefused(t *testing.T) {
 	store := New()
-	if _, ok := store.Admit("marc", "2", "", 0, 2); !ok {
+	if _, ok := store.Admit("marc", "2", "", 0, 0, 2); !ok {
 		t.Fatal("avant la liste, un jeton valide est refusé")
 	}
 	store.Replace(list(t, `{"accounts":[{"id":2,"username":"marc","role_level":2,"consoles":["*"],"session_generation":3}]}`))
 	for generation, want := range map[int]bool{0: false, 2: false, 3: true, 4: true} {
-		if _, ok := store.Admit("marc", "2", "", generation, 2); ok != want {
+		if _, ok := store.Admit("marc", "2", "", 0, generation, 2); ok != want {
 			t.Fatalf("génération %d : %v, attendu %v", generation, ok, want)
 		}
 	}
 	// Une session ouverte par jeton suit aussi la génération du compte.
 	store.Replace(list(t, `{"accounts":[{"id":2,"username":"marc","role_level":2,"consoles":["*"],"session_generation":3,
 		"token":{"generation":"bbbb2222","enabled":true,"expires_at":"2099-01-01T00:00:00Z"}}]}`))
-	if _, ok := store.Admit("marc", "2", "bbbb2222", 2, 2); ok {
+	if _, ok := store.Admit("marc", "2", "bbbb2222", 0, 2, 2); ok {
 		t.Fatal("une session fédérée d'une génération coupée est entrée")
 	}
 }
@@ -244,5 +244,23 @@ func TestOnlyAnAccountNamedDeletedLosesItsSaves(t *testing.T) {
 	change = restarted.Replace(list(t, `{"accounts":[{"id":1,"username":"admin","role_level":1},{"id":4,"username":"paul","role_level":2}]}`), "lea", "paul")
 	if strings.Join(change.Erased, ",") != "lea" || len(change.Deleted) != 0 {
 		t.Fatalf("la première liste d'un kernel qui redémarrait : %+v, attendu lea seule (paul existe de nouveau)", change)
+	}
+}
+
+// ADMINISTRER DEPUIS UN SERVEUR FÉDÉRÉ (chantier 73) : la session ouverte par le jeton d'un administrateur n'est que
+// joueur, sauf si l'accès délivré par lequel elle est venue laisse administrer — accès par accès (« pas ma smart TV »).
+func TestARemoteAdminSessionKeepsTheRankOnlyThroughAnAllowedAccess(t *testing.T) {
+	store := New()
+	store.Replace(list(t, `{"type":"accounts","accounts":[
+		{"id":1,"username":"admin","role_level":1,"consoles":["*"],"token":{"generation":"aaaa1111","enabled":true,"expires_at":"2099-01-01T00:00:00Z"}}]}`))
+	store.SetRights([]Access{{ID: 7, Consoles: []string{"*"}, RemoteAdmin: true}, {ID: 8, Consoles: []string{"*"}}}, nil)
+	if role, ok := store.Admit("admin", "", "aaaa1111", 8, 0, 1); !ok || role != RoleUser {
+		t.Fatalf("accès sans l'administration : %d / %v, attendu joueur", role, ok)
+	}
+	if role, ok := store.Admit("admin", "", "aaaa1111", 7, 0, 1); !ok || role != 1 {
+		t.Fatalf("accès qui laisse administrer : %d / %v, attendu administrateur", role, ok)
+	}
+	if role, ok := store.Admit("admin", "", "", 0, 0, 1); !ok || role != 1 {
+		t.Fatalf("session d'ici : %d / %v, attendu administrateur", role, ok)
 	}
 }

@@ -109,6 +109,9 @@ type Store struct {
 	// arrivées avec les comptes.
 	accesses map[int64][]string
 	disabled []string
+	// adminAccesses — les accès délivrés qui laissent administrer (chantier 73) : une session venue par l'un d'eux, avec
+	// le jeton d'un administrateur, garde son rang. Accordé accès par accès, jamais pour tout le serveur.
+	adminAccesses map[int64]bool
 
 	// OnChange — appelé après chaque liste qui retire quelque chose.
 	OnChange func(Change)
@@ -207,7 +210,7 @@ func (store *Store) Replace(list []Account, deleted ...string) Change {
 // ancienne que celle du compte, la session a été coupée. Plus récente, elle
 // passe : seul le service d'identité signe, et le jeton neuf d'un appareil qui
 // vient de couper les autres peut arriver ici avant la liste qui le dit.
-func (store *Store) Admit(username, subject, fed string, generation, claimedRole int) (int, bool) {
+func (store *Store) Admit(username, subject, fed string, access int64, generation, claimedRole int) (int, bool) {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 
@@ -227,6 +230,9 @@ func (store *Store) Admit(username, subject, fed string, generation, claimedRole
 	if fed != "" {
 		if !account.Token.valid(fed, store.now()) {
 			return 0, false
+		}
+		if store.adminAccesses[access] {
+			return account.RoleLevel, true
 		}
 
 		return RoleUser, true
@@ -287,14 +293,18 @@ func (store *Store) ConsoleDisabled(consoleID string) bool {
 	return false
 }
 
-// SetRights — les accès et les consoles coupées d'une liste (chantier 66).
+// SetRights — les accès et les consoles coupées d'une liste (chantier 66), et les accès qui laissent administrer (chantier 73).
 func (store *Store) SetRights(accesses []Access, disabled []string) {
 	byID := make(map[int64][]string, len(accesses))
+	admins := map[int64]bool{}
 	for _, access := range accesses {
 		byID[access.ID] = access.Consoles
+		if access.RemoteAdmin {
+			admins[access.ID] = true
+		}
 	}
 	store.mu.Lock()
-	store.accesses, store.disabled = byID, append([]string{}, disabled...)
+	store.accesses, store.disabled, store.adminAccesses = byID, append([]string{}, disabled...), admins
 	store.mu.Unlock()
 }
 
@@ -302,6 +312,8 @@ func (store *Store) SetRights(accesses []Access, disabled []string) {
 type Access struct {
 	ID       int64    `json:"id"`
 	Consoles []string `json:"consoles"`
+	// RemoteAdmin — un administrateur venu par cet accès garde son rang (chantier 73).
+	RemoteAdmin bool `json:"remote_admin"`
 }
 
 // Follow — se tenir à la liste du service d'identité : ouvrir son canal,

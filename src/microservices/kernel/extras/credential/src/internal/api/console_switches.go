@@ -90,11 +90,13 @@ func (server *Server) handleSetConsoleSwitch(w http.ResponseWriter, r *http.Requ
 type accessEntry struct {
 	ID       int64    `json:"id"`
 	Consoles []string `json:"consoles"`
+	// RemoteAdmin — un administrateur venu par cet accès garde son rang (chantier 73).
+	RemoteAdmin bool `json:"remote_admin,omitempty"`
 }
 
 // accessesSnapshot — les accès délivrés et leurs consoles, pour la copie des kernels.
 func (server *Server) accessesSnapshot() ([]accessEntry, error) {
-	rows, err := server.db.Query(`SELECT id, consoles FROM federation_tokens ORDER BY id`)
+	rows, err := server.db.Query(`SELECT id, consoles, remote_admin FROM federation_tokens ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +108,7 @@ func (server *Server) accessesSnapshot() ([]accessEntry, error) {
 			entry   accessEntry
 			granted string
 		)
-		if err := rows.Scan(&entry.ID, &granted); err != nil {
+		if err := rows.Scan(&entry.ID, &granted, &entry.RemoteAdmin); err != nil {
 			return nil, err
 		}
 		entry.Consoles = consoles.SplitGrants(granted)

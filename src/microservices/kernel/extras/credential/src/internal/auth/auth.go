@@ -174,6 +174,9 @@ type Principal struct {
 	// Generation — la génération des sessions du compte (chantier 55), celle que
 	// porte le jeton présenté.
 	Generation int
+	// Access — l'accès délivré par lequel le serveur ami a ouvert la session (chantier 66) : d'où vient une
+	// administration à distance, pour le journal (chantier 73).
+	Access int64
 }
 
 func (p Principal) IsAdmin() bool { return p.RoleLevel <= RoleAdmin }
@@ -234,6 +237,9 @@ func LoadToken(db *sql.DB, secret string, token string) (Principal, error) {
 	// régénéré ou échu, il ne la porte plus — et elle n'est jamais
 	// administrateur ici non plus. La page du serveur qui l'a ouverte apprend
 	// ainsi (401) qu'il faut la redemander.
+	// SAUF SI L'ACCÈS PAR LEQUEL ELLE EST VENUE L'A REÇU (chantier 73, coupé par défaut, accordé accès par accès) :
+	// l'administration à distance rend alors à la session le rang du compte — lue à chaque requête, couper
+	// l'interrupteur la ramène tout de suite au rang de joueur.
 	if claims.Fed != "" {
 		var (
 			token     string
@@ -245,10 +251,21 @@ func LoadToken(db *sql.DB, secret string, token string) (Principal, error) {
 		if err != nil || enabled != 1 || len(token) < 8 || token[:8] != claims.Fed || !stillValid(expiresAt) {
 			return Principal{}, ErrInvalidToken
 		}
-		principal.RoleLevel = RoleUser
+		if !RemoteAdministration(db, claims.Acc) {
+			principal.RoleLevel = RoleUser
+		}
 		principal.Federated = true
+		principal.Access = claims.Acc
 	}
 	return principal, nil
+}
+
+// RemoteAdministration — l'accès délivré `access` laisse-t-il administrer (chantier 73) ? Sans accès, révoqué ou en
+// erreur : non.
+func RemoteAdministration(db *sql.DB, access int64) bool {
+	var allowed int
+
+	return access != 0 && db.QueryRow(`SELECT remote_admin FROM federation_tokens WHERE id = ?`, access).Scan(&allowed) == nil && allowed == 1
 }
 
 // stillValid — l'échéance d'un jeton (UTC, RFC 3339) est-elle encore devant ?

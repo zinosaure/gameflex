@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-20
+
+### Added
+
+- **Manage your server from another GameFlex**: with **Remote administration** on the access of one of your devices,
+  your administrator account manages your server from that device: **Settings › Federation › Joined servers**, your
+  server, **Shared with you as an admin** opens its **Members**, **Federation**, **Consoles**, **Remote Play**, **Logs**
+  and **Rescan everything**, under its name in orange. Off by default, it is set access by access, so a TV that others
+  use can stay on playing only, and your server logs each change made this way.
+
+### Changed
+
+- **Remote rights**: an access's **Also share my metadata providers** is now **Remote metadata providers**, in a
+  **Remote rights** section with **Remote administration**, on the access and when you create it, from **Create a new
+  access** or a pairing code.
+- **Create a new access** starts with **Share with**: **Classic token** or **QR code**, instead of the **Rather the
+  address and the token** switch.
+
 ## [0.16.1] - 2026-11-19
 
 ### Added

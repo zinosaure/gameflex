@@ -151,7 +151,9 @@ function Crumbs({ trail }) {
 // `enter` : le data-key de la commande où BAS mène depuis Retour (un saut déclaré, `data-down`, libs/input.js), quand
 // la croix ne la trouverait pas d'elle-même — un interrupteur au bord droit sous des renseignements, qu'elle saute pour
 // la ligne pleine largeur du dessous (sa règle : la même colonne d'abord).
-export function PageHeader({ title, onBack, trail = [], enter = null }) {
+// `remote` : le nom du serveur fédéré qu'on administre d'ici (chantier 73) — une pastille orange à côté du titre, pour
+// ne jamais confondre ses réglages avec les nôtres.
+export function PageHeader({ title, onBack, trail = [], enter = null, remote = "" }) {
     const { t } = useTranslation();
     const button = useButton();
 
@@ -162,7 +164,7 @@ export function PageHeader({ title, onBack, trail = [], enter = null }) {
                 <i className="bi bi-chevron-left"></i>
             </button>
             <div className="flex-grow-1 min-w-0">
-                <h1 className="ltitle m-0 text-break">{title}</h1>
+                <h1 className="ltitle m-0 text-break">{title}{remote && <span className="badge rounded-pill text-bg-warning ms-2 align-middle fs-6" style={{ textShadow: "none", WebkitTextStroke: 0 }}>{remote}</span>}</h1>
                 {trail.length > 0 && <Crumbs trail={trail} />}
             </div>
         </header>
