@@ -1,0 +1,75 @@
+[
+  {
+    "mode": "station",
+    "section": "library",
+    "interrupted": 0,
+    "objectError": false,
+    "errors": []
+  },
+  {
+    "mode": "shelf",
+    "section": "library",
+    "interrupted": 0,
+    "objectError": false,
+    "errors": []
+  },
+  {
+    "mode": "crt",
+    "section": "library",
+    "interrupted": 0,
+    "objectError": false,
+    "errors": []
+  },
+  {
+    "mode": "minimal",
+    "section": "library",
+    "interrupted": 1,
+    "objectError": true,
+    "errors": [
+      "Objects are not valid as a React child (found: object with keys {status, emulators}). If you meant to render a collection of children, use an array instead."
+    ]
+  },
+  {
+    "mode": "station",
+    "section": "management",
+    "interrupted": 1,
+    "objectError": true,
+    "errors": [
+      "Objects are not valid as a React child (found: object with keys {status, emulators}). If you meant to render a collection of children, use an array instead."
+    ]
+  },
+  {
+    "mode": "minimal",
+    "section": "management",
+    "interrupted": 1,
+    "objectError": true,
+    "errors": [
+      "Objects are not valid as a React child (found: object with keys {status, emulators}). If you meant to render a collection of children, use an array instead."
+    ]
+  },
+  {
+    "mode": "hub-canape",
+    "prematureEmpty": true,
+    "background": "rgb(16, 14, 29)"
+  },
+  {
+    "mode": "ligne-cinema",
+    "prematureEmpty": true,
+    "background": "rgb(16, 14, 29)"
+  },
+  {
+    "mode": "mosaique-joy",
+    "prematureEmpty": true,
+    "background": "rgb(16, 14, 29)"
+  },
+  {
+    "mode": "shelf",
+    "prematureEmpty": false,
+    "background": "rgb(16, 14, 29)"
+  },
+  {
+    "mode": "station",
+    "prematureEmpty": false,
+    "background": "rgb(16, 14, 29)"
+  }
+]

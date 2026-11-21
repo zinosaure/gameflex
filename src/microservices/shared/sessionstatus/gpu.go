@@ -47,9 +47,6 @@ func GPUs(sysRoot string) []GPU {
 		}
 		device := filepath.Join(sysRoot, "class/drm", entry.Name(), "device")
 		vendor := drmVendors[readTrimmed(filepath.Join(device, "vendor"))]
-		if vendor == "" {
-			continue
-		}
 		gpu := GPU{Vendor: vendor, Card: entry.Name()}
 		if link, err := os.Readlink(device); err == nil {
 			gpu.PCI = filepath.Base(link)
@@ -59,6 +56,20 @@ func GPUs(sysRoot string) []GPU {
 			if strings.HasPrefix(node.Name(), "renderD") {
 				gpu.Render = node.Name()
 			}
+		}
+		// Le V3D des Raspberry Pi est un périphérique de plateforme, pas
+		// une carte PCI : il n'a donc aucun fichier `vendor`. Son uevent est
+		// l'identité stable que Linux expose (DRIVER=v3d, compatible brcm).
+		// Exiger son nœud de rendu écarte le contrôleur d'affichage vc4,
+		// qui possède une card DRM mais ne rend pas les jeux.
+		if gpu.Vendor == "" {
+			uevent := readTrimmed(filepath.Join(device, "uevent"))
+			if gpu.Render != "" && (strings.Contains(uevent, "DRIVER=v3d") || strings.Contains(uevent, "brcm,")) {
+				gpu.Vendor = "Broadcom"
+			}
+		}
+		if gpu.Vendor == "" {
+			continue
 		}
 		gpu.VRAMBytes, _ = strconv.ParseInt(readTrimmed(filepath.Join(device, "mem_info_vram_total")), 10, 64)
 		gpu.Name = readTrimmed(filepath.Join(device, "product_name"))

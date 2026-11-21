@@ -894,7 +894,7 @@ func (manager *Manager) StreamexStatus(sessionID string) (sessionstatus.Status, 
 		return sessionstatus.Status{}, false
 	}
 
-	status, err := manager.dockerHandler.StatusStreamex(manager.config.PublicHost, record.Port)
+	status, err := manager.dockerHandler.StatusStreamex(manager.config.ReachableHost(), record.Port)
 	if err != nil {
 		return sessionstatus.Status{}, false
 	}

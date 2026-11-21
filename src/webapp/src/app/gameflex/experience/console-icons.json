@@ -1,0 +1,446 @@
+{
+  "nintendo-nes": {
+    "name": "Nintendo NES",
+    "file": "nintendo-nes.342ddea33a95.webp",
+    "width": 354,
+    "height": 568
+  },
+  "super-nintendo": {
+    "name": "Super Nintendo",
+    "file": "super-nintendo.30428ca1be0e.webp",
+    "width": 352,
+    "height": 568
+  },
+  "game-boy-color": {
+    "name": "Game Boy Color",
+    "file": "game-boy-color.416a6e9ef8c5.webp",
+    "width": 351,
+    "height": 568
+  },
+  "game-boy-advance": {
+    "name": "Game Boy Advance",
+    "file": "game-boy-advance.d3e1a082f61a.webp",
+    "width": 352,
+    "height": 568
+  },
+  "nintendo-64": {
+    "name": "Nintendo 64",
+    "file": "nintendo-64.c094cd3d0c15.webp",
+    "width": 353,
+    "height": 568
+  },
+  "nintendo-ds": {
+    "name": "Nintendo DS",
+    "file": "nintendo-ds.74d2257290bd.webp",
+    "width": 438,
+    "height": 563
+  },
+  "nintendo-gamecube": {
+    "name": "Nintendo GameCube",
+    "file": "nintendo-gamecube.3f5baa7910ed.webp",
+    "width": 431,
+    "height": 563
+  },
+  "nintendo-wii": {
+    "name": "Nintendo Wii",
+    "file": "nintendo-wii.b6fdc4a92d74.webp",
+    "width": 428,
+    "height": 563
+  },
+  "playstation-1": {
+    "name": "PlayStation 1",
+    "file": "playstation-1.4512ff81ccdd.webp",
+    "width": 428,
+    "height": 563
+  },
+  "playstation-2": {
+    "name": "PlayStation 2",
+    "file": "playstation-2.70d9f54effbf.webp",
+    "width": 438,
+    "height": 563
+  },
+  "magnavox-odyssey": {
+    "name": "Magnavox Odyssey",
+    "file": "magnavox-odyssey.bd04926868dc.webp",
+    "width": 378,
+    "height": 403
+  },
+  "atari-pong": {
+    "name": "Atari Pong",
+    "file": "atari-pong.bc013ce40bff.webp",
+    "width": 379,
+    "height": 403
+  },
+  "fairchild-channel-f": {
+    "name": "Fairchild Channel F",
+    "file": "fairchild-channel-f.a883b6076a79.webp",
+    "width": 378,
+    "height": 403
+  },
+  "atari-2600": {
+    "name": "Atari 2600",
+    "file": "atari-2600.64bd82937caf.webp",
+    "width": 376,
+    "height": 403
+  },
+  "magnavox-odyssey2": {
+    "name": "Magnavox Odyssey²",
+    "file": "magnavox-odyssey2.c63c98b318a0.webp",
+    "width": 378,
+    "height": 423
+  },
+  "intellivision": {
+    "name": "Intellivision",
+    "file": "intellivision.1b23e6e36167.webp",
+    "width": 379,
+    "height": 423
+  },
+  "colecovision": {
+    "name": "ColecoVision",
+    "file": "colecovision.50c5c86099d0.webp",
+    "width": 378,
+    "height": 423
+  },
+  "vectrex": {
+    "name": "Vectrex",
+    "file": "vectrex.8b90313c8dfd.webp",
+    "width": 376,
+    "height": 423
+  },
+  "atari-5200": {
+    "name": "Atari 5200",
+    "file": "atari-5200.f9bfe3ac2162.webp",
+    "width": 379,
+    "height": 415
+  },
+  "atari-7800": {
+    "name": "Atari 7800",
+    "file": "atari-7800.3f0f84dc978b.webp",
+    "width": 377,
+    "height": 415
+  },
+  "sega-sg-1000": {
+    "name": "Sega SG-1000",
+    "file": "sega-sg-1000.4cfe5140ada6.webp",
+    "width": 377,
+    "height": 415
+  },
+  "nintendo-famicom": {
+    "name": "Nintendo Famicom",
+    "file": "nintendo-famicom.3f086c9a653d.webp",
+    "width": 378,
+    "height": 415
+  },
+  "sega-master-system": {
+    "name": "Sega Master System",
+    "file": "sega-master-system.760fa6d4efdc.webp",
+    "width": 379,
+    "height": 450
+  },
+  "pc-engine": {
+    "name": "PC Engine",
+    "file": "pc-engine.b62288767bda.webp",
+    "width": 377,
+    "height": 450
+  },
+  "sega-mega-drive": {
+    "name": "Sega Mega Drive",
+    "file": "sega-mega-drive.dead2d5e13ff.webp",
+    "width": 377,
+    "height": 450
+  },
+  "neo-geo-aes": {
+    "name": "Neo Geo AES",
+    "file": "neo-geo-aes.693e4bfce5eb.webp",
+    "width": 378,
+    "height": 450
+  },
+  "super-famicom": {
+    "name": "Super Famicom",
+    "file": "super-famicom.6b6f54fdcb97.webp",
+    "width": 411,
+    "height": 382
+  },
+  "sega-mega-cd": {
+    "name": "Sega Mega-CD",
+    "file": "sega-mega-cd.374911daac45.webp",
+    "width": 415,
+    "height": 382
+  },
+  "sega-32x": {
+    "name": "Sega 32X",
+    "file": "sega-32x.f2397f0c8b6d.webp",
+    "width": 415,
+    "height": 382
+  },
+  "philips-cd-i": {
+    "name": "Philips CD-i",
+    "file": "philips-cd-i.0dc798867bb8.webp",
+    "width": 411,
+    "height": 382
+  },
+  "3do-fz-1": {
+    "name": "3DO FZ-1",
+    "file": "3do-fz-1.f569e5d64844.webp",
+    "width": 411,
+    "height": 401
+  },
+  "atari-jaguar": {
+    "name": "Atari Jaguar",
+    "file": "atari-jaguar.ae4dc65e1c44.webp",
+    "width": 415,
+    "height": 401
+  },
+  "sega-saturn": {
+    "name": "Sega Saturn",
+    "file": "sega-saturn.8ecca0193cab.webp",
+    "width": 415,
+    "height": 401
+  },
+  "sega-dreamcast": {
+    "name": "Sega Dreamcast",
+    "file": "sega-dreamcast.ff34d5c2b1f8.webp",
+    "width": 411,
+    "height": 401
+  },
+  "xbox": {
+    "name": "Xbox",
+    "file": "xbox.d45229823cc6.webp",
+    "width": 437,
+    "height": 357
+  },
+  "xbox-360": {
+    "name": "Xbox 360",
+    "file": "xbox-360.5a95914a3d1c.webp",
+    "width": 436,
+    "height": 357
+  },
+  "playstation-3": {
+    "name": "PlayStation 3",
+    "file": "playstation-3.8de1d842b438.webp",
+    "width": 436,
+    "height": 357
+  },
+  "wii-u": {
+    "name": "Wii U",
+    "file": "wii-u.b4715ed76d79.webp",
+    "width": 436,
+    "height": 357
+  },
+  "playstation-4": {
+    "name": "PlayStation 4",
+    "file": "playstation-4.177abe17832a.webp",
+    "width": 437,
+    "height": 383
+  },
+  "xbox-one": {
+    "name": "Xbox One",
+    "file": "xbox-one.0d6014438aa4.webp",
+    "width": 436,
+    "height": 383
+  },
+  "playstation-5": {
+    "name": "PlayStation 5",
+    "file": "playstation-5.c3ceef815b16.webp",
+    "width": 436,
+    "height": 383
+  },
+  "xbox-series-x": {
+    "name": "Xbox Series X",
+    "file": "xbox-series-x.2ca9688698ef.webp",
+    "width": 436,
+    "height": 383
+  },
+  "game-and-watch": {
+    "name": "Game & Watch",
+    "file": "game-and-watch.4d8e4b2bf901.webp",
+    "width": 378,
+    "height": 412
+  },
+  "game-boy": {
+    "name": "Game Boy",
+    "file": "game-boy.75846de0b43f.webp",
+    "width": 379,
+    "height": 412
+  },
+  "atari-lynx": {
+    "name": "Atari Lynx",
+    "file": "atari-lynx.4625ed91b2ed.webp",
+    "width": 379,
+    "height": 412
+  },
+  "sega-game-gear": {
+    "name": "Sega Game Gear",
+    "file": "sega-game-gear.e4c38aed69d7.webp",
+    "width": 377,
+    "height": 412
+  },
+  "turboexpress": {
+    "name": "TurboExpress",
+    "file": "turboexpress.118022460224.webp",
+    "width": 378,
+    "height": 439
+  },
+  "watara-supervision": {
+    "name": "Watara Supervision",
+    "file": "watara-supervision.de4e17e946dc.webp",
+    "width": 379,
+    "height": 439
+  },
+  "neo-geo-pocket-color": {
+    "name": "Neo Geo Pocket Color",
+    "file": "neo-geo-pocket-color.a3aa5b233aa0.webp",
+    "width": 379,
+    "height": 439
+  },
+  "wonderswan-color": {
+    "name": "WonderSwan Color",
+    "file": "wonderswan-color.a6c76ac6de2a.webp",
+    "width": 377,
+    "height": 439
+  },
+  "virtual-boy": {
+    "name": "Virtual Boy",
+    "file": "virtual-boy.69e46f6eea39.webp",
+    "width": 377,
+    "height": 411
+  },
+  "game-boy-advance-sp": {
+    "name": "Game Boy Advance SP",
+    "file": "game-boy-advance-sp.82f7fb236940.webp",
+    "width": 373,
+    "height": 411
+  },
+  "nintendo-ds-lite": {
+    "name": "Nintendo DS Lite",
+    "file": "nintendo-ds-lite.d613d4c70122.webp",
+    "width": 374,
+    "height": 411
+  },
+  "nintendo-3ds": {
+    "name": "Nintendo 3DS",
+    "file": "nintendo-3ds.dd40d4c32642.webp",
+    "width": 377,
+    "height": 411
+  },
+  "playstation-portable": {
+    "name": "PlayStation Portable",
+    "file": "playstation-portable.5fe4778a9da2.webp",
+    "width": 377,
+    "height": 405
+  },
+  "playstation-vita": {
+    "name": "PlayStation Vita",
+    "file": "playstation-vita.e2212ef5c298.webp",
+    "width": 373,
+    "height": 405
+  },
+  "nintendo-switch": {
+    "name": "Nintendo Switch",
+    "file": "nintendo-switch.0a90a49b7296.webp",
+    "width": 374,
+    "height": 405
+  },
+  "nintendo-switch-2": {
+    "name": "Nintendo Switch 2",
+    "file": "nintendo-switch-2.1d8d3c0374fc.webp",
+    "width": 377,
+    "height": 405
+  },
+  "epoch-cassette-vision": {
+    "name": "Epoch Cassette Vision",
+    "file": "epoch-cassette-vision.2cb3b60748ab.webp",
+    "width": 379,
+    "height": 409
+  },
+  "super-cassette-vision": {
+    "name": "Super Cassette Vision",
+    "file": "super-cassette-vision.b68950942fb5.webp",
+    "width": 377,
+    "height": 409
+  },
+  "casio-pv-1000": {
+    "name": "Casio PV-1000",
+    "file": "casio-pv-1000.6b802b061b16.webp",
+    "width": 378,
+    "height": 409
+  },
+  "casio-loopy": {
+    "name": "Casio Loopy",
+    "file": "casio-loopy.445a1fd58108.webp",
+    "width": 379,
+    "height": 409
+  },
+  "bandai-playdia": {
+    "name": "Bandai Playdia",
+    "file": "bandai-playdia.6e9800ad14e6.webp",
+    "width": 379,
+    "height": 447
+  },
+  "apple-pippin": {
+    "name": "Apple Pippin",
+    "file": "apple-pippin.e5832e737b02.webp",
+    "width": 377,
+    "height": 447
+  },
+  "nec-pc-fx": {
+    "name": "NEC PC-FX",
+    "file": "nec-pc-fx.82dbd8d1c651.webp",
+    "width": 378,
+    "height": 447
+  },
+  "amstrad-gx4000": {
+    "name": "Amstrad GX4000",
+    "file": "amstrad-gx4000.af5ab373e82b.webp",
+    "width": 379,
+    "height": 447
+  },
+  "game-com": {
+    "name": "Game.com",
+    "file": "game-com.22d9875fd427.webp",
+    "width": 379,
+    "height": 402
+  },
+  "n-gage": {
+    "name": "N-Gage",
+    "file": "n-gage.c20519a63fcd.webp",
+    "width": 378,
+    "height": 402
+  },
+  "gp32": {
+    "name": "GP32",
+    "file": "gp32.9da7b9013e54.webp",
+    "width": 377,
+    "height": 402
+  },
+  "gizmondo": {
+    "name": "Gizmondo",
+    "file": "gizmondo.6189b57c5da0.webp",
+    "width": 378,
+    "height": 402
+  },
+  "tapwave-zodiac": {
+    "name": "Tapwave Zodiac",
+    "file": "tapwave-zodiac.90667a32571b.webp",
+    "width": 379,
+    "height": 409
+  },
+  "zeebo": {
+    "name": "Zeebo",
+    "file": "zeebo.637073255579.webp",
+    "width": 378,
+    "height": 409
+  },
+  "ouya": {
+    "name": "Ouya",
+    "file": "ouya.1f1be173cb09.webp",
+    "width": 377,
+    "height": 409
+  },
+  "steam-deck": {
+    "name": "Steam Deck",
+    "file": "steam-deck.cc1c1821c838.webp",
+    "width": 378,
+    "height": 409
+  }
+}

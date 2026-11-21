@@ -8,6 +8,14 @@ import CopyWebpackPlugin from 'copy-webpack-plugin';
 
 const FILENAME = fileURLToPath(import.meta.url);
 const DIRNAME = path.dirname(FILENAME);
+const REPOSITORY_LICENSE = [
+    path.join(DIRNAME, 'LICENSE'),
+    path.resolve(DIRNAME, '../../../../LICENSE'),
+].find((candidate) => fs.existsSync(candidate));
+
+if (!REPOSITORY_LICENSE) {
+    throw new Error('GameFlex LICENSE is required to build the edge interface');
+}
 
 // LA VERSION ET LE COMMIT, LUS DANS LE DÉPÔT (chantier 56, P3 ; la règle de la webapp). Le compose monte le dépôt en
 // lecture seule sur /repo : webpack y lit VERSION et le commit de HEAD à chaque compilation. Pris dans l'environnement,
@@ -148,13 +156,16 @@ export default (env = {}, argv = {}) => ({
             // `quietDeps` tait les avertissements de dépréciation de Bootstrap lui-même.
             { test: /\.scss$/, use: ['style-loader', 'css-loader', { loader: 'sass-loader', options: { sassOptions: { quietDeps: true } } }] },
             { test: /\.(woff|woff2|ttf|eot)$/i, type: 'asset/resource', generator: { filename: 'fonts/[name][ext]' } },
-            // LA LICENCE DE GAMEFLEX (chantier 53, P13) : le fichier LICENSE du dépôt, monté en lecture seule à /src/LICENSE
-            // (le compose), importé comme texte et inscrit dans le bundle — une seule source, lue au build : une
+            // LA LICENCE DE GAMEFLEX (chantier 53, P13) : le fichier LICENSE du dépôt, copié ou monté à /src/LICENSE,
+            // importé comme texte et inscrit dans le bundle — une seule source, lue au build : une
             // construction qui ne l'a pas échoue au lieu d'afficher une copie périmée.
-            { test: path.join(DIRNAME, 'LICENSE'), type: 'asset/source' },
+            { test: REPOSITORY_LICENSE, type: 'asset/source' },
         ],
     },
-    resolve: { extensions: ['.js', '.jsx'] },
+    resolve: {
+        alias: { '@gameflex-license': REPOSITORY_LICENSE },
+        extensions: ['.js', '.jsx'],
+    },
     plugins: [
         new HtmlWebpackPlugin({ template: './public/index.html' }),
         // LES FICHIERS DE public/ À LA RACINE DE dist/, comme le serveur de développement les sert : les icônes que

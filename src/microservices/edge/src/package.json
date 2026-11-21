@@ -4,9 +4,9 @@
     "private": true,
     "description": "GameFlex edge — the interface (chantier 56): the development server (npm start) and the production build (npm run build)",
     "scripts": {
-        "start": "webpack serve --mode development --host 0.0.0.0 --port 3000",
-        "build": "webpack --mode production",
-        "build:federation": "webpack --mode production --env target=federation"
+        "start": "webpack serve --config webpack.config.mjs --mode development --host 0.0.0.0 --port 3000",
+        "build": "webpack --config webpack.config.mjs --mode production",
+        "build:federation": "webpack --config webpack.config.mjs --mode production --env target=federation"
     },
     "dependencies": {
         "bootstrap": "^5.3.8",

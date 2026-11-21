@@ -1397,6 +1397,15 @@ func (s *emulationSession) startVideoEncoderOnce(w, h int) bool {
 		w, h = nativeW, nativeH
 	}
 
+	fps := s.currentEngine().OutputFPS()
+	// The introduction and the game share one WebRTC track whose SDP announces
+	// H.264 level 4.0. 1080p at 60 fps exceeds it and makes NVENC reject every
+	// frame, so keep 60 fps and cap that case to a level-compatible canvas.
+	if safeW, safeH, capped := encoder.Level40Canvas(w, h, fps); capped {
+		log.Printf("[retrogaming-stream] H.264 level 4.0 canvas: %dx%d@%.2f capped to %dx%d", w, h, fps, safeW, safeH)
+		w, h = safeW, safeH
+	}
+
 	// 0 = AUTOMATIQUE : le débit se déduit de la taille et de la cadence
 	// (voir encoder.AutoBitrate). La valeur fixe de 2000 ne pouvait être
 	// juste que pour une seule taille d'image, et ce n'était pas celle des
@@ -1408,7 +1417,6 @@ func (s *emulationSession) startVideoEncoderOnce(w, h int) bool {
 	// moment. L'encodeur la garde ensuite — elle n'y règle que la part du
 	// débit de chaque image ; la durée des images, elle, suit le moteur
 	// (consumeVideoOutput).
-	fps := s.currentEngine().OutputFPS()
 	bitrate := launchSetting("GAMEFLEX_BITRATE")
 	if bitrate <= 0 {
 		bitrate = encoder.AutoBitrate(w, h, fps)
@@ -1666,23 +1674,18 @@ func (s *emulationSession) consumeVideoOutput() {
 		select {
 		case <-s.stopping:
 			return
-		case nal := <-s.videoEnc.Output:
-			dur := time.Duration(0)
-			if encoder.IsVCLNal(nal) {
-				dur = time.Duration(float64(time.Second) / eng.OutputFPS())
-			}
+		case frame := <-s.videoEnc.Output:
+			// Output carries one complete H.264 access unit (parameter sets plus
+			// its coded slice), therefore exactly one current frame duration.
+			dur := time.Duration(float64(time.Second) / eng.OutputFPS())
 			// ONE push to the shared transport — gatewaywebrtc fans the same
-			// NAL out to every viewer, owner, joiners and spectators alike.
+			// frame out to every viewer, owner, joiners and spectators alike.
 			if s.gatewayClient != nil {
-				_ = s.gatewayClient.PushVideo(nal, dur)
+				_ = s.gatewayClient.PushVideo(frame, dur)
 			}
 		}
 	}
 }
-
-// IsVCLNal moved to internal/retrogaming/encoder (encoder.IsVCLNal) — both
-// the libretro session and the external runtime need it, and neither can
-// import the other. See consumeVideoOutput's call site.
 
 func (s *emulationSession) consumeAudioOutput() {
 	// Single sequential consumer of audioBatchReady (see onAudio)

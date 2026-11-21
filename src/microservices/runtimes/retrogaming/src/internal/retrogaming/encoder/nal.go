@@ -28,3 +28,16 @@ func IsVCLNal(nal []byte) bool {
 	nalType := nal[off] & 0x1F
 	return nalType == 1 || nalType == 5
 }
+
+// appendNALToAccessUnit joins Annex-B prefix NALs (AUD/SPS/PPS/SEI) to the
+// coded slice that completes the frame. The returned completed slice owns its
+// storage; pending can therefore be reused for the next frame immediately.
+func appendNALToAccessUnit(pending, nal []byte) ([]byte, []byte) {
+	pending = append(pending, nal...)
+	if !IsVCLNal(nal) {
+		return pending, nil
+	}
+
+	frame := append([]byte(nil), pending...)
+	return pending[:0], frame
+}

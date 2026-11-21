@@ -180,7 +180,7 @@ func (server *Server) askChildIfSilent(session registry.Session) {
 		return
 	}
 
-	url := childV4URL(server.config.PublicHost, port, "report")
+	url := childV4URL(server.config.ReachableHost(), port, "report")
 	request, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return
@@ -245,7 +245,7 @@ func (server *Server) askChildIfSilent(session registry.Session) {
 // conteneur, ce qui est son domaine. On compte les tentatives précisément pour
 // que ce ne soit jamais un premier réflexe.
 func (server *Server) askChildToWindDown(session registry.Session, port int) {
-	url := childV4URL(server.config.PublicHost, port, "wind-down")
+	url := childV4URL(server.config.ReachableHost(), port, "wind-down")
 	request, err := http.NewRequest(http.MethodPost, url, nil)
 	if err != nil {
 		return

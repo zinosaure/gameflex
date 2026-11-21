@@ -21,8 +21,33 @@ services:
         environment:
             - KERNEL_BACKEND_PROXY_TARGET=http://gameflex-kernel:8080
             - CREDENTIAL_BACKEND_PROXY_TARGET=http://gameflex-credential:8080
+            - EXPERIENCE_BACKEND_PROXY_TARGET=http://gameflex-experience:10211
             - GATEWAY_WEBRTC_PROXY_TARGET=http://${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}:10202
             - REMOTEPLAY_BACKEND_PROXY_TARGET=http://${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}:10205
+
+    # Emulator catalogue and installer used by the PlayStation-style UI.
+    # It can install only explicitly allow-listed Libretro cores. Games,
+    # BIOS, firmware and console keys are never downloaded by this service.
+    gameflex-experience:
+        image: gameflex-local/gameflex-experience:latest
+        container_name: ${GAMEFLEX_NAME:-gameflex}-experience
+        restart: unless-stopped
+        command: ["python3", "tools/pi-tv/server.py", "--bind", "0.0.0.0", "--data", "/data", "--auth-base", "http://gameflex-credential:8080", "--default-roms", "--library-host", "${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}", "--library-mount", "/library"]
+        user: "1000:1000"
+        read_only: true
+        init: true
+        shm_size: 128m
+        volumes:
+            - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}/experience:/data
+            - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}:/library
+            - /mnt/d/GameFlex-ROM-Index/roms:/library/roms:ro
+        tmpfs:
+            - /tmp:rw,size=192m,mode=1777
+        cap_drop: [ALL]
+        security_opt: [no-new-privileges:true]
+        mem_limit: 1024m
+        cpus: 1.5
+        pids_limit: 256
 
     # The server: your library, the games, and the containers that run them.
     gameflex-kernel:
@@ -63,6 +88,9 @@ services:
             - GAMEFLEX_CONSOLE_LIMITS=${GAMEFLEX_CONSOLE_LIMITS:-switch:1,switch2:1,ps3:1,xbox:1,ps4:1,ps5:1,wiiu:1,xbox360:1}
             - GAMEFLEX_MIRROR_URL=${GAMEFLEX_MIRROR_URL:-}
             - GAMEFLEX_GPU=${GAMEFLEX_GPU:-}
+            # WSL2/NVIDIA: Docker exposes the RTX through /dev/dxg and the
+            # NVIDIA runtime, not through a Linux /dev/dri device.
+            - GAMEFLEX_NVIDIA_GPU=${GAMEFLEX_NVIDIA_GPU:-all}
             - GAMEFLEX_STAGING=${GAMEFLEX_STAGING:-}
             - GAMEFLEX_RETRO_IMAGE=zinosaure/gameflex-retrogaming:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_REMOTEPLAY_IMAGE=zinosaure/gameflex-remoteplay:${GAMEFLEX_VERSION:-latest}
@@ -83,6 +111,18 @@ services:
             - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}/cache/profiles:/profiles
             # More disks with games: one line each, <folder on this machine>:/mnt/<name>.
             # - /media/games:/mnt/games
+            # Existing Windows ROM library, indexed with zero-copy NTFS hard links.
+            # Expose it as the primary library for interfaces that do not select a disk.
+            - /mnt/d/GameFlex-ROM-Index/roms:/gameflex/roms:ro
+            # Keep the named-disk view for the storage administration screens.
+            - /mnt/d/GameFlex-ROM-Index:/mnt/windows-roms:ro
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: 1
+                          capabilities: [gpu]
 
     # gameflex-federation: shares your library with every device and every
     # GameFlex from one address, and gathers other shares (Samba, WebDAV,

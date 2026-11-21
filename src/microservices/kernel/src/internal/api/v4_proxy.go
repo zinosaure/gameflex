@@ -54,7 +54,7 @@ func (server *Server) handleChildProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	proxyWebSocket(w, r, fmt.Sprintf("%s:%d", server.config.PublicHost, port), suffix)
+	proxyWebSocket(w, r, fmt.Sprintf("%s:%d", server.config.ReachableHost(), port), suffix)
 }
 
 // childPort finds the port a session's container listens on, whatever

@@ -22,6 +22,12 @@ func TestDeclaredDefault(t *testing.T) {
 	}
 }
 
+func TestN64ForcesSoftwareRenderer(t *testing.T) {
+	if got := forcedVariables["n64"]["parallel-n64-gfxplugin"]; got != "angrylion" {
+		t.Fatalf("rendu N64 = %q, attendu angrylion sans Vulkan", got)
+	}
+}
+
 // La résolution interne au plus près du flux (#340), sur les déclarations
 // relevées le 2026-10-12 en chargeant chaque cœur du serveur — telles quelles.
 func TestRenderResolutionFollowsTheStream(t *testing.T) {

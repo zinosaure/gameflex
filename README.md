@@ -242,6 +242,9 @@ check, troubleshoot and report an issue on your behalf, and what to ask you firs
 10. [Storage](docs/storage.md): more disks, network shares, saves, cache and logs.
 11. [Update GameFlex](docs/update.md): new versions, and going back.
 12. [Troubleshooting](docs/troubleshooting.md): find what goes wrong, and report it.
+13. [Dedicated Android TV client](docs/android-tv.md): signed APK, TV pairing, DPAD and real-device validation.
+14. [Raspberry Pi and Android TV preparation](docs/pi-tv.md): ten interfaces, artwork cache,
+    an experimental ARM deployment plan and an original free NES demo. See the TV client guide for current Philips validation.
 
 ## The Android app
 

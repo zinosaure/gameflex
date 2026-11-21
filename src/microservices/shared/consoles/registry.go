@@ -197,7 +197,7 @@ type Console struct {
 // pas encore, et ce champ ne change rien pour lui.
 var registry = []Console{
 	// ── Nintendo ──
-	{ID: "nes", Name: "Nintendo Ent. System (NES)", Publisher: "Nintendo", Year: 1983, Method: MethodRetroGaming, Cores: []string{"fceumm", "nestopia"}, MaxPlayers: 2, Extensions: []string{"nes", "fds", "unf", "unif"}, Width: 256, Height: 240, Enabled: true},
+	{ID: "nes", Name: "Nintendo Ent. System (NES)", Publisher: "Nintendo", Year: 1983, Method: MethodRetroGaming, Cores: []string{"fceumm", "nestopia", "quicknes"}, MaxPlayers: 2, Extensions: []string{"nes", "fds", "unf", "unif"}, Width: 256, Height: 240, Enabled: true},
 	{ID: "snes", Name: "Super Nintendo (SNES)", Publisher: "Nintendo", Year: 1990, Method: MethodRetroGaming, Cores: []string{"snes9x"}, MaxPlayers: 4, Extensions: []string{"smc", "sfc", "swc", "fig", "bs"}, Width: 256, Height: 224, Enabled: true}, // official Super Multitap
 	{ID: "gbc", Name: "Game Boy / Game Boy Color", Publisher: "Nintendo", Year: 1989, Method: MethodRetroGaming, Cores: []string{"gambatte"}, MaxPlayers: 2, Extensions: []string{"gb", "gbc", "sgb"}, Width: 160, Height: 144, Enabled: true},
 	{ID: "gba", Name: "Game Boy Advance", Publisher: "Nintendo", Year: 2001, Method: MethodRetroGaming, Cores: []string{"mgba"}, MaxPlayers: 2, Extensions: []string{"gba", "agb"}, Width: 240, Height: 160, Enabled: true},

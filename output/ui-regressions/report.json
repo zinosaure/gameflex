@@ -1,0 +1,43 @@
+{
+  "generatedAt": "2026-11-10T15:31:16.463250+00:00",
+  "branch": "cleanup/interface-destinations",
+  "baselineCommit": "c584203",
+  "fixCommit": "0411255",
+  "previewUrl": "http://192.168.1.63:18215/gameflex/",
+  "previewBundleSha256": "c8e8ee46b168942e8f8d775558a006458f79f62f5693afc15b1d91453cb0ab08",
+  "activeModes": 22,
+  "navigationFlowsPassed": 66,
+  "paletteFlowsPassed": 66,
+  "viewports": {
+    "pc": "1440x1000",
+    "mobile": "390x844, touch",
+    "tv": "1920x1080, keyboard/directional"
+  },
+  "ssr": "all existing interface view suites plus ui-regressions.jsx passed",
+  "preferenceApiTests": {
+    "passed": 6
+  },
+  "productionBuild": {
+    "passed": true,
+    "warnings": 3,
+    "resourceLimit": "one CPU; minimizer parallelism disabled"
+  },
+  "lint": {
+    "errors": 0,
+    "warnings": 11
+  },
+  "previewNginxSyntax": "passed",
+  "previewRedirectLocation": "/gameflex/?section=management",
+  "publicHttpsStatus": 200,
+  "publicDeployment": false,
+  "physicalPhilipsTest": false,
+  "launch": {
+    "transport": "simulated, original reference and streaming route checked",
+    "core": "real CC0 GBA program, 90 non-black frames, 240x160"
+  },
+  "limits": [
+    "No Philips hardware test: ADB unavailable.",
+    "Legacy save-slot API exposes existence/date/size, not compatibility; unknown states keep the Relancer label.",
+    "Public proxy snippets and service worker 48 are delivered in code, not deployed."
+  ]
+}

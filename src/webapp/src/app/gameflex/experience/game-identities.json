@@ -1,0 +1,9 @@
+{
+ "gba": [
+  {"id":"pokemon-emerald","title":"Pokémon Émeraude","aliases":{"Pokemon - Emerald Version":"en","Pokemon - Version Emeraude":"fr","Pokemon - Edicion Esmeralda":"es","Pokemon - Smaragd-Edition":"de","Pokemon - Versione Smeraldo":"it","Pocket Monsters - Emerald":"ja"}},
+  {"id":"pokemon-ruby","title":"Pokémon Rubis","aliases":{"Pokemon - Ruby Version":"en","Pokemon - Version Rubis":"fr","Pokemon - Edicion Rubi":"es","Pokemon - Rubin-Edition":"de","Pokemon - Versione Rubino":"it","Pocket Monsters - Ruby":"ja"}},
+  {"id":"pokemon-sapphire","title":"Pokémon Saphir","aliases":{"Pokemon - Sapphire Version":"en","Pokemon - Version Saphir":"fr","Pokemon - Edicion Zafiro":"es","Pokemon - Saphir-Edition":"de","Pokemon - Versione Zaffiro":"it","Pocket Monsters - Sapphire":"ja"}},
+  {"id":"pokemon-firered","title":"Pokémon Rouge Feu","aliases":{"Pokemon - FireRed Version":"en","Pokemon - Version Rouge Feu":"fr","Pokemon - Edicion Rojo Fuego":"es","Pokemon - Feuerrote Edition":"de","Pokemon - Versione Rosso Fuoco":"it","Pocket Monsters - FireRed":"ja"}},
+  {"id":"pokemon-leafgreen","title":"Pokémon Vert Feuille","aliases":{"Pokemon - LeafGreen Version":"en","Pokemon - Version Vert Feuille":"fr","Pokemon - Edicion Verde Hoja":"es","Pokemon - Blattgruene Edition":"de","Pokemon - Versione Verde Foglia":"it","Pocket Monsters - LeafGreen":"ja"}}
+ ]
+}

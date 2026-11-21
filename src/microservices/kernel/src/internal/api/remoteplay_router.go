@@ -122,7 +122,7 @@ func (server *Server) serveRemoteplayChild(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	target := server.config.PublicHost + ":" + strconv.Itoa(record.Port)
+	target := server.config.ReachableHost() + ":" + strconv.Itoa(record.Port)
 
 	// Same reason as the control plane above: a session-scoped path can be a
 	// WebSocket too, and httputil would kill it at the handshake.

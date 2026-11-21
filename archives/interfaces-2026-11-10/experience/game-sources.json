@@ -1,0 +1,37 @@
+{
+  "items": [
+    {
+      "id": "planetemu",
+      "name": "Planetemu",
+      "url": "https://www.planetemu.net/",
+      "kind": "metadata",
+      "label": "Catalogue et jaquettes",
+      "action": "Consulter",
+      "downloads": false,
+      "description": "Liste des jeux et visuels. Importez vos fichiers personnels pour jouer.",
+      "links": false
+    },
+    {
+      "id": "freeroms",
+      "name": "FreeROMs",
+      "url": "https://www.freeroms.com/",
+      "kind": "catalogue",
+      "label": "Catalogue et jaquettes",
+      "action": "Consulter",
+      "downloads": false,
+      "description": "Liste des jeux et visuels. Importez vos fichiers personnels pour jouer.",
+      "links": false
+    },
+    {
+      "id": "romspure",
+      "name": "ROMsPure",
+      "url": "https://romspure.cc/",
+      "kind": "catalogue",
+      "label": "Catalogue et jaquettes",
+      "action": "Consulter",
+      "downloads": false,
+      "description": "Liste des jeux et visuels. Importez vos fichiers personnels pour jouer.",
+      "links": false
+    }
+  ]
+}

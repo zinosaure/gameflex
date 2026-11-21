@@ -1,0 +1,29 @@
+/* Palette and screen composition are independent. Shared surfaces use the
+   selected home’s palette; its gradients and layout remain authoritative. */
+.gf-appearance{--bg:var(--dialog-bg);--panel:var(--dialog-surface);--ink:var(--dialog-ink);--muted:var(--dialog-muted);--accent:var(--dialog-accent);min-height:100dvh;background:var(--dialog-bg);color:var(--dialog-ink);font-family:var(--dialog-font)}
+.gf-appearance .gx-app,.gf-appearance .gx-launch-dialog{--bg:var(--dialog-bg);--panel:var(--dialog-surface);--ink:var(--dialog-ink);--muted:var(--dialog-muted);--accent:var(--dialog-accent);background-color:var(--dialog-bg);color:var(--dialog-ink);font-family:var(--dialog-font)}
+.gf-appearance .em-desktop-nav,.gf-appearance .em-mobile-masthead,.gf-appearance .em-dock,.gf-appearance .em-drawer{background:var(--dialog-bg);color:var(--dialog-ink)}
+.gf-appearance .em-main h1,.gf-appearance .em-main h2,.gf-appearance .em-main h3,.gf-appearance .gx-settings{color:var(--dialog-ink)}
+.gf-appearance a{color:var(--dialog-accent)}
+.gf-interface-tools{display:flex;justify-content:flex-end;padding:8px max(16px,4vw);background:var(--dialog-bg);color:var(--dialog-ink)}
+.gf-interface-tools>button,.gf-interface-menu button,.gf-section-error button,.gf-load-status button{min-height:44px;padding:10px 16px;color:var(--dialog-ink);background:var(--dialog-surface);border:1px solid var(--dialog-accent);border-radius:var(--dialog-radius);font:inherit;cursor:pointer}
+.gf-interface-tools>button{display:flex;gap:10px;align-items:center}
+.gf-menu-backdrop{position:fixed;inset:0;z-index:10450;background:#0008;display:grid;place-items:center;padding:16px}
+.gf-interface-menu{width:min(440px,100%);max-height:90dvh;overflow:auto;box-sizing:border-box;padding:18px;background:var(--dialog-bg);color:var(--dialog-ink);border:2px solid var(--dialog-accent);border-radius:var(--dialog-radius)}
+.gf-interface-menu header{display:flex;align-items:center;justify-content:space-between;gap:16px}.gf-interface-menu nav{display:grid;gap:8px;margin-top:16px}.gf-interface-menu nav button{text-align:left}
+.gf-appearance :focus-visible{outline:3px solid var(--dialog-accent);outline-offset:3px}
+.gf-load-status,.gf-section-error{padding:24px;margin:16px;line-height:1.5}
+.gx-picker-overlay{position:fixed;inset:0;z-index:10500;overflow:auto;overscroll-behavior:contain}
+.gf-appearance .gx-picker{--bg:var(--dialog-bg);--panel:var(--dialog-surface);--ink:var(--dialog-ink);--muted:var(--dialog-muted);--accent:var(--dialog-accent)}
+.gf-advanced-settings .gf-advanced-content{min-width:0;padding:24px;max-width:1400px;margin:auto}
+.gf-advanced-content{--bs-body-bg:var(--dialog-bg);--bs-body-color:var(--dialog-ink);--bs-secondary-bg:var(--dialog-surface);--bs-tertiary-bg:var(--dialog-surface);--bs-border-color:var(--dialog-muted);--bs-secondary-color:var(--dialog-muted);--bs-emphasis-color:var(--dialog-ink);--bs-heading-color:var(--dialog-ink)}
+.gf-advanced-content .bg-body,.gf-advanced-content .bg-body-tertiary,.gf-advanced-content .bg-light,.gf-advanced-content .card,.gf-advanced-content .list-group-item{background:var(--dialog-surface)!important;color:var(--dialog-ink)!important}
+.gf-advanced-content .text-muted,.gf-advanced-content .text-secondary{color:var(--dialog-muted)!important}
+.gf-advanced-content input,.gf-advanced-content select,.gf-advanced-content button{font:inherit}
+.gf-edition-details{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:14px;margin:20px 0}.gf-edition-details dt{color:var(--dialog-muted)}.gf-edition-details dd{margin:0;overflow-wrap:anywhere}
+@media(max-width:600px){.gf-advanced-settings .gf-advanced-content{padding:14px}.gf-interface-menu{max-height:85dvh}}
+
+body[data-gameflex-appearance]>.offcanvas,body[data-gameflex-appearance]>.modal,body[data-gameflex-appearance]>.toast-container{--bs-body-bg:var(--dialog-bg);--bs-body-color:var(--dialog-ink);--bs-secondary-color:var(--dialog-muted);--bs-offcanvas-bg:var(--dialog-bg);--bs-offcanvas-color:var(--dialog-ink);--bs-modal-bg:var(--dialog-bg);--bs-modal-color:var(--dialog-ink);color:var(--dialog-ink);font-family:var(--dialog-font)}
+body[data-gameflex-appearance]>.offcanvas .card,body[data-gameflex-appearance]>.modal .card{background:var(--dialog-surface);color:var(--dialog-ink)}
+
+.gf-appearance .em-main{background:transparent;color:var(--dialog-ink)}

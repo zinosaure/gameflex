@@ -69,8 +69,8 @@ type VideoEncoder struct {
 	wg            sync.WaitGroup
 	Output        chan []byte
 	stopCh        chan struct{}
-	// Dropped counts NALs discarded because Output was full (see readOutput).
-	// Any single dropped NAL breaks x264's reference chain for every
+	// Dropped counts complete access units discarded because Output was full
+	// (see readOutput). Any single dropped frame breaks x264's reference chain for every
 	// subsequent P-frame that depends on it — the browser decoder can't
 	// resync until the next keyframe, which at keyint=60/60fps is up to a
 	// full second away. A non-zero count here is the direct explanation for
@@ -136,6 +136,24 @@ func NewVideoEncoder(width, height int, fps float64, bitrate int) *VideoEncoder 
 		Output: make(chan []byte, 64),
 		stopCh: make(chan struct{}),
 	}
+}
+
+// Level40Canvas keeps the game stream inside the H.264 level negotiated by
+// the gateway's intro track. The gateway switches from that intro to the game
+// without replacing the WebRTC track, so raising only the game's SPS to level
+// 4.2 would make Safari reject the switch. At 60 fps, 1080p exceeds level
+// 4.0's macroblock rate; 720p does not. Thirty-frame 1080p remains valid.
+func Level40Canvas(width, height int, fps float64) (int, int, bool) {
+	const maxMacroblocksPerSecond = 245760
+	if width <= 0 || height <= 0 || fps <= 0 {
+		return width, height, false
+	}
+	macroblocks := ((width + 15) / 16) * ((height + 15) / 16)
+	if float64(macroblocks)*fps <= maxMacroblocksPerSecond {
+		return width, height, false
+	}
+
+	return 1280, 720, true
 }
 
 func (e *VideoEncoder) Start() error {
@@ -303,6 +321,14 @@ func (e *VideoEncoder) readOutput() {
 	startCode := []byte{0x00, 0x00, 0x00, 0x01}
 	startCode3 := []byte{0x00, 0x00, 0x01}
 	var buf bytes.Buffer
+	// ffmpeg writes an Annex-B elementary stream as individual NAL units, but
+	// the gateway's PushVideo call represents one WebRTC sample. Sending AUD,
+	// SPS, PPS, SEI and the coded slice as five samples makes Chromium/WebKit
+	// feed an AUD-only "frame" to their decoder and immediately raise
+	// MEDIA_ERR_DECODE. Accumulate all prefix NALs and emit once the single
+	// VCL slice for this frame arrives. Both encoder paths are deliberately
+	// configured without sliced frames, so one VCL NAL closes one access unit.
+	var accessUnit []byte
 	tmp := make([]byte, 65536)
 	for {
 		select {
@@ -347,17 +373,22 @@ func (e *VideoEncoder) readOutput() {
 
 			nal := make([]byte, nextIdx-startIdx)
 			copy(nal, data[startIdx:nextIdx])
+			var frame []byte
+			accessUnit, frame = appendNALToAccessUnit(accessUnit, nal)
+			buf.Next(nextIdx)
+			if frame == nil {
+				continue
+			}
 			select {
-			case e.Output <- nal:
+			case e.Output <- frame:
 			case <-e.stopCh:
 				return
 			default:
 				n := e.Dropped.Add(1)
 				if n <= 5 || n%50 == 0 {
-					log.Printf("[video-out] DROPPED NAL #%d (Output channel full, consumer falling behind) — decode chain broken until next keyframe", n)
+					log.Printf("[video-out] DROPPED FRAME #%d (Output channel full, consumer falling behind) — decode chain broken until next keyframe", n)
 				}
 			}
-			buf.Next(nextIdx)
 		}
 	}
 }

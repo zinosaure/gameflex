@@ -1,0 +1,7 @@
+.env
+.env.*
+.git
+.local
+**/node_modules
+**/.npm
+output

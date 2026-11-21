@@ -1,0 +1,8 @@
+{
+  "passed": [
+    "Office TV: source refresh keeps focus inside the menu",
+    "Launch contract retains original GBA reference and opens streaming; transport is simulated",
+    "Orbit launch confirmation keeps dialog geometry and returns focus"
+  ],
+  "previewOnly": true
+}

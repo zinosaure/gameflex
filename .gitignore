@@ -1,2 +1,17 @@
 # Your settings and secrets (launch.sh writes them): never commit them.
 .env
+
+# Isolated previews, dependency installs and local runtime data.
+.local/
+node_modules/
+src/webapp/src/node_modules/
+__pycache__/
+.npm/
+src/webapp/src/dist/
+src/microservices/edge/src/dist/
+src/microservices/edge/src/dist-federation/
+output/experience-preview.js
+output/experience-preview.css
+
+# Local signed TV build outputs (signing keys remain outside version control).
+/output/android-tv/
