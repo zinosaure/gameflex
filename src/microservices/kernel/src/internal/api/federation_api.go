@@ -68,6 +68,10 @@ type tokenScopesKey struct{}
 // tokenConsolesKey — ce que l'accès du porteur laisse lancer (chantier 66).
 type tokenConsolesKey struct{}
 
+// tokenRelayAllowedKey, tokenRelayedKey — le relais de la fédération par cet accès (chantier 83, federation_relay.go).
+type tokenRelayAllowedKey struct{}
+type tokenRelayedKey struct{}
+
 // scopeCatalog — lire le catalogue et télécharger un jeu ou un BIOS. La
 // seule portée qui existe, et le service d'identité n'en accorde pas
 // d'autre.
@@ -96,6 +100,9 @@ type verifiedToken struct {
 	Scopes string
 	// Consoles — ce que cet accès laisse lancer (chantier 66).
 	Consoles []string
+	// RelayAllowed, RelayedServers — le relais de la fédération (chantier 83, federation_relay.go).
+	RelayAllowed   bool
+	RelayedServers []int64
 }
 
 // verifyFederationToken demande au service d'identité si ce jeton existe.
@@ -129,15 +136,18 @@ func (server *Server) verifyFederationToken(token string) (verifiedToken, error)
 
 	var decoded struct {
 		Item struct {
-			Label    string   `json:"label"`
-			Scopes   string   `json:"scopes"`
-			Consoles []string `json:"consoles"`
+			Label          string   `json:"label"`
+			Scopes         string   `json:"scopes"`
+			Consoles       []string `json:"consoles"`
+			RelayAllowed   bool     `json:"relay_allowed"`
+			RelayedServers []int64  `json:"relayed_servers"`
 		} `json:"item"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&decoded); err != nil {
 		return verifiedToken{}, err
 	}
-	return verifiedToken{Label: decoded.Item.Label, Scopes: decoded.Item.Scopes, Consoles: decoded.Item.Consoles}, nil
+	return verifiedToken{Label: decoded.Item.Label, Scopes: decoded.Item.Scopes, Consoles: decoded.Item.Consoles,
+		RelayAllowed: decoded.Item.RelayAllowed, RelayedServers: decoded.Item.RelayedServers}, nil
 }
 
 // identityRelay — porter un jeton à une route interne du service d'identité.
@@ -214,6 +224,8 @@ func (server *Server) federationAuth(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), tokenLabelKey{}, verified.Label)
 		ctx = context.WithValue(ctx, tokenScopesKey{}, verified.Scopes)
 		ctx = context.WithValue(ctx, tokenConsolesKey{}, verified.Consoles)
+		ctx = context.WithValue(ctx, tokenRelayAllowedKey{}, verified.RelayAllowed)
+		ctx = context.WithValue(ctx, tokenRelayedKey{}, verified.RelayedServers)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -252,6 +264,9 @@ func (server *Server) handleFederationListing(w http.ResponseWriter, r *http.Req
 	// Puis les ressources externes (`#808`) : ce qu'elles seules portent.
 	server.withResources(&served)
 	server.withFreshness(&served)
+	// LE RELAIS (chantier 83) : l'accès du porteur le laisse-t-il nous relayer à ses appareils, et ce qu'on lui relaie.
+	served.Header.RelayAllowed, _ = r.Context().Value(tokenRelayAllowedKey{}).(bool)
+	served.Header.Relayed = server.relayedFor(r)
 
 	writeJSON(w, http.StatusOK, served)
 }
@@ -279,7 +294,13 @@ func (server *Server) handleFederationListingUpdated(w http.ResponseWriter, r *h
 	}
 
 	consoles, disabled := server.consolesFor(r)
-	writeJSON(w, http.StatusOK, map[string]any{"updatedAt": updatedAt, "scopes": scopesOf(r), "consoles": consoles, "disabledConsoles": disabled})
+	relayAllowed, _ := r.Context().Value(tokenRelayAllowedKey{}).(bool)
+	relayed := server.relayedFor(r)
+	if relayed == nil {
+		relayed = []listing.RelayedServer{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"updatedAt": updatedAt, "scopes": scopesOf(r), "consoles": consoles, "disabledConsoles": disabled,
+		"relayAllowed": relayAllowed, "relayed": relayed})
 }
 
 // federationSession — une session ouverte ici par le jeton d'un compte.
@@ -665,6 +686,9 @@ func (server *Server) catalogRoutes(router chi.Router) {
 	// La LISTE des consoles à distance, et rien d'autre (chantier 9, C9-P2).
 	// Sa portée est distincte : un jeton de catalogue ne la voit pas.
 	router.Get("/remoteplay/devices", requireScope(scopeCatalog, server.handleFederationDevices))
+	// LE RELAIS (chantier 83, federation_relay.go) : le catalogue d'un serveur qu'on relaie au porteur.
+	router.Get("/relay/{id}/*", requireScope(scopeCatalog, server.handleFederationRelay))
+	router.Head("/relay/{id}/*", requireScope(scopeCatalog, server.handleFederationRelay))
 
 	// TOUJOURS PAS DE LANCEMENT, ni streamex ni remoteplay, et ce n'est pas
 	// un oubli. Lancer une session démarre un conteneur sur CETTE machine ;

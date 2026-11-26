@@ -8,7 +8,7 @@ import { goUp, rememberGame } from "../../libs/memory.js";
 import { federationSession, PLAY_BLOCK_LABELS, playBlock, useFederationSession } from "../../libs/federation.js";
 import { federatedAccountPath } from "../../settings/profile/Federation.jsx";
 import { playPath, useLaunch } from "../../libs/play.js";
-import { fact, originOf, STATUS_VARIANT, statusOf } from "../../libs/format.js";
+import { fact, STATUS_VARIANT, statusOf } from "../../libs/format.js";
 import { widthFor } from "../../libs/images.js";
 import { useLayoutKind } from "../../libs/layout.js";
 import { useVerticalPager } from "../../libs/pager.js";
@@ -29,6 +29,7 @@ import { biosChoice, ContinuePanel, coreChoice, GearPanel, streamOf, useConsoleF
 import PlayLaunch from "../play/Launch.jsx";
 import { ITEM_SETTINGS_ICON } from "../../globals/icons.js";
 import { pill, STATUS_PILL } from "../../bricks/Pill.jsx";
+import { originView } from "../../bricks/Origin.jsx";
 
 // NIVEAU 2 — LA BIBLIOTHÈQUE D'UNE CONSOLE : ses fiches, une par écran, qui
 // défilent en vertical comme les consoles (le porteur, 2026-11-12 : « plus de
@@ -158,7 +159,8 @@ export default function Library({ tab }) {
             return {
                 value: `peer:${server.id}`,
                 label: server.hostname || server.link,
-                help: !read || read.loading ? t("settings.loading") : read.refusal ? t(`games.peer.${read.refusal}`) : read.failed ? t("games.loadFailed") : t("game.originPeer"),
+                help: !read || read.loading ? t("settings.loading") : read.refusal ? t(`games.peer.${read.refusal}`) : read.failed ? t("games.loadFailed")
+                    : server.relayedBy ? t("fed.relayedBy", { name: server.relayedBy }) : t("game.originPeer"),
             };
         }),
     ];
@@ -544,7 +546,6 @@ function Sheet({ console, game, position, rom }) {
     // LE NOMBRE DE JOUEURS, quand une source le sait (le porteur, 2026-11-14 : « si nombre de joueurs dispo, on le rajoute
     // aussi sur la fiche du jeu ») — sur la ligne des informations, après l'année.
     const subtitle = [known.publisher, known.genres.join(", "), known.year, known.players ? t("game.playerCount", { count: known.players }) : ""].filter(Boolean);
-    const origin = originOf(rom, servers, t);
 
     return (
         <>
@@ -556,7 +557,8 @@ function Sheet({ console, game, position, rom }) {
                     les badges. */}
                 <div className="stext d-flex flex-column justify-content-end align-items-start gap-2">
                     {/* Une seule petite ligne au-dessus du titre : la place, la provenance, la série. */}
-                    <div className="fseries">{[`#${position}`, origin, game.seriesSize >= 2 ? game.series : ""].filter(Boolean).join(" • ")}</div>
+                    <div className="fseries">{[`#${position}`, originView(rom, servers, t), game.seriesSize >= 2 ? game.series : ""].filter(Boolean)
+                        .map((part, index) => <React.Fragment key={index}>{index > 0 && " • "}{part}</React.Fragment>)}</div>
                     <h1 className={`htitle ${parts.main.length > 24 ? "long" : ""}`}>{parts.main}</h1>
                     {parts.tags && <p className="ownTitle m-0">{parts.tags}</p>}
                     {subtitle.length > 0 && <div className="fmeta m-0">{subtitle.map((part) => <span key={part}>{part}</span>)}</div>}
@@ -633,7 +635,7 @@ function GameList({ console, games, current, loading, failed, query, onQuery, so
                         return (
                             <NavRow key={game.key} id={`gl-${game.key}`} lead={<GameCover consoleId={console.id} reference={rom.reference} game={romSource(rom)} />}
                                 label={game.discs.length > 1 ? splitTitle(game.title).main : game.title}
-                                help={[fact(t("game.origin"), originOf(rom, servers, t)), pill(t(`status.${statusKey(rom)}`), STATUS_PILL[statusKey(rom)])]}
+                                help={[fact(t("game.origin"), originView(rom, servers, t)), pill(t(`status.${statusKey(rom)}`), STATUS_PILL[statusKey(rom)])]}
                                 onOpen={() => onChoose(index)} />
                         );
                     }} />

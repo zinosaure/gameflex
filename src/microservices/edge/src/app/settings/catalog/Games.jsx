@@ -66,6 +66,7 @@ import { GameCover } from "../../screens/library/HeroArt.jsx";
 import { toast } from "../../shell/Shell.jsx";
 import SettingsPage, { useQueryState, useSettingsNavigation } from "../SettingsPage.jsx";
 import { savesPathOf } from "../profile/Saves.jsx";
+import { originView } from "../../bricks/Origin.jsx";
 
 export const CATALOG = "/settings/catalog/games";
 export const gamePath = (consoleId, reference) => `${CATALOG}/game?${new URLSearchParams({ console: consoleId, ref: reference })}`;
@@ -306,7 +307,8 @@ export default function Catalog() {
         { value: "local", label: t("games.source.library"), help: t("game.originLibrary") },
         ...(disks || []).filter((disk) => Object.values(disk.consoles || {}).some((count) => count > 0))
             .map((disk) => ({ value: `disk:${disk.name}`, label: disk.name, help: t("games.source.diskHelp") })),
-        ...(servers || []).map((server) => ({ value: `peer:${server.id}`, label: serverName(servers, server.id), help: peerHelp(server) })),
+        ...(servers || []).map((server) => ({ value: `peer:${server.id}`, label: serverName(servers, server.id),
+            help: server.relayedBy ? t("fed.relayedBy", { name: server.relayedBy }) : peerHelp(server) })),
         // Chaque ressource externe qui a des jeux (`#808`).
         ...(resources || []).filter((resource) => Object.values(resource.consoles || {}).some((count) => count > 0))
             .map((resource) => ({ value: `resource:${resource.id}`, label: resource.name, help: t("catalog.resourceHelp", { kind: t(`fedService.kinds.${resource.kind}.label`) }) })),
@@ -342,7 +344,7 @@ export default function Catalog() {
                     placeholderRow={() => <PlaceholderRow lead="cover" />}
                     render={(game) => (
                         <NavRow key={game.key} id={`cg-${game.key}`} label={game.title} lead={<GameCover consoleId={game.consoleId} reference={game.reference} game={romSource(game)} />}
-                            help={[fact(t("catalog.console"), consoleName(game.consoleId)), fact(t("game.origin"), originOf(game, servers, t))]}
+                            help={[fact(t("catalog.console"), consoleName(game.consoleId)), fact(t("game.origin"), originView(game, servers, t))]}
                             onOpen={() => open(gamePath(game.consoleId, game.reference), `cg-${game.key}`, { game })} />
                     )} />
             </Section>
@@ -512,7 +514,7 @@ export function GameSheet({ console, game, onRemoved = null }) {
                 navigateur, le jeu ou ses métadonnées ; puis « Plus », ses sauvegardes. */}
             <GameImages consoleId={console.id} reference={game.reference} game={source} />
             <Section title={t("details")} help={t("gameAdmin.sections.detailsHelp")} sense="info">
-                <GameFacts facts={{ console: console.name, origin, status: game.status, series: game.series, sizeBytes: game.sizeBytes }}
+                <GameFacts facts={{ console: console.name, origin: originView(game, servers, t), status: game.status, series: game.series, sizeBytes: game.sizeBytes }}
                     metadata={metadata} refusal={failure !== null ? sheetRefusalOf(failure, origin, t) : null} sources={cited} />
             </Section>
             {/* JOUER, ET MES FAVORIS : PAS POUR UN JEU D'UNE SOURCE EXTERNE (une ressource externe, d'ici ou d'un serveur

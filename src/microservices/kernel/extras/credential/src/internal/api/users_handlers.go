@@ -368,14 +368,16 @@ func assignableRole(level int) bool {
 }
 
 func (server *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
-	// SANS MOT DE PASSE (chantier 55) : le membre le choisit par son lien.
-	// `password` n'est plus un champ : envoyé, il est refusé (400,
-	// DisallowUnknownFields).
+	// LE MOT DE PASSE OU LE LIEN, AU CHOIX DE L'ADMINISTRATEUR (le porteur, 2026-11-26 : « Il faut que l'administrateur
+	// ait le choix. […] Il peut donc donner un mot de passe défaut ou envoyer un lien d'invitation ») : `password`
+	// donné, il suit la règle de tout mot de passe (PasswordRefusals) et le compte naît sans lien ; absent, le membre le
+	// choisit par son lien (chantier 55).
 	var body struct {
 		Username    string    `json:"username"`
 		DisplayName string    `json:"display_name"`
 		RoleLevel   *int      `json:"role_level"`
 		Consoles    *[]string `json:"consoles"`
+		Password    string    `json:"password"`
 	}
 	if !decodeBody(w, r, &body) {
 		return
@@ -407,6 +409,10 @@ func (server *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, p
 	// (usernamePattern, celui du kernel).
 	if !usernamePattern.MatchString(body.Username) || len(body.Username) > newUsernameMax {
 		respondErrorCode(w, http.StatusBadRequest, "username_invalid", "Username must be 3 to 20 letters, digits, dots, dashes or underscores.")
+		return
+	}
+	if body.Password != "" {
+		server.createUserWithPassword(w, principal, body.Username, body.DisplayName, body.Password, roleLevel, grants)
 		return
 	}
 	// Le compte et son lien, dans la même transaction : un compte n'existe
@@ -441,6 +447,39 @@ func (server *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, p
 	server.accountsChanged()
 	slog.Info("member invited", "username", body.Username, "by", principal.Username, "until", link.ExpiresAt)
 	respondItem(w, http.StatusCreated, server.memberWithLink(userID, link))
+}
+
+// createUserWithPassword — un compte dont l'administrateur donne le mot de passe : la règle de tout mot de passe, puis
+// le compte, sans lien (il peut entrer tout de suite).
+func (server *Server) createUserWithPassword(w http.ResponseWriter, principal auth.Principal, username, displayName, password string, roleLevel int, grants string) {
+	if refusals := auth.PasswordRefusals(password); len(refusals) > 0 {
+		respondPasswordRefused(w, refusals)
+		return
+	}
+	hashed, err := auth.HashPassword(password)
+	if err != nil {
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
+		return
+	}
+	created := now()
+	result, err := server.db.Exec(
+		`INSERT INTO users (username, hashed_password, display_name, role_level, created_at, created_by_id, consoles, password_set_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		username, hashed, displayName, roleLevel, created, principal.ID, grants, created,
+	)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			respondErrorCode(w, http.StatusConflict, "username_taken", "Username already taken.")
+			return
+		}
+		slog.Error("create member failed", "username", username, "error", err)
+		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
+		return
+	}
+	userID, _ := result.LastInsertId()
+	server.accountsChanged()
+	slog.Info("member created with a password", "username", username, "by", principal.Username)
+	respondItem(w, http.StatusCreated, server.memberResponse(userID))
 }
 
 func (server *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request, principal auth.Principal) {

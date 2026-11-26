@@ -317,7 +317,8 @@ type remoteDevice struct {
 // forme complète ; les mêler ici obligerait à choisir laquelle des deux
 // formes rendre, et l'une des deux y perdrait.
 func (server *Server) handleRemoteDevices(w http.ResponseWriter, r *http.Request) {
-	registered, err := server.registeredServers()
+	// Les consoles Remote Play ne se relaient jamais (chantier 83) : les pairs directs seulement.
+	registered, err := server.directServers()
 	if err != nil || len(registered) == 0 {
 		writeJSON(w, http.StatusOK, []remoteDevice{})
 		return
@@ -1014,6 +1015,9 @@ type knownServer struct {
 	Link     string       `json:"link"`
 	Hostname string       `json:"hostname"`
 	Listing  *peerListing `json:"listing,omitempty"`
+	// RelayedBy — un serveur qu'un ami nous relaie (chantier 83) : le nom de cet ami ; la page le marque d'une icône de
+	// relais.
+	RelayedBy string `json:"relayedBy,omitempty"`
 	// Online — il a répondu à l'instant : seulement quand on vient de le lui
 	// demander (handleKnownServer), jamais dans la liste, qui ne demande rien
 	// à personne.
@@ -1051,6 +1055,8 @@ type peerListing struct {
 	// l'a pas dit.
 	Granted  []string `json:"granted"`
 	Disabled []string `json:"disabled"`
+	// RelayAllowed — notre accès chez lui nous laisse le relayer à nos appareils (chantier 83).
+	RelayAllowed bool `json:"relayAllowed,omitempty"`
 }
 
 // listingOf — l'en-tête de la copie d'un ami, à la forme de knownServer.
@@ -1074,7 +1080,7 @@ func (server *Server) listingOf(entry registeredServer) *peerListing {
 	}
 
 	return &peerListing{UpdatedAt: header.UpdatedAt, Server: header.Server, Machine: header.Machine, Scopes: scopes, Consoles: consoles,
-		Lent: header.Sections[listing.Roms].Lent, Granted: header.Consoles, Disabled: disabled}
+		Lent: header.Sections[listing.Roms].Lent, Granted: header.Consoles, Disabled: disabled, RelayAllowed: header.RelayAllowed}
 }
 
 // handleKnownServer — GET /api/v1/servers/{id} : CE serveur, vérifié chez lui
@@ -1127,7 +1133,7 @@ func (server *Server) handleKnownServers(w http.ResponseWriter, r *http.Request)
 	servers := make([]knownServer, 0, len(registered))
 	for _, entry := range registered {
 		servers = append(servers, knownServer{
-			ID: entry.ID, Link: entry.Link, Hostname: entry.Hostname, Listing: server.listingOf(entry),
+			ID: entry.ID, Link: entry.Link, Hostname: entry.Hostname, Listing: server.listingOf(entry), RelayedBy: entry.RelayedBy,
 		})
 	}
 

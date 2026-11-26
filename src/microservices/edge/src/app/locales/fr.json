@@ -133,6 +133,7 @@
         "continue": "Continuer",
         "consoleDisabled": "Console désactivée",
         "federationDisabled": "Fédération désactivée",
+        "relayDisabled": "Relais désactivé",
         "accessRestricted": "Accès restreint"
     },
     "settings": {
@@ -1095,7 +1096,8 @@
         "savesDetailsHelp": "La place que prend son dossier de sauvegardes.",
         "savesMoreHelp": "Les emporter en une archive.",
         "listHelp": "Les comptes de ce serveur.",
-        "createSectionHelp": "Créer un compte : il recevra un lien pour choisir son mot de passe."
+        "createSectionHelp": "Créer un compte : il recevra un lien pour choisir son mot de passe.",
+        "byLinkOff": "Vous donnez son mot de passe ; il pourra le changer ensuite."
     },
     "resources": {
         "typeLabel": "Type",
@@ -1287,7 +1289,13 @@
         "remoteRightsHelp": "Ce que l'autre serveur peut régler ici, à distance.",
         "machineHelp": "La machine de ce serveur.",
         "tokenDetailsHelp": "À qui il est délivré, et ce qu'il ouvre.",
-        "consolesSectionHelp": "Les consoles que ce serveur peut lancer chez vous."
+        "consolesSectionHelp": "Les consoles que ce serveur peut lancer chez vous.",
+        "relayedBy": "Relayé par {{name}}",
+        "relayAllowedLabel": "Peut me relayer à ses appareils",
+        "relayAllowedHelp": "Ce serveur peut montrer mes jeux aux appareils à qui il donne un accès.",
+        "relayedTitle": "Serveurs relayés",
+        "relayedHelp": "Les serveurs fédérés dont cet accès voit aussi les jeux.",
+        "relayNotAllowed": "Ce serveur ne permet pas d'être relayé."
     },
     "invitations": {
         "create": "Créer l'invitation",
@@ -2356,15 +2364,7 @@
         "server_config_players": "Entre 1 et 8 par console."
     },
     "download": {
-        "title": "Application",
-        "installTitle": "Installation",
-        "installDownload": "Télécharger",
-        "installFromPhone": "Ouvrez cette page depuis le téléphone, puis téléchargez.",
-        "installFromRelease": "Ouvrez cette page depuis le téléphone, puis téléchargez gameflex.apk sur la page de la dernière version.",
-        "installAllowTitle": "Autoriser l'installation",
-        "installAllow": "Android demande d'autoriser l'installation depuis cette source, comme pour toute application hors du Play Store.",
-        "installOpenTitle": "Ouvrir le fichier",
-        "installOpen": "Ouvrez le fichier téléchargé."
+        "title": "Application"
     },
     "project": {
         "help": "Le dépôt public de GameFlex, sur GitHub, en anglais.",
@@ -2699,6 +2699,8 @@
         "localEmpty": "Aucun serveur en mode découverte sur ce réseau.",
         "localSearching": "Recherche sur ce réseau…",
         "sameName": "Ce nom est vu à deux adresses",
+        "searchTitle": "Recherche",
+        "searchHelp": "Les serveurs qui passent en mode découverte s'ajoutent d'eux-mêmes à la liste.",
         "searchAgain": "Chercher de nouveau",
         "searchAgainHelp": "Pose de nouveau la question au réseau.",
         "urlLabel": "Adresse du serveur",

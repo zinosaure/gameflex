@@ -151,3 +151,17 @@ func TestRelayMetadataPasseLaFicheEtDitSesRefus(t *testing.T) {
 		t.Errorf("un pair éteint : %v, attendu 502", err)
 	}
 }
+
+// LE RELAIS DE LA FÉDÉRATION (chantier 83) : l'adresse d'un serveur relayé est sous celle du relais, et son
+// identifiant, négatif, ne heurte jamais celui d'un pair direct.
+func TestARelayedServerLivesUnderItsRelay(t *testing.T) {
+	if got := RelayLink("https://ami.example/", 3); got != "https://ami.example/api/v1/federation/relay/3" {
+		t.Fatalf("RelayLink = %q", got)
+	}
+	if got := RelayID(2, 3); got != -2_000_003 {
+		t.Fatalf("RelayID = %d", got)
+	}
+	if RelayID(2, 3) == RelayID(3, 2) {
+		t.Fatal("deux serveurs relayés différents ont le même identifiant")
+	}
+}

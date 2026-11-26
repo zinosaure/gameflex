@@ -411,6 +411,18 @@ func Open() (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
+	// LE RELAIS DE LA FÉDÉRATION (chantier 83 ; le porteur, 2026-11-26) : « Peut me relayer à ses appareils », coupé par
+	// défaut — le serveur qui a cet accès peut repasser nos jeux aux appareils à qui il en donne un ; et, sur l'accès
+	// qu'on délivre, les serveurs fédérés qu'on relaie à son porteur, un par un (leurs identifiants, séparés par des
+	// virgules).
+	if err := ensureColumn(db, "federation_tokens", "relay_allowed", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := ensureColumn(db, "federation_tokens", "relayed_servers", "VARCHAR(500) NOT NULL DEFAULT ''"); err != nil {
+		db.Close()
+		return nil, err
+	}
 	if _, err := db.Exec(`DROP TABLE IF EXISTS remote_administration`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("drop remote_administration: %w", err)

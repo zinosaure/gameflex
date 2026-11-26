@@ -163,6 +163,18 @@ type Header struct {
 	// Statuses — le statut de chaque console qui en a un (chantier 30) : celui
 	// d'un jeu sans signalement. Absent : non testé.
 	Statuses map[string]string `json:"statuses,omitempty"`
+	// LE RELAIS DE LA FÉDÉRATION (chantier 83), posé par celui qui sert, comme les portées :
+	//   - RelayAllowed — NOTRE accès chez lui nous laisse repasser ses jeux à nos appareils (« Peut me relayer ») ;
+	//   - Relayed — les serveurs fédérés qu'il NOUS relaie, ceux qui le lui permettent ; un appareil les lit chez lui,
+	//     sous `/api/v1/federation/relay/<id>` (remote.RelayLink).
+	RelayAllowed bool            `json:"relayAllowed,omitempty"`
+	Relayed      []RelayedServer `json:"relayed,omitempty"`
+}
+
+// RelayedServer — un serveur fédéré qu'un autre nous relaie : son identifiant chez le relais, et son nom.
+type RelayedServer struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 }
 
 // SectionInfo — une section : quand elle a été refaite, et ce qu'elle compte.

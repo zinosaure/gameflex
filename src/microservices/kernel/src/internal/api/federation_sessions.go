@@ -99,7 +99,7 @@ func (server *Server) peerFromTopic(topic string) (registeredServer, string, boo
 	if err != nil {
 		return registeredServer{}, "", false
 	}
-	registered, err := server.registeredServers()
+	registered, err := server.directServers()
 	if err != nil {
 		return registeredServer{}, "", false
 	}

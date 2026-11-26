@@ -11,6 +11,7 @@ package remote
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -186,3 +187,80 @@ func FileName(game listing.Item) (string, error) {
 
 	return storage.RomFileName(game.Name, game.Files)
 }
+
+// LE RELAIS DE LA FÉDÉRATION (chantier 83) — un serveur qu'un ami nous relaie se lit CHEZ L'AMI, sous
+// `/api/v1/federation/relay/<id>` : un pair virtuel, dont l'adresse est celle du relais suivie de ce préfixe, et le
+// jeton celui qu'on a chez le relais. Le reste du paquet le traite comme un pair direct.
+
+// RelayLink — l'adresse d'un serveur relayé : celle du relais, puis son préfixe.
+func RelayLink(relayLink string, id int64) string {
+	return strings.TrimRight(relayLink, "/") + RelayPrefix + strconv.FormatInt(id, 10)
+}
+
+// RelayPrefix — le préfixe des routes relayées, chez le relais.
+const RelayPrefix = "/api/v1/federation/relay/"
+
+// RelayID — l'identifiant, dans notre registre, d'un serveur relayé : négatif, il ne heurte jamais celui d'un pair
+// direct (la base les donne positifs) ; le relais et l'identifiant chez lui le composent.
+func RelayID(viaID, id int64) int64 {
+	return -(viaID*1_000_000 + id)
+}
+
+// Forward — une demande (GET ou HEAD) relayée telle quelle à ce serveur, son chemin et sa requête, avec notre jeton
+// chez lui : le relais de la fédération la rend à l'appareil qui l'a faite. Pas d'échéance : un jeu se télécharge par
+// là.
+func (server *Server) Forward(ctx context.Context, method, pathAndQuery string) (*http.Response, error) {
+	return server.send(ctx, method, pathAndQuery, server.relay)
+}
+
+// relayablePaths — les routes du catalogue qu'un relais repasse (sous `/api/v1/federation`) : le listing, les
+// fichiers, les paramètres, les correctifs, les fiches et leurs images.
+var relayablePaths = []string{"/listing", "/roms/", "/bios/", "/cores/", "/bundles/", "/params/", "/patches/", "/metadata/"}
+
+// Relayable — ce chemin (sous `/api/v1/federation`) se relaie-t-il ? Voir et télécharger seulement (le porteur,
+// réponse 2) : jamais une partie, une console Remote Play (réponse 3), l'identité, ni la recherche par les comptes des
+// fournisseurs de l'origine — elle prêterait au porteur ce que l'origine n'a prêté qu'au relais.
+func Relayable(path string) bool {
+	if strings.Contains(path, "..") || strings.Contains(path, "/providers") {
+		return false
+	}
+	for _, prefix := range relayablePaths {
+		if path == prefix || strings.HasPrefix(path, prefix) || strings.HasPrefix(path, prefix+"/") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// RelayedListing — le listing de l'origine (`/listing`), ou sa fraîcheur (`/listing/updated`), tels qu'un relais les
+// rend à son porteur : voir et télécharger seulement (aucune console à lancer, la portée `catalog` seule), et un seul
+// saut (ni ses serveurs relayés, ni la permission de le relayer encore). `body` est la réponse enveloppée du kernel
+// (`{"success", "data"}`) ; le résultat est la donnée à renvoyer, enveloppée à son tour par l'appelant.
+func RelayedListing(path string, body io.Reader) (map[string]json.RawMessage, error) {
+	var envelope struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.NewDecoder(body).Decode(&envelope); err != nil || envelope.Data == nil {
+		return nil, errors.New("the relayed listing cannot be read")
+	}
+	fields := envelope.Data
+	if path == "/listing" {
+		var header map[string]json.RawMessage
+		if err := json.Unmarshal(fields["header"], &header); err != nil || header == nil {
+			return nil, errors.New("the relayed listing cannot be read")
+		}
+		fields = header
+	}
+	set := func(name string, value any) { fields[name], _ = json.Marshal(value) }
+	set("scopes", []string{"catalog"})
+	set("consoles", []string{})
+	set("relayAllowed", false)
+	set("relayed", []listing.RelayedServer{})
+	if path == "/listing" {
+		envelope.Data["header"], _ = json.Marshal(fields)
+	}
+
+	return envelope.Data, nil
+}
+

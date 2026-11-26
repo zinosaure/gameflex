@@ -329,6 +329,9 @@ type registeredServer struct {
 	Token    string `json:"token"`
 	Hostname string `json:"hostname"`
 	Identity string `json:"identity"`
+	// RelayedBy — un serveur qu'un ami nous relaie (chantier 83, federation_relay.go) : le nom de cet ami. Vide : un
+	// pair direct.
+	RelayedBy string `json:"relayedBy,omitempty"`
 }
 
 // registeredServers lit le registre. Rend une liste vide plutôt qu'une
@@ -371,8 +374,10 @@ func (server *Server) fetchRegisteredServers() ([]registeredServer, error) {
 
 	// UN AMI RETIRÉ EMPORTE LA COPIE DE SON LISTING (chantier 15) : le
 	// registre relu est celui qui fait foi.
-	peers := make([]remote.Peer, 0, len(envelope.Items))
-	for _, entry := range envelope.Items {
+	// LES SERVEURS QU'UN AMI NOUS RELAIE (chantier 83) suivent les pairs directs : leurs copies se gardent aussi.
+	all := append(envelope.Items, server.relayedPeers(envelope.Items)...)
+	peers := make([]remote.Peer, 0, len(all))
+	for _, entry := range all {
 		peers = append(peers, peerOf(entry))
 	}
 	server.copies().Prune(peers)
@@ -393,5 +398,5 @@ func (server *Server) fetchRegisteredServers() ([]registeredServer, error) {
 		slog.Info("listing of a former mounted share removed", "key", key)
 	}
 
-	return envelope.Items, nil
+	return all, nil
 }

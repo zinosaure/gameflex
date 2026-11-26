@@ -133,6 +133,7 @@
         "continue": "Continue",
         "consoleDisabled": "Console disabled",
         "federationDisabled": "Federation disabled",
+        "relayDisabled": "Relay disabled",
         "accessRestricted": "Restricted access"
     },
     "settings": {
@@ -1095,7 +1096,8 @@
         "savesDetailsHelp": "The space their saves folder takes.",
         "savesMoreHelp": "Take them away in one archive.",
         "listHelp": "This server's accounts.",
-        "createSectionHelp": "Create an account: they get a link to choose their password."
+        "createSectionHelp": "Create an account: they get a link to choose their password.",
+        "byLinkOff": "You give their password; they can change it later."
     },
     "resources": {
         "typeLabel": "Kind",
@@ -1287,7 +1289,13 @@
         "remoteRightsHelp": "What the other server can set here, remotely.",
         "machineHelp": "This server's machine.",
         "tokenDetailsHelp": "Who it is delivered to, and what it opens.",
-        "consolesSectionHelp": "The consoles this server can launch on yours."
+        "consolesSectionHelp": "The consoles this server can launch on yours.",
+        "relayedBy": "Relayed by {{name}}",
+        "relayAllowedLabel": "May relay me to its devices",
+        "relayAllowedHelp": "This server may show my games to the devices it gives an access to.",
+        "relayedTitle": "Relayed servers",
+        "relayedHelp": "The federated servers whose games this access also sees.",
+        "relayNotAllowed": "This server does not allow being relayed."
     },
     "invitations": {
         "create": "Create the invitation",
@@ -2356,15 +2364,7 @@
         "server_config_players": "Between 1 and 8 per console."
     },
     "download": {
-        "title": "App",
-        "installTitle": "Installation",
-        "installDownload": "Download",
-        "installFromPhone": "Open this page from the phone, then download.",
-        "installFromRelease": "Open this page from the phone, then download gameflex.apk from the latest version's page.",
-        "installAllowTitle": "Allow the installation",
-        "installAllow": "Android asks you to allow installing from this source, as for any app outside the Play Store.",
-        "installOpenTitle": "Open the file",
-        "installOpen": "Open the downloaded file."
+        "title": "App"
     },
     "project": {
         "help": "GameFlex's public repository, on GitHub.",
@@ -2699,6 +2699,8 @@
         "localEmpty": "No server in discovery mode on this network.",
         "localSearching": "Searching this network…",
         "sameName": "This name is seen at two addresses",
+        "searchTitle": "Search",
+        "searchHelp": "Servers that switch to discovery mode join the list on their own.",
         "searchAgain": "Search again",
         "searchAgainHelp": "Asks the network once more.",
         "urlLabel": "Server address",

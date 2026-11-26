@@ -196,10 +196,14 @@ export const invitationKind = (item, t) => (item.kind === "account" ? t("invitat
 // part, `onConsoles`) ; partager aussi les fournisseurs de métadonnées (par le bouton de sa section) ; le révoquer.
 // `onScopes(scopes)` → {ok, item, detail} ; `onConsoles()` ouvre la page de ses consoles ;
 // `onRevoke()` → {ok, detail} ; `onRevoked`, après. Le jeton : `{id, label, scopes: "a,b", consoles: [...], last_used_at}`.
-export function IssuedTokenSections({ token, onScopes = null, onConsoles = null, onRemoteAdmin = null, onRevoke, onRevoked }) {
+export function IssuedTokenSections({ token, onScopes = null, onConsoles = null, onRemoteAdmin = null, onRelayAllowed = null, onRelayed = null, onRevoke, onRevoked }) {
     const { t, i18n } = useTranslation();
     const feedback = useFeedback();
     const remote = useRemoteAdmin();
+    const { servers } = useData();
+    // LE RELAIS (chantier 83) : les serveurs fédérés directs, que cet accès peut relayer — un ami qui nous relaie un
+    // serveur ne se relaie pas plus loin.
+    const direct = (servers || []).filter((server) => !server.relayedBy);
     const [current, setCurrent] = useState(null);
     const shown = current || token;
     const shared = { providers: scopesOf(shown).includes(PROVIDERS) };
@@ -228,6 +232,16 @@ export function IssuedTokenSections({ token, onScopes = null, onConsoles = null,
                 return answer;
             }
             next = { ...next, remote_admin: values.remoteAdmin };
+        }
+        if (onRelayAllowed && !remote && values.relayAllowed !== Boolean(shown.relay_allowed)) {
+            const answer = await onRelayAllowed(values.relayAllowed);
+
+            if (!answer.ok) {
+                setCurrent(next);
+
+                return answer;
+            }
+            next = { ...next, relay_allowed: values.relayAllowed };
         }
         setCurrent(next);
 
@@ -272,7 +286,7 @@ export function IssuedTokenSections({ token, onScopes = null, onConsoles = null,
                 page distante : le service des comptes la refuse à une session venue d'ailleurs. */}
             {(onScopes || (onRemoteAdmin && !remote)) && (
                 <SaveSection id={`fd-rights-${shown.id}`} title={t("fed.remoteRights")} help={t("fed.remoteRightsHelp")}
-                    saved={{ providers: shared.providers, remoteAdmin: Boolean(shown.remote_admin) }} onSave={saveRights}>
+                    saved={{ providers: shared.providers, remoteAdmin: Boolean(shown.remote_admin), relayAllowed: Boolean(shown.relay_allowed) }} onSave={saveRights}>
                     {(values, set) => (
                         <>
                             {onScopes && (
@@ -283,9 +297,44 @@ export function IssuedTokenSections({ token, onScopes = null, onConsoles = null,
                                 <SwitchRow id={`fd-admin-${shown.id}`} label={t("remoteAdmin.title")} texts="allowed" help={t("remoteAdmin.switchHelp")} checked={values.remoteAdmin}
                                     onChange={(remoteAdmin) => set({ remoteAdmin })} />
                             )}
+                            {/* PEUT ME RELAYER (chantier 83 ; le porteur : « des deux côtés ») : coupé par défaut. */}
+                            {onRelayAllowed && !remote && (
+                                <SwitchRow id={`fd-relay-${shown.id}`} label={t("fed.relayAllowedLabel")} texts="allowed" help={t("fed.relayAllowedHelp")} checked={values.relayAllowed}
+                                    onChange={(relayAllowed) => set({ relayAllowed })} />
+                            )}
                         </>
                     )}
                 </SaveSection>
+            )}
+            {/* LES SERVEURS RELAYÉS (chantier 83 ; le porteur, 2026-11-26 : « Le mieux ce serait par serveur et non tout
+                d'un coup ») : un interrupteur par serveur fédéré direct ; grisé quand ce serveur ne nous permet pas de le
+                relayer (« Peut me relayer », sur l'accès qu'il nous a donné). */}
+            {onRelayed && !remote && (
+                <SaveSection id={`fd-relayed-${shown.id}`} title={t("fed.relayedTitle")} help={t("fed.relayedHelp")}
+                    saved={{ relayed: (shown.relayed_servers || []).map(String) }}
+                    onSave={async (values) => {
+                        const ids = values.relayed.map(Number);
+                        const answer = await onRelayed(ids);
+
+                        if (answer.ok) {
+                            setCurrent({ ...shown, relayed_servers: ids });
+                        }
+
+                        return answer;
+                    }}
+                    list={{
+                        items: direct, textOf: (server) => server.hostname || server.link || "", placeholder: t("fed.searchServer"),
+                        render: (server, values, set) => {
+                            const id = String(server.id);
+                            const allowed = Boolean(server.listing?.relayAllowed);
+
+                            return (
+                                <SwitchRow key={id} id={`fd-relayed-${shown.id}-${id}`} label={server.hostname || server.link}
+                                    help={allowed ? fact(t("fed.urlLabel"), server.link) : t("fed.relayNotAllowed")} checked={values.relayed.includes(id)} disabled={!allowed}
+                                    onChange={(on) => set({ relayed: on ? [...values.relayed, id] : values.relayed.filter((one) => one !== id) })} />
+                            );
+                        },
+                    }} />
             )}
             <DangerSection id={`fd-rev-${shown.id}`} help={t("fed.revokeHelp")} label={t("fed.revokeTitle")} confirmLabel={t("fed.revoke")} question={`${t("fed.revokeConfirm")} ${shown.label}`}
                 onConfirm={async () => {

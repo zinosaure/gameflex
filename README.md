@@ -13,69 +13,95 @@ streams the game, picture and sound, to whatever screen you have at hand: a phon
 laptop, a TV, a friend's computer. Your controller presses travel back the other way. There is
 nothing to install to play: a web browser is enough, and an Android app is there if you prefer.
 
-Because the screen in your hands only shows a video, it does not need to be powerful. A modest phone
-plays a PlayStation 3 game, as long as the computer at home can run it.
+## Why GameFlex
 
-No computer? A phone can be the server too: the [Android app](#the-android-app) runs a complete
-GameFlex on the phone, which plays its own games and streams them to the screens around it.
-
-### Play anywhere, on anything
-
-- **Anywhere.** On your couch, in another room, or across the world: the same library, the same
-  saves, wherever you are.
-- **Away from home, without opening your server to the Internet.** GameFlex comes with an optional
-  WireGuard VPN: your phone or laptop joins your home network from wherever it is, and only the
-  devices you add can reach GameFlex.
-- **On any device.** Windows, macOS, Linux, Android, iOS, a smart TV: if it has a modern web
-  browser, it can play. A real controller, the on-screen controller (with buttons you place
-  yourself), or the keyboard.
-- **Fifty years of consoles in one place.** From the Atari 2600 to the PlayStation 5, behind one
-  address, with the same accounts and the same saves.
-- **Your real PS4 or PS5 too.** GameFlex connects to the console you own and brings it to your
-  browser, wherever you are (Remote Play).
+Free and open source, with no subscription and no account with us: your games, on your server, shared with the
+people you choose.
 
 ### Play together, even far apart
 
-- **Online with friends, on games that never were.** Up to four controllers in the same game
-  (eight on the Switch), each player on their own device, at home or at the other end of the
-  world. A Super Nintendo party game becomes an online game.
-- **Pass the controller.** Stuck on a level? Lend your controller to a friend who is watching and
-  take it back when they are done, or give them your place for good. Someone watching can ask
-  for the controller. It all works from a distance.
-- **Anyone can watch.** Send a link: friends watch your game live in their browser, without an
-  account. **Live**, behind the GameFlex name at the top, shows the games being played right now,
-  ready to watch or join, and members you invite get a notification. In a game, the menu lists the
-  players, and a small bell tells you who joins, leaves or asks for your controller, without
-  covering the game.
-- **No Internet needed with the phone.** The [Android app](docs/android.md) turns a phone into the
-  console: friends nearby open its address in their browser and play with you, over the same
-  Wi-Fi. On a train or a plane, the phone can share its own hotspot.
+- **Share your games and consoles in six digits.** Pair two GameFlex with a six-digit code, or a QR code, and each
+  of you sees the other's games and consoles ([federation](docs/federation.md)).
+- **Play on a friend's server, from home.** Their machine runs the game and streams it to you: you play their
+  consoles without owning them.
+- **Talk while you play.** Voice chat in the game menu, for the players and, if the owner allows it, for the people
+  watching.
+- **Pass the controller.** Lend yours to a friend who is watching and take it back, or give them your place for
+  good; someone watching can ask for it. Up to four controllers in the same game (eight on the Switch), each
+  player on their own device: a Super Nintendo party game becomes an online game.
+- **Join or watch any game.** **Live** shows the games being played right now, ready to join or watch. Send a link:
+  friends watch in their browser, even without an account. Members you invite get a notification.
 
-### Share with friends
+### Your consoles, anywhere, on any screen
 
-- **Each other's games.** Connect two GameFlex servers and each of you sees the other's games. Copy
-  them, or play them on your friend's machine, which does the work and streams the game to you
-  ([federation](docs/federation.md)).
-- **Emulators, BIOS files and settings.** A friend's server is also where you find the emulator
-  versions, firmware, patches and emulator settings they use.
-- **Your PlayStation, too.** Let a friend play your PS4 or PS5 through your server.
-- **Your network shares, lent too.** Add a NAS or a cloud drive (Samba, WebDAV, kDrive, FTP, SFTP)
-  in Settings › Resources: every phone, computer and GameFlex you gave an access to sees its games,
-  emulators, BIOS files, patches and settings with yours
-  ([external resources](docs/federation.md#share-your-network-shares-external-resources)).
+- **Fifty years of consoles in one place,** from the Atari 2600 to the PlayStation 5, behind one address, with the
+  same accounts and the same saves.
+- **Your real PS4 or PS5, from anywhere.** Remote Play goes through your GameFlex: no port to open on your router,
+  and once the console is paired, every member you allow can play it.
+- **Nothing to install to play.** A web browser is enough: Windows, macOS, Linux, Android, iOS, a smart TV. The
+  screen in your hands only shows a video, so a modest phone plays a PlayStation 3 game.
+- **On an Android TV.** The Android app installs on the TV box: it runs the retro consoles itself, and the heavy
+  ones play from your server, or a friend's, through federation.
+- **Low latency.** The picture travels by WebRTC, straight from your server to your screen; at home, it takes a few
+  milliseconds. Up to 1440p and 120 frames per second, and the picture adapts when the network weakens.
+- **On the TV.** Send a game to a Chromecast, from Chrome, the Android app or the PC.
+- **Away from home, without opening your server to the Internet.** An optional WireGuard VPN lets your phone or
+  laptop join your home network from wherever it is ([Play away from home](docs/remote-access.md)).
 
-### Never lose your progress
+### You stay in control
 
-- **Saves follow you.** Your saves belong to your account, on every device. On the retro consoles,
-  quit a game with a save state and pick it up later, from the same point, on another screen.
-  Back up a game's saves, or send them to a friend's server and fetch them back. Not yet
-  implemented for the Xbox 360.
-- **Rewind and fast forward** on the retro consoles: step back through the last 20 seconds, or run
-  the game four times faster.
-- **Cheat codes** on the retro consoles (Game Genie, Action Replay, GameShark…), kept with your
-  account for each game.
-- **Your games stay yours.** Your library is a folder on your own disk. There is no online catalog,
-  no subscription, and no account with us.
+- **Who plays what.** Choose the consoles each member can start, and what each friend's server may do with yours;
+  switch a console off for everyone in one move.
+- **Run all your servers from one.** With **Remote administration** on the access you give your other GameFlex — a
+  second home, a mini PC, the phone — you manage its consoles, federation and Remote Play from your own Settings,
+  without opening its address. One place for all of them, and nothing more to expose.
+- **An account for each person.** Give a member their password, or send them an invitation link where they choose
+  it. Two-step verification (an authenticator app) can be required for a member or for everyone.
+- **Saves follow you, even across servers.** Your saves belong to your account, on every device. Back them up, send
+  them to a friend's server and fetch them back from there.
+- **Your games stay yours.** Your library is a folder on your own disk: no online catalog, nothing that disappears
+  when a service closes.
+
+### Easy to run, your way
+
+- **An app, or a full server.** The [Android app](#the-android-app) (APK) or the Linux PC app (AppImage) run a whole
+  GameFlex in one install; a server runs it with Docker Compose.
+- **No Internet needed with the phone.** The phone is the server: friends nearby open its address in their browser
+  and play with you. On a train or a plane, it shares its own hotspot.
+- **Your games, wherever they are.** Add a disk of games in one click on the PC and the phone, and read the games of
+  your Samba, WebDAV, FTP, SFTP and kDrive shares
+  ([external resources](docs/federation.md#share-your-network-shares-external-resources)); more sources are coming.
+- **Emulators patched for GameFlex.** The recent consoles run emulators carrying our own fixes, for more games that
+  start and play. Each console has its settings and presets, which friends can share
+  ([emulator settings](docs/emulator-settings.md)).
+- **In your language.** The interface speaks English and French, and the consoles start in the app's language.
+- **Make it yours.** Each release ships its web interface as `gameflex-interface.zip`: change it and load it back in
+  the Android app.
+- **The little things that matter.** Save states, rewind and fast forward, and cheat codes on the retro consoles;
+  covers and game sheets fetched for you; an on-screen controller whose buttons you place yourself, and a half-screen
+  mode for a controller clipped under the phone.
+- **Know what plays.** Each game shows whether it plays on each emulator, from what the players report; a fix or a
+  setting that makes a game work travels to your friends with it. **Report the error** writes a failed launch to
+  the server's logs, for the administrator.
+
+### Coming soon
+
+- **Plugins**, in their own space.
+- **Several Bluetooth controllers** on the same device, for a couch full of players in front of an Android TV.
+- **PC ports** of games, playable from GameFlex.
+- **Watching sessions and data** from the administration.
+
+### How it compares
+
+| | Subscription cloud gaming (Xbox Cloud Gaming, GeForce NOW) | Desktop streaming (Moonlight with Sunshine) | GameFlex |
+|---|---|---|---|
+| Where games run | Their data centers | Your PC | Your server, PC or phone |
+| Cost | A monthly subscription | Free | Free, open source |
+| Your games | Their catalog | Your PC games | Your own files, a folder on your disk |
+| To play | Their app or a browser | An app on each screen | A web browser, or the app |
+| Emulators | — | Each one installed and set up by hand | Built in, one interface for every console |
+| Play together | Depends on the game | — | Watch, join, pass the controller, talk |
+| A phone as the server | — | — | Yes, even without Internet |
 
 | | |
 |---|---|
@@ -149,8 +175,9 @@ the same skeleton.
 - **GameFlex ships no game, no BIOS and no firmware.** It plays the files you put in your library. The recent
   consoles' emulators come inside streamex packages, which GameFlex installs from **Settings › Consoles**,
   on each console's page (**Emulators**, then **Get it**).
-- **All you need to install is Docker,** with Compose, on an x86-64 computer. A recent graphics card
-  is recommended for the recent consoles. [Install GameFlex](docs/install.md) lists what you need.
+- **A server needs Docker,** with Compose, on an x86-64 computer; a recent graphics card is recommended
+  for the recent consoles ([Install GameFlex](docs/install.md)). Without Docker, the Android app or the
+  Linux PC app (AppImage) run GameFlex on their own.
 - **It is made for your home network.** To play away from home, turn on its WireGuard VPN, or put
   GameFlex behind an HTTPS proxy ([Play away from home](docs/remote-access.md)). Without the VPN,
   some networks block the video: GameFlex does not include a relay (TURN) server.
@@ -206,6 +233,8 @@ should work, but has not been tried.
   yet on a real desktop with a double-click, nor on Wayland.
 - **Send to the TV (Google Cast):** not tried up to a TV yet. The Android app opens its TV picker, and the PC
   window opens the cast page in the browser.
+- **Android TV:** the Android app on a friend's TV box, the heavy consoles played through federation. One
+  controller per screen for now.
 - **Not tried yet:** playing with friends over the phone's own hotspot, without Internet.
 
 ## Quick start

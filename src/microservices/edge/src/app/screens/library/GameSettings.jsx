@@ -31,6 +31,7 @@ import { Section } from "../../bricks/Section.jsx";
 import { SelectRow } from "../../bricks/SelectRow.jsx";
 import { SubmitRow } from "../../bricks/SubmitRow.jsx";
 import { useFeedback } from "../../bricks/useFeedback.jsx";
+import { originView } from "../../bricks/Origin.jsx";
 
 // L'ENGRENAGE D'UN JEU : « Informations et réglages » — ce que la fiche verrouillée
 // montrait, et les réglages de la fiche d'un jeu de la webapp (GameDetailPanel.jsx),
@@ -482,7 +483,7 @@ export function GearPanel({ console, game, rom, metadata, facts, playable, state
     // de la status en dessous du badge. Si pas de texte alors tu mets rien »).
     const gameFacts = {
         console: console.name,
-        origin: originOf(rom, servers, t),
+        origin: originView(rom, servers, t),
         engine: rom.engine ? t(`gear.engines.${rom.engine}`, { defaultValue: rom.engine }) : "",
         status, statusNote, sizeBytes: rom.sizeBytes,
     };

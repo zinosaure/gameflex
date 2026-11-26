@@ -394,6 +394,10 @@ type Freshness struct {
 	// (chantier 66) : ils ne changent pas la date non plus. Nuls : non dits.
 	Consoles         *[]string `json:"consoles,omitempty"`
 	DisabledConsoles *[]string `json:"disabledConsoles,omitempty"`
+	// RelayAllowed, Relayed — le relais de la fédération (chantier 83) : notre accès chez lui le laisse-t-il relayer,
+	// et ce qu'il nous relaie. Ils ne changent pas la date non plus. Nuls : non dits.
+	RelayAllowed *bool                    `json:"relayAllowed,omitempty"`
+	Relayed      *[]listing.RelayedServer `json:"relayed,omitempty"`
 }
 
 // ListingUpdated — sa Freshness. Une LISTE, bornée court : un ami éteint ne

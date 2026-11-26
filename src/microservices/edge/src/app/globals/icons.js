@@ -7,3 +7,7 @@ export const CONSOLE_ICON = "bi-dpad";
 // une clé, pas un engrenage (le porteur, 2026-11-26 : « Car là il y a 2 icônes de gear sur la même page sinon ») —
 // l'engrenage reste aux Réglages, dans l'en-tête.
 export const ITEM_SETTINGS_ICON = "bi-wrench-adjustable";
+
+// UN SERVEUR QU'UN AMI NOUS RELAIE (chantier 83 ; le porteur, 2026-11-26 : « la provenance on écrit : Gameflex (avec un
+// icône relais) ») : l'icône qui suit son nom, partout où la provenance d'un jeu se montre.
+export const RELAY_ICON = "bi-diagram-3";

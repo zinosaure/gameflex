@@ -201,8 +201,9 @@ export function PairingReveal({ created, pairing, onCancel, onDone }) {
 }
 
 // LES SERVEURS DU RÉSEAU LOCAL : une ligne chacun, son nom et son adresse ; la choisir remplit l'adresse. Un nom vu à
-// deux adresses se signale (un autre appareil peut se faire passer pour un serveur). La liste vide garde sa boîte, et
-// « Chercher de nouveau » repose la question.
+// deux adresses se signale (un autre appareil peut se faire passer pour un serveur). La liste vide garde sa boîte.
+// « Chercher de nouveau » repose la question, dans sa propre section (le porteur, 2026-11-26 : « Un listing doit être
+// indépendant. Et le chercher de nouveau doit être dans sa section à lui »).
 export function LocalServersSection({ onChoose }) {
     const { t } = useTranslation();
     const { servers, search } = useDiscovery(true);
@@ -213,19 +214,25 @@ export function LocalServersSection({ onChoose }) {
     });
 
     return (
-        <Section title={t("pairing.localTitle")} help={t("pairing.localHelp")} sense="modify">
-            <Rows>
-                {(servers || []).map((server) => (
-                    <NavRow key={`${server.instance}-${server.address}`} id={`pr-found-${server.address}-${server.instance}`} icon="bi-hdd-network"
-                        label={server.name} help={counted[server.name] > 1 ? [fact(t("fed.urlLabel"), server.address), t("pairing.sameName")] : fact(t("fed.urlLabel"), server.link)}
-                        opens="action" onOpen={() => onChoose(server)} />
-                ))}
-                {servers && servers.length === 0 && <EmptyRow icon="bi-wifi-off" text={t("pairing.localEmpty")} />}
-                {servers === null && <EmptyRow icon="bi-wifi" text={t("pairing.localSearching")} />}
-                <NavRow id="pr-search" icon="bi-arrow-repeat" label={t("pairing.searchAgain")} help={t("pairing.searchAgainHelp")} opens="action"
-                    disabled={servers === null} onOpen={() => search()} />
-            </Rows>
-        </Section>
+        <>
+            <Section title={t("pairing.localTitle")} help={t("pairing.localHelp")} sense="modify">
+                <Rows>
+                    {(servers || []).map((server) => (
+                        <NavRow key={`${server.instance}-${server.address}`} id={`pr-found-${server.address}-${server.instance}`} icon="bi-hdd-network"
+                            label={server.name} help={counted[server.name] > 1 ? [fact(t("fed.urlLabel"), server.address), t("pairing.sameName")] : fact(t("fed.urlLabel"), server.link)}
+                            opens="action" onOpen={() => onChoose(server)} />
+                    ))}
+                    {servers && servers.length === 0 && <EmptyRow icon="bi-wifi-off" text={t("pairing.localEmpty")} />}
+                    {servers === null && <EmptyRow icon="bi-wifi" text={t("pairing.localSearching")} />}
+                </Rows>
+            </Section>
+            <Section title={t("pairing.searchTitle")} help={t("pairing.searchHelp")} sense="modify">
+                <Rows>
+                    <NavRow id="pr-search" icon="bi-arrow-repeat" label={t("pairing.searchAgain")} help={t("pairing.searchAgainHelp")} opens="action"
+                        disabled={servers === null} onOpen={() => search()} />
+                </Rows>
+            </Section>
+        </>
     );
 }
 

@@ -177,7 +177,7 @@ func (server *Server) handleRedeemServerInvitation(w http.ResponseWriter, r *htt
 	if invitationRefusal(w, err) {
 		return
 	}
-	known, err := server.registeredServers()
+	known, err := server.directServers()
 	if err != nil {
 		writeErrorCode(w, http.StatusServiceUnavailable, "identity_unavailable", "cannot read the server list: "+err.Error())
 

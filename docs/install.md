@@ -107,7 +107,8 @@ and sign in as `root` with your password.
 
 To open GameFlex on another device of your network, a phone or a tablet, **Settings › Invite**
 shows its address and a QR code to scan with the device's camera. Each person signs in with their
-own account: create it in **Settings › Members**.
+own account: create it in **Settings › Members**, with a password you give, or with **By an invitation
+link** on, which gives a link where the person chooses their own.
 
 ## What you should see
 

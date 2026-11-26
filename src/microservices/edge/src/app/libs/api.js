@@ -384,6 +384,10 @@ export const updateCatalogTokenScopes = (id, scopes) => credential(`/catalog-tok
 export const updateCatalogTokenConsoles = (id, consoles) => credential(`/catalog-tokens/${id}`, jsonBody("PATCH", { consoles }));
 // L'ADMINISTRATION À DISTANCE PAR CET ACCÈS (chantier 73) : coupée par défaut, accordée accès par accès.
 export const updateCatalogTokenRemoteAdmin = (id, allowed) => credential(`/catalog-tokens/${id}`, jsonBody("PATCH", { remote_admin: allowed }));
+// LE RELAIS DE LA FÉDÉRATION (chantier 83) : le porteur de cet accès peut-il nous relayer à ses appareils, et les
+// serveurs fédérés qu'on lui relaie.
+export const updateCatalogTokenRelayAllowed = (id, allowed) => credential(`/catalog-tokens/${id}`, jsonBody("PATCH", { relay_allowed: allowed }));
+export const updateCatalogTokenRelayed = (id, servers) => credential(`/catalog-tokens/${id}`, jsonBody("PATCH", { relayed_servers: servers }));
 // Les consoles coupées pour tout le serveur (chantier 66) : couper ou rallumer une console.
 export const setConsoleSwitch = (id, enabled) => credential(`/console-switches/${encodeURIComponent(id)}`, jsonBody("PUT", { enabled }));
 export const revokeCatalogToken = (id) => credential(`/catalog-tokens/${id}`, { method: "DELETE" });

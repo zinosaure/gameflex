@@ -240,12 +240,23 @@ func TestTheFederationIgnoresMemberLinks(t *testing.T) {
 	}
 }
 
-// L'ADMINISTRATEUR NE POSE PLUS DE MOT DE PASSE : `password` est refusé à la
-// création comme à la modification (400).
-func TestAnAdministratorNoLongerSetsAPassword(t *testing.T) {
+// L'ADMINISTRATEUR CHOISIT À LA CRÉATION (le porteur, 2026-11-26) : un mot de passe donné suit la règle de tout mot de
+// passe, et le compte entre aussitôt, sans lien ; un mot de passe faible est refusé. La modification ne pose toujours
+// pas de mot de passe (400) : elle réinitialise par un lien.
+func TestAnAdministratorMayGiveThePasswordAtCreation(t *testing.T) {
 	server := memberServer(t)
-	if recorder := asAdmin(server, server.handleCreateUser, admin, "", `{"username":"lea","display_name":"Léa","password":"Gameflex#2026"}`); recorder.Code != http.StatusBadRequest {
-		t.Fatalf("création avec un mot de passe : %d, attendu 400", recorder.Code)
+	if recorder := asAdmin(server, server.handleCreateUser, admin, "", `{"username":"lea","display_name":"Léa","password":"court"}`); recorder.Code == http.StatusCreated {
+		t.Fatalf("création avec un mot de passe faible : %d, attendu un refus", recorder.Code)
+	}
+	recorder := asAdmin(server, server.handleCreateUser, admin, "", `{"username":"lea","display_name":"Léa","password":"Gameflex#2026"}`)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("création avec un mot de passe : %d %s, attendu 201", recorder.Code, recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), `"invitation"`) {
+		t.Fatalf("un compte créé avec son mot de passe n'a pas de lien : %s", recorder.Body.String())
+	}
+	if login := public(server.handleLogin, `{"username":"lea","password":"Gameflex#2026"}`, "10.0.0.5"); login.Code != http.StatusOK {
+		t.Fatalf("connexion avec le mot de passe donné : %d %s", login.Code, login.Body.String())
 	}
 	if recorder := asAdmin(server, server.handleUpdateUser, admin, "2", `{"password":"Gameflex#2026"}`); recorder.Code != http.StatusBadRequest {
 		t.Fatalf("modification avec un mot de passe : %d, attendu 400", recorder.Code)

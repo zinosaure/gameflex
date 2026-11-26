@@ -23,6 +23,7 @@ import { Form, FormButton, formContext, Ruleset } from "../../ui/Forms.jsx";
 import SettingsPage, { useSettingsNavigation } from "../SettingsPage.jsx";
 import { awaiting, day, lockReason, memberName, MemberPending, MEMBERS, MEMBERS_GUIDES, passwordState, ROLE_ADMIN, ROLE_USER, tokenLive, useMember, withoutCode } from "../Members.jsx";
 import { CONSOLE_ICON } from "../../globals/icons.js";
+import { passwordAccepted, refusalText } from "../../libs/password.js";
 
 // UN MEMBRE (nouveau, ou existant) — le porteur, 2026-11-14 : « username, display name, role et password doivent être
 // dans la même section » ; « rôle doit être en switch au lieu de selectbox » : son compte en UN groupe, le rôle en
@@ -55,6 +56,10 @@ export function MemberForm({ member: given, locked = null }) {
         username: member?.username || "",
         display_name: member?.display_name || "",
         role_level: String(member?.role_level ?? ROLE_USER),
+        // LE MOT DE PASSE OU LE LIEN, AU CHOIX DE L'ADMINISTRATEUR (le porteur, 2026-11-26 : « Il faut que
+        // l'administrateur ait le choix. […] Il peut donc donner un mot de passe défaut ou envoyer un lien d'invitation »).
+        byLink: true,
+        password: "",
     }));
     const [pending, setPending] = useState(false);
     const [linking, setLinking] = useState(false);
@@ -76,14 +81,15 @@ export function MemberForm({ member: given, locked = null }) {
     const form = formContext(values, setValues, {
         username: editing ? greyed : shownProblem("username"),
         display_name: locked ? greyed : shownProblem("display_name"),
-        // LE MOT DE PASSE, PAR LE LIEN (le porteur, 2026-11-25 : « le champ "son mot de passe comment ?" doit être en switch
-        // aussi ») : l'interrupteur « Par un lien d'invitation », allumé et désactivé — le service des comptes refuse un mot
-        // de passe donné à la création (chantier 55) —, et le champ désactivé, sa raison à la place de son aide.
-        byLink: () => Ruleset.isDisabled(t("members.byLinkOnly")),
-        password: () => Ruleset.isDisabled(editing ? passwordState(t, i18n.language, member) : t("members.passwordByLink")),
+        // LE MOT DE PASSE : à la création, l'interrupteur « Par un lien d'invitation » choisit (allumé, le membre le choisit
+        // par son lien ; éteint, l'administrateur le donne, à la règle de tout mot de passe) ; d'un membre existant, le
+        // champ dit où il en est, désactivé — il se réinitialise par un lien (« Danger »).
+        password: () => (editing ? Ruleset.isDisabled(passwordState(t, i18n.language, member))
+            : values.byLink ? Ruleset.isDisabled(t("members.passwordByLink")) : null),
     });
     const changed = !editing || values.display_name !== member.display_name || values.role_level !== String(member.role_level);
-    const invalid = Object.values(problems).some(Boolean);
+    const givesPassword = !editing && !values.byLink;
+    const invalid = Object.values(problems).some(Boolean) || (givesPassword && !passwordAccepted(values.password));
 
     const save = async () => {
         setPending(true);
@@ -92,11 +98,14 @@ export function MemberForm({ member: given, locked = null }) {
         if (!editing) {
             payload.username = values.username.trim();
         }
+        if (givesPassword) {
+            payload.password = values.password;
+        }
         const answer = editing ? await updateUser(member.id, payload) : await createUser(payload);
         setPending(false);
 
         if (!answer.ok) {
-            feedback.failed(answer.detail || t("members.saveFailed"));
+            feedback.failed(refusalText(t, answer) || t("members.saveFailed"));
 
             return;
         }
@@ -194,9 +203,10 @@ export function MemberForm({ member: given, locked = null }) {
                         <TextRow id="display_name" label={t("members.displayName")} help={t("members.displayNameHelp")} context={form} props={{ "data-key": "mb-display_name" }} />
                         <SwitchRow id="mb-admin" label={t("members.roleAdmin")} help={t("members.roleHelp")} checked={admin} disabled={Boolean(locked)}
                             onChange={(on) => setValues((previous) => ({ ...previous, role_level: String(on ? ROLE_ADMIN : ROLE_USER) }))} />
-                        <SwitchRow id="mb-by-link" label={t("members.byLink")} help={t("members.byLinkOnly")} checked disabled onChange={() => {}} />
-                        <TextRow id="password" kind="password" label={t("members.password")} help={t("members.passwordHelp")} context={form}
-                            props={{ autoComplete: "off", "data-key": "mb-password" }} />
+                        <SwitchRow id="mb-by-link" label={t("members.byLink")} help={t(editing || values.byLink ? "members.byLinkOnly" : "members.byLinkOff")}
+                            checked={editing || values.byLink} disabled={editing} onChange={(on) => setValues((previous) => ({ ...previous, byLink: on, password: "" }))} />
+                        <TextRow id="password" kind={givesPassword ? "new-password" : "password"} label={t("members.password")} help={t("members.passwordHelp")} context={form}
+                            props={{ autoComplete: "new-password", "data-key": "mb-password" }} />
                         <SubmitRow>
                             <FormButton id="mb-save" label={t(editing ? "settings.save" : "members.createSubmit")} isReplaced={Boolean(changed)} pending={pending} disabled={Boolean(locked) || Boolean(invalid)} />
                         </SubmitRow>

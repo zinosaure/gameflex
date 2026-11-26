@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-26
+
+### Added
+
+- **Relay a friend's server to your devices**: on the access you give a device, **Relayed servers** chooses, server by
+  server, which of your joined servers it also sees; the friend allows it with **May relay me to its devices** on the
+  access they gave you. The device sees and downloads their games through your server; a relayed server shows a relay
+  icon next to its name. Playing on it, and its Remote Play consoles, still need the device to join it directly: its
+  play button says **Relay disabled**.
+
+### Changed
+
+- **Creating a member**: the administrator chooses, in **Settings › Members › New member**, between giving the
+  password (**By an invitation link** off) and sending an invitation link where the member chooses it.
+- **The clock** sits to the left of the two header buttons.
+- **Android app page**: the installation steps give way to its guide.
+- **Joining by pairing code**: choosing a server found on the local network fills its address and puts the cursor in
+  the code field; **Search again** sits in its own **Search** section.
+
 ## [0.18.0] - 2026-11-26
 
 ### Added

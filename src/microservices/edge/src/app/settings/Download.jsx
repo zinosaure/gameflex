@@ -4,7 +4,6 @@ import { can, useData } from "../libs/data.jsx";
 import { followLink, openExternal, REPOSITORY_URL } from "../libs/links.js";
 import SettingsPage, { usePageText } from "./SettingsPage.jsx";
 import { GuideSection } from "../bricks/GuideSection.jsx";
-import { InfoRow } from "../bricks/InfoRow.jsx";
 import NavRow from "../bricks/NavRow.jsx";
 import { Rows } from "../bricks/Rows.jsx";
 import { Section } from "../bricks/Section.jsx";
@@ -30,12 +29,6 @@ export function DownloadPage() {
     const page = usePageText("download");
     const { capabilities } = useData();
     const staging = can(capabilities, "staging");
-    const steps = [
-        ["bi-1-circle", "installDownload", staging ? "installFromPhone" : "installFromRelease"],
-        ["bi-2-circle", "installAllowTitle", "installAllow"],
-        ["bi-3-circle", "installOpenTitle", "installOpen"],
-    ];
-
     return (
         <SettingsPage title={page.title}>
             <Section title={t("download.title")} sense="play">
@@ -46,11 +39,8 @@ export function DownloadPage() {
                             : openExternal(RELEASE_URL))} />
                 </Rows>
             </Section>
-            <Section title={t("download.installTitle")} sense="optional">
-                <Rows>
-                    {steps.map(([icon, label, text]) => <InfoRow key={label} icon={icon} label={t(`download.${label}`)} value={t(`download.${text}`)} />)}
-                </Rows>
-            </Section>
+            {/* L'INSTALLATION, PAR SON GUIDE (le porteur, 2026-11-26 : « la section installation doit être […] guide ») : la
+                doc de l'application la décrit, la page n'en répète plus les étapes. */}
             <GuideSection guides={[["android", "install-the-app"]]} />
         </SettingsPage>
     );

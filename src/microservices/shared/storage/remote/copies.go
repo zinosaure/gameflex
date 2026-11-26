@@ -223,6 +223,23 @@ func (copies *Copies) fresh(peer Peer, now bool) (listing.Header, error) {
 				}
 			}
 		}
+		// LE RELAIS (chantier 83) : ce que notre accès permet, et ce qu'il nous relaie.
+		if fresh.RelayAllowed != nil || fresh.Relayed != nil {
+			allowed, relayed := header.RelayAllowed, header.Relayed
+			if fresh.RelayAllowed != nil {
+				allowed = *fresh.RelayAllowed
+			}
+			if fresh.Relayed != nil {
+				relayed = *fresh.Relayed
+			}
+			if allowed != header.RelayAllowed || !sameRelayed(relayed, header.Relayed) {
+				if err := listing.SaveHeader(copies.Dir, key, func(copied *listing.Header) {
+					copied.RelayAllowed, copied.Relayed = allowed, relayed
+				}); err == nil {
+					header.RelayAllowed, header.Relayed = allowed, relayed
+				}
+			}
+		}
 		copies.remember(key, nil)
 
 		return header, nil
@@ -460,3 +477,18 @@ func ParamsSections(params map[string][]listing.Item, offer func(consoleID, emul
 
 	return sections
 }
+
+// sameRelayed — deux listes de serveurs relayés, dans le même ordre.
+func sameRelayed(a, b []listing.RelayedServer) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for index := range a {
+		if a[index] != b[index] {
+			return false
+		}
+	}
+
+	return true
+}
+

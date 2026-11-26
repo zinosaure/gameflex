@@ -9,6 +9,7 @@ import { TextRow } from "../../bricks/TextRow.jsx";
 import { useFeedback } from "../../bricks/useFeedback.jsx";
 import { addServerRegistry, checkFederationServer, redeemServerCode, redeemServerInvitation, rescanServer } from "../../libs/api.js";
 import { useData } from "../../libs/data.jsx";
+import { focusElement } from "../../libs/input.js";
 import { InvitationField } from "../../screens/access/Invitation.jsx";
 import { LocalServersSection, pairingRefusal } from "../../screens/access/Pairing.jsx";
 import { Form, FormButton, formContext } from "../../ui/Forms.jsx";
@@ -129,8 +130,13 @@ export default function AddServer() {
                 </Section>
                 {values.mode === "code" ? (
                     <>
-                        {/* La liste du sujet `discovery`, le temps où cette option est choisie : la page ne s'y abonne qu'ici. */}
-                        <LocalServersSection onChoose={(server) => set({ address: server.link, name: values.name || server.name })} />
+                        {/* La liste du sujet `discovery`, le temps où cette option est choisie : la page ne s'y abonne qu'ici.
+                            Choisir un serveur remplit l'adresse, puis met le curseur dans le champ du code (le porteur,
+                            2026-11-26). */}
+                        <LocalServersSection onChoose={(server) => {
+                            set({ address: server.link, name: values.name || server.name });
+                            requestAnimationFrame(() => focusElement(document.querySelector("[data-key=\"fd-code\"]")));
+                        }} />
                         <Section title={t("fed.serverTitle")} help={t("fed.serverCheckHelp")} sense="info">
                             <Rows>
                                 {field("address", t("pairing.urlLabel"), t("pairing.urlHelp"), "http://192.168.1.10:10200")}

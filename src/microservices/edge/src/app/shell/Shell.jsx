@@ -200,6 +200,9 @@ export function Topbar({ tab }) {
             <div className="spacer"></div>
             {/* LES DEUX RONDS SONT DES BASCULES (libs/ui.js, useBarToggle) : à contour, pleins quand les raccourcis ou les
                 Réglages sont ouverts. */}
+            {/* L'HEURE À GAUCHE DES DEUX BOUTONS (le porteur, 2026-11-26 : « l'heure doit être à gauche des 2 boutons dans le
+                header. Pas au milieu »). */}
+            <Clock />
             {inputKind && (
                 <button type="button" className={`${ICON_BUTTON} ${toggle(shortcutsOpen)}`} data-nav data-key="shortcuts" aria-label={t("shortcuts.title")} title={t("shortcuts.title")}
                     aria-pressed={shortcutsOpen} onClick={() => setShortcutsOpen((open) => !open)}>
@@ -208,7 +211,6 @@ export function Topbar({ tab }) {
                     <i className="bi bi-info-lg"></i>
                 </button>
             )}
-            <Clock />
             <button type="button" className={`${ICON_BUTTON} ${toggle(tab === "settings")}`} data-nav data-key="gear" aria-label={t("settings.title")} aria-pressed={tab === "settings"} onClick={() => toggleSettings(navigate, location, tab)}>
                 <i className="bi bi-gear"></i>
             </button>

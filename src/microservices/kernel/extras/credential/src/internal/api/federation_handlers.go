@@ -31,6 +31,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gameflex/consoles"
@@ -131,7 +132,11 @@ type federationTokenResponse struct {
 	// défaut, accordé accès par accès — le porteur, 2026-11-20 : « je ne veux pas que ma smart TV puisse avoir la
 	// possibilité de faire du remote admin ».
 	RemoteAdmin bool `json:"remote_admin"`
-	CreatedAt   any  `json:"created_at"`
+	// RelayAllowed — le serveur qui a cet accès peut repasser nos jeux à ses appareils (chantier 83) ; RelayedServers —
+	// les serveurs fédérés d'ici qu'on relaie au porteur de cet accès, un par un.
+	RelayAllowed   bool    `json:"relay_allowed"`
+	RelayedServers []int64 `json:"relayed_servers"`
+	CreatedAt      any     `json:"created_at"`
 	LastUsedAt  any  `json:"last_used_at"`
 	// Token n'est rempli qu'à la création, jamais dans une liste.
 	Token string `json:"token,omitempty"`
@@ -209,7 +214,7 @@ func (server *Server) handleCreateFederationToken(w http.ResponseWriter, r *http
 // handleListFederationTokens — GET /api/v1/federation/tokens.
 func (server *Server) handleListFederationTokens(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	rows, err := server.db.Query(
-		`SELECT id, label, scopes, consoles, prefix, created_at, last_used_at, remote_admin FROM federation_tokens ORDER BY id DESC`,
+		`SELECT id, label, scopes, consoles, prefix, created_at, last_used_at, remote_admin, relay_allowed, relayed_servers FROM federation_tokens ORDER BY id DESC`,
 	)
 	if err != nil {
 		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
@@ -221,14 +226,15 @@ func (server *Server) handleListFederationTokens(w http.ResponseWriter, r *http.
 	for rows.Next() {
 		var item federationTokenResponse
 		var createdAt, lastUsedAt sql.NullString
-		var granted string
-		if err := rows.Scan(&item.ID, &item.Label, &item.Scopes, &granted, &item.Prefix, &createdAt, &lastUsedAt, &item.RemoteAdmin); err != nil {
+		var granted, relayed string
+		if err := rows.Scan(&item.ID, &item.Label, &item.Scopes, &granted, &item.Prefix, &createdAt, &lastUsedAt, &item.RemoteAdmin, &item.RelayAllowed, &relayed); err != nil {
 			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
 		}
 		item.CreatedAt = isoDatetime(createdAt)
 		item.LastUsedAt = isoDatetime(lastUsedAt)
 		item.Consoles = consoles.SplitGrants(granted)
+		item.RelayedServers = parseRelayed(relayed)
 		items = append(items, item)
 	}
 	respondItems(w, http.StatusOK, items, newPagination(len(items), 1, allItems))
@@ -253,14 +259,16 @@ func (server *Server) handleListFederationTokens(w http.ResponseWriter, r *http.
 // qui pouvait déjà révoquer et recréer.
 func (server *Server) handleUpdateFederationToken(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	var body struct {
-		Scopes      *[]string `json:"scopes"`
-		Consoles    *[]string `json:"consoles"`
-		RemoteAdmin *bool     `json:"remote_admin"`
+		Scopes         *[]string `json:"scopes"`
+		Consoles       *[]string `json:"consoles"`
+		RemoteAdmin    *bool     `json:"remote_admin"`
+		RelayAllowed   *bool     `json:"relay_allowed"`
+		RelayedServers *[]int64  `json:"relayed_servers"`
 	}
 	if !decodeBody(w, r, &body) {
 		return
 	}
-	if body.RemoteAdmin != nil && refuseFederated(w, principal) {
+	if (body.RemoteAdmin != nil || body.RelayAllowed != nil || body.RelayedServers != nil) && refuseFederated(w, principal) {
 		return
 	}
 	answer := federationTokenResponse{}
@@ -304,6 +312,24 @@ func (server *Server) handleUpdateFederationToken(w http.ResponseWriter, r *http
 		slog.Info("remote administration", "username", principal.Username, "access", r.PathValue("id"), "allowed", *body.RemoteAdmin)
 		// Le rang des sessions de cet accès change tout de suite, au kernel aussi.
 		server.accountsChanged()
+	}
+	if body.RelayAllowed != nil {
+		allowed := "0"
+		if *body.RelayAllowed {
+			allowed = "1"
+		}
+		if !server.updateFederationToken(w, r, `UPDATE federation_tokens SET relay_allowed = ? WHERE id = ?`, allowed) {
+			return
+		}
+		answer.RelayAllowed = *body.RelayAllowed
+		slog.Info("federation relay allowed", "username", principal.Username, "access", r.PathValue("id"), "allowed", *body.RelayAllowed)
+	}
+	if body.RelayedServers != nil {
+		if !server.updateFederationToken(w, r, `UPDATE federation_tokens SET relayed_servers = ? WHERE id = ?`, joinRelayed(*body.RelayedServers)) {
+			return
+		}
+		answer.RelayedServers = parseRelayed(joinRelayed(*body.RelayedServers))
+		slog.Info("federation relayed servers", "username", principal.Username, "access", r.PathValue("id"), "servers", answer.RelayedServers)
 	}
 
 	respondItem(w, http.StatusOK, answer)
@@ -408,11 +434,11 @@ var ErrCatalogTokenRefused = errors.New("catalog token refused")
 func (server *Server) verifyFederationToken(token string) (federationTokenResponse, error) {
 	var item federationTokenResponse
 	var createdAt, lastUsedAt sql.NullString
-	var granted string
+	var granted, relayed string
 	err := server.db.QueryRow(
-		`SELECT id, label, scopes, consoles, prefix, created_at, last_used_at, remote_admin FROM federation_tokens WHERE token_hash = ?`,
+		`SELECT id, label, scopes, consoles, prefix, created_at, last_used_at, remote_admin, relay_allowed, relayed_servers FROM federation_tokens WHERE token_hash = ?`,
 		hashToken(token),
-	).Scan(&item.ID, &item.Label, &item.Scopes, &granted, &item.Prefix, &createdAt, &lastUsedAt, &item.RemoteAdmin)
+	).Scan(&item.ID, &item.Label, &item.Scopes, &granted, &item.Prefix, &createdAt, &lastUsedAt, &item.RemoteAdmin, &item.RelayAllowed, &relayed)
 	if errors.Is(err, sql.ErrNoRows) || token == "" {
 		return federationTokenResponse{}, ErrCatalogTokenRefused
 	}
@@ -427,6 +453,7 @@ func (server *Server) verifyFederationToken(token string) (federationTokenRespon
 	item.CreatedAt = isoDatetime(createdAt)
 	item.LastUsedAt = isoDatetime(lastUsedAt)
 	item.Consoles = consoles.SplitGrants(granted)
+	item.RelayedServers = parseRelayed(relayed)
 
 	return item, nil
 }
@@ -444,6 +471,14 @@ func (server *Server) VerifyCatalogAccess(token string) (label, scopes string, g
 	item, err := server.verifyFederationToken(token)
 
 	return item.Label, item.Scopes, item.Consoles, err
+}
+
+// CatalogRelay — le relais de la fédération par cet accès (chantier 83), pour un hôte qui embarque ce service : son
+// porteur peut-il nous relayer, et les serveurs fédérés qu'on lui relaie.
+func (server *Server) CatalogRelay(token string) (allowed bool, relayed []int64, err error) {
+	item, err := server.verifyFederationToken(token)
+
+	return item.RelayAllowed, item.RelayedServers, err
 }
 
 // DisabledConsoles — les consoles coupées pour tout le serveur (chantier 66), pour un hôte qui embarque ce service.
@@ -598,3 +633,31 @@ func (server *Server) handleInternalFederationServers(w http.ResponseWriter, r *
 	}
 	respondItems(w, http.StatusOK, items, newPagination(len(items), 1, allItems))
 }
+
+// parseRelayed — les serveurs relayés d'un accès, tels qu'ils sont rangés (« 3,7 ») ; jamais nul : une liste vide dit
+// « aucun ».
+func parseRelayed(stored string) []int64 {
+	ids := []int64{}
+	for _, part := range strings.Split(stored, ",") {
+		if id, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64); err == nil && id > 0 {
+			ids = append(ids, id)
+		}
+	}
+
+	return ids
+}
+
+// joinRelayed — la forme rangée d'une liste de serveurs relayés : les identifiants valides, sans doublon.
+func joinRelayed(ids []int64) string {
+	seen := map[int64]bool{}
+	parts := []string{}
+	for _, id := range ids {
+		if id > 0 && !seen[id] {
+			seen[id] = true
+			parts = append(parts, strconv.FormatInt(id, 10))
+		}
+	}
+
+	return strings.Join(parts, ",")
+}
+

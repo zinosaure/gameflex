@@ -224,6 +224,9 @@ type FederationServer struct {
 	Token    string `json:"token"`
 	Hostname string `json:"hostname"`
 	Identity string `json:"identity"`
+	// RelayedBy — un serveur qu'un ami nous relaie (chantier 83) : le nom de cet ami ; vide pour un pair direct. Posé
+	// par l'hôte, jamais rangé dans la base.
+	RelayedBy string `json:"relayedBy,omitempty"`
 }
 
 // FederationServers rend les serveurs enregistrés. Une base sans
@@ -538,6 +541,12 @@ func (service *Service) VerifyCatalogToken(token string) (label, scopes string, 
 // l'ami avec son listing.
 func (service *Service) VerifyCatalogAccess(token string) (label, scopes string, consoles []string, err error) {
 	return service.api.VerifyCatalogAccess(token)
+}
+
+// CatalogRelay — le relais de la fédération par cet accès (chantier 83) : son porteur peut-il nous relayer, et les
+// serveurs fédérés qu'on lui relaie.
+func (service *Service) CatalogRelay(token string) (allowed bool, relayed []int64, err error) {
+	return service.api.CatalogRelay(token)
 }
 
 // DisabledConsoles — les consoles coupées pour tout l'appareil (chantier 66).

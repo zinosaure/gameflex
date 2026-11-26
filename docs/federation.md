@@ -121,6 +121,23 @@ Your server writes each change made this way in its log, with the access it came
 administration** off brings the sessions of that access back to playing at once. It is never changed from a remote
 page.
 
+### Relay a friend's server to your devices
+
+A server you joined can reach your own devices through your server: your phone sees your friend's games without
+joining your friend's server itself. Both sides agree:
+
+1. **Your friend allows it.** On their server, in **Settings › Federation › Delivered accesses**, they open the access
+   they gave you and turn on **May relay me to its devices** (under **Remote rights**). It is off by default.
+2. **You choose what each of your devices sees.** On your server, open the access you gave your device: **Relayed
+   servers** lists your joined servers, and you turn on the ones to relay. A server that does not allow it is greyed
+   out.
+
+On the device, the relayed server appears among the sources of each console, and its games show where they come from
+followed by a relay icon (the name of the relaying server when you point at it). Its games, BIOS files, emulators and
+patches can be seen and downloaded through your server, which never gives your friend's address or token away. To play
+them on your friend's machine, or to reach their PlayStation, the device joins their server directly, with its own
+account there. A relayed server is never relayed further.
+
 ## Add a friend's server
 
 1. Ask your friend for an invitation (the steps above, on their side).

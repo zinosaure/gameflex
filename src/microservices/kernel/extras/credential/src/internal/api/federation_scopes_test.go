@@ -68,3 +68,17 @@ func TestTheDevicesScopeIsGone(t *testing.T) {
 		t.Fatal("la portée devices a été acceptée")
 	}
 }
+
+// LE RELAIS (chantier 83) : un accès dit s'il peut nous relayer, et les serveurs qu'on relaie à son porteur ; la forme
+// rangée garde les identifiants valides, sans doublon.
+func TestRelayedServersRoundTrip(t *testing.T) {
+	if got := joinRelayed([]int64{3, 0, 7, 3, -1}); got != "3,7" {
+		t.Fatalf("joinRelayed = %q, attendu 3,7", got)
+	}
+	if got := parseRelayed("3, 7,x,,0"); len(got) != 2 || got[0] != 3 || got[1] != 7 {
+		t.Fatalf("parseRelayed = %v, attendu [3 7]", got)
+	}
+	if got := parseRelayed(""); got == nil || len(got) != 0 {
+		t.Fatalf("parseRelayed(\"\") = %v, attendu une liste vide", got)
+	}
+}

@@ -342,7 +342,7 @@ export default function Platforms({ tab }) {
     };
     const REMOTE_LABELS = { resume: "game.resume", watch: "rp.watchBusy", play: "game.play", waking: "rp.turningOn", wake: "rp.turnOn", unreachable: "game.play", ...PLAY_BLOCK_LABELS };
     // Les états où le bouton ne fait rien : il dit seulement pourquoi.
-    const REMOTE_INERT = ["waking", "unreachable", "consoleDisabled", "federationDisabled", "accessRestricted"];
+    const REMOTE_INERT = ["waking", "unreachable", "consoleDisabled", "federationDisabled", "relayDisabled", "accessRestricted"];
     const [panel, setPanel] = useState(null);
 
     // SE CONNECTER À UN APPAREIL D'ICI (chantier 52, P6) : la commande `launch` du kernel (streamingService

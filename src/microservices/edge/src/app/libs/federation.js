@@ -74,12 +74,13 @@ export const needsFederatedSignIn = (code) => code === "noFederatedAccount" || c
 
 // POURQUOI JOUER NE PEUT PAS (chantier 66 ; le porteur, 2026-11-19, « 4 états pour le bouton avec la fédération ») :
 // `consoleDisabled` (coupée pour tout son serveur), `federationDisabled` (l'accès que ce serveur nous a délivré ne
-// l'ouvre pas), `signIn` (pas encore de compte chez lui), `accessRestricted` (le compte n'a pas cette console) — dans
+// l'ouvre pas ; `relayDisabled` pour un serveur qu'un ami nous relaie, où rien ne se lance), `signIn` (pas encore de compte chez lui), `accessRestricted` (le compte n'a pas cette console) — dans
 // cet ordre : d'abord ce que rien ici ne lève. Null : on peut jouer. `console` : {id, method} ; `peer` : le serveur
 // fédéré du jeu (sa copie dit `granted` et `disabled`), ou null pour un jeu d'ici ; `peerSession` : useFederationSession.
 export const PLAY_BLOCK_LABELS = {
     consoleDisabled: "game.consoleDisabled",
     federationDisabled: "game.federationDisabled",
+    relayDisabled: "game.relayDisabled",
     signIn: "game.signInRequired",
     accessRestricted: "game.accessRestricted",
 };
@@ -95,7 +96,7 @@ export function playBlock({ console, user, peer = null, peerSession = null }) {
             return "consoleDisabled";
         }
         if (Array.isArray(facts.granted) && !allows(facts.granted, console)) {
-            return "federationDisabled";
+            return peer.relayedBy ? "relayDisabled" : "federationDisabled";
         }
         if (needsFederatedSignIn(peerSession?.code)) {
             return "signIn";
