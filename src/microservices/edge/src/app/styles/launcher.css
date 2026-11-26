@@ -55,7 +55,6 @@
     /* La lumière de la manette : un liseré fin autour du voile (le voile est l'anneau de Bootstrap). */
     --focus-line: 0 0 0 1px rgba(255, 255, 255, .3);
     --lift: 1.04;
-    --clock: inline;
 }
 @supports (height: 100dvh) {
     :root { --gameflex-visible-height: 100dvh; }
@@ -85,7 +84,6 @@ html[data-half-screen] :not(:root):fullscreen { border-bottom: var(--gameflex-co
     --actions-b: calc(var(--safe-y) + .6rem + env(safe-area-inset-bottom));
     --lbar-gap: .55rem;
     --sheet-w: 34rem;
-    --clock: none;
 }
 /* LE PORTRAIT DU TÉLÉPHONE : le visuel en haut, la console et ses gestes dessous. */
 :root.portrait {
@@ -102,7 +100,6 @@ html[data-half-screen] :not(:root):fullscreen { border-bottom: var(--gameflex-co
     --panel-dir: row;
     --title: 2rem;
     --sheet-w: none;
-    --clock: none;
 }
 /* LE TÉLÉVISEUR (Android TV, à 3 m) : une zone sûre de 5 % contre le surbalayage, un focus très visible. */
 :root.tv {
@@ -149,15 +146,18 @@ body { overflow: hidden; }
 .brand { display: inline-flex; align-items: center; gap: .55rem; font-size: calc(var(--tab-fs) * 1.15); font-weight: 800; white-space: nowrap; flex: 0 0 auto; margin-right: .6rem; }
 .brand .badge { font-size: .62rem; }
 /* En portrait : la marque et les boutons sur une ligne, les onglets sur la suivante, sur un fond plus dense. */
-:root.portrait .topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "brand shortcuts gear" "tabs tabs tabs"; align-items: center; row-gap: .35rem; column-gap: .6rem;
+:root.portrait .topbar { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; grid-template-areas: "brand shortcuts clock gear" "tabs tabs tabs tabs"; align-items: center; row-gap: .35rem; column-gap: .6rem;
     background: linear-gradient(180deg, rgba(5, 6, 9, .88), rgba(5, 6, 9, .6) 75%, rgba(5, 6, 9, 0)); }
 :root.portrait .topbar .brand { grid-area: brand; }
 :root.portrait .topbar .tabs { grid-area: tabs; }
 :root.portrait .topbar [data-key="shortcuts"] { grid-area: shortcuts; }
 :root.portrait .topbar [data-key="gear"] { grid-area: gear; }
-:root.portrait .topbar .spacer, :root.portrait .topbar .clock { display: none; }
+:root.portrait .topbar .clock { grid-area: clock; }
+:root.portrait .topbar .spacer { display: none; }
 .spacer { flex: 1; }
-.clock { display: var(--clock); font-variant-numeric: tabular-nums; }
+/* L'HEURE, SUR TOUTES LES PLATEFORMES, JUSTE AVANT L'ENGRENAGE (le porteur, 2026-11-26 : « c'est possible de la mettre
+   visible pour toutes plateformes ? Et mets l'heure avec le bouton settings (à gauche du bouton) »). */
+.clock { font-variant-numeric: tabular-nums; }
 
 /* LES ÉCRANS : une entrée, selon le sens. */
 .screen { position: absolute; inset: 0; z-index: 1; }
@@ -455,13 +455,42 @@ body { overflow: hidden; }
    ici, pour toutes les lignes. */
 .gf-row-help { color: var(--text-3); font-size: .8em; }
 .gf-row-value { color: var(--text-2); white-space: nowrap; font-size: .8em; }
+/* UNE LIGNE « CLÉ : VALEUR » (FactLine, Bricks.jsx) A UNE SEULE APPARENCE, qu'elle soit rangée dans la valeur ou dans
+   l'aide d'une ligne (le porteur, 2026-11-23 : « Pourquoi certains sous-titres sont plus gras que les autres ? ») : la
+   couleur des sous-titres, sa clé en gras. */
+.gf-row .gf-fact { color: var(--text-3); }
 .gf-row-chevron { color: var(--text-3); flex: 0 0 auto; }
+/* LES ÉTATS D'UN ÉLÉMENT (chantier 81, le porteur 2026-11-25) : désactivé — le titre atténué, rien au bord droit (NavRow) ;
+   obsolète — toute la ligne grisée, elle se touche encore (la supprimer). */
+.navrow:disabled .navrow-title { color: var(--text-3); }
+.gf-row-obsolete { opacity: .45; }
+/* UN INTERRUPTEUR (SwitchRow) : son libellé sur toute la largeur, puis sa description et l'interrupteur, sur une ligne. */
+.gf-row.gf-row-switch { flex-direction: column; align-items: stretch; gap: .2rem; }
+/* Le libellé de Form.SkeletonSwitch a sa marge (`py-2`) : la ligne a déjà la sienne (le porteur, 2026-11-25 : « Les
+   skeletonSwitch dans les panneaux de filtres sont trop espacés »). */
+.gf-row-switch-line label.py-2 { padding-block: 0 !important; }
+.gf-row-switch-line { display: flex; align-items: center; gap: .875rem; }
+.gf-row-switch-line > .gf-row-help, .gf-row-switch-line > .gf-row-label { flex: 1 1 auto; min-width: 0; }
+/* LA DESCRIPTION SOUS SON TITRE (le porteur, 2026-11-25 : « pas l'impression que les espacements des skeletonSwitch sont
+   corrects partout. Surtout ceux avec des help-text ») : la ligne s'aligne en haut, l'aide colle au titre, l'interrupteur
+   à sa droite. */
+.gf-row-switch:has(> .gf-row-label) .gf-row-switch-line { align-items: flex-start; }
+.gf-row-switch:has(> .gf-row-label) .gf-row-switch-line > .gf-row-help { padding-top: .1rem; }
+/* Les pastilles d'une ligne (Pill) : sur leur ligne, sous le titre. */
+.gf-row-pills { display: flex; flex-wrap: wrap; gap: .35rem; margin: .2rem 0; }
+.gf-row .gf-pill { font-size: .75rem; }
+/* Une valeur longue (un chemin, une adresse) passe à la ligne DANS sa pastille, sans pousser la ligne. */
+.gf-row .gf-pill { white-space: normal; text-align: left; overflow-wrap: anywhere; }
 /* La fine barre d'un téléchargement sous le texte de sa ligne (NavRow, `progress`) : la `progress` de Bootstrap, 4 px. */
 .gf-progress { height: 4px; margin-top: .375rem; }
 .gf-row.danger .gf-row-label { color: #ff7b7b; }
 .gf-row .form-check { margin: 0; }
 .gf-row .form-switch .form-check-input { width: 2.5em; height: 1.35em; margin-top: 0; }
-.gf-chip { width: 2.125rem; height: 2.125rem; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; background: var(--tone); color: #fff; font-size: 1.05rem; }
+/* LA COLONNE DE TÊTE D'UNE LIGNE, UNE LARGEUR (le porteur, 2026-11-23 : « pour tous les éléments : tu peux mettre la
+   colonne icône/image en plus large ») : la pastille, l'avatar et la jaquette la prennent, la vignette d'un état en
+   garde la proportion — définie ICI, une fois. */
+:root { --gf-lead: 2.75rem; }
+.gf-chip { width: var(--gf-lead); height: var(--gf-lead); flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; background: var(--tone); color: #fff; font-size: 1.3rem; }
 /* LA PROGRESSION D'UN TÉLÉCHARGEMENT DANS SA PASTILLE (DownloadRow) : un anneau de sa teinte qui se remplit (`--p`, 0 à
    100), le pourcentage au centre. Bootstrap n'a pas d'anneau de progression. */
 .gf-chip-progress { position: relative; background: conic-gradient(var(--tone) calc(var(--p) * 1%), #2b3240 0); font-size: .6875rem; font-weight: 700; }
@@ -478,8 +507,8 @@ body { overflow: hidden; }
 .gf-tile.on .bi { color: #fff; }
 .gf-tile.on .gf-tile-value { color: rgba(255, 255, 255, .82); }
 .gf-tile.wide { grid-column: 1 / -1; flex-direction: row; align-items: center; min-height: 0; }
-.gf-avatar { width: 2.125rem; height: 2.125rem; flex: 0 0 auto; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
-    font-weight: 800; font-size: .875rem; background: #2a3042; color: #fff; }
+.gf-avatar { width: var(--gf-lead); height: var(--gf-lead); flex: 0 0 auto; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 1rem; background: #2a3042; color: #fff; }
 /* LA LIGNE D'UNE LISTE VIDE (Bricks.jsx, EmptyRow) : grisée comme une ligne désactivée de Bootstrap, et rien ne s'y
    touche. */
 .gf-row-empty { color: var(--bs-list-group-disabled-color); pointer-events: none; }
@@ -492,21 +521,26 @@ body { overflow: hidden; }
 .gf-listing-search { margin-top: 1rem; }
 .gf-group-title + .gf-listing-search, .gf-group-help + .gf-listing-search { margin-top: 0; }
 .gf-page-header + .gf-listing-search, section + .gf-listing-search, .gf-tiles + .gf-listing-search { margin-top: 1.5rem; }
-/* LE FILTRE ACCOLÉ À LA RECHERCHE (Listing, `filter`), dans l'input-group de Bootstrap : la recherche de Skeleton est
+/* LE FILTRE ACCOLÉ À LA RECHERCHE (Listing, `filter`), et LE PROTOCOLE D'UNE ADRESSE (AddressRow), dans l'input-group de Bootstrap : la recherche de Skeleton est
    enveloppée (Form.Feedback), et l'input-group ne range que ses enfants directs — l'enveloppe prend la place qui reste,
    son champ perd ses coins gauches. */
-.gf-search.input-group > :last-child { flex: 1 1 auto; min-width: 0; }
-.gf-search.input-group > :last-child .form-control { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.gf-search.input-group > :last-child, .gf-input-group > :last-child { flex: 1 1 auto; min-width: 0; }
+.gf-search.input-group > :last-child .form-control, .gf-input-group > :last-child .form-control { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+/* LE PORT D'UNE ADRESSE (AddressRow) : cinq chiffres, à côté du serveur. */
+.gf-port { width: 6.5rem; }
 /* La pagination de Skeleton (usePagination) : sa rangée garde ses gouttières à l'intérieur de la boîte. */
 .gf-pager .row { --bs-gutter-x: 0; margin-left: 0; margin-right: 0; }
 /* L'interrupteur de Skeleton (Form.Switch) au bord droit d'une ligne : son libellé sans marge, centré. */
 .gf-row .form-label { margin-bottom: 0; }
 .min-w-0 { min-width: 0; }
-/* Une vignette d'état en tête d'une ligne (Mes sauvegardes, le menu de la partie, Continuer) : la taille des modèles
-   (56 px). */
-.gf-row > .thumb { width: 3.5rem; }
-/* LA JAQUETTE D'UN JEU en tête de sa ligne (les jeux d'une console, les candidats d'un service ; le modèle 22) : 40 × 53. */
-.gf-row > .gf-cover { width: 2.5rem; height: 3.3125rem; flex: 0 0 auto; }
+/* Dans un listing, l'image et le texte d'une ligne : sa colonne de gauche (globals/listing.js). */
+.gf-row-main { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: .875rem; }
+/* Une vignette d'état en tête d'une ligne (Mes sauvegardes, le menu de la partie, Continuer) : plus large que la colonne,
+   dans la proportion des modèles (56 px pour 34). */
+.gf-row > .thumb, .gf-row-main > .thumb { width: calc(var(--gf-lead) * 1.65); }
+/* LA JAQUETTE D'UN JEU en tête de sa ligne (les jeux d'une console, les candidats d'un service ; le modèle 22) : la
+   largeur de la colonne, dans sa proportion (40 × 53). */
+.gf-row > .gf-cover, .gf-row-main > .gf-cover { width: var(--gf-lead); height: calc(var(--gf-lead) * 1.325); flex: 0 0 auto; }
 /* La lumière d'une ligne dans un groupe : le voile de la manette, sans le trait du bas des listes à plat. */
 :root:not(.pointing) .gf-list .list-group-item.list-group-item-action:focus, :root:not(.pointing) .gf-list .list-group-item.list-group-item-action.is-focus {
     background: color-mix(in srgb, var(--bs-primary) 22%, transparent); box-shadow: none; }
@@ -517,3 +551,11 @@ body { overflow: hidden; }
    premier. */
 .gf-list > .gf-row-submit { display: block; }
 .gf-row-submit + .gf-row-submit > .gf-form-button { border-top: 0 !important; padding-top: 0 !important; }
+
+/* LES TOUCHES DU PANNEAU DES RACCOURCIS (Shortcuts.jsx) : une pastille par touche, toutes de la même taille — une flèche,
+   un symbole de manette ou « Échap » (le porteur, 2026-11-26 : « cohérentes et une par une »). */
+.gf-key {
+    min-width: 2rem;
+    line-height: 1.2;
+    font-weight: 600;
+}

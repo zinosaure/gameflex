@@ -1,0 +1,343 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 12:59:19 +0000
+Subject: [PATCH] gameflex 0081: a draw that continues the one before keeps its
+ color targets
+
+Astro Bot's draws repeat their color targets 98.7 % of the time (same
+images and views, same command buffer, no dispatch between; diagnostic
+in the garden), and finding a target, touching it and checking its
+metadata clears cost 6.5 % of the command thread at every draw. Caching
+the found image (an essay, set aside) saved little: the touch and the
+metadata checks were the cost. A slot now keeps the target the draw
+before found, and a draw takes it again as it is when nothing but
+register writes came between the two: the same command buffer, the same
+registers (compared field by field), no image registered or unregistered
+anywhere (TextureCache::Epoch), no fill or copy (BufferCache::Transfers),
+no dispatch nor draw spent on an image operation. The draw before
+touched the image in this command buffer and checked its metadata.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/graphics/guest_gpu/hardwareContext.h      | 26 +++++++++++++++++++
+ .../host_gpu/renderer/cache/bufferCache.cpp   |  2 ++
+ .../host_gpu/renderer/cache/bufferCache.h     |  3 +++
+ .../host_gpu/renderer/cache/textureCache.cpp  |  1 +
+ .../host_gpu/renderer/cache/textureCache.h    |  3 +++
+ .../host_gpu/renderer/colorRenderTarget.cpp   | 21 ++++++++++++++-
+ src/graphics/host_gpu/renderer/render.h       | 21 +++++++++++++++
+ .../host_gpu/renderer/renderCompute.cpp       |  2 ++
+ src/graphics/host_gpu/renderer/renderDraw.cpp |  3 +++
+ 9 files changed, 81 insertions(+), 1 deletion(-)
+
+diff --git a/src/graphics/guest_gpu/hardwareContext.h b/src/graphics/guest_gpu/hardwareContext.h
+index da573f3d..8b5e7f83 100644
+--- a/src/graphics/guest_gpu/hardwareContext.h
++++ b/src/graphics/guest_gpu/hardwareContext.h
+@@ -11,12 +11,16 @@ namespace Libs::Graphics::HW {
+ 
+ struct ColorBase {
+ 	uint64_t addr = 0;
++
++	bool operator==(const ColorBase&) const = default;
+ };
+ 
+ struct ColorView {
+ 	uint32_t base_array_slice_index = 0;
+ 	uint32_t last_array_slice_index = 0;
+ 	uint32_t current_mip_level      = 0;
++
++	bool operator==(const ColorView&) const = default;
+ };
+ 
+ struct ColorInfo {
+@@ -31,18 +35,24 @@ struct ColorInfo {
+ 	Prospero::ChannelLayout format                         = Prospero::ChannelLayout::kInvalid;
+ 	Prospero::ChannelType   channel_type                   = Prospero::ChannelType::kUNorm;
+ 	Prospero::ChannelOrder  channel_order                  = Prospero::ChannelOrder::kStandard;
++
++	bool operator==(const ColorInfo&) const = default;
+ };
+ 
+ struct ColorAttrib {
+ 	bool     force_dest_alpha_to_one = false;
+ 	uint32_t num_samples             = 0;
+ 	uint32_t num_fragments           = 0;
++
++	bool operator==(const ColorAttrib&) const = default;
+ };
+ 
+ struct ColorAttrib2 {
+ 	uint32_t height         = 0;
+ 	uint32_t width          = 0;
+ 	uint32_t num_mip_levels = 0;
++
++	bool operator==(const ColorAttrib2&) const = default;
+ };
+ 
+ struct ColorAttrib3 {
+@@ -51,6 +61,8 @@ struct ColorAttrib3 {
+ 	uint32_t           dimension                    = 0;
+ 	bool               metadata_pipe_aligned        = false;
+ 	bool               write_vrs_rate_hint_to_cmask = false;
++
++	bool operator==(const ColorAttrib3&) const = default;
+ };
+ 
+ struct ColorDccControl {
+@@ -63,26 +75,38 @@ struct ColorDccControl {
+ 	bool                 overwrite_combiner_disable     = false;
+ 	IndependentBlockSize independent_block_size         = IndependentBlockSize::Disabled;
+ 	bool                 data_write_on_dcc_clear_to_reg = false;
++
++	bool operator==(const ColorDccControl&) const = default;
+ };
+ 
+ struct ColorCmask {
+ 	uint64_t addr = 0;
++
++	bool operator==(const ColorCmask&) const = default;
+ };
+ 
+ struct ColorFmask {
+ 	uint64_t addr = 0;
++
++	bool operator==(const ColorFmask&) const = default;
+ };
+ 
+ struct ColorClearWord0 {
+ 	uint32_t word0 = 0;
++
++	bool operator==(const ColorClearWord0&) const = default;
+ };
+ 
+ struct ColorClearWord1 {
+ 	uint32_t word1 = 0;
++
++	bool operator==(const ColorClearWord1&) const = default;
+ };
+ 
+ struct ColorDccAddr {
+ 	uint64_t addr = 0;
++
++	bool operator==(const ColorDccAddr&) const = default;
+ };
+ 
+ struct RenderTarget {
+@@ -98,6 +122,8 @@ struct RenderTarget {
+ 	ColorClearWord0 clear_word0;
+ 	ColorClearWord1 clear_word1;
+ 	ColorDccAddr    dcc_addr;
++
++	bool operator==(const RenderTarget&) const = default;
+ };
+ 
+ struct DepthZInfo {
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+index 12b63393..fe3210d3 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+@@ -594,6 +594,7 @@ std::pair<Buffer*, uint64_t> BufferCache::ObtainBufferForImage(uint64_t vaddr, u
+ }
+ 
+ void BufferCache::FillBuffer(uint64_t vaddr, uint64_t size, uint32_t value, bool is_gds) {
++	m_transfers++;
+ 	if ((vaddr & 3u) != 0 || size == 0 || (size & 3u) != 0 || size > UINT64_MAX - vaddr) {
+ 		EXIT("BufferCache: fill range must be dword aligned\n");
+ 	}
+@@ -627,6 +628,7 @@ void BufferCache::FillBuffer(uint64_t vaddr, uint64_t size, uint32_t value, bool
+ 
+ void BufferCache::CopyBuffer(uint64_t dst_vaddr, uint64_t src_vaddr, uint64_t size, bool dst_gds,
+                              bool src_gds) {
++	m_transfers++;
+ 	const bool dst_memory = !dst_gds;
+ 	const bool src_memory = !src_gds;
+ 	if ((dst_memory && dst_vaddr == 0) || (src_memory && src_vaddr == 0) || size == 0 ||
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.h b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+index cb7a1104..abf74515 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.h
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+@@ -78,6 +78,8 @@ public:
+ 	[[nodiscard]] Buffer* GetFaultBuffer() noexcept { return m_fault_manager.GetFaultBuffer(); }
+ 	[[nodiscard]] std::pair<Buffer*, uint64_t> ObtainBufferForImage(uint64_t vaddr, uint64_t size);
+ 	void FillBuffer(uint64_t vaddr, uint64_t size, uint32_t value, bool is_gds);
++	// Advances at every fill and copy (DMA_DATA): memory the GPU writes outside shaders.
++	[[nodiscard]] uint64_t Transfers() const noexcept { return m_transfers; }
+ 	// Unified memory: the guest's memory is imported, and buffers over it are views of it,
+ 	// with nothing to upload, protect or download.
+ 	[[nodiscard]] bool IsUnified() const noexcept { return m_unified_memory != nullptr; }
+@@ -248,6 +250,7 @@ private:
+ 	// The words and addresses whose prediction waits to be checked, with the GPU tick in their entry: the checks
+ 	// walk these, not every address ever seen (a ring of flags grows the maps for good).
+ 	std::vector<uint64_t>                             m_srt_verifications;
++	uint64_t                                          m_transfers = 0;
+ 	struct FlagSpeculation {
+ 		uint32_t confirmations = 0;
+ 		bool     waiting       = false; // suspended on a pending shader write, value not found yet
+diff --git a/src/graphics/host_gpu/renderer/cache/textureCache.cpp b/src/graphics/host_gpu/renderer/cache/textureCache.cpp
+index 953d8c1f..1e947e01 100644
+--- a/src/graphics/host_gpu/renderer/cache/textureCache.cpp
++++ b/src/graphics/host_gpu/renderer/cache/textureCache.cpp
+@@ -237,6 +237,7 @@ void TextureCache::RegisterImage(ImageId id) {
+ }
+ 
+ void TextureCache::TouchGenerations(uint64_t address, uint64_t size) noexcept {
++	m_epoch++;
+ 	const uint64_t last = (address + size - 1) >> GenerationBlockBits;
+ 	for (uint64_t block = address >> GenerationBlockBits; block <= last; block++) {
+ 		m_block_generations[block & (GenerationBlocks - 1u)]++;
+diff --git a/src/graphics/host_gpu/renderer/cache/textureCache.h b/src/graphics/host_gpu/renderer/cache/textureCache.h
+index a2bb754c..3b38aeea 100644
+--- a/src/graphics/host_gpu/renderer/cache/textureCache.h
++++ b/src/graphics/host_gpu/renderer/cache/textureCache.h
+@@ -61,6 +61,8 @@ public:
+ 	// Grows whenever an image over a block of that memory is registered or freed: what FindImage returns for a
+ 	// description over it may change then, not before. A sum over 1 MiB blocks (hashed): equal sums, no change.
+ 	[[nodiscard]] uint64_t      RegionGeneration(uint64_t address, uint64_t size) const noexcept;
++	// Advances whenever an image is registered or unregistered anywhere (replacements and expansions included).
++	[[nodiscard]] uint64_t      Epoch() const noexcept { return m_epoch; }
+ 	// Whether a texture binding found before can still take this image as it is: registered, not handed to a
+ 	// depth image, not replaced or expanded since (FindTexture's conditions).
+ 	[[nodiscard]] bool          BindingUsable(ImageId id);
+@@ -286,6 +288,7 @@ private:
+ 	std::vector<uint32_t>                             m_block_generations =
+ 	    std::vector<uint32_t>(GenerationBlocks);
+ 	void                                              TouchGenerations(uint64_t address, uint64_t size) noexcept;
++	uint64_t                                          m_epoch = 0;
+ 	Common::LeastRecentlyUsedCache<ImageId, uint64_t> m_lru_cache;
+ 	std::unordered_set<ImageId>                       m_download_images;
+ 	std::mutex                                        m_write_back_mutex;
+diff --git a/src/graphics/host_gpu/renderer/colorRenderTarget.cpp b/src/graphics/host_gpu/renderer/colorRenderTarget.cpp
+index 6b2c07e5..7ae35217 100644
+--- a/src/graphics/host_gpu/renderer/colorRenderTarget.cpp
++++ b/src/graphics/host_gpu/renderer/colorRenderTarget.cpp
+@@ -69,6 +69,17 @@ void RenderExecutor::ResolveRenderColorTarget(CommandBuffer& buffer, RenderColor
+ 
+ 		return;
+ 	}
++	auto&      texture_cache = m_context.GetTextureCache();
++	auto&      buffer_cache  = m_context.GetBufferCache();
++	auto&      continued     = m_continued_targets[rt_slot];
++	const auto tick          = m_context.GetCommandScheduler().CurrentTick();
++	if (continued.valid && continued.tick == tick && continued.breaks == m_chain_breaks &&
++	    continued.textures == texture_cache.Epoch() && continued.transfers == buffer_cache.Transfers() &&
++	    continued.mask == mask && continued.exact_format == exact_format && continued.registers == rt) {
++		r = continued.info;
++		BindRenderTarget(r.image_id);
++		return;
++	}
+ 	const auto samples = render_sample_count(rt.attrib.num_fragments);
+ 	// TODO(PPSA24156): Replace this 2x MSAA approximation with proper 4-coverage/2-fragment EQAA.
+ 	const bool approximate_eqaa = rt.attrib.num_samples == 2 && rt.attrib.num_fragments == 1;
+@@ -245,12 +256,20 @@ void RenderExecutor::ResolveRenderColorTarget(CommandBuffer& buffer, RenderColor
+ 	desc.view_info.base_layer  = view.base_layer;
+ 	desc.view_info.layer_count = view.layer_count;
+ 	desc.view_info.usage       = vk::ImageUsageFlagBits::eColorAttachment;
+-	auto& texture_cache        = m_context.GetTextureCache();
+ 	r.guest_mip_level          = mip;
+ 	r.guest_array_layer        = view.base_layer;
+ 	r.image_id                 = texture_cache.FindImage(r.desc, exact_format);
+ 	r.export_mapping           = target_format.export_mapping;
+ 	BindRenderTarget(r.image_id);
++	continued = {rt,
++	             mask,
++	             exact_format,
++	             true,
++	             m_context.GetCommandScheduler().CurrentTick(),
++	             texture_cache.Epoch(),
++	             buffer_cache.Transfers(),
++	             m_chain_breaks,
++	             r};
+ }
+ 
+ } // namespace Libs::Graphics
+diff --git a/src/graphics/host_gpu/renderer/render.h b/src/graphics/host_gpu/renderer/render.h
+index 0315be5c..cea7fcc6 100644
+--- a/src/graphics/host_gpu/renderer/render.h
++++ b/src/graphics/host_gpu/renderer/render.h
+@@ -4,6 +4,7 @@
+ #include "common/abi.h"
+ #include "common/assert.h"
+ #include "common/common.h"
++#include "graphics/guest_gpu/hardwareContext.h"
+ #include "graphics/host_gpu/renderer/cache/streamBuffer.h"
+ #include "graphics/host_gpu/renderer/pipeline/descriptors.h"
+ #include "graphics/host_gpu/renderer/pipeline/pipelineCache.h"
+@@ -239,9 +240,29 @@ private:
+ 		uint64_t                generation;
+ 	};
+ 
++	// The color target the draw before found in a slot. Astro Bot's draws repeat their targets 98.7 % of the time,
++	// and finding a target, touching it and checking its metadata clears cost 6.5 % of the command thread at every
++	// draw. A draw takes it again as it is when nothing but register writes came between the two draws: the same
++	// command buffer, the same registers, no image registered or freed, no transfer, no dispatch or image operation
++	// (m_chain_breaks). The draw before touched it in this command buffer and checked its metadata.
++	struct ContinuedTarget {
++		HW::RenderTarget registers;
++		uint32_t         mask         = 0;
++		bool             exact_format = false;
++		bool             valid        = false;
++		uint64_t         tick         = 0;
++		uint64_t         textures     = 0; // TextureCache::Epoch
++		uint64_t         transfers    = 0; // BufferCache::Transfers
++		uint64_t         breaks       = 0; // m_chain_breaks
++		RenderColorInfo  info;
++	};
++
+ 	RenderContext&                        m_context;
+ 	bool                                  m_lod_stats = Config::LodStatsEnabled();
+ 	std::unordered_map<TextureBindingKey, CachedTextureBinding, TextureBindingKeyHash> m_texture_bindings;
++	std::array<ContinuedTarget, RENDER_COLOR_ATTACHMENTS_MAX> m_continued_targets;
++	// Advances at every dispatch and at every draw spent on an image operation (metadata, copy, resolve).
++	uint64_t                                                  m_chain_breaks = 0;
+ 	GraphicsBindings                     m_graphics_bindings;
+ 	// The current draw's targets; PrepareDrawRenderState resolves them again for each draw.
+ 	DrawTargets                           m_targets;
+diff --git a/src/graphics/host_gpu/renderer/renderCompute.cpp b/src/graphics/host_gpu/renderer/renderCompute.cpp
+index 69b94602..d9bc7af2 100644
+--- a/src/graphics/host_gpu/renderer/renderCompute.cpp
++++ b/src/graphics/host_gpu/renderer/renderCompute.cpp
+@@ -288,6 +288,7 @@ static bool HasStorageWrites(const ShaderComputeInputInfo& input_info,
+ void RenderExecutor::DispatchDirect(CommandBuffer& buffer, uint32_t thread_group_x,
+                                     uint32_t thread_group_y, uint32_t thread_group_z, uint32_t mode,
+                                     bool async_compute) {
++	m_chain_breaks++;
+ 	m_context.GetCommandScheduler().PopPendingOperations();
+ 	auto& sh_ctx = buffer.GetShaders();
+ 
+@@ -495,6 +496,7 @@ void RenderExecutor::DispatchDirect(CommandBuffer& buffer, uint32_t thread_group
+ 
+ void RenderExecutor::DispatchIndirect(CommandBuffer& buffer, uint64_t args_addr, uint32_t mode,
+                                       bool async_compute) {
++	m_chain_breaks++;
+ 	EXIT_IF(args_addr == 0 || (args_addr & 3u) != 0 ||
+ 	        (mode & Pm4::COMPUTE_DISPATCH_INITIATOR_USE_THREAD_DIMENSIONS) != 0);
+ 	m_context.GetCommandScheduler().PopPendingOperations();
+diff --git a/src/graphics/host_gpu/renderer/renderDraw.cpp b/src/graphics/host_gpu/renderer/renderDraw.cpp
+index fa383933..787d70ec 100644
+--- a/src/graphics/host_gpu/renderer/renderDraw.cpp
++++ b/src/graphics/host_gpu/renderer/renderDraw.cpp
+@@ -1052,6 +1052,7 @@ void RenderExecutor::ExecutePreparedDraw(CommandBuffer& buffer, const DrawCallIn
+ 	auto&      ucfg                     = buffer.GetUserConfig();
+ 	const bool primitive_restart_enable = state.primitive_restart_enable;
+ 	if (CopyDepthToColor(buffer, draw, emit, state)) {
++		m_chain_breaks++;
+ 		return;
+ 	}
+ 	const auto  vertex_stages = state.VertexStages();
+@@ -1322,6 +1323,7 @@ bool RenderExecutor::DrawIndex(CommandBuffer& buffer, const DrawIndexArgs& args)
+ 
+ 	if (ConsumeMetadataColorOperation(buffer) || DepthStencilCopy(buffer) ||
+ 	    ResolveColorTargets(buffer)) {
++		m_chain_breaks++;
+ 		ResetBindings();
+ 		return true;
+ 	}
+@@ -1413,6 +1415,7 @@ bool RenderExecutor::DrawAuto(CommandBuffer& buffer, const DrawAutoArgs& args) {
+ 
+ 	if (ConsumeMetadataColorOperation(buffer) || DepthStencilCopy(buffer) ||
+ 	    ResolveColorTargets(buffer)) {
++		m_chain_breaks++;
+ 		ResetBindings();
+ 		return true;
+ 	}

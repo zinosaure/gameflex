@@ -1,6 +1,0 @@
-# Contexte : la racine du dépôt. Une console ne lit que son propre dossier —
-# le squelette vient de l'image streamex-bin. Plus le déballage de l'émulateur,
-# commun à toutes (unpack-emulator.sh).
-**
-!src/microservices/runtimes/streamex/consoles/ports-zelda64recomp
-!src/microservices/runtimes/streamex/consoles/unpack-emulator.sh

@@ -2,40 +2,46 @@ package consoles
 
 import "sort"
 
-// LES PORTS PC (chantier 40, #609).
+// LES PORTS PC (chantier 40, #609 ; chantiers 72 et 77).
 //
-// Un port est un jeu recompilé pour le PC par sa communauté : il ne lit de la
-// ROM du joueur que ses données. La console `ports` n'a donc pas de dossier à
-// elle — le porteur, 2026-10-29 : ses jeux sont « trouvés dans roms/n64 ».
-// Une ROM y est un jeu de `ports` quand un port l'accepte, et c'est cette
-// table qui le dit : la console dont le port lit les ROM, et les ROM exactes
-// qu'il connaît. Un port n'accepte qu'une version précise d'un jeu (Zelda 64:
-// Recompiled refuse tout ce qui n'est pas Majora's Mask US 1.0).
+// Un port est un jeu recompilé pour le PC par sa communauté, construit chez le
+// joueur depuis SA copie : la console `ports` n'a donc pas de dossier à elle,
+// ses jeux vivent chez la console d'origine (`roms/ps5`). Un port ne connaît
+// qu'une version précise d'un jeu, reconnue à son identifiant et à sa version
+// (AstroHybrid : Astro Bot PPSA21567 01.019.000).
+//
+// PAS DE JEUX RÉTRO (le porteur, 2026-11-23 : « On ne va pas recompiler les
+// jeux rétro, les émulateurs sont déjà très bien ») : les ports sont ceux des
+// PS3, PS4 et PS5. Zelda 64: Recompiled, le pilote N64 du chantier 40, et la
+// reconnaissance d'une ROM par sa taille et son SHA-1 sont retirés.
 
 // PortsID — l'identifiant de la console des ports.
 const PortsID = "ports"
 
-// PortROM — une ROM qu'un port accepte. La taille d'abord : un `stat` écarte
-// presque tout sans rien lire ; le SHA-1 ensuite, sur le fichier tel qu'il est
-// rangé.
-type PortROM struct {
-	Size int64
-	SHA1 string
+// PortTitle — un jeu-dossier qu'un port accepte (une copie PS5 : `sce_sys/param.json`) : son identifiant et sa version.
+// Un port recompilé ne connaît qu'une version précise du jeu (AstroHybrid : Astro Bot 01.019.000).
+type PortTitle struct {
+	TitleID string
+	Version string
 }
 
 // Port — un port : son cœur dans la console `ports` (le nom du registre), la
-// console dont il lit les ROM, et celles qu'il accepte.
+// console dont il lit les jeux, et ceux qu'il accepte (Titles).
+//
+// `Pad` : la console dont le port lit la manette — son profil de boutons, et le dessin à l'écran (Astro Bot, un jeu PS5,
+// se joue à la DualSense). Vide : la manette des ports, celle de la Xbox.
 type Port struct {
-	Core string
-	From string
-	ROMs []PortROM
+	Core   string
+	From   string
+	Titles []PortTitle
+	Pad    string
 }
 
 var ports = []Port{
-	// Majora's Mask US 1.0, en ordre .z64 : la seule ROM que son
-	// N64ModernRuntime range (recomp::select_rom).
-	{Core: "Zelda 64: Recompiled (streamex)", From: "n64", ROMs: []PortROM{
-		{Size: 33554432, SHA1: "d6133ace5afaa0882cf214cf88daba39e266c078"},
+	// AstroHybrid (chantier 72, à l'essai sur la dev) : Astro Bot relié en programme Linux par AnyPS5, rendu par la
+	// couche GPU de KytyPS5 ; il se construit à la première partie, depuis la copie du joueur. La version éprouvée.
+	{Core: "AstroHybrid (streamex)", From: "ps5", Pad: "ps5", Titles: []PortTitle{
+		{TitleID: "PPSA21567", Version: "01.019.000"},
 	}},
 }
 
@@ -44,7 +50,7 @@ func Ports() []Port {
 	return append([]Port(nil), ports...)
 }
 
-// PortSources — les consoles dont des ports lisent les ROM, triées.
+// PortSources — les consoles dont des ports lisent les jeux, triées.
 func PortSources() []string {
 	seen := map[string]bool{}
 	sources := []string{}
@@ -68,4 +74,16 @@ func PortByCore(core string) (Port, bool) {
 	}
 
 	return Port{}, false
+}
+
+// PadOf — la console dont une partie de `console` lit la manette, avec ce cœur : celle que le port déclare, sinon la
+// console elle-même.
+func PadOf(console, core string) string {
+	if console == PortsID {
+		if port, ok := PortByCore(core); ok && port.Pad != "" {
+			return port.Pad
+		}
+	}
+
+	return console
 }

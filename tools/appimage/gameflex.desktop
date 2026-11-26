@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=GameFlex
+Comment=Your game server: retro consoles, PlayStation Remote Play, play from any screen
+Comment[fr]=Votre serveur de jeux : consoles rétro, Remote Play PlayStation, jouer depuis n'importe quel écran
+Exec=gameflex-desktop
+Icon=gameflex
+Categories=Game;
+Terminal=false
+StartupWMClass=gameflex-window

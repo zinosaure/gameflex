@@ -1,0 +1,35 @@
+# GameFlex (l'AppImage) dans un conteneur — voir README.md.
+#   docker compose -f tools/appimage/docker/docker-compose.yml up -d --build
+#   docker exec gameflex gameflex-root-password
+services:
+    gameflex:
+        build: .
+        image: gameflex-appimage
+        container_name: gameflex
+        restart: unless-stopped
+        # LE RÉSEAU DE LA MACHINE : la vidéo (WebRTC) annonce les vraies adresses, sans ports à publier. Linux, et Docker
+        # Desktop 4.34 ou plus récent une fois « Enable host networking » coché (Settings › Resources › Network).
+        network_mode: host
+        # Sans le réseau de la machine : retirer `network_mode`, et décommenter ce qui suit — le port, un bloc UDP pour
+        # la vidéo, et l'adresse de la machine sur le réseau, celle que les autres appareils joignent.
+        # ports:
+        #     - "10200:10200"
+        #     - "40000-40099:40000-40099/udp"
+        environment:
+            - GAMEFLEX_PORT=${GAMEFLEX_PORT:-10200}
+            # - ICE_PORT_MIN=40000
+            # - ICE_PORT_MAX=40099
+            # - NAT_1TO1_IP=192.168.1.20
+        volumes:
+            # Les jeux, BIOS, émulateurs et sauvegardes : un dossier de la machine.
+            - ${GAMEFLEX_LIBRARY:-./library}:/library
+            # Les réglages et les émulateurs déballés.
+            - gameflex-data:/root
+        # LE GPU de la machine, sous Linux (Intel, AMD) : les consoles récentes en ont besoin. Sous Windows, retirer ces
+        # lignes (voir README.md).
+        devices:
+            - /dev/dri:/dev/dri
+        shm_size: 1g
+
+volumes:
+    gameflex-data:

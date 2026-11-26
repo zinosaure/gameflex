@@ -3,7 +3,7 @@ import React from "react";
 // LA MANETTE À L'ÉCRAN AU STYLE DU LAUNCHER (chantier 52, option A du porteur) : le moteur de
 // placement, les dispositions enregistrées et l'éditeur restent ceux de la webapp
 // (stream/onscreen/Controllers.jsx) ; seul le dessin des boutons change, par son PadLookContext. La
-// même apparence dans une partie (PlayShell.jsx) et dans l'éditeur (settings/application/Layout.jsx) : ce qu'on
+// même apparence dans une partie (PlayShell.jsx) et dans l'éditeur (settings/gamepads/layout/Controller.jsx) : ce qu'on
 // y voit est ce qu'on aura en jeu.
 //
 // Un disque sombre et translucide, un liseré clair, le glyphe en blanc ; l'appui prend l'indigo du

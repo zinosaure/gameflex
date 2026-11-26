@@ -100,8 +100,7 @@ const sessionContainerPort = "8080/tcp"
 // mesure le réseau pour un débit « Auto » (network-probe.js) et l'envoie comme
 // un débit choisi ; il ne manque que si sa mesure a échoué. La définition et la
 // cadence, elles, arrivent toujours (manager.normalizeLaunchSettings : le choix
-// revalidé, ou 540p à 30) — elles n'ont plus de défaut ici. C'était 1280x720 à
-// 60, alors que la page partait de 540p à 30 (le porteur, 2026-11-16).
+// revalidé, ou 720p à 60) — elles n'ont plus de défaut ici.
 const (
 	streamDefaultBitrate     = "5000"
 	streamPS3DefaultBitrate  = "6000"
@@ -268,16 +267,6 @@ func seatsOr(seats, ceiling int) int {
 	return ceiling
 }
 
-// padsFor — les manettes uinput d'une partie : le plafond du conteneur, et
-// jamais moins que les places de la console (la Switch en a huit, #443).
-func padsFor(ceiling, seats int) int {
-	if seats > ceiling {
-		return seats
-	}
-
-	return ceiling
-}
-
 // AdoptedSession is what label inspection yields at startup.
 type AdoptedSession struct {
 	SessionID string
@@ -288,7 +277,9 @@ type AdoptedSession struct {
 	// Reference — la référence du jeu dans la bibliothèque (labelReference) ;
 	// vide pour un conteneur d'avant (2026-11-15).
 	Reference string
-	Port      int
+	// Core — l'émulateur de la partie (labelCore) : la manette d'un port en dépend (consoles.PadOf).
+	Core string
+	Port int
 	// StartedAt — la création du conteneur, c'est-à-dire le lancement de la
 	// partie : une partie retrouvée après un redémarrage du kernel garde sa
 	// durée (« Live now » l'affiche) au lieu de repartir de zéro.
@@ -322,19 +313,18 @@ func New(dockerClient *client.Client, cfg config.Config) (*Client, error) {
 // error surfaced in the UI.
 func (dockerClient *Client) CheckImages(ctx context.Context) {
 	images := map[string]string{
-		"GAMEFLEX_RETRO_IMAGE":               dockerClient.config.RetroImage,
-		"GAMEFLEX_REMOTEPLAY_IMAGE":          dockerClient.config.RemoteplayImage,
-		"GAMEFLEX_SWITCH_IMAGE":              dockerClient.config.SwitchImage,
-		"GAMEFLEX_SWITCH_EDEN_IMAGE":         dockerClient.config.SwitchEdenImage,
-		"GAMEFLEX_SWITCH2_IMAGE":             dockerClient.config.Switch2Image,
-		"GAMEFLEX_PS3_IMAGE":                 dockerClient.config.PS3Image,
-		"GAMEFLEX_XBOX_IMAGE":                dockerClient.config.XboxImage,
-		"GAMEFLEX_PS4_IMAGE":                 dockerClient.config.PS4Image,
-		"GAMEFLEX_PS5_IMAGE":                 dockerClient.config.PS5Image,
-		"GAMEFLEX_WIIU_IMAGE":                dockerClient.config.WiiUImage,
-		"GAMEFLEX_XBOX360_IMAGE":             dockerClient.config.Xbox360Image,
-		"GAMEFLEX_PORTS_ZELDA64RECOMP_IMAGE": dockerClient.config.PortsZelda64RecompImage,
-		"GAMEFLEX_KEYTEST_IMAGE":             dockerClient.config.KeyTestImage,
+		"GAMEFLEX_RETRO_IMAGE":             dockerClient.config.RetroImage,
+		"GAMEFLEX_REMOTEPLAY_IMAGE":        dockerClient.config.RemoteplayImage,
+		"GAMEFLEX_SWITCH_IMAGE":            dockerClient.config.SwitchImage,
+		"GAMEFLEX_SWITCH_EDEN_IMAGE":       dockerClient.config.SwitchEdenImage,
+		"GAMEFLEX_SWITCH2_IMAGE":           dockerClient.config.Switch2Image,
+		"GAMEFLEX_PS3_IMAGE":               dockerClient.config.PS3Image,
+		"GAMEFLEX_XBOX_IMAGE":              dockerClient.config.XboxImage,
+		"GAMEFLEX_PS4_IMAGE":               dockerClient.config.PS4Image,
+		"GAMEFLEX_PS5_IMAGE":               dockerClient.config.PS5Image,
+		"GAMEFLEX_WIIU_IMAGE":              dockerClient.config.WiiUImage,
+		"GAMEFLEX_XBOX360_IMAGE":           dockerClient.config.Xbox360Image,
+		"GAMEFLEX_PORTS_ASTROHYBRID_IMAGE": dockerClient.config.PortsAstroHybridImage,
 	}
 
 	for variable, name := range images {
@@ -355,10 +345,10 @@ func (dockerClient *Client) CheckImages(ctx context.Context) {
 }
 
 // CheckGPU dit au démarrage les GPU de l'hôte et celui que reçoivent les
-// parties — et, quand GAMEFLEX_GPU nomme une carte absente (en OCuLink,
+// parties — et, quand le GPU réglé (Configuration du serveur) nomme une carte absente (en OCuLink,
 // éteinte au démarrage), que les parties tournent sur une autre.
 func (dockerClient *Client) CheckGPU() {
-	wanted := dockerClient.config.GPU
+	wanted := config.CurrentLive().GPU
 	gpu, declared, ok := sessionstatus.SessionGPU("/sys", wanted)
 	if !ok {
 		slog.Warn("no GPU: games get none, streamex encodes on the CPU")
@@ -369,8 +359,8 @@ func (dockerClient *Client) CheckGPU() {
 			"vramBytes", each.VRAMBytes, "games", each.PCI == gpu.PCI)
 	}
 	if wanted != "" && !declared {
-		slog.Warn("GAMEFLEX_GPU names no GPU of this host — games run on the first one",
-			"GAMEFLEX_GPU", wanted, "pci", gpu.PCI)
+		slog.Warn("the games GPU (Settings › Server configuration) is not on this host — games run on the first one",
+			"gpu", wanted, "pci", gpu.PCI)
 	}
 }
 
@@ -514,26 +504,6 @@ func (dockerClient *Client) EnsureSaveDir(username, console string) error {
 	return nil
 }
 
-// sessionImage picks the per-console streamex image (switch default).
-// consoleWantsPads — à qui le kernel ouvre /dev/uinput.
-//
-// C'ÉTAIT UNE LISTE DE QUATRE CONSOLES, écrite deux fois (le device et la
-// règle cgroup), qu'il fallait penser à allonger. Personne n'y a pensé : la
-// PS4 y a manqué (corrigé le 2026-09-09 après « aucune manette »), la PS5 et
-// la Wii U y manquaient encore le 2026-09-10 — leurs sessions démarraient,
-// diffusaient l'image, et basculaient en silence sur le repli clavier XTest
-// que ni shadPS4 ni Kyty n'écoutent. Une manette morte, sans un mot.
-//
-// La question n'appartenait pas au kernel : c'est l'image qui sait si son
-// émulateur veut un pad, et elle le dit dans son `adapter.json`
-// (`gamepad.enabled`, lu par WantsGamepad dans le conteneur). Le kernel ne
-// fait qu'ouvrir la porte — il l'ouvre donc pour toute session streamex, sauf
-// keytest, qui n'a pas d'adaptateur du tout : ses « pads » sont des identités
-// sans uinput derrière (voir GAMEFLEX_MAX_PLAYERS plus haut).
-func consoleWantsPads(console string) bool {
-	return console != "keytest"
-}
-
 // sessionMemoryLimit — le plafond mémoire d'une session streamex (memory.max
 // du cgroup : rien n'est réservé). 12 Go, sauf la PS5 et la Switch 2 : 20 Go. Kyty tient toute
 // la mémoire du jeu dans un seul bloc partagé, et un jeu PS5 en dispose de
@@ -602,14 +572,11 @@ func sessionImage(cfg config.Config, console, core string) string {
 		if !ok {
 			return ""
 		}
-		if emulator.image == "streamex-ports-zelda64recomp" {
-			return cfg.PortsZelda64RecompImage
+		if emulator.image == "streamex-ports-astrohybrid" {
+			return cfg.PortsAstroHybridImage
 		}
 
 		return ""
-	}
-	if console == "keytest" {
-		return cfg.KeyTestImage
 	}
 	return cfg.SwitchImage
 }
@@ -709,8 +676,7 @@ func sessionKeys(cfg config.Config, sessionID string) []string {
 
 func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) (port int, containerName string, err error) {
 	cfg := dockerClient.config
-	// Une console sans image configurée n'est pas installée ici — keytest,
-	// dans une installation publique (#136).
+	// Une console sans image configurée n'est pas installée ici (#136).
 	if sessionImage(cfg, spec.Console, spec.Core) == "" {
 		return 0, "", fmt.Errorf("%w: %s", ErrImageNotInstalled, spec.Console)
 	}
@@ -726,14 +692,14 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 	// faux : les jeux familiaux se jouent à deux ou quatre, l'émulateur sert
 	// jusqu'à quatre manettes cemuhook, et `docs/GAMEFLEX.md` annonçait déjà
 	// « défaut 4 pour la Switch ». Forçage retiré le 2026-09-12, registre
-	// passé à 4. Keytest garde la limite générale — mesurer la latence à
-	// plusieurs demande plusieurs pads, et les siens sont de pures identités,
-	// sans uinput derrière.
+	// passé à 4.
 	//
 	// ET JAMAIS MOINS DE PADS QUE DE PLACES (#443) : la Switch en a huit, le
 	// plafond général quatre — les joueurs 5 à 8 auraient tenu une place sans
 	// manette, et leurs touches seraient allées au clavier de l'émulateur.
-	maxPlayers := padsFor(cfg.MaxPlayers, spec.Seats)
+	// UNE MANETTE PAR PLACE (chantier 81) : les places sont le réglage de la console (Configuration du serveur), sinon
+	// celles du registre (manager.Seats) — plus de plafond général.
+	maxPlayers := seatsOr(spec.Seats, config.DefaultSeats)
 
 	// Stream quality: the resolution and the frame rate come validated from
 	// manager.Launch (540p at 30 when nothing was chosen); the bitrate falls
@@ -846,7 +812,7 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 			ReadOnly: true,
 		},
 		{
-			Type:   mount.TypeBind,
+			Type: mount.TypeBind,
 			// Le dossier de la console : la Switch 2 (#644) range ses
 			// sauvegardes à part, sous saves/<compte>/streamex/switch2.
 			Source: streamexSaveDir(cfg.SavesHostDir(), spec.Username, gamesConsole),
@@ -1016,11 +982,6 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 			},
 		}
 	}
-	if spec.Console == "keytest" {
-		// No games, saves or pad devices — the display app is baked into the
-		// image and GAME_PATH only serves as the adapter's boot trigger.
-		mounts = nil
-	}
 	if spec.Console == "xbox" {
 		mounts = []mount.Mount{
 			{
@@ -1080,8 +1041,8 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 		}
 		mounts = []mount.Mount{
 			{
-				// La ROM : le port n'en lit que les données. Il la veut dans
-				// son dossier, où run-zelda64.sh la relie.
+				// Le jeu, en lecture seule : le port n'en lit que les données
+				// (AstroHybrid le relie dans le dossier du joueur).
 				Type:     mount.TypeBind,
 				Source:   romsHostDir,
 				Target:   filepath.Join("/opt/game", port.From),
@@ -1102,18 +1063,18 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 	// ne le porte plus, pour pouvoir se publier. `cores/` en lecture seule, à
 	// sa place sous /gameflex comme les autres sections ; l'image y prend le
 	// fichier que dit son étiquette (RequiredEmulatorFor).
-	if spec.Console != "keytest" {
-		mounts = append(mounts, librarySections(cfg, "cores")...)
-	}
+	mounts = append(mounts, librarySections(cfg, "cores")...)
 
 	if cfg.ProfilesHostDir != "" {
 		// Console pad profile — streamex main serves a bare
 		// {"console","keylab"} without STREAMEX_INPUT_PROFILE, and the
 		// GameFlex on-screen pads would hide. Written once at startup (see
 		// internal/docker/profiles), mounted read-only per console.
+		//
+		// LA MANETTE QUE LE JEU LIT : celle de sa console, ou celle qu'un port déclare (Astro Bot : la DualSense).
 		mounts = append(mounts, mount.Mount{
 			Type:     mount.TypeBind,
-			Source:   filepath.Join(cfg.ProfilesHostDir, spec.Console+".json"),
+			Source:   filepath.Join(cfg.ProfilesHostDir, consoles.PadOf(spec.Console, spec.Core)+".json"),
 			Target:   "/opt/profile.json",
 			ReadOnly: true,
 		})
@@ -1187,22 +1148,20 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 			ExposedPorts: nat.PortSet{sessionContainerPort: struct{}{}},
 		}
 
-		devices := sessionGPUDevices(cfg.GPU)
+		devices := sessionGPUDevices(config.CurrentLive().GPU)
 		if spec.Console == "ps5" {
 			devices = append(devices, sessionDmaHeapDevices("/sys")...)
 		}
-		if consoleWantsPads(spec.Console) {
-			// uinput virtual gamepad — Eden and Cemu feed their cemuhook
-			// (DSU) pads from streamex's own pad state, RPCS3/xemu/shadPS4/Kyty
-			// read the device in evdev/SDL mode, real analog sticks (see
-			// docs/streamex/GAMEPAD.md). The server falls back to keyboard
-			// emulation if the device is missing.
-			devices = append(devices, container.DeviceMapping{
-				PathOnHost:        "/dev/uinput",
-				PathInContainer:   "/dev/uinput",
-				CgroupPermissions: "rwm",
-			})
-		}
+		// uinput virtual gamepad — Eden and Cemu feed their cemuhook
+		// (DSU) pads from streamex's own pad state, RPCS3/xemu/shadPS4/Kyty
+		// read the device in evdev/SDL mode, real analog sticks (see
+		// docs/streamex/GAMEPAD.md). The server falls back to keyboard
+		// emulation if the device is missing.
+		devices = append(devices, container.DeviceMapping{
+			PathOnHost:        "/dev/uinput",
+			PathInContainer:   "/dev/uinput",
+			CgroupPermissions: "rwm",
+		})
 
 		// Host networking — same reasoning as CreateAndStartRetro's own
 		// doc: bridge + port-publishing routes every ICE UDP packet through
@@ -1266,21 +1225,24 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 			Mounts:  mounts,
 			ShmSize: 2 * 1024 * 1024 * 1024,
 		}
-		if consoleWantsPads(spec.Console) {
-			// CHAQUE CONTENEUR NE VOIT QUE SES PROPRES MANETTES.
-			//
-			// Le /dev/input de l'hôte n'est plus monté : il montrait les pads
-			// de TOUTES les sessions. Deux sessions de la même console se
-			// disputaient alors leurs manettes — même nom pour RPCS3, qui
-			// choisit son pad par le nom, mêmes VID/PID pour SDL, qui filtre
-			// sur eux. streamex crée désormais lui-même, dans le conteneur, le
-			// nœud de chacun de SES pads (voir gamepad.createNode).
-			//
-			// La règle reste nécessaire : le cgroup des périphériques (eBPF en
-			// cgroup v2) refuse sinon d'ouvrir ces nœuds (r, w) comme de les
-			// créer (m). RPCS3 avait pris un EPERM sur son propre pad sans elle
-			// (« aucun bouton ne répond »).
-			hostConfig.DeviceCgroupRules = []string{"c 13:* rmw"}
+		// CHAQUE CONTENEUR NE VOIT QUE SES PROPRES MANETTES.
+		//
+		// Le /dev/input de l'hôte n'est plus monté : il montrait les pads
+		// de TOUTES les sessions. Deux sessions de la même console se
+		// disputaient alors leurs manettes — même nom pour RPCS3, qui
+		// choisit son pad par le nom, mêmes VID/PID pour SDL, qui filtre
+		// sur eux. streamex crée désormais lui-même, dans le conteneur, le
+		// nœud de chacun de SES pads (voir gamepad.createNode).
+		//
+		// La règle reste nécessaire : le cgroup des périphériques (eBPF en
+		// cgroup v2) refuse sinon d'ouvrir ces nœuds (r, w) comme de les
+		// créer (m). RPCS3 avait pris un EPERM sur son propre pad sans elle
+		// (« aucun bouton ne répond »).
+		hostConfig.DeviceCgroupRules = []string{"c 13:* rmw"}
+		// USERFAULTFD pour l'émulateur qui en suit la mémoire du jeu (streamex_emulators.go, `writeWatch`).
+		if emulator, ok := streamexEmulatorFor(spec.Console, spec.Core); ok && emulator.writeWatch {
+			hostConfig.CapAdd = []string{"SYS_PTRACE"}
+			hostConfig.SecurityOpt = []string{"seccomp=" + userfaultfdSeccomp}
 		}
 
 		return containerConfig, hostConfig
@@ -1352,6 +1314,7 @@ func (dockerClient *Client) AdoptExisting(ctx context.Context) ([]AdoptedSession
 			Game:      labels[labelGame],
 			Owner:     labels[labelOwner],
 			Reference: labels[labelReference],
+			Core:      labels[labelCore],
 			Port:      port,
 			StartedAt: time.Unix(listed.Created, 0),
 		})
@@ -1554,7 +1517,7 @@ func (dockerClient *Client) CreateAndStartRetro(ctx context.Context, spec RetroS
 		hostConfig := &container.HostConfig{
 			NetworkMode: "host",
 			Resources: container.Resources{
-				Devices:   sessionGPUDevices(cfg.GPU),
+				Devices:   sessionGPUDevices(config.CurrentLive().GPU),
 				Memory:    6 * 1024 * 1024 * 1024,
 				PidsLimit: &sessionPidsLimit,
 			},

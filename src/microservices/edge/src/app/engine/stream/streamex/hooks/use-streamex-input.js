@@ -173,7 +173,8 @@ export function useStreamexInput({ screenRef, session, t, options = {} }) {
 	// plugging one in silenced it (2026-08-25).
 	useStreamexPhysicalInput({
 		enabled: drivesPad,
-		order: CONSOLE_GAMEPAD_ORDER[session.consoleId],
+		// La manette que le jeu lit, comme le dessin (controller-layout.js) : celle d'un port, sinon de la console.
+		order: CONSOLE_GAMEPAD_ORDER[session.pad || session.consoleId],
 		profileButtons,
 		sendInput,
 	});

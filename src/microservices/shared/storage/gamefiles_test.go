@@ -219,3 +219,22 @@ func TestRomFileNameDerivesAndRefuses(t *testing.T) {
 		}
 	}
 }
+
+// LA TAILLE D'UN JEU EN DOSSIER EST CELLE DE TOUT LE DOSSIER (#808) : un PS5 déballé range presque tout dans ses
+// sous-dossiers, et un kDrive ne donne pas la taille d'un dossier.
+func TestAFolderGameWeighsItsWholeTree(t *testing.T) {
+	source := newMemorySource("kDrive",
+		"roms/ps5/Richman 11/eboot.bin",
+		"roms/ps5/Richman 11/sce_sys/param.json",
+		"roms/ps5/Richman 11/data/a.bin",
+		"roms/ps5/Richman 11/data/deep/b.bin",
+	)
+	games, err := ScanConvention(source, "roms")
+	if err != nil {
+		t.Fatalf("scan : %v", err)
+	}
+	if len(games) != 1 || games[0].Size != 4*1024 {
+		t.Fatalf("la taille de tout le dossier, 4 096 octets, attendue : %+v", games)
+	}
+}
+

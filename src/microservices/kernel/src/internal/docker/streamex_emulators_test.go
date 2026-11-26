@@ -74,8 +74,7 @@ func TestTheSwitchRunsEdenFirstAndCitronOnRequest(t *testing.T) {
 // UNE IMAGE DIT L'ÉMULATEUR QU'ELLE ATTEND (chantier 29) : le motif de ses
 // versions, et la version testée — son nom ; le paquet streamex qui la porte
 // se trouve dans l'index (chantier 63), plus dans une étiquette —, par trois
-// étiquettes. Sans étiquette — keytest, qui n'a pas d'émulateur —,
-// elle n'attend rien.
+// étiquettes. Sans étiquette, elle n'attend rien.
 func TestAnImageSaysWhichEmulatorFileItWants(t *testing.T) {
 	need, ok := requiredFromLabels("switch", "Eden (streamex)", map[string]string{
 		labelEmulatorFile:    "Eden-Linux-de7e6e01d4-amd64-clang-pgo.AppImage",
@@ -87,7 +86,7 @@ func TestAnImageSaysWhichEmulatorFileItWants(t *testing.T) {
 		need.Pattern != "Eden-Linux-*-amd64-clang-pgo.AppImage" || len(need.Tested) != 2 {
 		t.Fatalf("étiquettes lues : %+v %v", need, ok)
 	}
-	if need, ok := requiredFromLabels("keytest", "", map[string]string{"gameflex.prune": "keep"}); ok {
+	if need, ok := requiredFromLabels("switch", "", map[string]string{"gameflex.prune": "keep"}); ok {
 		t.Fatalf("une image sans étiquette n'attend rien : %+v", need)
 	}
 }

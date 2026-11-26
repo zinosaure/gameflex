@@ -54,15 +54,8 @@ services:
             # The version, that the listing and the discovery announcement tell
             # the other servers.
             - GAMEFLEX_VERSION=${GAMEFLEX_VERSION:-latest}
-            # The name of this server, that federated servers and the local
-            # network discovery show. Empty: its address.
-            - GAMEFLEX_SERVER_NAME=${GAMEFLEX_SERVER_NAME:-}
             - GAMEFLEX_REMOTEPLAY_CONTROL_URL=http://${GAMEFLEX_PUBLIC_HOST:?set GAMEFLEX_PUBLIC_HOST in .env}:10205
             - GAMEFLEX_PORT_RANGE=9001-9100
-            - GAMEFLEX_MAX_PLAYERS=${GAMEFLEX_MAX_PLAYERS:-4}
-            - GAMEFLEX_CONSOLE_LIMITS=${GAMEFLEX_CONSOLE_LIMITS:-switch:1,switch2:1,ps3:1,xbox:1,ps4:1,ps5:1,wiiu:1,xbox360:1}
-            - GAMEFLEX_MIRROR_URL=${GAMEFLEX_MIRROR_URL:-}
-            - GAMEFLEX_GPU=${GAMEFLEX_GPU:-}
             - GAMEFLEX_STAGING=${GAMEFLEX_STAGING:-}
             - GAMEFLEX_RETRO_IMAGE=zinosaure/gameflex-retrogaming:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_REMOTEPLAY_IMAGE=zinosaure/gameflex-remoteplay:${GAMEFLEX_VERSION:-latest}
@@ -75,7 +68,6 @@ services:
             - GAMEFLEX_WIIU_IMAGE=zinosaure/gameflex-wiiu:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_XBOX_IMAGE=zinosaure/gameflex-xbox:${GAMEFLEX_VERSION:-latest}
             - GAMEFLEX_XBOX360_IMAGE=zinosaure/gameflex-xbox360:${GAMEFLEX_VERSION:-latest}
-            - GAMEFLEX_PORTS_ZELDA64RECOMP_IMAGE=zinosaure/gameflex-ports-zelda64recomp:${GAMEFLEX_VERSION:-latest}
         volumes:
             # GameFlex starts the games in their own containers.
             - /var/run/docker.sock:/var/run/docker.sock
@@ -83,32 +75,6 @@ services:
             - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}/cache/profiles:/profiles
             # More disks with games: one line each, <folder on this machine>:/mnt/<name>.
             # - /media/games:/mnt/games
-
-    # gameflex-federation: shares your library with every device and every
-    # GameFlex from one address, and gathers other shares (Samba, WebDAV,
-    # kDrive, FTP, SFTP) into it. It runs games nowhere: a computer without a
-    # graphics card, a NAS for one, can run it on its own (./launch.sh federation).
-    # Its page: http://<GAMEFLEX_PUBLIC_HOST>:10206. The guide:
-    # docs/federation.md.
-    gameflex-federation:
-        image: zinosaure/gameflex-federation:${GAMEFLEX_VERSION:-latest}
-        container_name: ${GAMEFLEX_NAME:-gameflex}-federation
-        restart: unless-stopped
-        # The host network: the local network discovery (pairing code) needs it.
-        network_mode: host
-        environment:
-            - FEDERATION_PORT=10206
-            - FEDERATION_ADMIN_USERNAME=${GAMEFLEX_FEDERATION_ROOT_USERNAME:-root}
-            - FEDERATION_ADMIN_PASSWORD=${GAMEFLEX_FEDERATION_ROOT_PASSWORD:?set GAMEFLEX_FEDERATION_ROOT_PASSWORD in .env}
-            # Its name the first time; change it afterwards on its page.
-            - FEDERATION_NAME=${GAMEFLEX_SERVER_NAME:-GameFlex} Federation
-            - GAMEFLEX_VERSION=${GAMEFLEX_VERSION:-latest}
-        volumes:
-            # Its own settings: shares, accesses, logs.
-            - federation:/data
-            # What it shares, read only: one line each, <folder>:/mnt/<name>:ro.
-            - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}:/mnt/library:ro
-            # - /media/games:/mnt/games:ro
 
     # Accounts and sign-in.
     gameflex-credential:
@@ -122,6 +88,9 @@ services:
             - GAMEFLEX_ROOT_PASSWORD=${GAMEFLEX_ROOT_PASSWORD:?set GAMEFLEX_ROOT_PASSWORD in .env}
         volumes:
             - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}/databases:/data
+            # The key of two-step verification, apart from the databases: a copy of the databases alone does not
+            # give the secrets away.
+            - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}/keys:/keys
 
     # The video: carries the picture and sound of every game to the players.
     gameflex-gateway:
@@ -214,13 +183,6 @@ services:
         profiles: [ "xbox360" ]
         entrypoint: [ "true" ]
         restart: "no"
-    # PC Ports: games remade for the PC by their community, that read your
-    # Nintendo 64 ROM (in roms/n64). One image per port.
-    gameflex-ports-zelda64recomp:
-        image: zinosaure/gameflex-ports-zelda64recomp:${GAMEFLEX_VERSION:-latest}
-        profiles: [ "ports" ]
-        entrypoint: [ "true" ]
-        restart: "no"
 
     # Optional: a WireGuard VPN (wg-easy), to play away from home without
     # putting GameFlex on the Internet. Turn it on with `wireguard` in
@@ -267,7 +229,5 @@ services:
               exec docker-entrypoint.sh /usr/bin/dumb-init node server/index.mjs
 
 volumes:
-    # The settings of gameflex-federation.
-    federation:
     # The VPN's keys and devices.
     wireguard:

@@ -24,11 +24,11 @@ import (
 	"errors"
 	"fmt"
 	"gameflex/consoles"
+	"gameflex/ffmpegenc"
 	"gameflex/gatewayclient"
 	"gameflex/libretro"
 	"gameflex/libretro/biosdir"
 	"gameflex/libretro/engine"
-	"gameflex/retrogaming/internal/retrogaming/encoder"
 	"image"
 	"image/png"
 	"io"
@@ -453,8 +453,8 @@ type emulationSession struct {
 	// 1..maxPlayers-1 = joiners) for input routing.
 	viewerPorts map[string]int
 
-	videoEnc *encoder.VideoEncoder
-	audioEnc *encoder.AudioEncoder
+	videoEnc *ffmpegenc.VideoEncoder
+	audioEnc *ffmpegenc.AudioEncoder
 
 	running bool
 	// stopping se ferme quand la session s'arrête (shutdown) : les deux
@@ -1089,7 +1089,7 @@ func (s *emulationSession) handleStart(romsRoot, coresRoot, savesRoot, biosRoot,
 	// Geometry.MaxWidth/MaxHeight is unreliable on some cores (e.g.
 	// pcsx_rearmed reports 1024x512 but renders 640x480, see webrtcso
 	// STATUS.md bug #13).
-	s.audioEnc = encoder.NewAudioEncoder(int(s.sampleRate), 2)
+	s.audioEnc = ffmpegenc.NewAudioEncoder(int(s.sampleRate), 2)
 	if err := s.audioEnc.Start(); err != nil {
 		s.sendError(fmt.Sprintf("Audio encoder error: %v", err))
 		return
@@ -1377,9 +1377,9 @@ func (s *emulationSession) startVideoEncoderOnce(w, h int) bool {
 	// chaque trame, sans ajouter un pixel de détail.
 	//
 	// LE KERNEL POSE TOUJOURS CETTE TAILLE depuis le 2026-11-16 : le choix du
-	// joueur, ou le défaut de toutes les consoles, 540p à 30 (le porteur : « La
-	// valeur par défaut ça toujours été 540p@30 pour tout le stream settings de
-	// toutes les consoles » ; manager.normalizeLaunchSettings). La géométrie
+	// joueur, ou le défaut de toutes les consoles, 720p à 60 (le porteur,
+	// 2026-11-23 : « Tu peux mettre pour tous le stream settings par défaut :
+	// 720p@60 » ; manager.normalizeLaunchSettings). La géométrie
 	// d'époque ci-dessous ne vaut plus que pour un enfant lancé sans elle.
 	chosen := false
 	if wantW, wantH, ok := chosenSize(); ok {
@@ -1398,7 +1398,7 @@ func (s *emulationSession) startVideoEncoderOnce(w, h int) bool {
 	}
 
 	// 0 = AUTOMATIQUE : le débit se déduit de la taille et de la cadence
-	// (voir encoder.AutoBitrate). La valeur fixe de 2000 ne pouvait être
+	// (voir ffmpegenc.AutoBitrate). La valeur fixe de 2000 ne pouvait être
 	// juste que pour une seule taille d'image, et ce n'était pas celle des
 	// consoles qui en demandent le plus. Un débit choisi dans le panneau des
 	// réglages de flux passe avant (#332) : jouer en ligne dépend de la
@@ -1411,10 +1411,10 @@ func (s *emulationSession) startVideoEncoderOnce(w, h int) bool {
 	fps := s.currentEngine().OutputFPS()
 	bitrate := launchSetting("GAMEFLEX_BITRATE")
 	if bitrate <= 0 {
-		bitrate = encoder.AutoBitrate(w, h, fps)
+		bitrate = ffmpegenc.AutoBitrate(w, h, fps)
 	}
 	log.Printf("[retrogaming-stream] creating encoder: %dx%d@%.2f bitrate=%dk", w, h, fps, bitrate)
-	s.videoEnc = encoder.NewVideoEncoder(w, h, fps, bitrate)
+	s.videoEnc = ffmpegenc.NewVideoEncoder(w, h, fps, bitrate)
 	if err := s.videoEnc.Start(); err != nil {
 		log.Printf("[retrogaming-stream] FATAL: video encoder start failed: %v", err)
 		return false
@@ -1668,7 +1668,7 @@ func (s *emulationSession) consumeVideoOutput() {
 			return
 		case nal := <-s.videoEnc.Output:
 			dur := time.Duration(0)
-			if encoder.IsVCLNal(nal) {
+			if ffmpegenc.IsVCLNal(nal) {
 				dur = time.Duration(float64(time.Second) / eng.OutputFPS())
 			}
 			// ONE push to the shared transport — gatewaywebrtc fans the same
@@ -1680,7 +1680,7 @@ func (s *emulationSession) consumeVideoOutput() {
 	}
 }
 
-// IsVCLNal moved to internal/retrogaming/encoder (encoder.IsVCLNal) — both
+// IsVCLNal lives in shared/ffmpegenc (ffmpegenc.IsVCLNal) — both
 // the libretro session and the external runtime need it, and neither can
 // import the other. See consumeVideoOutput's call site.
 

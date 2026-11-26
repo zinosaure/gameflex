@@ -7,9 +7,9 @@ import { SessionStream } from "../../engine/stream/shared/SessionStream.jsx";
 import { stopSession } from "../../engine/api/spawnSessions.js";
 import { kernelCommand, romSource } from "../../libs/api.js";
 import { isOwnSession, useAuth, useData } from "../../libs/data.jsx";
-import { useDownloads } from "../../libs/downloads.js";
+import { useDownloadNotices } from "../../libs/downloads.js";
 import { federatedHostOf, parseFederatedId } from "../../libs/federatedHost.js";
-import { formatDuration } from "../../libs/format.js";
+import { counted, fact, formatDuration } from "../../libs/format.js";
 import { probeGameImage } from "../../libs/images.js";
 import { focusElement, useScreenInput } from "../../libs/input.js";
 import { playPath } from "../../libs/play.js";
@@ -18,10 +18,21 @@ import { useNames } from "../../libs/displayNames.js";
 import { gameScreenPath, rememberTab } from "../../libs/tabs.js";
 import { MUTED, SQUARE_ICON_BUTTON, useButton } from "../../libs/ui.js";
 import { hash, randomFrom, splitTitle } from "../../libs/visuals.js";
-import NavRow, { DownloadRow, EmptyRow, EmptyState, Listing, PlaceholderRow, Rows, Section, SplitRow, useConfirm } from "../../ui/Bricks.jsx";
+import { DownloadRow } from "../../bricks/DownloadRow.jsx";
+import { EmptyRow } from "../../bricks/EmptyRow.jsx";
+import { InfoRow } from "../../bricks/InfoRow.jsx";
+import { Listing } from "../../bricks/Listing.jsx";
+import NavRow from "../../bricks/NavRow.jsx";
+import { PlaceholderRow } from "../../bricks/PlaceholderRow.jsx";
+import { RecentNotices, RequestRow } from "../../bricks/RecentNotices.jsx";
+import { Rows } from "../../bricks/Rows.jsx";
+import { Section } from "../../bricks/Section.jsx";
+import { SplitRow } from "../../bricks/SplitRow.jsx";
+import { useConfirm } from "../../bricks/useConfirm.jsx";
+import { helpLines } from "../../globals/subtitles.jsx";
 import { favoriteKey } from "../../libs/favorites.js";
 import { GameBanner, GameCover } from "../library/HeroArt.jsx";
-import { FavoriteRow, favoritePath, useFavoriteList } from "../../settings/account/Favorites.jsx";
+import { FavoriteRow, favoritePath, useFavoriteList } from "../../settings/profile/Favorites.jsx";
 import { useSearchParam } from "../../settings/SettingsPage.jsx";
 import { Topbar, toast } from "../../shell/Shell.jsx";
 
@@ -66,21 +77,21 @@ import { Topbar, toast } from "../../shell/Shell.jsx";
 // MANETTE, la croix est libre ; dans un carrousel, Gauche et Droite passent d'un bouton à l'autre, puis à la carte
 // voisine.
 
-// LE DESSIN D'UNE CARTE, le même pour une partie et pour un jeu de la vitrine : l'image à gauche et le texte à droite
-// dès que la largeur le permet, l'un sous l'autre au téléphone en portrait (la grille de Bootstrap). Sans gouttière
-// horizontale (`gx-0`, l'écart est le retrait du texte) : ses marges négatives débordaient de la colonne, qui n'a pas de
-// retrait, et toute la page défilait à l'horizontale au téléphone (le porteur, 2026-11-14). `badge` : posé sur l'image ;
+// LE DESSIN D'UNE CARTE, le même pour une partie et pour un jeu de la vitrine : une seule colonne, l'image puis le texte
+// dessous, à toutes les largeurs (le porteur, 2026-11-24 : « le live now en une seule colonne », l'accueil de l'appli
+// comme le site). Sans gouttière horizontale (`gx-0`) : ses marges négatives débordaient de la colonne, et toute la page
+// défilait à l'horizontale au téléphone (le porteur, 2026-11-14). `badge` : posé sur l'image ;
 // `actions` : les gestes, sur une ligne qui prend la largeur du texte.
 function LiveCard({ visual, badge = null, title, children, actions = null }) {
     return (
         <div className="row gx-0 gy-3 align-items-center">
-            <div className="col-12 col-sm-6">
+            <div className="col-12">
                 <div className="position-relative">
                     {visual}
                     {badge && <span className="badge text-bg-danger position-absolute top-0 start-0 m-2">{badge}</span>}
                 </div>
             </div>
-            <div className="col-12 col-sm-6 ps-sm-3">
+            <div className="col-12">
                 <div className="ptext">
                     <h2 className="text-break">{title}</h2>
                     {children}
@@ -200,7 +211,7 @@ function useNow() {
 // temps qui lui reste avant l'arrêt pour inactivité quand personne n'y joue (idleSince + idleTimeout, servis par le
 // kernel). Toucher la ligne REPREND la partie (la page de jeu, pour y jouer) ; au bord droit, l'ARRÊT, carré, en danger
 // (le porteur, 2026-11-14 : « le bouton power off doit être à droite », « doit être carré et non round »), après UNE
-// fenêtre de confirmation de Skeleton (SplitRow, Bricks.jsx).
+// fenêtre de confirmation de Skeleton (SplitRow, bricks/).
 function OwnSessionRow({ session }) {
     const { t } = useTranslation();
     const confirm = useConfirm();
@@ -215,7 +226,7 @@ function OwnSessionRow({ session }) {
     const time = `${String(Math.floor(left / 60)).padStart(2, "0")}:${String(left % 60).padStart(2, "0")}`;
 
     return (
-        <SplitRow id={`lv-resume-${session.id}`} label={title} help={idle ? t("live.mineLineIdle", { duration, time }) : t("live.mineLine", { duration })}
+        <SplitRow id={`lv-resume-${session.id}`} label={title} help={[fact(t("play.info.duration"), duration), idle ? fact(t("facts.comeBack"), time) : null]}
             lead={<GameCover consoleId={session.consoleId} reference={session.reference || session.romReference} game={romSource(session)} />}
             onOpen={() => open(true)}
             action={{ id: `lv-stop-${session.id}`, icon: "bi-power", label: t("live.stop"), kind: "danger", pending: stopping,
@@ -237,7 +248,8 @@ function SessionCard({ session, own = false, consoleName, nameOf: localName, liv
     const [stopping, stop] = useStopSession(session, host);
     const open = usePlayOpener(session.id);
     const nameOf = federated ? (username) => username : localName;
-    const players = `${session.playerCount ?? 0}/${session.maxPlayers || (session.playerCount ?? 0) + (session.openSlots ?? 0)}`;
+    const seats = session.maxPlayers || (session.playerCount ?? 0) + (session.openSlots ?? 0);
+    const players = counted(t, "playersOf", seats, { players: `${session.playerCount ?? 0}/${seats}` });
     const owner = nameOf(session.owner || "");
     // Le titre sans ses étiquettes (« (Europe) (En,Fr) »), comme l'engrenage d'un jeu.
     const title = splitTitle(session.title).main;
@@ -258,7 +270,7 @@ function SessionCard({ session, own = false, consoleName, nameOf: localName, liv
         then: { title: t("live.stopOtherSureTitle"), message: t("live.stopOtherSureMessage", { people: people(), title }), confirmLabel: t("live.stop"), onConfirm: stop },
     });
 
-    // Des gestes : des boutons de texte seul, l'arrêt d'icône seule (la règle des boutons, Bricks.jsx), au bord droit
+    // Des gestes : des boutons de texte seul, l'arrêt d'icône seule (la règle des boutons, bricks/), au bord droit
     // (`ms-auto`), carré — comme celui de votre partie.
     const actions = (
         <>
@@ -278,9 +290,9 @@ function SessionCard({ session, own = false, consoleName, nameOf: localName, liv
 
     return (
         <LiveCard visual={<SessionVisual session={session} title={title} live={live} host={host} />} badge={t("live.badge")} title={title} actions={actions}>
+            {/* Une information par ligne, comme le sous-titre d'une ligne (helpLines, bricks/). */}
             <div className={MUTED}>
-                {consoleName} · {t("live.line", { owner, players, duration: formatDuration(session.startedAt, now) })}
-                {session.source ? ` · ${session.source}` : ""}
+                {helpLines([fact(t("catalog.console"), consoleName), fact(t("facts.owner"), owner), fact(t("game.players"), players), fact(t("play.info.duration"), formatDuration(session.startedAt, now)), fact(t("game.origin"), session.source)])}
             </div>
         </LiveCard>
     );
@@ -506,11 +518,11 @@ function FavoritesSection() {
     const [page, setPage] = useSearchParam("favorites", "1");
 
     return (
-        <Section title={t("settings.items.myFavorites.label")} help={t("favorites.help")}>
+        <Section title={t("settings.items.myFavorites.label")} help={t("favorites.help")} sense="modify">
             {favorites.loaded && !items.length ? (
                 <Rows>
                     <EmptyRow icon="bi-star" text={t(favorites.failed ? "favorites.unreadable" : "favorites.empty")} />
-                    <NavRow id="lv-catalog" icon="bi-disc" tone="teal" label={t("live.catalog")} help={t("settings.items.catalogGames.help")} onOpen={() => navigate("/settings/catalog/games")} />
+                    <NavRow id="lv-catalog" icon="bi-disc" label={t("live.catalog")} help={t("settings.items.catalogGames.help")} onOpen={() => navigate("/settings/catalog/games")} />
                 </Rows>
             ) : (
                 <Listing items={items} loading={loading} page={page} onPage={setPage} pageSize={FAVORITES_PER_PAGE} placeholderRow={() => <PlaceholderRow lead="cover" />}
@@ -527,17 +539,17 @@ function FavoritesSection() {
 
 export default function Live() {
     const { t } = useTranslation();
-    const { sessions: hereSessions, ownSessions: hereOwnSessions, consoles, invites, dismissInvite } = useData();
+    const { sessions: hereSessions, ownSessions: hereOwnSessions, consoles, invites, answerInvite } = useData();
+    const consoleName = (session) => consoles?.find((entry) => entry.id === session.consoleId)?.name || session.consoleId || "";
     const { user } = useAuth();
     const federatedSessions = useFederatedSessions();
     const sessions = useMemo(() => [...hereSessions, ...federatedSessions], [hereSessions, federatedSessions]);
     const ownSessions = useMemo(() => [...hereOwnSessions, ...federatedSessions.filter((session) => !session.watchOnly && isOwnSession(session, user?.username))],
         [hereOwnSessions, federatedSessions, user?.username]);
     // Les tâches suivies de ce compte : les téléchargements, et les suppressions de jeux (`kind: remove`), qui sont des
-    // NOTIFICATIONS (le porteur, 2026-11-17 : « Il faudra le mettre dans notifications avec la progression »).
-    const tasks = useDownloads();
-    const downloads = tasks.filter((entry) => entry.kind !== "remove");
-    const removals = tasks.filter((entry) => entry.kind === "remove");
+    // NOTIFICATIONS (le porteur, 2026-11-17 : « Il faudra le mettre dans notifications avec la progression ») — celles qui
+    // tournent, et celles qui viennent de finir.
+    const tasks = useDownloadNotices();
     const location = useLocation();
     const navigate = useNavigate();
     const stepRef = useRef(null);
@@ -585,9 +597,39 @@ export default function Live() {
 
     // UNE INVITATION ouvre la partie pour la regarder — on y prend la manette depuis son menu.
     const openInvite = (invite) => {
-        dismissInvite(invite.id);
+        answerInvite(invite.id, "watched");
         navigate(playPath(invite.sessionId), { state: { back: "/live" } });
     };
+
+    // LES NOTIFICATIONS, UN SEUL BLOC (le porteur, 2026-11-25 : « C'est un seul bloc, plusieurs types de notification ») :
+    // les téléchargements et les suppressions, puis les invitations — les dix dernières (RecentNotices). Une invitation
+    // se répond sur place (RequestRow : Ignorer, Regarder) ; finie, chaque notification dit comment.
+    const TASK_ENDS = { done: ["downloads.state.done", "success"], failed: ["downloads.state.failed", "danger"], cancelled: ["downloads.state.cancelled", "warning"] };
+    const notices = [
+        ...tasks.map((entry) => {
+            const label = entry.label || entry.key;
+            const [text, tone] = TASK_ENDS[entry.state] || TASK_ENDS.failed;
+
+            return {
+                key: `task-${entry.id}`, changedAt: entry.endedAt || entry.at, endedAt: entry.endedAt || null,
+                row: entry.endedAt
+                    ? <InfoRow icon={entry.kind === "remove" ? "bi-trash" : "bi-download"} label={label} value={t(text)} pill={tone} help={entry.error || null} />
+                    : <DownloadRow entry={entry} id={`n-task-${entry.id}`} label={label} />,
+            };
+        }),
+        ...invites.map((invite) => {
+            const label = t("notifications.invite", { name: invite.from?.displayName || "?" });
+            const help = fact(t("facts.game"), invite.reference);
+
+            return {
+                key: `invite-${invite.id}`, changedAt: invite.endedAt || invite.at, endedAt: invite.endedAt || null,
+                row: invite.endedAt
+                    ? <InfoRow icon="bi-eye-fill" label={label} value={t(`notifications.inviteState.${invite.state}`)} pill={invite.state === "watched" ? "success" : "secondary"} help={help} />
+                    : <RequestRow id={`n-invite-${invite.id}`} label={label} help={help} acceptLabel={t("notifications.watch")}
+                        onIgnore={() => answerInvite(invite.id, "ignored")} onAccept={() => openInvite(invite)} />,
+            };
+        }),
+    ];
 
     // GAUCHE / DROITE DANS UN CARROUSEL : d'un bouton de la carte à l'autre (l'algorithme de la croix), puis, au bord de
     // la carte, la carte voisine.
@@ -609,7 +651,6 @@ export default function Live() {
     });
 
     const nameOf = (username) => names[username] || username;
-    const consoleName = (session) => consoles?.find((entry) => entry.id === session.consoleId)?.name || session.consoleId || "";
 
     return (
         <main className="screen tabbed">
@@ -618,7 +659,7 @@ export default function Live() {
                 <div className="lcol px-0 flex-grow-1" data-scroller>
                     <div className="settings-box live-box w-100 mx-auto">
                         {ownSessions.length > 0 && (
-                            <Section title={t("live.mine")}>
+                            <Section title={t("live.mine")} sense="modify">
                                 <Rows>
                                     {ownSessions.map((session) => <OwnSessionRow key={session.id} session={session} />)}
                                 </Rows>
@@ -634,28 +675,10 @@ export default function Live() {
                         </Section>
                         <FavoritesSection />
                         <div id="notifications">
-                            <Section title={t("notifications.title")}>
-                                {invites.length || removals.length ? (
-                                    <Rows>
-                                        {removals.map((entry) => <DownloadRow key={entry.id} entry={entry} id={`n-remove-${entry.id}`} label={entry.label || entry.key} />)}
-                                        {invites.map((invite) => (
-                                            <NavRow key={invite.id} id={`n-invite-${invite.id}`} icon="bi-eye-fill" tone="sky" label={t("notifications.invite", { name: invite.from?.displayName || "?" })}
-                                                help={invite.reference || null} onOpen={() => openInvite(invite)} />
-                                        ))}
-                                    </Rows>
-                                ) : <EmptyState icon="bi-bell" text={t("notifications.none")} />}
+                            <Section title={t("notifications.title")} help={t("notifications.help")} className="mb-4" sense="modify">
+                                <RecentNotices notices={notices} limit={10} />
                             </Section>
                         </div>
-                        {/* LES TÉLÉCHARGEMENTS DE CE COMPTE (libs/downloads.js) — le kernel les garde : une page fermée puis
-                            rouverte les retrouve. Celui qui tourne : le pourcentage et sa barre, « reçu sur total » ; un jeu de
-                            la file : son rang. Sous chacun, sa ligne « Annuler » ou « Retirer de la file ». */}
-                        <Section title={t("live.downloads")} help={downloads.some((entry) => entry.state === "queued") ? t("live.downloadsQueueHelp") : null} className="mb-4">
-                            {downloads.length ? (
-                                <Rows>
-                                    {downloads.map((entry) => <DownloadRow key={entry.id} entry={entry} id={`dl-${entry.id}`} label={entry.label || entry.key} />)}
-                                </Rows>
-                            ) : <EmptyState icon="bi-download" text={t("live.noDownloads")} />}
-                        </Section>
                     </div>
                 </div>
             </div>

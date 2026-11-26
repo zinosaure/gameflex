@@ -1044,6 +1044,8 @@ type peerListing struct {
 	// « Bibliothèque (N) » les compte sans lire leurs listes. Sans lui, un
 	// téléphone sans jeu à lui voyait ce bouton grisé sur chaque console.
 	Consoles map[string]int `json:"consoles"`
+	// Lent — parmi eux, ceux qu'il prête sans les lancer (ses ressources externes, `#808`) : la bibliothèque les retire.
+	Lent map[string]int `json:"lent,omitempty"`
 	// Granted, Disabled — ce que notre accès chez lui laisse lancer, et ce qu'il a coupé pour tout son serveur
 	// (chantier 66) : la page grise Jouer (« fédération désactivée », « console désactivée »). Granted nul : il ne
 	// l'a pas dit.
@@ -1072,7 +1074,7 @@ func (server *Server) listingOf(entry registeredServer) *peerListing {
 	}
 
 	return &peerListing{UpdatedAt: header.UpdatedAt, Server: header.Server, Machine: header.Machine, Scopes: scopes, Consoles: consoles,
-		Granted: header.Consoles, Disabled: disabled}
+		Lent: header.Sections[listing.Roms].Lent, Granted: header.Consoles, Disabled: disabled}
 }
 
 // handleKnownServer — GET /api/v1/servers/{id} : CE serveur, vérifié chez lui

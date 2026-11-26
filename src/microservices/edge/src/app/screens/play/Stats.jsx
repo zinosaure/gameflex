@@ -13,7 +13,9 @@ import { describeResources } from "../../libs/hostResources.js";
 // se lit pareil aux deux endroits. Un chiffre absent est un tiret ; NaN et undefined aussi.
 
 const finite = (value) => (typeof value === "number" && Number.isFinite(value) ? value : null);
-const rate = (kbps) => (finite(kbps) != null ? `${Math.round(kbps)} kbps` : "—");
+// UN DÉBIT EN Mbps, DEUX DÉCIMALES (le porteur, 2026-11-25 : « le mieux c'est de commencer par mb. Au lieu qu'il affiche
+// 15100 KB, c'est mieux d'avoir 15.10 MB ») : 15100 kbps s'écrivent « 15.10 Mbps ».
+const rate = (kbps) => (finite(kbps) != null ? `${(kbps / 1000).toFixed(2)} Mbps` : "—");
 const frameRate = (fps) => (finite(fps) != null ? Math.round(fps) : "—");
 const latency = (ms) => (finite(ms) != null ? `${Math.round(ms)} ms` : "—");
 const streamResolution = (resolution) => (finite(resolution?.width) != null && finite(resolution?.height) != null ? `${resolution.width}x${resolution.height}` : "—");

@@ -20,7 +20,7 @@ import { consoleArt } from "../../libs/visuals.js";
 // même mécanisme que pour les autres consoles sauf que là on choisit une seule grande image. ») : le premier emplacement
 // du fond de sa console (`rp-ps5`…, le même rangement et les mêmes routes que les autres consoles ; il se remplit par
 // défaut des jaquettes de la console qu'elle joue), en photo sur tout l'écran ; son visuel généré le temps qu'elle
-// arrive, ou sans image. Elle se choisit dans Réglages › Remote Play › la console (settings/server/RemotePlay.jsx).
+// arrive, ou sans image. Elle se choisit dans Réglages › Remote Play › la console (settings/remote-play/Background.jsx).
 
 const STRIP_WIDTH = 512;
 const backgrounds = new Map();

@@ -1,0 +1,11 @@
+#!/bin/sh
+# L'ENTRÉE DE L'APPIMAGE : le programme du PC, avec le ffmpeg et le Xvfb livrés en tête du PATH (shared/ffmpegenc et
+# cmd/desktop/guest.go les appellent par leur nom). Le programme trouve le reste à côté de lui :
+# usr/share/gameflex/{web,window}, usr/lib/gameflex/electron.
+HERE="$(dirname "$(readlink -f "$0")")"
+export PATH="$HERE/usr/bin:$PATH"
+# Les bibliothèques de Xvfb, l'écran des consoles récentes : au seul Xvfb (cmd/desktop/guest.go).
+export GAMEFLEX_XVFB_LIBS="$HERE/usr/lib/gameflex/xvfb"
+# Le démon de son privé des consoles récentes (bin/, lib/, modules/).
+export GAMEFLEX_PULSE="$HERE/usr/lib/gameflex/pulse"
+exec "$HERE/usr/bin/gameflex-desktop" "$@"

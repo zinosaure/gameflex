@@ -1,0 +1,18 @@
+{
+  "window_name": "AstroHybrid",
+  "games": {
+    "dir": "/opt/game",
+    "rules": [],
+    "scan_dir_for": { "filename": "eboot.bin" }
+  },
+  "launch": {
+    "bin": "/opt/run-astrohybrid.sh",
+    "cwd": "/opt/astrohybrid",
+    "process_group": true
+  },
+  "stop": { "mode": "pgroup" },
+  "gamepad": { "enabled": true, "swap_xy_from_slot": -1 },
+  "tools": [
+    { "name": "route_audio" }
+  ]
+}

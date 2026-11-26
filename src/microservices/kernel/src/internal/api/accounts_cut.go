@@ -192,7 +192,7 @@ func (server *Server) sessionRecord(sessionID, platform string) (container strin
 //     (« fédération désactivée ») ;
 //   - `consoleNotGranted` — le compte n'a pas cette console (« accès restreint »).
 func (server *Server) consoleRefusal(r *http.Request, consoleID string) string {
-	if server.accounts == nil || consoleID == "" || consoleID == "keytest" {
+	if server.accounts == nil || consoleID == "" {
 		return ""
 	}
 	if server.accounts.ConsoleDisabled(consoleID) {

@@ -36,24 +36,37 @@ export function onGameInputSuspension(listener) {
     return () => listeners.delete(listener);
 }
 
-// L2 + HOME OUVRENT LE MENU (le porteur, 2026-10-28) — 6 et 16 dans la
-// disposition standard de l'API Gamepad. Select + Start ne convenaient pas :
-// Start tenu ÉTEINT plusieurs manettes GameSir. Home seul reste au jeu — c'est
-// le bouton PS du Remote Play et de la PS3 —, mais pas tant que L2 est tenu :
-// sans cela, chaque ouverture du menu appuierait aussi sur PS. D'où l'ordre du
-// geste, L2 d'abord.
-export const MENU_CHORD = [6, 16];
-const MENU_MODIFIER = 6;
-const MENU_HOME = 16;
+// LE GESTE QUI OUVRE LE MENU D'UNE PARTIE, À LA MANETTE (le porteur, 2026-11-26) — indices de la disposition standard
+// de l'API Gamepad (6 : L2, 7 : R2, 16 : Home) :
+//   - la RÉTRO : Home seul, un appui — la partie se met en pause et le menu s'ouvre (PlayShell.jsx). Une manette
+//     libretro n'a pas de Home : il n'atteint jamais le jeu ;
+//   - STREAMEX et le REMOTE PLAY : L2 + R2 + Home tenus deux secondes. Home y est au jeu (le bouton PS, le Home de la
+//     Switch), sauf tant que L2 et R2 sont tenus : sans cela, chaque ouverture appuierait aussi sur Home. L2 et R2,
+//     eux, restent au jeu.
+// Select + Start ne convenaient pas : Start tenu ÉTEINT plusieurs manettes GameSir.
+const HOME = 16;
+const MENU_GESTURES = {
+    home: { buttons: [HOME], holdMs: 0 },
+    chord: { buttons: [6, 7, HOME], holdMs: 2000 },
+};
+const homeAlone = (platform) => platform === "retrogaming" || platform === "device";
+
+// Le geste d'une plateforme : `{ buttons, holdMs }` (`holdMs` 0 : un appui suffit).
+export const menuGestureOf = (platform) => (homeAlone(platform) ? MENU_GESTURES.home : MENU_GESTURES.chord);
 
 /**
- * Ce bouton est-il le Home du raccourci, et non un Home de jeu ? Les trois
- * plateformes le lisent comme lâché quand c'est le cas.
+ * Ce bouton est-il le Home du geste, et non un Home de jeu ? Les trois plateformes le lisent comme lâché quand c'est le
+ * cas.
  *
  * @param {Gamepad} pad la manette lue
  * @param {number} index le bouton
+ * @param {string} platform la plateforme de la partie
  * @returns {boolean}
  */
-export function isMenuHome(pad, index) {
-    return index === MENU_HOME && !!pad?.buttons?.[MENU_MODIFIER]?.pressed;
+export function isMenuHome(pad, index, platform) {
+    if (index !== HOME) {
+        return false;
+    }
+
+    return homeAlone(platform) || MENU_GESTURES.chord.buttons.every((button) => button === HOME || !!pad?.buttons?.[button]?.pressed);
 }

@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:25 +0000
+Subject: [PATCH] gameflex 0011: color metadata flags accepted
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0011.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ .../command_processor/pm4Handlers.cpp         |  5 +++--
+ src/graphics/host_gpu/renderer/debug.cpp      | 19 +++++++++++++++----
+ 2 files changed, 18 insertions(+), 6 deletions(-)
+
+diff --git a/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp b/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp
+index fb4e9cb9..a67728ee 100644
+--- a/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp
++++ b/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp
+@@ -1626,8 +1626,9 @@ static constexpr auto MakeContextIndirectTable() {
+ 			    KYTY_PM4_GET(value, CB_COLOR0_ATTRIB3, CMASK_PIPE_ALIGNED) != 0;
+ 			const bool dcc_pipe_aligned =
+ 			    KYTY_PM4_GET(value, CB_COLOR0_ATTRIB3, DCC_PIPE_ALIGNED) != 0;
+-			EXIT_NOT_IMPLEMENTED(cmask_pipe_aligned != dcc_pipe_aligned);
+-			attrib3.metadata_pipe_aligned = cmask_pipe_aligned;
++			// CMASK and DCC aligned differently (Final Fantasy VII Rebirth, after loading its first
++			// scene): Kyty draws without either, and only checks the flag in its debug pass.
++			attrib3.metadata_pipe_aligned = cmask_pipe_aligned && dcc_pipe_aligned;
+ 			attrib3.write_vrs_rate_hint_to_cmask =
+ 			    KYTY_PM4_GET(value, CB_COLOR0_ATTRIB3, WRITE_VRS_RATE_HINT_TO_CMASK) != 0;
+ 			cp.GetCtx().SetColorAttrib3(slot, attrib3);
+diff --git a/src/graphics/host_gpu/renderer/debug.cpp b/src/graphics/host_gpu/renderer/debug.cpp
+index 43706e70..c71a6a08 100644
+--- a/src/graphics/host_gpu/renderer/debug.cpp
++++ b/src/graphics/host_gpu/renderer/debug.cpp
+@@ -174,10 +174,21 @@ static void RtCheck(const HW::RenderTarget& rt) {
+ 				logged = true;
+ 			}
+ 		}
+-		EXIT_NOT_IMPLEMENTED(rt.attrib3.write_vrs_rate_hint_to_cmask);
+-
+-		EXIT_NOT_IMPLEMENTED(rt.dcc.overwrite_combiner_disable != false);
+-		EXIT_NOT_IMPLEMENTED(rt.dcc.dcc_clear_key_enable != false);
++		// Compression metadata (CMASK, DCC) that Kyty does not emulate: the target is drawn
++		// uncompressed. Said once each, not fatal (Final Fantasy VII Rebirth).
++		const auto accept_metadata = [](bool used, bool& logged, const char* what) {
++			if (used && !logged) {
++				LOGF("RenderTarget: temporary: accepting %s\n", what);
++				logged = true;
++			}
++		};
++		static bool vrs_logged = false, combiner_logged = false, clear_key_logged = false;
++		accept_metadata(rt.attrib3.write_vrs_rate_hint_to_cmask, vrs_logged,
++		                "VRS rate hints written to CMASK");
++
++		accept_metadata(rt.dcc.overwrite_combiner_disable, combiner_logged,
++		                "a disabled DCC overwrite combiner");
++		accept_metadata(rt.dcc.dcc_clear_key_enable, clear_key_logged, "DCC clear keys");
+ 	}
+ }
+ 

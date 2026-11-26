@@ -35,8 +35,8 @@ The **Remote Play** tab, at the top, shows each console with its state: **Online
 **Offline**.
 
 - **Turn on** wakes it from rest mode.
-- **Play** starts the stream. The picture quality is in the console's settings (the gear): 540p at
-  30 frames per second by default, up to 1080p at 60, with an automatic bitrate that follows your
+- **Play** starts the stream. The picture quality is in the console's settings: 720p at 60 frames
+  per second by default, up to 1080p at 60 (the console's own modes), with an automatic bitrate that follows your
   network. It is kept in this browser only.
 - **Busy · Watch** looks on while someone else plays.
 

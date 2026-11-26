@@ -38,6 +38,21 @@ export function applyLowLatencyAnswerSdp(sdp) {
     }
 }
 
+// LA PISTE DU MICRO (chantier 71, gatewaystreams/voice.go) : la seule piste audio que l'offre de la passerelle attend de
+// la page (`recvonly`). Repérée par son `mid`, elle passe en envoi avant la réponse ; le micro s'y branche ensuite sans
+// renégocier (`replaceTrack`). Une offre sans voix (une vignette, le fond du lancement) n'en a pas : null.
+export function micTransceiverOf(pc, offerSdp) {
+    const section = (offerSdp || "").split(/\r?\nm=/).slice(1).find((media) => media.startsWith("audio") && /\r?\na=recvonly/.test(media));
+    const mid = section?.match(/\r?\na=mid:(\S+)/)?.[1];
+    const transceiver = mid ? pc.getTransceivers().find((candidate) => candidate.mid === mid) : null;
+
+    if (transceiver) {
+        transceiver.direction = "sendonly";
+    }
+
+    return transceiver || null;
+}
+
 // answerGatewayOffer — LA NÉGOCIATION D'UN VIEWER SUR UN SEUL SOCKET, voir
 // ServeViewerSignaling côté gateway. Elle passait par trois routes : la
 // réponse en POST, un POST par candidat, et les candidats du gateway relevés
@@ -52,6 +67,8 @@ export function applyLowLatencyAnswerSdp(sdp) {
 //
 // Deux appelants : la vidéo d'une partie (GatewayWebRTC) et le fond de l'écran
 // de lancement (launch-backdrop.js, chantier 35).
+//
+// Rend `{ mic }` : la piste du micro quand l'offre en prévoit une (micTransceiverOf), sinon null.
 export async function answerGatewayOffer(pc, gateway, origin, onSocket = null) {
     let socket = null;
     const outbox = [];
@@ -82,6 +99,7 @@ export async function answerGatewayOffer(pc, gateway, origin, onSocket = null) {
         send({ type: "candidate", candidate: event.candidate.toJSON() });
     };
     await pc.setRemoteDescription({ type: "offer", sdp: gateway.sdp });
+    const mic = micTransceiverOf(pc, gateway.sdp);
 
     // Ouvert APRÈS l'offre posée : le gateway rejoue tout de suite les
     // candidats qu'il a déjà, et un candidat ajouté avant la description
@@ -131,4 +149,6 @@ export async function answerGatewayOffer(pc, gateway, origin, onSocket = null) {
     send({ type: "answer", sdp: answerSdp });
     answered = true;
     closeWhenSettled();
+
+    return { mic };
 }

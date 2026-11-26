@@ -695,9 +695,9 @@ export default function ControllerLayout({
 			forgetPadOpacity(name);
 		};
 	}, [name, token, layoutOverride]);
-	// Réglée depuis le menu, elle vaut tout de suite.
+	// Réglée depuis le menu, elle vaut tout de suite — réglée pendant que la manette était cachée aussi (`lastName`).
 	const tuned = usePadOpacity();
-	const tunedOpacity = !layoutOverride && tuned.name === name ? tuned.opacity : null;
+	const tunedOpacity = !layoutOverride && (tuned.name || tuned.lastName) === name ? tuned.opacity : null;
 
 	useEffect(() => {
 		const handleResize = () => {

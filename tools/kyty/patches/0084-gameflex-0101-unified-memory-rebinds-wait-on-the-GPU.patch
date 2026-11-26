@@ -1,0 +1,171 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Tue, 24 Nov 2026 07:20:29 +0100
+Subject: [PATCH] gameflex 0101: unified-memory rebinds wait on the GPU, not on
+ the command thread
+
+Before a sparse rebind of guest memory, the command thread drained the GPU (Finish) when the range had views
+the GPU might still read, then waited for the bind itself on a fence. The work recorded so far is now
+submitted and the bind waits for its tick on the master timeline; the bind signals a timeline of its own,
+which every later submission waits for (WaitInLaterSubmits). Black Myth: Wukong spent 2.6 ms a frame of the
+command thread in this wait, with the GPU idle meanwhile (--perf-log, 2026-11-24).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../host_gpu/renderer/cache/bufferCache.cpp   | 46 +++++++++++++------
+ .../host_gpu/renderer/cache/bufferCache.h     |  4 +-
+ .../host_gpu/renderer/commandScheduler.cpp    |  3 ++
+ .../host_gpu/renderer/commandScheduler.h      |  8 ++++
+ src/graphics/host_gpu/renderer/render.h       |  2 +-
+ 5 files changed, 46 insertions(+), 17 deletions(-)
+
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+index 6992f4bc..46e8eddd 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+@@ -287,8 +287,8 @@ BufferCache::BufferCache(GraphicContext& graphics, CommandScheduler& scheduler,
+ BufferCache::~BufferCache() {
+ 	if (m_unified_memory) {
+ 		// Views of the guest's memory are destroyed with the slots, after it: Vulkan allows it.
+-		if (m_unified_bind_fence) {
+-			m_graphics.device.destroyFence(m_unified_bind_fence);
++		if (m_unified_bind_semaphore) {
++			m_graphics.device.destroySemaphore(m_unified_bind_semaphore);
+ 		}
+ 		m_graphics.device.freeMemory(m_unified_memory);
+ 		m_unified_memory = nullptr;
+@@ -958,14 +958,20 @@ bool BufferCache::BindUnified(uint64_t vaddr, uint64_t size) {
+ void BufferCache::BindUnifiedPieces(uint64_t begin, uint64_t end,
+                                     const std::vector<std::tuple<uint64_t, uint64_t, uint64_t>>& pieces) {
+ 	Common::CommandThreadProfile::WaitReasonScope ctp_reason(Common::CommandThreadProfile::WaitReason::Rebind);
+-	// The GPU may still read the old views: let it finish before they change. A range the game
++	// The GPU may still read the old views: the bind waits until it has finished with them. A range the game
+ 	// has just mapped has none, and the GPU has nothing there to finish.
++	// GameFlex: on the GPU, not on this thread. The work recorded so far is submitted and the bind waits for
++	// its tick; every later submission waits for the bind (WaitInLaterSubmits). This thread used to drain the
++	// GPU (Finish) and then wait for the bind: in Black Myth: Wukong, 2.6 ms a frame of this thread waiting,
++	// and the GPU idle meanwhile (--perf-log, 2026-11-24).
+ 	auto bound = m_unified_views.upper_bound(begin);
+ 	if (bound != m_unified_views.begin() && std::prev(bound)->first + std::prev(bound)->second.first > begin) {
+ 		--bound;
+ 	}
++	uint64_t after = 0;
+ 	if (bound != m_unified_views.end() && bound->first < end && m_scheduler.Active()) {
+-		m_scheduler.Finish();
++		m_scheduler.Flush(Common::CommandThreadProfile::Close::Wait);
++		after = m_scheduler.CurrentTick() - 1;
+ 	}
+ 	// Every window that covers part of [begin, end): the one of its GiB and the one before.
+ 	std::vector<vk::SparseMemoryBind>               binds;
+@@ -1009,22 +1015,32 @@ void BufferCache::BindUnifiedPieces(uint64_t begin, uint64_t end,
+ 	vk::BindSparseInfo info {};
+ 	info.bufferBindCount = static_cast<uint32_t>(buffer_binds.size());
+ 	info.pBufferBinds    = buffer_binds.data();
+-	if (!m_unified_bind_fence) {
+-		vk::FenceCreateInfo fence_info {};
+-		EXIT_NOT_IMPLEMENTED(m_graphics.device.createFence(&fence_info, nullptr, &m_unified_bind_fence) !=
++	if (!m_unified_bind_semaphore) {
++		vk::SemaphoreTypeCreateInfo timeline_type {};
++		timeline_type.semaphoreType = vk::SemaphoreType::eTimeline;
++		timeline_type.initialValue  = 0;
++		vk::SemaphoreCreateInfo semaphore_info {};
++		semaphore_info.pNext = &timeline_type;
++		EXIT_NOT_IMPLEMENTED(m_graphics.device.createSemaphore(&semaphore_info, nullptr, &m_unified_bind_semaphore) !=
+ 		                     vk::Result::eSuccess);
+ 	}
++	const vk::Semaphore master = m_scheduler.GetMasterSemaphore().Handle();
++	const uint64_t      signal = ++m_unified_bind_value;
++	vk::TimelineSemaphoreSubmitInfo timeline {};
++	timeline.waitSemaphoreValueCount   = after != 0 ? 1u : 0u;
++	timeline.pWaitSemaphoreValues      = &after;
++	timeline.signalSemaphoreValueCount = 1;
++	timeline.pSignalSemaphoreValues    = &signal;
++	info.pNext                = &timeline;
++	info.waitSemaphoreCount   = after != 0 ? 1u : 0u;
++	info.pWaitSemaphores      = &master;
++	info.signalSemaphoreCount = 1;
++	info.pSignalSemaphores    = &m_unified_bind_semaphore;
+ 	{
+ 		Common::LockGuard lock(m_graphics.queue_mutex);
+-		EXIT_NOT_IMPLEMENTED(m_graphics.queue.bindSparse(1, &info, m_unified_bind_fence) !=
+-		                     vk::Result::eSuccess);
+-	}
+-	{
+-		Common::CommandThreadProfile::Scope ctp_wait(Common::CommandThreadProfile::WaitCause());
+-		EXIT_NOT_IMPLEMENTED(m_graphics.device.waitForFences(1, &m_unified_bind_fence, VK_TRUE, UINT64_MAX) !=
+-		                     vk::Result::eSuccess);
++		EXIT_NOT_IMPLEMENTED(m_graphics.queue.bindSparse(1, &info, nullptr) != vk::Result::eSuccess);
+ 	}
+-	EXIT_NOT_IMPLEMENTED(m_graphics.device.resetFences(1, &m_unified_bind_fence) != vk::Result::eSuccess);
++	m_scheduler.WaitInLaterSubmits(m_unified_bind_semaphore, signal);
+ 
+ 	// The record of what is bound.
+ 	{
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.h b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+index e25d3de6..8be7a606 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.h
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+@@ -246,7 +246,9 @@ private:
+ 	std::unordered_map<uint64_t, BufferId>            m_unified_windows;
+ 	// The guest views bound in the windows: address -> (size, offset in the dma-buf).
+ 	std::map<uint64_t, std::pair<uint64_t, uint64_t>> m_unified_views;
+-	vk::Fence                                         m_unified_bind_fence {};
++	// GameFlex: the timeline the sparse rebinds signal; later submissions wait for it on the GPU.
++	vk::Semaphore                                     m_unified_bind_semaphore {};
++	uint64_t                                          m_unified_bind_value = 0;
+ 	// The ranges bound for writing in command buffers the GPU has not finished.
+ 	PendingGpuWrites                                  m_pending_gpu_writes;
+ 	std::unordered_map<uint64_t, SrtSpeculation>      m_srt_speculation;
+diff --git a/src/graphics/host_gpu/renderer/commandScheduler.cpp b/src/graphics/host_gpu/renderer/commandScheduler.cpp
+index 821bf39c..da324437 100644
+--- a/src/graphics/host_gpu/renderer/commandScheduler.cpp
++++ b/src/graphics/host_gpu/renderer/commandScheduler.cpp
+@@ -526,6 +526,9 @@ uint64_t CommandScheduler::Submit(SubmitInfo submit) {
+ 		Common::LockGuard lock(graphics.queue_mutex);
+ 		Common::CommandThreadProfile::Phase(Common::CommandThreadProfile::Cause::SubmitQueue);
+ 		submit.AddSignal(m_master.Handle(), tick);
++		if (m_later_wait_semaphore != nullptr) {
++			submit.AddWait(m_later_wait_semaphore, m_later_wait_value);
++		}
+ 
+ 		vk::TimelineSemaphoreSubmitInfo timeline_info {};
+ 		timeline_info.waitSemaphoreValueCount   = submit.num_wait_semaphores;
+diff --git a/src/graphics/host_gpu/renderer/commandScheduler.h b/src/graphics/host_gpu/renderer/commandScheduler.h
+index 81f88eb6..e4b1a1e6 100644
+--- a/src/graphics/host_gpu/renderer/commandScheduler.h
++++ b/src/graphics/host_gpu/renderer/commandScheduler.h
+@@ -49,6 +49,12 @@ public:
+ 	// how long the GPU takes over each one, from timestamps at its begin and end.
+ 	void                      EnableProfile();
+ 	void                      Wait(uint64_t tick);
++	// GameFlex: work queued on the GPU outside command buffers (the buffer cache's sparse rebinds) signals this
++	// timeline value; every later submission waits for it on the GPU, never on this thread.
++	void                      WaitInLaterSubmits(vk::Semaphore semaphore, uint64_t value) noexcept {
++		m_later_wait_semaphore = semaphore;
++		m_later_wait_value     = value;
++	}
+ 	void                      PopPendingOperations();
+ 	void                      DrainPriorityOperations();
+ 	void                      WaitPriorityOperations(uint64_t tick);
+@@ -113,6 +119,8 @@ private:
+ 	void RunOperation(Common::UniqueFunction<void>&& operation);
+ 
+ 	MasterSemaphore              m_master;
++	vk::Semaphore                m_later_wait_semaphore = nullptr; // WaitInLaterSubmits
++	uint64_t                     m_later_wait_value     = 0;
+ 	RenderContext&               m_context;
+ 	GraphicContext&              m_graphics;
+ 	CommandPool                  m_command_pool;
+diff --git a/src/graphics/host_gpu/renderer/render.h b/src/graphics/host_gpu/renderer/render.h
+index 6e61ea78..e784b0f6 100644
+--- a/src/graphics/host_gpu/renderer/render.h
++++ b/src/graphics/host_gpu/renderer/render.h
+@@ -70,7 +70,7 @@ struct DrawAutoArgs {
+ };
+ 
+ struct SubmitInfo {
+-	static constexpr uint32_t MaxSemaphores = 3;
++	static constexpr uint32_t MaxSemaphores = 4;
+ 
+ 	std::array<vk::Semaphore, MaxSemaphores>          wait_semaphores {};
+ 	std::array<uint64_t, MaxSemaphores>               wait_ticks {};

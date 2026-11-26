@@ -31,9 +31,15 @@ var listingCacheDir = filepath.Join(config.StorageDir, "cache", "listing")
 // listingUpdatedAt — la date du listing servi à un ami, sans rien lire sur un
 // disque ; faux tant que l'en-tête n'a jamais été lu.
 func (server *Server) listingUpdatedAt() (time.Time, bool) {
-	return server.freshness.UpdatedAt(func(_, dir string) time.Time {
+	at, known := server.freshness.UpdatedAt(func(_, dir string) time.Time {
 		return retro_files.CatalogLastScan(docker.InternalDisk{Dir: dir}.RomsDir())
 	})
+	// Les ressources externes (`#808`) : un parcours qui change ce qu'elles portent fait avancer la date.
+	if resourcesAt := server.resourcesUpdatedAt(); known && resourcesAt.After(at) {
+		at = resourcesAt
+	}
+
+	return at, known
 }
 
 // rememberSelfListing — le listing de ce serveur vient d'être écrit (ou existe

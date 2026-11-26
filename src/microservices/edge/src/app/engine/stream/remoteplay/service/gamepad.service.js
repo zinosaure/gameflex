@@ -288,7 +288,7 @@ class GamepadService {
 			const previousValue = previousButtonValues[i] ?? 0;
 			// L2 tenu, Home est le raccourci du menu (libs/gameInput.js) :
 			// lu comme lâché, il n'appuie pas sur PS à chaque ouverture.
-			const menuHome = isMenuHome(gamepad, i);
+			const menuHome = isMenuHome(gamepad, i, "remoteplay");
 			const currentPressed = button.pressed && !menuHome;
 			const currentValue = menuHome ? 0 : button.value;
 			const valueChanged = Math.abs(currentValue - previousValue) > 0.00001;

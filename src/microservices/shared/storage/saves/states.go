@@ -79,6 +79,9 @@ func BackupSlot(savesRoot, username, consoleID, reference string, slot int) erro
 	if err := CopySlot(principal, local, consoleID, reference, reference, slot); err != nil {
 		return err
 	}
+	if err := carryKnown(principal, local, consoleID, reference, reference); err != nil {
+		return err
+	}
 
 	return ForgetNote(local, NoteItem{Kind: KindStates, Console: consoleID, Reference: reference, Slot: slot})
 }
@@ -119,5 +122,9 @@ func RestoreSlot(savesRoot, username, source, consoleID, reference, toReference 
 		}
 	}
 
-	return CopySlot(staging, principal, consoleID, toReference, toReference, slot)
+	if err := CopySlot(staging, principal, consoleID, toReference, toReference, slot); err != nil {
+		return err
+	}
+
+	return carryKnown(from, principal, consoleID, reference, toReference)
 }

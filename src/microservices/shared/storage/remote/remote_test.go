@@ -43,8 +43,6 @@ type fakePeer struct {
 	alive    string
 	// caller — sous quel nom, quel compte et quel genre le dernier échange s'est présenté (#781, #787).
 	caller [3]string
-	// catalogOnly — il se dit serveur qui ne lance rien (gameflex-federation), sur /listing/updated.
-	catalogOnly bool
 }
 
 func sampleListing(at time.Time) listing.Listing {
@@ -92,13 +90,9 @@ func newFakePeer(t *testing.T, token string) *fakePeer {
 	mux.HandleFunc("/api/v1/federation/listing/updated", guard(func(w http.ResponseWriter, r *http.Request) {
 		peer.mu.Lock()
 		peer.asked++
-		at, scopes, only := peer.listing.Header.UpdatedAt, peer.listing.Header.Scopes, peer.catalogOnly
+		at, scopes := peer.listing.Header.UpdatedAt, peer.listing.Header.Scopes
 		peer.mu.Unlock()
-		data := map[string]any{"updatedAt": at, "scopes": scopes}
-		if only {
-			data["catalogOnly"] = true
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"updatedAt": at, "scopes": scopes}})
 	}))
 	mux.HandleFunc("/api/v1/federation/params/ps3/rpcs3/presets/hd-perso", guard(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{

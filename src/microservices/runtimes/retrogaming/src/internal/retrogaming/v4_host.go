@@ -62,6 +62,12 @@ func startV4Host(sessionID string) {
 		IdleAfter: 5 * time.Minute,
 		// Une manette qui change de mains revient au neutre (releasePort).
 		// La file compte les manettes depuis 1, libretro ses ports depuis 0.
+		// Qui peut parler et entendre (chantier 71) : à la passerelle, par le client posé avant cette file (child.go).
+		OnVoice: func(rights map[string]session.VoiceRights) {
+			if childGatewayClient != nil {
+				_ = childGatewayClient.SendVoice(rights)
+			}
+		},
 		OnPadHandover: func(slot int) {
 			activeChildSessionMu.Lock()
 			sess := activeChildSession

@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"gameflex/resources"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -42,6 +43,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"gameflex/kernel/internal/auth"
+	"gameflex/kernel/internal/config"
 	"gameflex/kernel/internal/retro_files"
 	"gameflex/storage/listing"
 )
@@ -247,6 +249,8 @@ func (server *Server) handleFederationListing(w http.ResponseWriter, r *http.Req
 	served.Header.Consoles, served.Header.DisabledConsoles = server.consolesFor(r)
 	// Les disques internes avec la bibliothèque, comme une seule (chantier 23).
 	server.withInternalDisks(r.Context(), &served)
+	// Puis les ressources externes (`#808`) : ce qu'elles seules portent.
+	server.withResources(&served)
 	server.withFreshness(&served)
 
 	writeJSON(w, http.StatusOK, served)
@@ -407,6 +411,20 @@ func (server *Server) handleFederationCore(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
+	// Les ressources externes (`#808`) : la variante demandée, comme le faisait gameflex-federation.
+	android := r.URL.Query().Get("platform") == "android"
+	if server.serveFromResources(w, r, listing.Cores, consoleID, name, func(copy resources.Copy) string {
+		if android {
+			return copy.Where.Android
+		}
+		if copy.Item.Variants["linux"] == 0 && copy.Where.Path == "" {
+			return ""
+		}
+
+		return copy.Where.Path
+	}) {
+		return
+	}
 	writeErrorCode(w, http.StatusNotFound, "not_found", "core not found")
 }
 
@@ -434,13 +452,23 @@ func (server *Server) handleFederationBundle(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
+	if server.serveFromResources(w, r, listing.Cores, consoleID, file, resources.LocatorPath) {
+		return
+	}
 	writeErrorCode(w, http.StatusNotFound, "not_found", "bundle not found")
 }
 
 // handleFederationRom — GET/HEAD /api/v1/federation/roms/{consoleId}/{ref}.
 // Délègue mot pour mot au chemin authentifié : même résolution, même zip à
 // la volée pour un jeu-dossier.
+//
+// Un jeu qu'aucune bibliothèque d'ici n'a se sert depuis les ressources externes qui le portent (`#808`).
 func (server *Server) handleFederationRom(w http.ResponseWriter, r *http.Request) {
+	consoleID, ref := chi.URLParam(r, "consoleId"), chi.URLParam(r, "ref")
+	if _, _, _, err := server.findRom(r.Context(), consoleID, ref); errors.Is(err, os.ErrNotExist) &&
+		server.serveFromResources(w, r, listing.Roms, consoleID, ref, resources.LocatorPath) {
+		return
+	}
 	server.handleRetroServeRom(w, r)
 }
 
@@ -458,6 +486,10 @@ func (server *Server) handleFederationBios(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	if errors.Is(err, os.ErrNotExist) {
+		// Les ressources externes, derrière la bibliothèque et les disques (`#808`).
+		if server.serveFromResources(w, r, listing.Bios, chi.URLParam(r, "consoleId"), chi.URLParam(r, "name"), resources.LocatorPath) {
+			return
+		}
 		writeErrorCode(w, http.StatusNotFound, "not_found", "bios not found")
 		return
 	}
@@ -481,10 +513,10 @@ func (server *Server) handleFederationBios(w http.ResponseWriter, r *http.Reques
 // Surtout pas os.Hostname() : dans un conteneur il rend l'identifiant de
 // l'image ("bd056dc1fa11"), qui ne veut rien dire pour la personne qui lira
 // « Super Mario Bros — bd056dc1fa11 » sous un jeu. On préfère un nom choisi
-// (GAMEFLEX_SERVER_NAME), et à défaut l'adresse par laquelle on est déjà
+// (Réglages › Configuration du serveur, config.CurrentLive), et à défaut l'adresse par laquelle on est déjà
 // joignable, qui est au moins reconnaissable.
 func (server *Server) federationHostname() string {
-	if name := os.Getenv("GAMEFLEX_SERVER_NAME"); name != "" {
+	if name := config.CurrentLive().ServerName; name != "" {
 		return name
 	}
 	if server.config.PublicHost != "" {

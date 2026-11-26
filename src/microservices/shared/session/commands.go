@@ -41,6 +41,11 @@ const (
 	CmdReclaim   CommandKind = "reclaim"
 	CmdReturn    CommandKind = "return"
 	CmdTerminate CommandKind = "terminate"
+	// LA VOIX (chantier 71, voice.go), Target "on" ou "off" : le micro de cet onglet, s'il entend les autres, et — au
+	// propriétaire seul — la conversation ouverte aux spectateurs.
+	CmdVoiceMic        CommandKind = "voice-mic"
+	CmdVoiceHear       CommandKind = "voice-hear"
+	CmdVoiceSpectators CommandKind = "voice-spectators"
 )
 
 // Command is one asked-for change.
@@ -180,6 +185,19 @@ func (session *Session) apply(command Command, now time.Time) Outcome {
 	case CmdReturn:
 		slot, err := session.GiveBack(command.Username, command.SocketID, now)
 		outcome.Slot, outcome.Err = slot, err
+
+	case CmdVoiceMic:
+		outcome.Err = session.setMic(command.SocketID, command.Target == "on")
+
+	case CmdVoiceHear:
+		outcome.Err = session.setHear(command.SocketID, command.Target == "on")
+
+	case CmdVoiceSpectators:
+		if !session.IsOwner(command.Username) {
+			outcome.Err = ErrNotOwner
+			break
+		}
+		session.SpectatorsTalk = command.Target == "on"
 
 	case CmdTerminate:
 		if !command.ByAdmin && !session.IsOwner(command.Username) {

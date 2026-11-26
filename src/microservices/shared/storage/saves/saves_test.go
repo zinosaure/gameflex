@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -304,9 +305,17 @@ func TestRestoreReplacesOneGameAndKeepsABackup(t *testing.T) {
 	fakeConsoles(t, principal)
 	prod := filepath.Join(principal, "sources", "prod")
 	write(t, filepath.Join(prod, "streamex", "ps4", "data", "home", "1000", "savedata", "CUSA07010", "SAVEDATA00", "data.bin"), "kh3 de la prod", tuesday)
+	kingdom := KnownGame{Title: "Kingdom Hearts III", ID: "ref-kh3", Path: "ps4/Kingdom Hearts III"}
+	if err := Remember(prod, Named{Console: "ps4", Save: "CUSA07010", Game: kingdom}); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := Restore(root, "gino", "prod", "ps4", "CUSA07010"); err != nil {
 		t.Fatal(err)
+	}
+	// LE JEU SUIT LA SAUVEGARDE (chantier 76).
+	if game, _ := Known(principal)("ps4", "CUSA07010"); game != kingdom {
+		t.Fatalf("principal : %+v", game)
 	}
 	kh3 := filepath.Join("streamex", "ps4", "data", "home", "1000", "savedata", "CUSA07010", "SAVEDATA00")
 	if read(t, filepath.Join(principal, kh3, "data.bin")) != "kh3 de la prod" {
@@ -327,6 +336,10 @@ func TestRestoreReplacesOneGameAndKeepsABackup(t *testing.T) {
 	}
 	if read(t, filepath.Join(principal, kh3, "data.bin")) != "kh3" || read(t, filepath.Join(local, kh3, "data.bin")) != "kh3 de la prod" {
 		t.Fatal("restaurer depuis local n'échange pas les deux versions")
+	}
+	// Le backup que la restauration laisse dans local emporte son jeu.
+	if game, _ := Known(local)("ps4", "CUSA07010"); game != kingdom {
+		t.Fatalf("local : %+v", game)
 	}
 
 	if err := Restore(root, "gino", "prod", "ps4", "CUSA00001"); !errors.Is(err, os.ErrNotExist) {
@@ -414,11 +427,56 @@ func TestRestoreSlotKeepsABackup(t *testing.T) {
 		t.Fatalf("emplacement vide : %v", err)
 	}
 
-	if err := RememberTitle(filepath.Join(principal, "sources", "prod"), "nes", "la-bas", "Metroid"); err != nil {
+	prod = filepath.Join(principal, "sources", "prod")
+	if err := Remember(prod, Named{Console: "nes", Save: "la-bas", Game: KnownGame{Title: "Metroid", ID: "la-bas", Path: "nes/Metroid.nes"}}); err != nil {
 		t.Fatal(err)
 	}
-	if Title(filepath.Join(principal, "sources", "prod"), "nes", "la-bas") != "Metroid" {
-		t.Fatal("titre perdu")
+	if game, _ := Known(prod)("nes", "la-bas"); game.Title != "Metroid" || game.Path != "nes/Metroid.nes" {
+		t.Fatalf("jeu perdu : %+v", game)
+	}
+	// LE JEU SUIT LA RESTAURATION, sous la référence d'ici, puis le backup de ce qu'elle remplace.
+	if err := os.WriteFile(filepath.Join(principal, "sources", "prod", "states", "nes", "la-bas_slot3.state"), []byte("trois"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := RestoreSlot(root, "gino", "prod", "nes", "la-bas", "ici", 3); err != nil {
+		t.Fatal(err)
+	}
+	if game, _ := Known(principal)("nes", "ici"); game.Title != "Metroid" {
+		t.Fatalf("le jeu ne suit pas la restauration : %+v", game)
+	}
+	if err := BackupSlot(root, "gino", "nes", "ici", 3); err != nil {
+		t.Fatal(err)
+	}
+	if game, _ := Known(filepath.Join(principal, "sources", Local))("nes", "ici"); game.Title != "Metroid" {
+		t.Fatalf("le jeu ne suit pas le backup : %+v", game)
+	}
+}
+
+// TITLES.JSON (chantier 76) : un objet par sauvegarde ; une entrée sans titre ne
+// s'écrit pas ; les entrées d'avant, un titre seul, se relisent puis le fichier
+// se réécrit au format du jeu.
+func TestTitlesKeepTheGameOfEachSave(t *testing.T) {
+	tree := t.TempDir()
+	legacy := `{"nes/abc": "Metroid", "ps5/PPSA14325": {"title": "Astro Bot", "id": "ref-astro", "path": "ps5/Astro Bot"}}`
+	if err := os.WriteFile(filepath.Join(tree, titlesFile), []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	known := Known(tree)
+	if game, _ := known("nes", "abc"); game != (KnownGame{Title: "Metroid"}) {
+		t.Fatalf("ancienne entrée : %+v", game)
+	}
+	if game, _ := known("ps5", "PPSA14325"); game != (KnownGame{Title: "Astro Bot", ID: "ref-astro", Path: "ps5/Astro Bot"}) {
+		t.Fatalf("entrée : %+v", game)
+	}
+	if raw := read(t, filepath.Join(tree, titlesFile)); !strings.Contains(raw, `"nes/abc": {`) {
+		t.Fatalf("le fichier n'est pas réécrit : %s", raw)
+	}
+
+	if err := Remember(tree, Named{Console: "ps5", Save: "PPSA00042", Game: KnownGame{Title: "  "}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := Known(tree)("ps5", "PPSA00042"); found {
+		t.Fatal("une entrée sans titre s'écrit")
 	}
 }
 
@@ -442,4 +500,3 @@ func TestAnEmptySaveFolderIsNoSave(t *testing.T) {
 		t.Fatalf("avec un fichier : %+v", games)
 	}
 }
-

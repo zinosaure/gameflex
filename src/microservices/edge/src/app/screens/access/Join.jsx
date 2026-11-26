@@ -8,6 +8,7 @@ import { passwordAccepted, refusalText } from "../../libs/password.js";
 import { lastTabPath } from "../../libs/tabs.js";
 import { useButton } from "../../libs/ui.js";
 import { Form, formContext, FormButton, NewPassword, Ruleset } from "../../ui/Forms.jsx";
+import MfaStep from "./MfaStep.jsx";
 
 // LA PAGE DU LIEN D'UN COMPTE (chantier 55, `#694`) — /join/<code>, publique : le porteur, 2026-11-14 : « les nouveaux
 // membres vont rejoindre avec un lien d'invitation où ils vont devoir mettre un mot de passe strong pour la première
@@ -33,6 +34,8 @@ export default function Join({ code }) {
     const [refusal, setRefusal] = useState("");
     const [values, setValues] = useState({ password: "", confirm: "" });
     const [pending, setPending] = useState(false);
+    // Le second temps (chantier 80) : la double authentification imposée, à activer avant d'entrer.
+    const [challenge, setChallenge] = useState(null);
     const form = formContext(values, setValues, {
         confirm: (data) => (data.confirm && data.confirm !== data.password ? Ruleset.isInvalid(t("settings.passwordMismatch")) : null),
     });
@@ -84,6 +87,13 @@ export default function Join({ code }) {
 
             return;
         }
+        // LA DOUBLE AUTHENTIFICATION IMPOSÉE (chantier 80) : le mot de passe est choisi, le lien est consommé ; il reste à
+        // l'activer avant d'entrer (MfaStep.jsx). L'abandonner mène à la connexion, avec ce mot de passe.
+        if (answer.ok && answer.item?.mfa) {
+            setChallenge(answer.item);
+
+            return;
+        }
 
         if (answer.status === 410) {
             setLink({ refused: t("join.dead") });
@@ -92,6 +102,17 @@ export default function Join({ code }) {
         }
         setRefusal(reason(answer));
     };
+
+    if (challenge) {
+        return (
+            <main className="login">
+                <MfaStep challenge={challenge} onSession={(item) => {
+                    adopt(item);
+                    navigate(lastTabPath(), { replace: true });
+                }} onCancel={() => navigate("/", { replace: true })} />
+            </main>
+        );
+    }
 
     const name = link?.display_name || link?.username || "";
     const reset = link?.kind === "reset";

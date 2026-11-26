@@ -11,7 +11,7 @@
         "target": "CREDENTIAL_BACKEND_PROXY_TARGET",
         "websocket": true,
         "forwardClientAddress": true,
-        "domains": ["auth", "users", "history", "controller-mapping", "key-mapping", "key-positioning", "notification-preferences", "push", "invites", "presence", "catalog-tokens", "token-invitations", "server-registry", "metadata-services", "console-switches"]
+        "domains": ["auth", "users", "history", "controller-mapping", "key-mapping", "key-positioning", "notification-preferences", "push", "invites", "presence", "catalog-tokens", "token-invitations", "server-registry", "metadata-services", "console-switches", "cast"]
     },
     {
         "service": "gatewaywebrtc",

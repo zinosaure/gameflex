@@ -130,7 +130,7 @@ func pairingInviter(t *testing.T) (*httptest.Server, func() []string) {
 // serveur déjà dans la liste est refusé AVANT l'échange ; un code mal formé,
 // sans rien demander là-bas.
 func TestAPairingCodeJoinsAServer(t *testing.T) {
-	t.Setenv("GAMEFLEX_SERVER_NAME", "Salon")
+	namedServer(t, "Salon")
 	surface, froms := pairingInviter(t)
 	typed := strings.TrimPrefix(surface.URL, "http://")
 	if response, body := redeemAt(t, surface, `{"code":"000000","kind":"federation","from":"Salon"}`, ""); response.StatusCode != http.StatusLocked ||

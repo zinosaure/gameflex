@@ -1,5 +1,6 @@
 {
     "window_name": "lichii",
+    "shader_progress": "lichii",
     "emulator_fps": {
         "accessible_name": "^Game: ([0-9.]+) FPS"
     },

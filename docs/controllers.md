@@ -73,15 +73,18 @@ Change them in **Settings › Gamepads**, with *Keyboard* as the controller.
 
 - **Open it:** slide the menu button, at the bottom right of the screen, to the left; a simple touch
   does nothing, so a thumb on a stick never opens it by accident. While you play, the button fades
-  to a faint outline and comes back at your next touch on the game screen. **Esc** on a keyboard,
-  or, on a controller, hold **L2** and **Home** together for three seconds. While L2 is held, Home
-  does not reach the game.
-- **The tiles:** **Resume**, the **On-screen controller**, the **Game sound** and **Fullscreen** (in
-  a web browser; the Android app is always fullscreen).
-- **Notifications:** what happened during the game, the latest first, two per page, each with how
-  long ago it happened: someone
-  joining or leaving, a request for your controller, the answer to your own request. A request is
-  answered here: touch it, then hand your controller over or keep it. Each new one rings a small
+  to a faint outline and comes back at your next touch on the game screen. **Esc** on a keyboard. On a
+  controller: **Home** in a retro game, which also pauses the game while the menu is open; in the
+  other games, where Home belongs to the game, hold **L2**, **R2** and **Home** together for two
+  seconds. While L2 and R2 are held, Home does not reach the game.
+- **An action closes the menu:** a switch, a choice, a save state, a disc, a cheat, the video
+  quality… The menu stays open for inviting someone, the QR code and asking a player for their
+  controller.
+- **The tiles:** **Resume**, and **Take the controller** or **Get the controller back** when there is
+  one for you.
+- **Notifications:** the last five things that happened during the game: a player joining or
+  leaving, a request for your controller, the answer to your own request. A request is answered
+  right on it, with its two buttons; a finished notification goes away by itself. Each new one rings a small
   bell at the top right of the game for a few seconds, or as long as a request waits for its
   answer, instead of covering the game.
 - **Sound after a reload:** a web browser plays no sound on a page you have not touched yet — a
@@ -93,21 +96,24 @@ Change them in **Settings › Gamepads**, with *Keyboard* as the controller.
   of a multi-disc game, and,
   on a recent console, **Type some text**, which types into the field the game has open, as a
   plugged-in keyboard would.
-- **Controller:** **Haptic feedback**, **Invisible sticks** and **Opacity** while the on-screen
-  controller shows, **Rumble**, and **DualShock controller** on the first PlayStation. They are the
+- **Sound:** the **Game sound**, then the voice: **My microphone**, **Hear the others** and, for
+  the player who started the game, **Spectators take part** (see [Play together](#play-together)).
+- **Video:** **Video**, the stream this screen receives (see below); **Fullscreen** (in a web
+  browser; the Android app is always fullscreen); **Orientation** (on a phone or a tablet), the
+  same setting as **Settings › Application › Orientation**, applied at once without stopping the
+  game; **On-screen stats**: **Compact view** shows the main figures in small type, **Statistics**
+  shows the frame rate, the bitrate, the emulator and the machine's load; in the Android app, the
+  phone's temperature and battery come first. **Send to the TV** sends the game to a Chromecast on
+  the same network.
+- **Controller:** **Opacity**, then **On-screen controller** (show it or not), and while it shows
+  **Haptic feedback** and **Invisible sticks**; **Rumble**, and **DualShock controller** on the first
+  PlayStation. They are the
   same settings as in **Settings › Gamepads**: a change in one place shows in the other. **Opacity**
   is the one of the layout used in game (**Edit the layout**); with no layout of your own, it keeps
   the default button positions, at 40 %.
 - **Players:** one line per controller of the console: who holds it and for how long, or a free
   place (see [Play together](#play-together)).
 - **Invitation:** inviting people, sending the link, the QR code, and handing your controller over.
-- **Picture and sound:** **Video**, the stream this screen receives (see below); **Orientation**
-  (on a phone or a tablet), the same setting as **Settings › Application › Orientation**, applied at
-  once without stopping the game; **On-screen
-  stats**: **Compact view** shows the main figures in small type, **Statistics** shows the frame
-  rate, the bitrate, the emulator and the machine's load; in the Android app, the phone's
-  temperature and battery come first. **Send to the TV** sends the game to a Chromecast on the same
-  network.
 - **Leave:** **Reset the console** (the game starts over), and **Quit the game**, which asks what
   happens to it: **Quit and end the game** for everyone, **Quit and leave the game running**, or
   **Quit and pause the game**. When other people are playing, it starts on **Quit and leave the
@@ -117,7 +123,8 @@ Change them in **Settings › Gamepads**, with *Keyboard* as the controller.
 **Rewind and fast forward**, on a retro console, are two round buttons at the bottom left of the
 game: touch one to turn it on, again to turn it off, while you watch the game. **Rewind** steps back
 through the last seconds, **Fast forward** runs the game four times faster; one turns the other
-off. While one is on, it stays lit; otherwise both fade with the menu button.
+off. While one is on, it stays lit; otherwise both fade with the menu button. When you can talk to
+the others, a third round button beside them turns **your microphone** on and off.
 
 Save states, rewind, fast forward, cheats, the disc and resetting the console belong to the player
 who started the game. The texts over the game, such as **You are watching this game**, fade out like
@@ -125,12 +132,13 @@ the menu button and come back at your next touch.
 
 ## Picture quality
 
-The picture quality is set on the game's page, before **Play**: the gear, then **Stream settings**
+The picture quality is set on the game's page, before **Play**: the wrench, then **Stream settings**
 (**Resolution**, **Frame rate**, **Bitrate**). It is kept for each console, in this browser only: a
 phone on mobile data and a computer at home have neither the same network nor the same power. By
-default: 540p, 30 frames per second, and an automatic bitrate — at each launch, the browser
+default: 720p, 60 frames per second, and an automatic bitrate — at each launch, the browser
 measures its throughput to the game's server and the picture takes a share of it, for the whole
-game; a bitrate you choose stays fixed. **Detect the network** measures the latency and the
+game; a bitrate you choose stays fixed. The resolution goes up to 1440p and the frame rate up to 120
+frames per second, for a fast network and a powerful server. **Detect the network** measures the latency and the
 throughput to the server, and picks the resolution and the frame rate for you.
 
 **When your network weakens**, the picture drops to the game's smaller stream, and goes back once
@@ -170,6 +178,20 @@ one that plays and **Get the controller back** on the other.
   with it can watch, even without an account; to play, they sign in.
 - **Invite a member** sends a notification to a member of your GameFlex, which opens the game.
 
+**Talk while you play:** the game menu's **Voice** section has three switches.
+
+- **My microphone** — the others hear you. Your microphone is always off when you open a game.
+- **Hear the others** — their voices on this device. Turning it off never mutes anyone else; your
+  choice is kept by this browser.
+- **Spectators take part** — for the player who started the game only: spectators signed in with an
+  account may then talk and listen like the players. It is off when the game starts, and turning it
+  off cuts their microphones at once.
+
+Alone in a game, the three switches are greyed out. Up to eight microphones can be open at the same
+time. A spectator without an account has no voice. The browser only gives a microphone to a secure
+page: `https://…` or the Android app; on `http://<address>`, **My microphone** stays greyed out, but
+you still hear the others. The Android app asks for the microphone once, when it starts.
+
 **Away from the controller:** after 29 minutes without a press, GameFlex asks whether you are still
 there; without an answer (**I'm here**), the player loses the controller one minute later. A game
 nobody plays stops after five minutes.
@@ -183,3 +205,5 @@ nobody plays stops after five minutes.
 | A PlayStation game ignores the sticks | Turn on **DualShock controller** in the game menu. |
 | The on-screen controller hides the game | Move or shrink its buttons with **Edit the layout**, or lower its **Opacity**. |
 | No vibration | Turn on **Rumble**; not every controller or browser supports it. |
+| **My microphone** is greyed out | Nobody else is in the conversation yet, the game's owner has not let spectators take part, or the page is not secure: open GameFlex through `https://…` or the Android app. |
+| Nobody hears me | Check that the browser (or Android, for the app) allows the microphone for GameFlex, and that the others have **Hear the others** on. |

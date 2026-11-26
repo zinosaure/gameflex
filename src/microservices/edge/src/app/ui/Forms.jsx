@@ -20,9 +20,18 @@ import { usePagination } from "../skeleton/libs/Pagination.jsx";
 //   calendriers.
 //
 // Un champ va toujours dans un `Form.Group` qui porte son libellé ET son aide (CODE_CONVENTIONS.md). Un
-// interrupteur est `Form.Switch` — l'interrupteur de Bootstrap : celui de Skeleton (SkeletonSwitch) demande
-// la feuille de styles de Skeleton entière, qui changerait le reste du launcher.
+// interrupteur est `Form.SkeletonSwitch` (chantier 81, le porteur 2026-11-25), par la brique SwitchRow : la feuille de
+// styles de Skeleton est déjà chargée (skeleton.js).
 export { Form, Ruleset, Table, usePagination };
+
+// LA RAISON D'UN CHAMP DÉSACTIVÉ, À LA PLACE DE SON AIDE (chantier 81, §0 ; le porteur, 2026-11-25 : « on ne fait pas de
+// hide/show mais que du enabled/disabled, en utilisant skeleton.Ruleset tout le temps ») : Skeleton n'affiche le message
+// d'un Ruleset que pour une erreur ; celui d'un champ désactivé se lit ici, et prend la place de l'aide (TextRow).
+export const helpOrReason = (context, name, help = null) => {
+    const rule = context?.rulesets?.[name]?.(context.values);
+
+    return rule && rule.state === Ruleset.IS_DISABLED && rule.message ? rule.message : help;
+};
 
 export const formContext = (values, setValues, rulesets = {}) => ({
     values,
@@ -58,16 +67,36 @@ export const fieldContext = (name, value, apply, disabled = false) => ({
 // (seulement). ») vit ICI, et nulle part ailleurs : aucun formulaire ne l'oublie, et rien d'autre n'en a — ni un bouton
 // hors d'un formulaire, ni les lignes de « Plus » ou de « Danger ». Deux boutons du même formulaire, l'un sous l'autre,
 // n'en ont qu'une, au-dessus du premier (launcher.css, `.gf-form-button`). Il se pose DANS l'encadré du groupe qu'il
-// envoie (SubmitRow, Bricks.jsx), après son dernier contrôle.
-export function FormButton({ id, label, isReplaced, pending = false, disabled = false, kind = "main", type = "submit", onClick = undefined }) {
+// envoie (SubmitRow, bricks/), après son dernier contrôle.
+// `bare` : le bouton seul, sans sa ligne, pour FormButtons.
+export function FormButton({ id, label, isReplaced, pending = false, disabled = false, kind = "main", type = "submit", onClick = undefined, bare = false }) {
     const button = useButton();
     const idle = pending || disabled || !isReplaced;
+    const control = (
+        <button type={type} className={button(idle ? "danger" : kind)} data-nav data-key={id} disabled={idle} onClick={onClick}>
+            {idle ? "•••" : label}
+        </button>
+    );
+
+    return bare ? control : <div className="gf-form-button d-grid border-top pt-3">{control}</div>;
+}
+
+// DEUX BOUTONS, CÔTE À CÔTE, JAMAIS L'UN SUR L'AUTRE (le porteur, 2026-11-24 : « on a une règle qui empêche de faire les
+// doubles boutons l'un sur l'autre. Tu peux faire en colonne de % : 25/75, 50/50, 75/25. Mais pas l'un sur l'autre ») :
+// la ligne d'un FormButton, puis les deux en colonnes de la grille de Bootstrap. `split` : "25/75", "50/50" ou "75/25",
+// la part du premier d'abord. Les enfants : deux FormButton `bare`.
+const SPLITS = { "25/75": ["col-3", "col-9"], "50/50": ["col-6", "col-6"], "75/25": ["col-9", "col-3"] };
+
+export function FormButtons({ split = "50/50", children }) {
+    const [first, second] = React.Children.toArray(children);
+    const [left, right] = SPLITS[split] || SPLITS["50/50"];
 
     return (
-        <div className="gf-form-button d-grid border-top pt-3">
-            <button type={type} className={button(idle ? "danger" : kind)} data-nav data-key={id} disabled={idle} onClick={onClick}>
-                {idle ? "•••" : label}
-            </button>
+        <div className="gf-form-button border-top pt-3">
+            <div className="row g-2">
+                <div className={`${left} d-grid`}>{first}</div>
+                <div className={`${right} d-grid`}>{second}</div>
+            </div>
         </div>
     );
 }
@@ -127,7 +156,7 @@ export function PadReach({ className = "", children }) {
 // touchables (`cursor: pointer`), et que PadReach ne voit donc pas — marqués ici pour la croix (`data-nav`,
 // `role="button"` : A les touche, libs/input.js), démarqués quand une borne les grise. `ref` : ce qui contient le
 // calendrier, toujours là — un calendrier qui paraît plus tard (caché par un Ruleset) se marque à son arrivée. Les
-// bornes du journal (settings/server/Logs.jsx) et la sortie d'un jeu (settings/server/consoles/GameMetadata.jsx).
+// bornes du journal (settings/Logs.jsx) et la sortie d'un jeu (settings/server/consoles/GameMetadata.jsx).
 export function useCalendarDays(ref) {
     useEffect(() => {
         const root = ref.current;

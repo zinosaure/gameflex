@@ -163,7 +163,7 @@ export function useFederatedSessions() {
                     // serveur, que la carte affiche ; `peer` : où notre kernel
                     // va chercher l'image du jeu (romSource, la fiche d'un jeu
                     // fédéré).
-                    const found = (Array.isArray(list) ? list : []).filter((session) => session.consoleId !== "keytest").map((session) => ({
+                    const found = (Array.isArray(list) ? list : []).map((session) => ({
                         ...session,
                         id: federatedId(server.id, session.id),
                         childSessionId: session.childSessionId

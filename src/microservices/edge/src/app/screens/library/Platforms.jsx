@@ -7,7 +7,7 @@ import { goDown, recalledGame } from "../../libs/memory.js";
 import { resolveUsers, subscribeFederatedDevices, wakeDevice } from "../../libs/api.js";
 import { useDeviceStatus } from "../../engine/stream/remoteplay/hooks/use-device-status.js";
 import { federationSession, peerHost, PLAY_BLOCK_LABELS, playBlock, useFederationSession } from "../../libs/federation.js";
-import { federatedAccountPath } from "../../settings/account/MyFederation.jsx";
+import { federatedAccountPath } from "../../settings/profile/Federation.jsx";
 import { federatedId } from "../../libs/federatedHost.js";
 import { toast } from "../../shell/Shell.jsx";
 import { streamingService } from "../../engine/stream/remoteplay/service/streaming.service.js";
@@ -21,7 +21,11 @@ import { ConsoleBanner, useVisual } from "./ConsoleVisual.jsx";
 import SidePanel from "../../shell/SidePanel.jsx";
 import { StreamPanel, streamOf, streamSummaryOf } from "./GameSettings.jsx";
 import { withNetworkBitrate } from "../../engine/stream/shared/libs/network-probe.js";
-import { InfoRow, QuickTiles, Rows, Section } from "../../ui/Bricks.jsx";
+import { InfoRow } from "../../bricks/InfoRow.jsx";
+import { QuickTiles } from "../../bricks/QuickTiles.jsx";
+import { Rows } from "../../bricks/Rows.jsx";
+import { Section } from "../../bricks/Section.jsx";
+import { ITEM_SETTINGS_ICON } from "../../globals/icons.js";
 
 // NIVEAU 1 — LES CONSOLES D'UN ONGLET, UNE PAR ÉCRAN, EN VERTICAL.
 //
@@ -344,7 +348,7 @@ export default function Platforms({ tab }) {
     // SE CONNECTER À UN APPAREIL D'ICI (chantier 52, P6) : la commande `launch` du kernel (streamingService
     // de la webapp, la même porte que sa page Remote Play — idempotente : une session qui tourne déjà pour
     // cet appareil revient telle quelle), puis la page de jeu du launcher. Le flux part avec elle : celui que
-    // l'utilisateur a choisi dans l'engrenage de CET appareil dans ce navigateur, le défaut (540p à 30) pour le reste
+    // l'utilisateur a choisi dans l'engrenage de CET appareil dans ce navigateur, le défaut (720p à 60) pour le reste
     // (streamOf, comme le lancement d'un jeu), et un débit « Auto » mesuré vers le serveur qui tient la console — le
     // nôtre, ou celui de l'ami (withNetworkBitrate) : la console reçoit ce débit une fois, à l'ouverture de la partie.
     // Le kernel revalide le tout. L'écran du lancement le temps de la réponse (la console peut s'éveiller) ; Annuler
@@ -487,8 +491,8 @@ export default function Platforms({ tab }) {
                 Réglages › Administration › Consoles (le porteur, 2026-11-12) ; un appareil Remote Play a son bouton et son
                 engrenage. */}
             <div className="pactions d-flex align-items-center justify-content-between gap-2">
-                {/* UN BOUTON PORTE SOIT UN TEXTE, SOIT UNE ICÔNE (le porteur, 2026-11-13, Bricks.jsx) : Bibliothèque,
-                    Jouer, Allumer sont des gestes, en texte ; l'engrenage, une icône seule. */}
+                {/* UN BOUTON PORTE SOIT UN TEXTE, SOIT UNE ICÔNE (le porteur, 2026-11-13, bricks/) : Bibliothèque,
+                    Jouer, Allumer sont des gestes, en texte ; la clé, une icône seule. */}
                 {plat?.kind === "console" ? (
                     <>
                         <button type="button" className={`${button("main")} w-50`} data-nav data-key="b-open" disabled={count === 0} onClick={() => openPlat(plat)}>
@@ -497,14 +501,14 @@ export default function Platforms({ tab }) {
                     </>
                 ) : plat?.kind === "device" ? (
                     <>
-                        {/* Le bouton suit l'état de la console (remoteAction) ; l'engrenage, ses informations et son flux. */}
+                        {/* Le bouton suit l'état de la console (remoteAction) ; la clé, ses informations et son flux. */}
                         <button type="button" className={`${button("main")} w-50 text-truncate`} data-nav data-key="b-rp"
                             disabled={REMOTE_INERT.includes(remoteAction(plat).kind)} onClick={() => runRemote(plat)}>
                             {t(REMOTE_LABELS[remoteAction(plat).kind])}
                         </button>
                         <button type="button" className={`${ICON_BUTTON} ${button("round")}`} data-nav data-key="b-info" aria-haspopup="dialog"
                             aria-label={t("gear.title")} title={t("gear.title")} onClick={() => setPanel("remote")}>
-                            <i className="bi bi-gear-fill"></i>
+                            <i className={`bi ${ITEM_SETTINGS_ICON}`}></i>
                         </button>
                     </>
                 ) : null}
@@ -622,7 +626,7 @@ function RemotePanel({ plat, device, session, onClose }) {
     const status = busy ? t("rp.status.busy") : t(`rp.status.${device.status}`, { defaultValue: device.status || "" });
     const tiles = [
         { id: "rt-stream", icon: "bi-broadcast", tone: "sky", label: t("gear.streamTile"), wide: true,
-            value: streamSummaryOf(streamOf(plat.id)), onClick: () => setSub("stream") },
+            value: streamSummaryOf(streamOf(plat.id), t), onClick: () => setSub("stream") },
     ];
 
     return (
@@ -630,18 +634,18 @@ function RemotePanel({ plat, device, session, onClose }) {
             <SidePanel label={plat.name} className="gear" firstKey="p-close" onClose={onClose}>
                 <ConsoleBanner plat={plat} />
                 <QuickTiles items={tiles} />
-                <Section title={t("gear.informations")}>
+                <Section title={t("details")} sense="info">
                     <Rows>
-                        <InfoRow icon="bi-playstation" tone="sky" label={t("remoteplay.device.type")} value={device.hostType} />
+                        <InfoRow icon="bi-playstation" label={t("remoteplay.device.type")} value={device.hostType} />
                         <InfoRow icon="bi-router" label={t("remoteplay.device.ip")} value={device.ipAddress} />
-                        <InfoRow icon={busy ? "bi-people" : "bi-power"} tone={busy ? "rose" : device.status === "awake" ? "green" : device.status === "standby" ? "amber" : "slate"} label={t("remoteplay.device.status")} value={status} />
+                        <InfoRow icon={busy ? "bi-people" : "bi-power"} label={t("remoteplay.device.status")} value={status} />
                         {busy && <InfoRow icon="bi-person" label={t("rp.playing")} value={isOwnSession(session, user?.username) ? t("rp.playingYou") : player} />}
                         <InfoRow icon="bi-hdd-network" label={t("game.origin")} value={deviceOrigin(device, servers, t)} />
                     </Rows>
                 </Section>
             </SidePanel>
             {sub === "stream" && (
-                <StreamPanel choiceKey={plat.id} onClose={closeSub} onChanged={() => redraw((value) => value + 1)} />
+                <StreamPanel choiceKey={plat.id} remotePlay onClose={closeSub} onChanged={() => redraw((value) => value + 1)} />
             )}
         </>
     );

@@ -1,0 +1,80 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Tue, 24 Nov 2026 03:02:43 +0100
+Subject: [PATCH] gameflex 0019: the game's frame rate in the window title
+
+The window title ends with " | FPS: 24.6", counted on the game's presented frames and written once a second
+on SDL's main thread: streamex reads it, as it reads Kyty's, and the performance panel finally has the
+emulator's frame rate for the PS4.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../renderer_vulkan/vk_presenter.cpp          | 37 +++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
+diff --git a/src/video_core/renderer_vulkan/vk_presenter.cpp b/src/video_core/renderer_vulkan/vk_presenter.cpp
+index daec351d..925c063e 100644
+--- a/src/video_core/renderer_vulkan/vk_presenter.cpp
++++ b/src/video_core/renderer_vulkan/vk_presenter.cpp
+@@ -24,10 +24,13 @@
+ #include "video_core/renderer_vulkan/vk_rasterizer.h"
+ #include "video_core/texture_cache/image.h"
+ 
++#include <SDL3/SDL_init.h>
++#include <SDL3/SDL_video.h>
+ #include <algorithm>
+ #include <array>
+ #include <atomic>
+ #include <cctype>
++#include <string>
+ #include <chrono>
+ #include <cmath>
+ #include <csetjmp>
+@@ -48,6 +51,39 @@
+ 
+ namespace Vulkan {
+ 
++// GameFlex: the game's frame rate in the window title, " | FPS: 24.6", as Kyty's title carries it. streamex reads it
++// there (sessionstatus.TitleFPS) for the performance panel, on the server and on the phone; shadPS4 said it nowhere.
++// Counted on the game's own presented frames, written once a second, on SDL's main thread.
++static void GameFlexTitleFps(SDL_Window* window) {
++    static std::string base;
++    static u32 frames = 0;
++    static auto since = std::chrono::steady_clock::now();
++    ++frames;
++    const auto now = std::chrono::steady_clock::now();
++    const double elapsed = std::chrono::duration<double>(now - since).count();
++    if (elapsed < 1.0 || window == nullptr) {
++        return;
++    }
++    if (base.empty()) {
++        const char* title = SDL_GetWindowTitle(window);
++        base = title != nullptr ? title : "shadPS4";
++    }
++    struct Title {
++        SDL_Window* window;
++        std::string text;
++    };
++    auto* title = new Title{window, fmt::format("{} | FPS: {:.1f}", base, frames / elapsed)};
++    frames = 0;
++    since = now;
++    SDL_RunOnMainThread(
++        [](void* userdata) {
++            auto* title = static_cast<Title*>(userdata);
++            SDL_SetWindowTitle(title->window, title->text.c_str());
++            delete title;
++        },
++        title, false);
++}
++
+ bool CanBlitToSwapchain(const vk::PhysicalDevice physical_device, vk::Format format) {
+     const vk::FormatProperties props{physical_device.getFormatProperties(format)};
+     return static_cast<bool>(props.optimalTilingFeatures & vk::FormatFeatureFlagBits::eBlitDst);
+@@ -1084,6 +1120,7 @@ void Presenter::Present(Frame* frame, bool is_reusing_frame, bool is_game_frame)
+     free_frame();
+     if (!is_reusing_frame && is_game_frame) {
+         DebugState.IncFlipFrameNum();
++        GameFlexTitleFps(window.GetSDLWindow());
+     }
+ }
+ 

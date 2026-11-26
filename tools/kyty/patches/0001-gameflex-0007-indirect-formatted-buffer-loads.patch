@@ -18,10 +18,10 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
  3 files changed, 131 insertions(+), 48 deletions(-)
 
 diff --git a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterInternal.h b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterInternal.h
-index 0f491ed5..62b52544 100644
+index c014a1cd..c0214d7c 100644
 --- a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterInternal.h
 +++ b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterInternal.h
-@@ -118,7 +118,8 @@ struct EmitterState {
+@@ -121,7 +121,8 @@ struct EmitterState {
  	uint32_t                                         bda_pointer_function    = 0;
  	uint32_t                                         indirect_format_function = 0;
  	uint32_t                                         indirect_format_geometry_function = 0;
@@ -32,10 +32,10 @@ index 0f491ed5..62b52544 100644
  	uint32_t                                         bvh8_result_type       = 0;
  	uint32_t                                         bvh8_intersect_function = 0;
 diff --git a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterMemory.cpp b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterMemory.cpp
-index 2d0e46e8..84987819 100644
+index 9525db9f..b4c5147a 100644
 --- a/src/graphics/shader/recompiler/backend/spirv/spirvEmitterMemory.cpp
 +++ b/src/graphics/shader/recompiler/backend/spirv/spirvEmitterMemory.cpp
-@@ -1023,7 +1023,22 @@ uint32_t LoadIndirectBuffer(ValueEmitContext& ctx, const IndirectBufferAccess& b
+@@ -1027,7 +1027,22 @@ uint32_t LoadIndirectBuffer(ValueEmitContext& ctx, const IndirectBufferAccess& b
  	return ConstructU32Composite(state, components, values);
  }
  
@@ -59,7 +59,7 @@ index 2d0e46e8..84987819 100644
  	auto& state = ctx.state;
  	const auto geometry = state.builder.AllocateId();
  	state.builder.AddFunction(spv::OpFunctionCall, TypeU32Composite(state, 4), geometry,
-@@ -1034,39 +1049,85 @@ uint32_t LoadIndirectFormattedX(ValueEmitContext& ctx, const IndirectBufferAcces
+@@ -1038,39 +1053,85 @@ uint32_t LoadIndirectFormattedX(ValueEmitContext& ctx, const IndirectBufferAcces
  		return value;
  	};
  	const auto bytes = field(0);
@@ -175,7 +175,7 @@ index 2d0e46e8..84987819 100644
  }
  
  uint32_t LoadRawBuffer(ValueEmitContext& ctx, const IR::Inst& inst, const IR::MemoryInfo& mem,
-@@ -1133,8 +1194,8 @@ uint32_t LoadBuffer(ValueEmitContext& ctx, const IR::Inst& inst, uint32_t compon
+@@ -1137,8 +1198,8 @@ uint32_t LoadBuffer(ValueEmitContext& ctx, const IR::Inst& inst, uint32_t compon
  	    state, ctx.Arg(inst, inst.NumArgs() - 1), TypeU32Composite(state, components),
  	    ConstantU32CompositeZero(state, components), [&]() {
  		    if (mem.kind == IR::ResourceKind::IndirectBuffer) {
@@ -186,7 +186,7 @@ index 2d0e46e8..84987819 100644
  			    const auto args = IndirectBufferArgs(ctx, inst);
  			    const auto result = state.builder.AllocateId();
  			    state.builder.AddFunction(spv::OpFunctionCall, TypeU32Composite(state, components),
-@@ -1251,6 +1312,26 @@ void DefineIndirectBufferFormats(ValueEmitContext& ctx) {
+@@ -1255,6 +1316,26 @@ void DefineIndirectBufferFormats(ValueEmitContext& ctx) {
  		state.builder.AddFunction(spv::OpReturnValue, result);
  		state.builder.AddFunction(spv::OpFunctionEnd);
  	}
@@ -213,7 +213,7 @@ index 2d0e46e8..84987819 100644
  	const auto function_type = state.builder.Type(spv::OpTypeFunction, type, type, type, type, type);
  	state.indirect_format_function = state.builder.AllocateId();
  	const auto format = state.builder.AllocateId();
-@@ -1313,9 +1394,8 @@ void DefineIndirectBufferLoads(ValueEmitContext& ctx) {
+@@ -1317,9 +1398,8 @@ void DefineIndirectBufferLoads(ValueEmitContext& ctx) {
  			const auto& memory = ctx.Memory(inst);
  			if (memory.kind != IR::ResourceKind::IndirectBuffer ||
  			    !memory.SupportsIndirectBufferLoad(inst.GetOpcode())) continue;
@@ -225,7 +225,7 @@ index 2d0e46e8..84987819 100644
  			if (!inserted) continue;
  			if (memory.formatted && state.indirect_format_function == 0u) {
  				DefineIndirectBufferFormats(ctx);
-@@ -1327,7 +1407,8 @@ void DefineIndirectBufferLoads(ValueEmitContext& ctx) {
+@@ -1331,7 +1411,8 @@ void DefineIndirectBufferLoads(ValueEmitContext& ctx) {
  			    spv::OpTypeFunction, result_type, type, type, type, type, type, type, type, type);
  			const auto name = "load_indirect_buffer_" + std::to_string(memory.data_bits) + "x" +
  			                  std::to_string(components) + (memory.coherent ? "_coherent" : "") +
@@ -235,7 +235,7 @@ index 2d0e46e8..84987819 100644
  			state.builder.AddName(function, name.c_str());
  			state.builder.AddFunction(spv::OpFunction, result_type, function,
  			                          spv::FunctionControlMaskNone, signature);
-@@ -1338,7 +1419,8 @@ void DefineIndirectBufferLoads(ValueEmitContext& ctx) {
+@@ -1342,7 +1423,8 @@ void DefineIndirectBufferLoads(ValueEmitContext& ctx) {
  			}
  			EmitLabel(state, state.builder.AllocateId());
  			const auto buffer = PrepareIndirectBuffer(state, args, memory.formatted);
@@ -246,10 +246,10 @@ index 2d0e46e8..84987819 100644
  			state.builder.AddFunction(spv::OpReturnValue, result);
  			state.builder.AddFunction(spv::OpFunctionEnd);
 diff --git a/src/graphics/shader/recompiler/ir/ShaderIR.h b/src/graphics/shader/recompiler/ir/ShaderIR.h
-index 2b2d73ca..6551c680 100644
+index e3c187b3..3e829675 100644
 --- a/src/graphics/shader/recompiler/ir/ShaderIR.h
 +++ b/src/graphics/shader/recompiler/ir/ShaderIR.h
-@@ -85,15 +85,15 @@ struct MemoryInfo {
+@@ -86,15 +86,15 @@ struct MemoryInfo {
  
  	[[nodiscard]] bool SupportsIndirectBufferLoad(ValueOpcode opcode) const {
  		if (typed) return false;

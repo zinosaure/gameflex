@@ -1,0 +1,222 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Tue, 10 Nov 2026 05:11:58 +0000
+Subject: [PATCH] gameflex 0092: no submission that feeds nothing (P4.1)
+
+0088 counted, per frame in Clair Obscur, 5 empty buffers submitted at suspend points and 2 WaitFlipDone
+flushes with no flip pending (Astro Bot: 1); each vkQueueSubmit costs ~200 us of the command thread.
+
+- A suspend point whose buffer is empty, with no operation waiting for it, releases the game once the work
+  already submitted is done (DeferPriorityOperationOnSubmitted, on the last submitted tick); the buffer stays
+  open for the next frame. The occlusion counters are still published.
+- WaitFlipDone flushes only when a flip of the buffer is pending: the flip queue calls the flush, outside its
+  lock, when it has to wait. A flip queued after its check is not waited for, as when the check came first.
+  HasPendingFlip and FlipQueue::HasRequest go.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/graphics/guest_gpu/graphicsRun.cpp        | 30 ++++++++++++-------
+ .../host_gpu/renderer/commandScheduler.cpp    | 18 +++++++++++
+ .../host_gpu/renderer/commandScheduler.h      |  3 ++
+ src/graphics/presentation/videoOut.cpp        | 30 ++++++++-----------
+ src/graphics/presentation/videoOut.h          |  8 ++---
+ 5 files changed, 58 insertions(+), 31 deletions(-)
+
+diff --git a/src/graphics/guest_gpu/graphicsRun.cpp b/src/graphics/guest_gpu/graphicsRun.cpp
+index 3cdc8a15..11a45aea 100644
+--- a/src/graphics/guest_gpu/graphicsRun.cpp
++++ b/src/graphics/guest_gpu/graphicsRun.cpp
+@@ -635,13 +635,21 @@ bool GuestGpu::Process(Submission& submission) {
+ 				Common::CommandThreadProfile::RecalibrateClock();
+ 				scheduler.NoteCloseOperations();
+ 			}
+-			scheduler.DeferPriorityOperation([ready = m_suspend_point_ready, &master, taken] {
++			Common::UniqueFunction<void> release = [ready = m_suspend_point_ready, &master, taken] {
+ 				if (taken != 0) {
+ 					Common::CommandThreadProfile::NoteSuspendPointReleased(taken, QueuedBuffers(master));
+ 				}
+ 				ready->release();
+-			});
+-			cp.BufferFlush(Common::CommandThreadProfile::Close::SuspendPoint);
++			};
++			// GameFlex: an empty buffer gives the GPU nothing to do: the game is released once the work already
++			// submitted is done, and the buffer stays open for the next frame (5 empty submissions an image in
++			// Clair Obscur, ~200 us of vkQueueSubmit each).
++			if (scheduler.DeferPriorityOperationOnSubmitted(release)) {
++				m_renderer.GetOcclusionQueries().Publish();
++			} else {
++				scheduler.DeferPriorityOperation(std::move(release));
++				cp.BufferFlush(Common::CommandThreadProfile::Close::SuspendPoint);
++			}
+ 			cp.Reset();
+ 			break;
+ 		}
+@@ -1085,17 +1093,19 @@ void CommandProcessor::DrawIndexAuto(DrawAutoArgs args) {
+ void CommandProcessor::WaitFlipDone(const uint64_t* label) {
+ 	Common::CommandThreadProfile::Scope ctp_upkeep(Common::CommandThreadProfile::Cause::Upkeep);
+ 	auto& video_out = m_renderer.GetVideoOut();
+-	// GameFlex: whether a flip of this buffer was pending before the flush: without one, the flush gave the GPU
+-	// nothing the wait needs. The wait's own share of WaitGpuFrame, by that (CommandThreadProfile).
++	// GameFlex: the open buffer goes to the GPU only when a flip of this buffer is pending, which may wait for its
++	// work; without one there is nothing to wait for, and the buffer stays open (twice an image in Clair Obscur,
++	// once in Astro Bot). The wait's own share of WaitGpuFrame, by whether it flushed (CommandThreadProfile).
+ 	const bool ctp_counting = Common::CommandThreadProfile::Counting();
+-	const bool ctp_pending  = ctp_counting && video_out.HasPendingFlip(label);
+-	BufferFlush(Common::CommandThreadProfile::Close::WaitFlipDone);
+-
++	bool       flushed      = false;
+ 	const auto ctp_frame = Common::CommandThreadProfile::CauseTicks(Common::CommandThreadProfile::Cause::WaitGpuFrame);
+-	video_out.WaitFlipDone(label);
++	video_out.WaitFlipDone(label, [this, &flushed] {
++		BufferFlush(Common::CommandThreadProfile::Close::WaitFlipDone);
++		flushed = true;
++	});
+ 	if (ctp_counting) {
+ 		Common::CommandThreadProfile::NoteFlipWait(
+-		    ctp_pending,
++		    flushed,
+ 		    Common::CommandThreadProfile::CauseTicks(Common::CommandThreadProfile::Cause::WaitGpuFrame) - ctp_frame);
+ 	}
+ }
+diff --git a/src/graphics/host_gpu/renderer/commandScheduler.cpp b/src/graphics/host_gpu/renderer/commandScheduler.cpp
+index b73ad905..821bf39c 100644
+--- a/src/graphics/host_gpu/renderer/commandScheduler.cpp
++++ b/src/graphics/host_gpu/renderer/commandScheduler.cpp
+@@ -346,6 +346,24 @@ void CommandScheduler::DeferPriorityOperation(Common::UniqueFunction<void>&& ope
+ 	QueueOperation(std::move(operation), true);
+ }
+ 
++bool CommandScheduler::DeferPriorityOperationOnSubmitted(Common::UniqueFunction<void>& operation) {
++	CheckActive();
++	EXIT_IF(!operation);
++	if (m_buffer_used || m_command.IsInvalid()) {
++		return false;
++	}
++	std::unique_lock lock(m_operation_mutex);
++	const auto       tick = CurrentTick();
++	if (m_operation_state != OperationState::Open || m_operation_tick == tick) {
++		return false;
++	}
++	// The queue stays in tick order: no operation waits for the open buffer, so none is past tick - 1.
++	m_priority_operations.push({std::move(operation), tick - 1});
++	lock.unlock();
++	m_operation_available.notify_one();
++	return true;
++}
++
+ void CommandScheduler::QueueOperation(Common::UniqueFunction<void>&& operation, bool priority) {
+ 	CheckActive();
+ 	EXIT_IF(!operation);
+diff --git a/src/graphics/host_gpu/renderer/commandScheduler.h b/src/graphics/host_gpu/renderer/commandScheduler.h
+index fd6180bc..81f88eb6 100644
+--- a/src/graphics/host_gpu/renderer/commandScheduler.h
++++ b/src/graphics/host_gpu/renderer/commandScheduler.h
+@@ -55,6 +55,9 @@ public:
+ 	// Guest-memory completions use the priority queue; normal callbacks maintain GPU resources.
+ 	void                      DeferOperation(Common::UniqueFunction<void>&& operation);
+ 	void                      DeferPriorityOperation(Common::UniqueFunction<void>&& operation);
++	// GameFlex: the operation after the work already submitted, when the open buffer has none and no operation
++	// waits for it: the buffer then need not reach the GPU empty. False, the operation left as it was, otherwise.
++	[[nodiscard]] bool        DeferPriorityOperationOnSubmitted(Common::UniqueFunction<void>& operation);
+ 	[[nodiscard]] bool        HasPendingPriorityOperations();
+ 	[[nodiscard]] static bool InDeferredOperation() noexcept;
+ 	// GameFlex: an empty buffer can stay open only when no deferred operation waits for its tick either, and its
+diff --git a/src/graphics/presentation/videoOut.cpp b/src/graphics/presentation/videoOut.cpp
+index 8e66fa72..2a4f56f8 100644
+--- a/src/graphics/presentation/videoOut.cpp
++++ b/src/graphics/presentation/videoOut.cpp
+@@ -225,9 +225,8 @@ public:
+ 	void Complete(uint64_t request_id);
+ 	void WaitForSubmitSlot(VideoOutConfig& cfg);
+ 	bool Flip();
+-	void Wait(VideoOutConfig& cfg, int index);
++	void Wait(VideoOutConfig& cfg, int index, Common::UniqueFunction<void>&& before_wait);
+ 	// GameFlex: whether a flip of the buffer is pending, which Wait would wait for (CommandThreadProfile).
+-	[[nodiscard]] bool HasRequest(VideoOutConfig& cfg, int index);
+ 
+ private:
+ 	enum class RequestState { Reserved, Ready, Presenting };
+@@ -1127,7 +1126,15 @@ void FlipQueue::WaitForSubmitSlot(VideoOutConfig& cfg) {
+ 	}
+ }
+ 
+-void FlipQueue::Wait(VideoOutConfig& cfg, int index) {
++void FlipQueue::Wait(VideoOutConfig& cfg, int index, Common::UniqueFunction<void>&& before_wait) {
++	{
++		Common::LockGuard lock(m_mutex);
++		if (!HasRequestLocked(cfg, index)) {
++			return;
++		}
++	}
++	// A flip queued after this check is not waited for, as when the check came first.
++	before_wait();
+ 	Common::GameFlex::WaitNote gameflex_wait("video out: wait for a buffer's flips", &cfg);
+ 	Common::CommandThreadProfile::Scope ctp_profile(Common::CommandThreadProfile::Cause::WaitGpuFrame);
+ 	Common::LockGuard lock(m_mutex);
+@@ -1136,11 +1143,6 @@ void FlipQueue::Wait(VideoOutConfig& cfg, int index) {
+ 	}
+ }
+ 
+-bool FlipQueue::HasRequest(VideoOutConfig& cfg, int index) {
+-	Common::LockGuard lock(m_mutex);
+-	return HasRequestLocked(cfg, index);
+-}
+-
+ bool FlipQueue::HasRequestLocked(VideoOutConfig& cfg, int index) const {
+ 	auto matches = [&cfg, index](const auto& r) { return r.cfg == &cfg && r.index == index; };
+ 	return std::any_of(m_requests.begin(), m_requests.end(), matches) ||
+@@ -1618,11 +1620,12 @@ void VideoOutDriver::WaitForSubmitSlot(int handle) {
+ 	m_impl->GetFlipQueue().WaitForSubmitSlot(*cfg);
+ }
+ 
+-void VideoOutDriver::WaitFlipDone(const uint64_t* label) {
++void VideoOutDriver::WaitFlipDone(const uint64_t* label, Common::UniqueFunction<void>&& before_wait) {
+ 	auto* ctx = m_impl->GetByLabel(label);
+ 	EXIT_IF(ctx == nullptr);
+ 
+-	m_impl->GetFlipQueue().Wait(*ctx, static_cast<int>(label - ctx->labels.data()));
++	m_impl->GetFlipQueue().Wait(*ctx, static_cast<int>(label - ctx->labels.data()),
++	                            std::move(before_wait));
+ }
+ 
+ uint64_t* VideoOutGetBufferLabels(int handle, int* bus) {
+@@ -1635,13 +1638,6 @@ uint64_t* VideoOutGetBufferLabels(int handle, int* bus) {
+ 	return ctx->labels.data();
+ }
+ 
+-bool VideoOutDriver::HasPendingFlip(const uint64_t* label) {
+-	auto* ctx = m_impl->GetByLabel(label);
+-	// GameFlex: a wrong label is WaitFlipDone's to report, right after.
+-	return ctx != nullptr &&
+-	       m_impl->GetFlipQueue().HasRequest(*ctx, static_cast<int>(label - ctx->labels.data()));
+-}
+-
+ KYTY_SYSV_ABI int VideoOutGetFlipStatus(int handle, VideoOutFlipStatus* status) {
+ 	PRINT_NAME();
+ 
+diff --git a/src/graphics/presentation/videoOut.h b/src/graphics/presentation/videoOut.h
+index 10bac700..e44fd286 100644
+--- a/src/graphics/presentation/videoOut.h
++++ b/src/graphics/presentation/videoOut.h
+@@ -2,6 +2,7 @@
+ #define EMULATOR_INCLUDE_EMULATOR_GRAPHICS_VIDEOOUT_H_
+ 
+ #include "common/common.h"
++#include "common/uniqueFunction.h"
+ // #include "common/subsystems.h"
+ 
+ #include "common/abi.h"
+@@ -37,10 +38,9 @@ public:
+ 	void PrepareFlip(uint64_t request_id, Graphics::CommandBuffer& buffer);
+ 	void CompleteFlip(uint64_t request_id);
+ 	void WaitForSubmitSlot(int handle);
+-	void WaitFlipDone(const uint64_t* label);
+-	// GameFlex: whether a flip of the label's buffer is pending, which WaitFlipDone would wait for
+-	// (CommandThreadProfile).
+-	[[nodiscard]] bool HasPendingFlip(const uint64_t* label);
++	// GameFlex: before_wait runs, outside the queue's lock, only when a flip of the buffer is pending: the flip
++	// may need the work still in the caller's open command buffer.
++	void WaitFlipDone(const uint64_t* label, Common::UniqueFunction<void>&& before_wait);
+ 
+ 	[[nodiscard]] Impl& State() noexcept;
+ 

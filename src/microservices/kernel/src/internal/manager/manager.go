@@ -55,6 +55,9 @@ type Session struct {
 	// (« Reprendre » au lieu de « Jouer » grisé). GameID, lui, est l'identifiant
 	// court du catalogue de la console. Vide : inconnue (launchReference).
 	Reference string `json:"reference,omitempty"`
+	// Pad — la console dont le jeu lit la manette (consoles.PadOf) : la sienne, ou celle qu'un port déclare (Astro
+	// Bot, sur la console des ports : la DualSense). La page dessine celle-là.
+	Pad string `json:"pad,omitempty"`
 }
 
 // launchReference — la référence de bibliothèque d'un lancement : l'identifiant
@@ -240,15 +243,16 @@ func (manager *Manager) sessionFromAdopted(adopted docker.AdoptedSession) *Sessi
 		Game:      adopted.Game,
 		Console:   adopted.Console,
 		Reference: adopted.Reference,
+		Pad:       consoles.PadOf(adopted.Console, adopted.Core),
 	}
 }
 
 // LaunchSettings — le flux qu'un lancement demande, choisi dans CE navigateur
 // (l'engrenage d'un jeu, edge : GameSettings.jsx), et la langue de la page.
 // Tout est revalidé ci-dessous ; une définition ou une cadence absente prend le
-// défaut de toutes les consoles, 540p à 30 (`consoles.DefaultStreamResolution`).
+// défaut de toutes les consoles, 720p à 60 (`consoles.DefaultStreamResolution`).
 type LaunchSettings struct {
-	Resolution string // "360p" | "540p" | "720p" | "1080p", anything else → 540p
+	Resolution string // "360p" | "540p" | "720p" | "1080p", anything else → 720p
 	FPS        int    // 15-60, otherwise → 30
 	Bitrate    int    // kbps, 500-20000 (« Auto » : mesuré par la page), otherwise 0 = le repli de l'encodeur
 	Language   string // the page's language, "fr" | "en" (chantier 21), otherwise ignored
@@ -266,8 +270,8 @@ type LaunchSettings struct {
 // `StreamBitrate`): the resolution becomes the container's RESOLUTION env
 // format (streamex contract, docs/GAMEFLEX.md).
 //
-// LE DÉFAUT EST ICI, ET IL EST LE MÊME POUR TOUTES LES CONSOLES : 540p à 30
-// (le porteur, 2026-11-16). Un libellé inconnu — « 480p », retiré le
+// LE DÉFAUT EST ICI, ET IL EST LE MÊME POUR TOUTES LES CONSOLES : 720p à 60
+// (le porteur, 2026-11-23 ; 540p à 30 depuis le 2026-11-16). Un libellé inconnu — « 480p », retiré le
 // 2026-09-20 — ou absent ne laisse plus le conteneur garder sa géométrie : le
 // rétro partait à sa taille d'époque à 60 images, streamex en 720p à 60.
 func normalizeLaunchSettings(settings LaunchSettings) LaunchSettings {
@@ -338,32 +342,20 @@ func (manager *Manager) Launch(
 		settings.Core = port.Core
 	}
 
-	if console != "keytest" {
-		// Stop the player's previous session BEFORE spawning the new one so
-		// the GPU and the port are free and the "1 session per player" rule
-		// holds. Keytest previews (SeeLayout) are exempt: a test screen must
-		// never kill a real game in progress.
-		manager.stopOwnedSessions(ctx, username)
-	} else {
-		// UN SEUL KEYTEST PAR COMPTE (#601) : la page réutilise le sien, mais
-		// rien ne l'imposait ici — un compte ouvrait autant d'écrans de test
-		// que streamex avait de places, et plus personne ne jouait.
-		manager.stopOwnedKeytests(ctx, username)
-	}
+	// Stop the player's previous session BEFORE spawning the new one so the
+	// GPU and the port are free and the "1 session per player" rule holds.
+	manager.stopOwnedSessions(ctx, username)
 
-	// Per-console container budget (GAMEFLEX_CONSOLE_LIMITS) — the emulators'
+	// Per-console container budget (Settings › Server configuration, config.CurrentLive) — the emulators'
 	// GPU/CPU footprint differs wildly, so each console gets its own cap.
 	// The user's OWN previous session was just stopped above, so a relaunch
 	// never trips its own console's limit.
-	if maximum, limited := manager.config.ConsoleLimits[console]; limited && manager.runningCount(console) >= maximum {
+	if maximum, limited := config.CurrentLive().Limits()[console]; limited && manager.runningCount(console) >= maximum {
 		return nil, ErrConsoleLimitReached
 	}
 
-	if console != "keytest" {
-		// Keytest sessions have no saves (display-only console).
-		if err := manager.dockerHandler.EnsureSaveDir(username, console); err != nil {
-			return nil, fmt.Errorf("create save dir: %w", err)
-		}
+	if err := manager.dockerHandler.EnsureSaveDir(username, console); err != nil {
+		return nil, fmt.Errorf("create save dir: %w", err)
 	}
 
 	// Container names read "streamex-<console>-<nnn>" — `docker ps` alone
@@ -444,6 +436,7 @@ func (manager *Manager) Launch(
 		GameID:    game.ID,
 		Console:   console,
 		Reference: spec.Reference,
+		Pad:       consoles.PadOf(console, settings.Core),
 	}
 
 	manager.sessions.register(session)
@@ -539,11 +532,15 @@ func (manager *Manager) runningCount(console string) int {
 
 // Seats — how many people can hold a pad in a game of this console: the
 // shared registry's count, or the container's ceiling for what it does not
-// know (the KeyTest bench, which wants every pad it can get). ONE definition:
+// know. ONE definition:
 // the queue the child runs and the pool the dashboard reads both take it from
 // here.
 func (manager *Manager) Seats(console string) int {
-	return consoles.SeatsOr(console, manager.config.MaxPlayers)
+	if count := config.CurrentLive().Players[console]; count > 0 {
+		return count
+	}
+
+	return consoles.SeatsOr(console, config.DefaultSeats)
 }
 
 func (manager *Manager) stopOwnedSessions(ctx context.Context, username string) {
@@ -552,19 +549,9 @@ func (manager *Manager) stopOwnedSessions(ctx context.Context, username string) 
 	}
 }
 
-// stopOwnedKeytests — l'écran de test des touches précédent de ce compte, et
-// lui seul : sa partie en cours continue.
-func (manager *Manager) stopOwnedKeytests(ctx context.Context, username string) {
-	for _, sessionID := range manager.sessions.ownedRunning(username) {
-		if session, found := manager.sessions.lookup(sessionID); found && session.Console == "keytest" {
-			manager.stop(ctx, sessionID, "relaunch")
-		}
-	}
-}
-
 // LaunchRetro spawns one retrogaming session container. Same rules as
 // Launch: one PLAYING session per user (a relaunch auto-stops the previous
-// one) and the optional per-console budget from GAMEFLEX_CONSOLE_LIMITS.
+// one) and the optional per-console budget from the server configuration (config.CurrentLive).
 // `settings` — la résolution choisie avant le lancement (#150). Normalisée
 // ICI, par la même fonction que streamex et remote-play : le vocabulaire
 // (« 480p ») et sa traduction en pixels ne vivent qu'à un seul endroit.
@@ -596,7 +583,7 @@ func (manager *Manager) LaunchRetro(
 
 	manager.stopOwnedRetroSessions(ctx, username)
 
-	if maximum, limited := manager.config.ConsoleLimits[consoleID]; limited && manager.runningRetroCount(consoleID) >= maximum {
+	if maximum, limited := config.CurrentLive().Limits()[consoleID]; limited && manager.runningRetroCount(consoleID) >= maximum {
 		return nil, ErrConsoleLimitReached
 	}
 
@@ -721,7 +708,7 @@ func (manager *Manager) RetroStatus(sessionID string) (sessionstatus.Status, boo
 	// cadence n'existe qu'après le premier échantillon de cinq secondes, le
 	// GPU seulement si l'hôte expose un sysfs lisible. Absent veut dire « pas
 	// mesurable », ce qui n'est pas zéro.
-	host := sessionstatus.ServerResources(manager.config.GPU)
+	host := sessionstatus.ServerResources(config.CurrentLive().GPU)
 	out := sessionstatus.Status{
 		StartedAt:    record.StartedAt,
 		Emulator:     status.Emulator,
@@ -899,7 +886,7 @@ func (manager *Manager) StreamexStatus(sessionID string) (sessionstatus.Status, 
 		return sessionstatus.Status{}, false
 	}
 	status.StartedAt = record.StartedAt
-	host := sessionstatus.ServerResources(manager.config.GPU)
+	host := sessionstatus.ServerResources(config.CurrentLive().GPU)
 	status.Host = &host
 	status.ContainerRSSBytes, status.ContainerLimitBytes = manager.dockerHandler.ContainerMemory(
 		context.Background(), record.Container,

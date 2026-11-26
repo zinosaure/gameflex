@@ -4,6 +4,7 @@ go 1.23
 
 require (
 	gameflex/consoles v0.0.0
+	gameflex/ffmpegenc v0.0.0
 	gameflex/gatewayclient v0.0.0
 	gameflex/libretro v0.0.0
 	gameflex/session v0.0.0
@@ -36,3 +37,6 @@ replace gameflex/libretro => /shared/libretro
 // Le GPU que la partie a reçu (son occupation, sa mémoire vidéo) se lit comme
 // dans streamex — chantier 39.
 replace gameflex/sessionstatus => /shared/sessionstatus
+
+// L'encodeur des parties, partagé avec le PC (chantier 70).
+replace gameflex/ffmpegenc => /shared/ffmpegenc

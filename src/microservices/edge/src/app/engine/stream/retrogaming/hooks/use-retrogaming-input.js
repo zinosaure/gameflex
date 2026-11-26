@@ -494,6 +494,8 @@ export function useRetrogamingInput({ screenRef, session, context, t, options = 
 			// appelé qu'avec `true` : geler avant de partir. Le jour où il
 			// faudra dégeler, ce sera `resume()`, pas un booléen de retour.
 			pause: () => setPaused(true),
+			// La reprise : le menu d'une partie refermé (PlayShell.jsx, la pause du menu).
+			resume: () => setPaused(false),
 			...(session.consoleId === "ps1" ? {
 				PS1: {
 					standard: {

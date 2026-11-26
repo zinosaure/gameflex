@@ -10,6 +10,7 @@
 //
 //	{"type":"register","sessionId":"...","platform":"...","media":{"width":..,"height":..,"fps":..,"bitrate":..,"tiers":[{"width":..,"height":..,"fps":..,"bitrate":..},…]}}
 //	{"type":"tiers","tiers":[…]}   — ses paliers ont changé (chantier 58)
+//	{"type":"voice","rights":{"<viewerId>":{"talk":..,"hear":..},…}}   — qui peut parler et entendre (chantier 71)
 //
 // Child → gateway, binary frames:
 //
@@ -120,6 +121,10 @@ type Client struct {
 	closeCh  chan struct{}
 	reconnCh chan struct{}
 
+	// voice — les derniers droits de voix (SendVoice), redits à chaque inscription comme le média : une passerelle
+	// redémarrée ne relaierait sinon plus aucune voix.
+	voice any
+
 	// nilConnDrops — les images jetées faute de connexion à la passerelle,
 	// dites au journal une fois sur 120 : une coupure s'y lit sans le noyer.
 	nilConnDrops int64
@@ -196,13 +201,16 @@ func (c *Client) connect() error {
 	}
 
 	c.mu.Lock()
-	media := c.media
+	media, voice := c.media, c.voice
 	c.mu.Unlock()
 	registration := map[string]any{
 		"type":      "register",
 		"sessionId": c.session,
 		"platform":  c.platform,
 		"media":     media,
+	}
+	if voice != nil {
+		registration["voice"] = voice
 	}
 	var finishSeal func(proof string) (*Seal, error)
 	if c.gatewayKey != nil {
@@ -488,6 +496,19 @@ func (c *Client) SetStream(width, height, fps int) error {
 	c.media.Width, c.media.Height, c.media.FPS = width, height, fps
 	c.mu.Unlock()
 	message, err := json.Marshal(map[string]any{"type": "media", "width": width, "height": height, "fps": fps})
+	if err != nil {
+		return err
+	}
+	return c.sendText(message)
+}
+
+// SendVoice — qui peut parler et entendre (chantier 71) : `rights`, la table que pousse la file de la partie
+// (session.Config.OnVoice, viewerId → {talk, hear}). La passerelle ne relaie que cela ; une réinscription le redit.
+func (c *Client) SendVoice(rights any) error {
+	c.mu.Lock()
+	c.voice = rights
+	c.mu.Unlock()
+	message, err := json.Marshal(map[string]any{"type": "voice", "rights": rights})
 	if err != nil {
 		return err
 	}

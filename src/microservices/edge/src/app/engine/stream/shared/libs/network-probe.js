@@ -117,7 +117,8 @@ const LAUNCH_PROBE_MS = 1000;
 const LAUNCH_PROBE_TIMEOUT_MS = 3000;
 // La part du débit mesuré que prend la vidéo : le reste au son, aux en-têtes, à ce que le réseau perd en route.
 const AUTO_BITRATE_SHARE = 0.6;
-// Les bornes : celles des deux kernels (`consoles.StreamBitrate`) en bas, le haut de l'échelle du panneau en haut.
+// Les bornes : celles des deux kernels (`consoles.StreamBitrate`) en bas ; en haut, le plafond du 1080p, que le rapport
+// des surfaces porte à 26 700 kbps pour un 1440p (autoBitrateCeilingOf).
 const AUTO_BITRATE_MIN = 500;
 const AUTO_BITRATE_MAX = 15000;
 
@@ -129,7 +130,7 @@ const AUTO_BITRATE_MAX = 15000;
 // plafond du 1080p ; en dessous, au rapport des surfaces, la règle des paliers (`consoles.StreamTiers`) : 720p 6 700,
 // 540p 3 800, 360p 1 700. Le même 540p reçoit ainsi le même débit, lancé tel quel ou choisi comme palier.
 const AUTO_BITRATE_REFERENCE_HEIGHT = 1080;
-const STREAM_HEIGHTS = { "360p": 360, "540p": 540, "720p": 720, "1080p": 1080 };
+const STREAM_HEIGHTS = { "360p": 360, "540p": 540, "720p": 720, "1080p": 1080, "1440p": 1440 };
 
 // Le plafond d'« Auto » pour une résolution (« 540p ») ; une résolution inconnue garde celui du 1080p.
 export function autoBitrateCeilingOf(resolution) {

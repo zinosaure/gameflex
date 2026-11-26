@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
 import { getHapticFeedback } from "../../libs/gamepadPreferences.js";
-import { markTouchpadAlone } from "./padOpacity.js";
 
 // LE PAVÉ TACTILE — une surface, pas un bouton.
 //
@@ -39,12 +38,6 @@ const CLICK_HOLD_MS = 80;
 
 // `look` : le dessin du launcher (libs/padLook.jsx, `surface`), celui des boutons ; sans lui, le dessin d'origine.
 export default function TouchpadSurface({ button, callback, isLandscape = false, alone = null, look = null }) {
-	// Seul, il se déclare : le menu de la partie montre la glissière d'opacité (padOpacity.js).
-	useEffect(() => {
-		if (!alone) return undefined;
-		markTouchpadAlone(true);
-		return () => markTouchpadAlone(false);
-	}, [Boolean(alone)]);
 	// Les callbacks sont reconstruits à chaque rendu du pad ; les gestes, eux,
 	// durent plus longtemps qu'un rendu. On lit toujours les plus récents.
 	const callbackRef = useRef(callback);

@@ -74,6 +74,11 @@ type Player struct {
 type Participant struct {
 	SocketID string
 	Username string // "" — anonymous watcher
+	// LA VOIX DE CET ONGLET (chantier 71, voice.go) : son micro ouvert, et s'il entend les autres. Par onglet, pas par
+	// compte : c'est l'appareil qui a le micro et le haut-parleur. Hear vaut vrai à l'ouverture (le porteur,
+	// 2026-11-23) ; Mic, jamais : on ne parle pas sans l'avoir choisi.
+	Mic  bool
+	Hear bool
 }
 
 // Session is the whole truth about one running game.
@@ -110,6 +115,9 @@ type Session struct {
 	// (#504). La page le dit, au lieu de « la session est terminée » — ou,
 	// avant, d'une image figée sans un mot.
 	GameExited bool
+	// SpectatorsTalk — le propriétaire a ouvert la conversation aux spectateurs (chantier 71, voice.go) : ils ont alors
+	// le micro et le son, comme les joueurs. Fermée au lancement.
+	SpectatorsTalk bool
 }
 
 var (
@@ -156,6 +164,13 @@ var (
 	// and naming somebody else's let one account seat another's tab under
 	// its own name (found 2026-10-08).
 	ErrNotYourTab = errors.New("that socket belongs to another user")
+	// ErrVoiceClosed — a spectator's tab, and the owner has not opened the conversation to spectators (or a tab
+	// without an account).
+	ErrVoiceClosed = errors.New("the conversation is not open to spectators")
+	// ErrVoiceAlone — nobody else here could hear this microphone.
+	ErrVoiceAlone = errors.New("nobody else is in the conversation")
+	// ErrVoiceFull — VoiceSlots microphones are already open.
+	ErrVoiceFull = errors.New("too many open microphones")
 )
 
 // New builds a session with its owner NOT yet in the queue — the owner joins

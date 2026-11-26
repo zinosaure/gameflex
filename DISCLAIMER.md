@@ -54,8 +54,7 @@ consoles come as **streamex packages**, published in the
 [gameflex-streamex](https://github.com/zinosaure/gameflex-streamex) repository: streamex's files
 for a console, with that console's emulator inside, already built, in a version tested with
 GameFlex. Your server installs them from **Settings › Consoles**, on each console's page. Retro consoles' libretro cores
-come from the libretro buildbot. You can also bring an emulator yourself, from a federated server
-or a mirror.
+come from the libretro buildbot. You can also bring an emulator yourself, from a federated server.
 
 Each emulator keeps its own license and terms, and its authors' copyright; the licence notices list
 each one with its official repository. Emulation projects are named in the documentation to tell you
@@ -70,10 +69,6 @@ their problems to GameFlex, not to the upstream projects.
 **Remote Play** talks to a PlayStation console you own, registered with your own account, the way
 other independent Remote Play clients do. Sony neither makes nor supports it, and may change what
 it relies on at any time.
-
-The mirror mentioned in the [README](README.md) is not part of the GameFlex project. There is no
-guarantee that it stays online or unchanged, and you remain responsible for what you download from
-it.
 
 ## Network exposure
 

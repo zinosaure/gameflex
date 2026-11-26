@@ -33,14 +33,20 @@ func TestNameSavesUsesTheGameOfTheLibrary(t *testing.T) {
 		}
 
 		return []LibraryGame{
-			{Path: here, Reference: "ref-astro", Title: "Astro Bot"},
-			{Path: alsoOnDisk, Reference: "ref-astro-disk", Title: "ASTRO BOT (copie)", Disk: "Gamebox"},
-			{Path: onDisk, Reference: "ref-kena", Title: "Kena", Disk: "Gamebox"},
+			{Path: here, RelPath: "ps5/Astro Bot", Reference: "ref-astro", Title: "Astro Bot"},
+			{Path: alsoOnDisk, RelPath: "ps5/ASTRO BOT (copie)", Reference: "ref-astro-disk", Title: "ASTRO BOT (copie)", Disk: "Gamebox"},
+			{Path: onDisk, RelPath: "ps5/Kena", Reference: "ref-kena", Title: "Kena", Disk: "Gamebox"},
 			{Path: untitled, Reference: "ref-untitled"},
 		}
 	}
 
-	named := NameSaves([]saves.Game{
+	tree := t.TempDir()
+	// Une sauvegarde dont le jeu est parti, nommée par un listage d'avant.
+	if err := saves.Remember(tree, saves.Named{Console: "ps5", Save: "PPSA99999",
+		Game: saves.KnownGame{Title: "Returnal", ID: "ref-returnal", Path: "ps5/Returnal"}}); err != nil {
+		t.Fatal(err)
+	}
+	named := NameSaves(tree, []saves.Game{
 		{Console: "ps5", ID: "PPSA12345"},
 		{Console: "ps5", ID: "PPSA00042", Title: "Kena: Bridge of Spirits"},
 		{Console: "ps5", ID: "PPSA00077"},
@@ -50,10 +56,11 @@ func TestNameSavesUsesTheGameOfTheLibrary(t *testing.T) {
 	}, gamesOf)
 
 	want := []saves.Game{
-		{Console: "ps5", ID: "PPSA12345", Title: "Astro Bot", Reference: "ref-astro"},
-		{Console: "ps5", ID: "PPSA00042", Title: "Kena", Reference: "ref-kena", Disk: "Gamebox"},
+		{Console: "ps5", ID: "PPSA12345", Title: "Astro Bot", Reference: "ref-astro", Path: "ps5/Astro Bot"},
+		{Console: "ps5", ID: "PPSA00042", Title: "Kena", Reference: "ref-kena", Disk: "Gamebox", Path: "ps5/Kena"},
 		{Console: "ps5", ID: "PPSA00077"},
-		{Console: "ps5", ID: "PPSA99999"},
+		// Le jeu est parti : son nom et son chemin restent, pas sa référence (sa fiche n'existe plus).
+		{Console: "ps5", ID: "PPSA99999", Title: "Returnal", Path: "ps5/Returnal"},
 		{Console: "wiiu", ID: "10101e00", Title: "New SUPER MARIO BROS. U"},
 		{Console: "xbox", ID: saves.XboxDisk},
 	}
@@ -64,5 +71,9 @@ func TestNameSavesUsesTheGameOfTheLibrary(t *testing.T) {
 	}
 	if asked["ps5"] != 1 || asked["wiiu"] != 1 || asked["xbox"] != 0 {
 		t.Fatalf("consoles demandées : %v", asked)
+	}
+	// CE QUE LA BIBLIOTHÈQUE A NOMMÉ EST GARDÉ (chantier 76).
+	if game, _ := saves.Known(tree)("ps5", "PPSA00042"); game != (saves.KnownGame{Title: "Kena", ID: "ref-kena", Path: "ps5/Kena"}) {
+		t.Fatalf("titles.json : %+v", game)
 	}
 }

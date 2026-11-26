@@ -17,11 +17,13 @@ import { applyLayout } from "./libs/layout.js";
 import Login from "./screens/access/Login.jsx";
 import Join from "./screens/access/Join.jsx";
 import Invite from "./screens/access/Invite.jsx";
+import Cast from "./screens/access/Cast.jsx";
 import Platforms from "./screens/library/Platforms.jsx";
 import Library from "./screens/library/Library.jsx";
 import Live from "./screens/live/Live.jsx";
 import Settings from "./settings/Settings.jsx";
 import Play from "./screens/play/Play.jsx";
+import DesktopConsole from "./screens/desktop/routes.jsx";
 import { Toast } from "./shell/Shell.jsx";
 import { lastTabPath } from "./libs/tabs.js";
 import Skeleton from "./skeleton/skeleton.js";
@@ -46,6 +48,7 @@ const CONSOLE_TABS = ["retrogaming", "streamex", "remoteplay"];
 //                                           partagé, le récepteur Chromecast) — sans connexion, on la regarde seulement
 //   /join/<code>                            le lien d'un compte (Join.jsx, chantier 55) : PUBLIQUE, avant la porte de connexion
 //   /invite/<code>                          le lien d'une invitation de fédération (Invite.jsx, chantier 56) : PUBLIQUE, avant la porte
+//   /cast/<session>                         envoyer une partie au téléviseur depuis Chrome (Cast.jsx, #124) : PUBLIQUE, avant la porte
 //   ailleurs                                le dernier onglet ouvert dans ce navigateur (Retrogaming d'abord)
 
 function Screens() {
@@ -56,6 +59,7 @@ function Screens() {
     const joining = useMatch("/join/:code");
     const inviting = useMatch("/invite/:code");
     const watching = useMatch("/play/:sessionId");
+    const casting = useMatch("/cast/:sessionId");
 
     // Le lien d'un compte s'ouvre connecté ou non (chantier 55) : la personne n'a pas encore de mot de passe.
     if (joining) {
@@ -65,6 +69,15 @@ function Screens() {
     // Le lien d'une invitation de fédération (chantier 56, A3) : il ne se consomme pas ici, la page dit où le coller.
     if (inviting) {
         return <Invite />;
+    }
+
+    // Envoyer une partie au téléviseur (#124) : la fenêtre du PC ouvre cette page dans Chrome, qui n'y est pas connecté.
+    if (casting) {
+        return (
+            <Routes>
+                <Route path="/cast/:sessionId" element={<Cast />} />
+            </Routes>
+        );
     }
 
     if (status === "loading") {
@@ -120,6 +133,23 @@ function App() {
 
     // SKELETON (sa copie, app/skeleton/skeleton.js) autour de tout : ses fenêtres de confirmation
     // (`context.modal.open`), partout dans le launcher (chantier 53).
+    // LA CONSOLE DU PC (chantier 70, screens/desktop/routes.jsx) : servie par le lanceur à la machine seule, sans compte
+    // ni session — l'écran d'accueil de l'APK, en pages d'edge.
+    if (window.location.pathname.startsWith("/desktop")) {
+        return (
+            <BrowserRouter>
+                <Skeleton>
+                    <div id="app">
+                        <Routes>
+                            <Route path="/desktop/*" element={<DesktopConsole />} />
+                        </Routes>
+                        <Toast />
+                    </div>
+                </Skeleton>
+            </BrowserRouter>
+        );
+    }
+
     return (
         <BrowserRouter>
             <Skeleton>

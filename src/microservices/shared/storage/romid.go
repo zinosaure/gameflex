@@ -28,7 +28,7 @@ func RomID(consoleID, entry string) string {
 
 // IsRomID — la référence a-t-elle la forme d'un identifiant de jeu ? Ce qui ne
 // l'a pas n'est pas un jeu de la bibliothèque : un identifiant fédéré
-// (« srv3:… »), un chemin, ou ce qu'un hôte démarre sans fichier (keytest).
+// (« srv3:… »), ou un chemin.
 func IsRomID(reference string) bool {
 	_, err := uuid.Parse(reference)
 

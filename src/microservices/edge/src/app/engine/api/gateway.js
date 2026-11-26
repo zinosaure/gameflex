@@ -33,7 +33,8 @@ const streamsBase = (origin) => (origin ? `${origin}/api/v1/gateway-webrtc/strea
 // de son écran et la page de jeu la jouent ensemble) ; `resume` — le
 // spectateur que celui-ci remplace dans la même page : une négociation
 // reprise ne la rejoue pas.
-export async function gatewayViewerOffer(sessionId, hasInput, username, origin = null, { quality = null, preview = false, launch = null, resume = null } = {}) {
+// `voice` — la page de jeu négocie la voix (chantier 71) : la piste de son micro et celles des voix des autres.
+export async function gatewayViewerOffer(sessionId, hasInput, username, origin = null, { quality = null, preview = false, launch = null, resume = null, voice = false } = {}) {
     try {
         const res = await fetch(`${streamsBase(origin)}/${encodeURIComponent(sessionId)}/viewer-offer`, {
             method: "POST",
@@ -48,6 +49,7 @@ export async function gatewayViewerOffer(sessionId, hasInput, username, origin =
                 ...(preview ? { preview: true } : {}),
                 ...(launch ? { launch } : {}),
                 ...(resume ? { resume } : {}),
+                ...(voice ? { voice: true } : {}),
             }),
         });
 

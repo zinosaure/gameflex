@@ -82,6 +82,17 @@ async function withReceivedSize(peer, quality) {
     return { ...quality, streams: quality.streams.map((stream, index) => (index === quality.current ? filled : stream)) };
 }
 
+// LES PISTES DE VOIX que la passerelle prévoit dans chaque page de jeu (gatewaystreams.VoiceSlots), `voice-0` à
+// `voice-7` ; voiceSlotOf rend le numéro de celle d'un événement `track`, null pour le jeu.
+const VOICE_SLOTS = 8;
+
+function voiceSlotOf(event) {
+    const match = /^voice-(\d+)$/.exec(event.streams?.[0]?.id || "");
+    const slot = match ? Number(match[1]) : null;
+
+    return slot !== null && slot < VOICE_SLOTS ? slot : null;
+}
+
 const GatewayWebRTC = forwardRef(function GatewayWebRTC(
     {
         sessionId,
@@ -152,11 +163,20 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
         // que le démarrage se compte en minutes (Box64 au téléphone, #521).
         // Une passerelle plus ancienne n'en dit rien.
         onIntro = null,
+        // LA VOIX (chantier 71, gatewaystreams/voice.go) : `voices`, la page de jeu négocie la voix — ses pistes de voix
+        // ont chacune leur <audio> ; `voicesMuted`, « Entendre les autres » coupé chez elle (la passerelle ne les lui
+        // envoie plus non plus).
+        voices = false,
+        voicesMuted = false,
     },
     ref,
 ) {
     const videoRef = useRef(null);
     const audioRef = useRef(null);
+    // La piste du micro (micTransceiverOf), le micro qu'on y branche (setMicrophone), et les <audio> des voix.
+    const micTransceiverRef = useRef(null);
+    const micTrackRef = useRef(null);
+    const voiceElementsRef = useRef([]);
     const pcRef = useRef(null);
     // Keyed by DataChannel label — "input" is the one every platform uses
     // today; remote-play also opens its own "keepalive" ping/pong channel
@@ -349,7 +369,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
     // unlike retro/streamex, which always know it up front and never pass
     // this). Falls back to the prop, so retro/streamex are unaffected.
     const createViewer = useCallback(
-        async ({ hasInput = false, username, sessionId: sessionIdOverride, quality = null, preview = false, launch = null } = {}) => {
+        async ({ hasInput = false, username, sessionId: sessionIdOverride, quality = null, preview = false, launch = null, voice = false } = {}) => {
             const effectiveSessionId = sessionIdOverride ?? sessionId;
             // One component instance owns ONE viewer at a time: a platform
             // reconnect calls createViewer again on the SAME mounted
@@ -376,7 +396,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
                 // gatewayViewerDelete).
                 viewerHostRef.current = hostRef.current?.origin || streamHostOrigin();
                 gateway = await gatewayViewerOffer(effectiveSessionId, !!hasInput, username, hostRef.current?.origin || null, {
-                    quality, preview, launch, resume: lastViewerIdRef.current,
+                    quality, preview, launch, resume: lastViewerIdRef.current, voice,
                 });
             } catch {
                 gateway = null;
@@ -426,6 +446,18 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
             // own jitter buffer can hold video back by a couple of
             // seconds before settling.
             applyReceiverLatencyHints(event.receiver);
+
+            // UNE VOIX (chantier 71) : sa piste `voice-N` sur son propre <audio>, jamais mêlée au son du jeu.
+            const voiceSlot = voiceSlotOf(event);
+            if (voiceSlot !== null) {
+                const element = voiceElementsRef.current[voiceSlot];
+                if (element) {
+                    element.srcObject = new MediaStream([event.track]);
+                    element.play().catch(() => { });
+                }
+
+                return;
+            }
 
             if (event.track.kind === "video") {
                 const video = videoRef.current;
@@ -960,7 +992,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
         // LA NÉGOCIATION SUR UN SEUL SOCKET — voir answerGatewayOffer. Le
         // socket se garde le temps qu'elle dure, pour être fermé si la page
         // s'en va avant.
-        await answerGatewayOffer(pc, gateway, hostRef.current?.origin || null, (socket) => {
+        const negotiated = await answerGatewayOffer(pc, gateway, hostRef.current?.origin || null, (socket) => {
             signalSocketRef.current?.close();
             signalSocketRef.current = socket;
             socket.addEventListener("close", () => {
@@ -969,6 +1001,11 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
                 }
             });
         });
+        // LE MICRO SURVIT À UNE NÉGOCIATION REPRISE : déjà ouvert, il se rebranche sur la nouvelle piste.
+        micTransceiverRef.current = negotiated?.mic ?? null;
+        if (micTransceiverRef.current && micTrackRef.current) {
+            micTransceiverRef.current.sender.replaceTrack(micTrackRef.current).catch(() => { });
+        }
 
         return true;
     }, []);
@@ -1038,6 +1075,20 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
     // if there's no live peer connection yet.
     const getRawStats = useCallback(() => pcRef.current?.getStats() ?? null, []);
 
+    // setMicrophone — le micro de la page sur sa piste (chantier 71) : une piste de getUserMedia, ou null pour le couper.
+    // Sans renégocier (`replaceTrack`). Rend faux quand la page ne négocie pas la voix.
+    const setMicrophone = useCallback(async (track) => {
+        micTrackRef.current = track || null;
+        const transceiver = micTransceiverRef.current;
+
+        if (!transceiver) {
+            return false;
+        }
+        await transceiver.sender.replaceTrack(track || null);
+
+        return true;
+    }, []);
+
     useImperativeHandle(
         ref,
         () => ({
@@ -1049,6 +1100,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
             renegotiate,
             getRawStats,
             setQuality,
+            setMicrophone,
             // Real DOM access for callers that need actual browser APIs a
             // data callback can't provide (e.g. Blackscreen.jsx's
             // usePictureInPictureOnHide calling video.requestPictureInPicture()
@@ -1071,7 +1123,7 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
                 return pcRef.current?.iceConnectionState ?? null;
             },
         }),
-        [createViewer, attach, cleanup, sendMessage, setStatsMonitoring, renegotiate, getRawStats, setQuality],
+        [createViewer, attach, cleanup, sendMessage, setStatsMonitoring, renegotiate, getRawStats, setQuality, setMicrophone],
     );
 
     return (
@@ -1118,6 +1170,9 @@ const GatewayWebRTC = forwardRef(function GatewayWebRTC(
                 }}
             />
             {audioRef && <audio ref={audioRef} autoPlay muted={muted} />}
+            {voices && Array.from({ length: VOICE_SLOTS }, (_, slot) => (
+                <audio key={`voice-${slot}`} ref={(element) => { voiceElementsRef.current[slot] = element; }} autoPlay muted={voicesMuted} data-voice={slot} />
+            ))}
             {children}
         </div>
     );

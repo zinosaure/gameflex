@@ -67,10 +67,11 @@ export function hostRefusal(console, rom, capabilities, isAdmin) {
 }
 export const useData = () => useContext(DataContext);
 
-// UN SERVEUR QUI NE LANCE RIEN — gameflex-federation (le porteur, 2026-11-18 : « les jeux de Gameflex-Federation ne
-// doivent apparaître que dans catalogue/jeux ») : son listing le dit (`server.catalogOnly`). Ses jeux se téléchargent,
-// depuis le catalogue ; aucune bibliothèque ne les montre.
-export const catalogOnly = (server) => Boolean(server?.listing?.server?.catalogOnly);
+// UN JEU QU'UN AMI TIENT D'UNE DE SES RESSOURCES EXTERNES (Samba, WebDAV, kDrive, FTP, SFTP ; `#808`) : son serveur ne le
+// lance pas, il ne fait que le prêter — la règle des jeux de gameflex-federation (le porteur, 2026-11-18 : « ne doivent
+// apparaître que dans catalogue/jeux »), désormais intégré à GameFlex. Son listing le dit par ses sources. Il se
+// télécharge, depuis le catalogue ; aucune bibliothèque ne le montre.
+export const fromResource = (rom) => rom?.peer != null && Boolean(rom.sources?.length);
 
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
@@ -285,8 +286,10 @@ export function DataProvider({ children, idle = false, remote = false }) {
             cancelled = true;
         };
     }, [idle, user]);
-    useEffect(() => (idle || remote ? undefined : subscribeInvites((invite) => setInvites((previous) => [...previous, invite]))), [idle, remote]);
-    const dismissInvite = useCallback((id) => setInvites((previous) => previous.filter((invite) => invite.id !== id)), []);
+    // LES INVITATIONS REÇUES, et leur réponse (`state` : « watched », « ignored » ; `endedAt`) : répondue, une invitation
+    // reste un moment dans les notifications d'En direct (RecentNotices), puis part d'elle-même.
+    useEffect(() => (idle || remote ? undefined : subscribeInvites((invite) => setInvites((previous) => [...previous, { ...invite, at: Date.now() }]))), [idle, remote]);
+    const answerInvite = useCallback((id, state) => setInvites((previous) => previous.map((invite) => (invite.id === id && !invite.endedAt ? { ...invite, state, endedAt: Date.now() } : invite))), []);
 
     // LES JEUX « ICI » D'UNE CONSOLE : la bibliothèque ET chaque disque interne
     // qui en a (chantier 23), réunis — une même référence n'apparaît qu'une
@@ -341,7 +344,7 @@ export function DataProvider({ children, idle = false, remote = false }) {
     }, []);
 
     // LA LISTE GARDÉE D'UNE CONSOLE OUBLIÉE : un changement qui touche tous ses jeux à la fois (le statut de toute la
-    // console, settings/server/consoles/Consoles.jsx) — la prochaine lecture la redemande au serveur.
+    // console, settings/consoles/Status.jsx) — la prochaine lecture la redemande au serveur.
     const forgetHere = useCallback((consoleId) => {
         lists.current.delete(consoleId);
     }, []);
@@ -364,9 +367,8 @@ export function DataProvider({ children, idle = false, remote = false }) {
     }, [idle, user?.id]);
 
     // LES SERVEURS FÉDÉRÉS DONT CE COMPTE VOIT LES JEUX : tous, moins ceux qu'il a éteints — la bibliothèque (Library.jsx)
-    // et ses nombres (libraryCountOf) ne lisent que ceux-là ; les Réglages des consoles lisent toujours `servers`. MOINS
-    // CEUX QUI NE LANCENT RIEN (gameflex-federation, `catalogOnly`) : leurs jeux ne sont que dans le catalogue.
-    const shownServers = useMemo(() => servers.filter((server) => !hiddenServers.has(String(server.id)) && !catalogOnly(server)),
+    // et ses nombres (libraryCountOf) ne lisent que ceux-là ; les Réglages des consoles lisent toujours `servers`.
+    const shownServers = useMemo(() => servers.filter((server) => !hiddenServers.has(String(server.id))),
         [servers, hiddenServers]);
 
     // LE NOMBRE DE JEUX D'ICI d'une console (besoin B4) : `GET /retrogaming/consoles`, la
@@ -387,7 +389,8 @@ export function DataProvider({ children, idle = false, remote = false }) {
     const libraryCountOf = useCallback((consoleId) => {
         const here = countOf(consoleId);
 
-        return here === null ? null : shownServers.reduce((total, server) => total + (server.listing?.consoles?.[consoleId] || 0), here);
+        // Moins ceux qu'il ne fait que prêter (ses ressources externes, `lent`) : la bibliothèque ne les montre pas.
+        return here === null ? null : shownServers.reduce((total, server) => total + Math.max(0, (server.listing?.consoles?.[consoleId] || 0) - (server.listing?.lent?.[consoleId] || 0)), here);
     }, [countOf, shownServers]);
 
     const refreshCounts = useCallback(() => {
@@ -453,10 +456,10 @@ export function DataProvider({ children, idle = false, remote = false }) {
     }, []);
 
     const value = useMemo(() => ({
-        consoles, capabilities, disks, servers, serversRead, refreshServers, devices, refreshDevices, sessions, invites, dismissInvite, loadHere, patchHere, forgetHere, countOf, libraryCountOf,
+        consoles, capabilities, disks, servers, serversRead, refreshServers, devices, refreshDevices, sessions, invites, answerInvite, loadHere, patchHere, forgetHere, countOf, libraryCountOf,
         refreshCounts, paramsConsoles, showEmpty, setShowEmpty, shownServers, hiddenServers, setServerShown, markConsoleDisabled,
         ownSessions: sessions.filter((session) => isOwnSession(session, user?.username)),
-    }), [consoles, capabilities, disks, servers, serversRead, refreshServers, devices, refreshDevices, sessions, invites, dismissInvite, loadHere, patchHere, forgetHere, countOf, libraryCountOf,
+    }), [consoles, capabilities, disks, servers, serversRead, refreshServers, devices, refreshDevices, sessions, invites, answerInvite, loadHere, patchHere, forgetHere, countOf, libraryCountOf,
         refreshCounts, paramsConsoles, showEmpty, setShowEmpty, shownServers, hiddenServers, setServerShown, markConsoleDisabled, user]);
 
     return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

@@ -27,19 +27,26 @@ type userResponse struct {
 	// `retro` tout le rétro, puis des consoles une à une ; vide, aucune. Un
 	// administrateur a toujours `*`. Voir gameflex/consoles, grants.go.
 	Consoles []string `json:"consoles"`
-	// Token — son jeton de fédération, pour la liste de l'administrateur
-	// seulement (account_tokens.go).
+	// Token — l'état de son jeton de fédération, pour l'administrateur (activé, échéance, usages) — JAMAIS sa valeur :
+	// le jeton est à son propriétaire seul (le porteur, 2026-11-20 : « ça ne sert à rien l'accès au token »).
 	Token *accountTokenResponse `json:"token,omitempty"`
 	// PasswordSetAt — quand le membre a choisi son mot de passe (chantier 55) ;
 	// null, il attend son lien.
 	PasswordSetAt any `json:"password_set_at"`
+	// LastLogin — sa dernière connexion par mot de passe ou par son lien (la fiche d'un membre, « Infos ») ; null, jamais.
+	LastLogin any `json:"last_login"`
 	// Invitation — son lien vivant, pour l'administrateur seulement
 	// (member_links.go) ; absent, il n'en a pas.
 	Invitation *memberLinkResponse `json:"invitation,omitempty"`
+	// MfaRequired — l'administrateur lui impose la double authentification (chantier 80) ; MfaEnabled — il l'a
+	// activée. La règle de tout le serveur n'est pas ici : GET /auth/mfa la dit à son titulaire.
+	MfaRequired bool `json:"mfa_required"`
+	MfaEnabled  bool `json:"mfa_enabled"`
 }
 
 // userColumns — les colonnes d'un compte, dans l'ordre que scanUser lit.
-const userColumns = "id, username, display_name, role_level, created_at, created_by_id, consoles, password_set_at"
+const userColumns = "id, username, display_name, role_level, created_at, created_by_id, consoles, password_set_at, last_login, " +
+	"mfa_required, EXISTS (SELECT 1 FROM user_mfa WHERE user_mfa.user_id = users.id AND user_mfa.enabled_at IS NOT NULL)"
 
 type historyResponse struct {
 	ID          int64  `json:"id"`
@@ -131,14 +138,16 @@ func scanUser(rows interface{ Scan(...any) error }) (userResponse, error) {
 	var createdAt sql.NullString
 	var createdBy sql.NullInt64
 	var grants string
-	var passwordSetAt sql.NullString
-	err := rows.Scan(&user.ID, &user.Username, &user.DisplayName, &user.RoleLevel, &createdAt, &createdBy, &grants, &passwordSetAt)
+	var passwordSetAt, lastLogin sql.NullString
+	err := rows.Scan(&user.ID, &user.Username, &user.DisplayName, &user.RoleLevel, &createdAt, &createdBy, &grants, &passwordSetAt, &lastLogin,
+		&user.MfaRequired, &user.MfaEnabled)
 	if err != nil {
 		return user, err
 	}
 	user.Consoles = effectiveGrants(user.RoleLevel, grants)
 	user.CreatedAt = isoDatetime(createdAt)
 	user.PasswordSetAt = isoDatetime(passwordSetAt)
+	user.LastLogin = isoDatetime(lastLogin)
 	if createdBy.Valid {
 		user.CreatedByID = createdBy.Int64
 	}

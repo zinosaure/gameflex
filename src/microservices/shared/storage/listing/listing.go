@@ -100,9 +100,9 @@ type Item struct {
 	// ainsi, avant de lancer, qu'un jeu d'un ami ne peut pas tourner chez lui.
 	Engine string `json:"engine,omitempty"`
 	// Sources — les endroits d'où le serveur peut servir cet élément, du
-	// meilleur au moins bon (chantier 61 : gameflex-federation rassemble
-	// plusieurs partages, et un même élément peut être dans plusieurs).
-	// Absent : une seule source, le serveur lui-même. Un appareil prend la
+	// meilleur au moins bon : les ressources externes du serveur (`#808`,
+	// Samba, WebDAV, kDrive, FTP, SFTP), un même élément pouvant être dans
+	// plusieurs. Absent : le serveur lui-même — sa bibliothèque, ses disques. Un appareil prend la
 	// première, ou en demande une autre (`?source=<id>`).
 	Sources []Source `json:"sources,omitempty"`
 }
@@ -169,6 +169,9 @@ type Header struct {
 type SectionInfo struct {
 	UpdatedAt time.Time      `json:"updatedAt"`
 	Consoles  map[string]int `json:"consoles"`
+	// Lent — parmi eux, ceux que le serveur prête sans les lancer : les jeux de ses ressources externes (`#808`). La
+	// bibliothèque d'un ami ne les montre pas (le catalogue si) : son bouton « Bibliothèque (N) » les retire du compte.
+	Lent map[string]int `json:"lent,omitempty"`
 }
 
 // Server — le GameFlex qui sert un listing.
@@ -176,10 +179,6 @@ type Server struct {
 	Hostname string `json:"hostname"`
 	Version  string `json:"version,omitempty"`
 	Commit   string `json:"commit,omitempty"`
-	// CatalogOnly — ce serveur ne lance rien : gameflex-federation (le porteur, 2026-11-18 : « les jeux de
-	// Gameflex-Federation ne doivent apparaître que dans catalogue/jeux »). Ses jeux se téléchargent, ils ne se jouent
-	// pas chez lui : les bibliothèques ne les montrent pas, le catalogue si.
-	CatalogOnly bool `json:"catalogOnly,omitempty"`
 }
 
 // Les natures de source qui ne sont pas un genre de ressource.

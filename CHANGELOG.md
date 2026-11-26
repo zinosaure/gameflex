@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-26
+
+### Added
+
+- **Two-step verification**: in **Settings › Profile › Two-step verification**, turn on a six-digit code from an
+  authenticator app (Google Authenticator, Aegis, 1Password…) on top of your password, with ten single-use recovery
+  codes. An administrator can require it for a member (**Members**, the member's page) or for every account of the
+  server (**Members › Security**), and can reset it for a member who lost their phone. Tokens, pairing codes and
+  federation are not affected. Its key lives in a new `keys` folder of the library, apart from the databases: add the
+  `keys:/keys` volume to `gameflex-credential` when you update from the Docker Compose file.
+- **GameFlex on a Linux PC, without Docker**: `GameFlex-x86_64.AppImage`, in each Release. It opens a window on its
+  console, like the home screen of the Android app: start or stop the server, its port, the GameFlex folder, other
+  game disks, the root password, **Invite**, **Join a server** (another GameFlex in the same window), and **Update**
+  (it downloads the new AppImage, checks it and restarts on it; tools such as AppImageUpdate can also update it by
+  difference). Closing the window stops GameFlex; `--no-window` runs it as a server without a screen. Retro consoles
+  play on a PC, and so do the recent consoles: **PlayStation 3, 4 and 5, Xbox, Xbox 360, Wii U, Switch and
+  Switch 2**. Install their emulator from **Settings › Emulators** (the AppImage carries none); they run on the PC's
+  own graphics driver, with sound. Without `/dev/uinput`, the Xbox 360 has no controller on a PC yet, and a PS4 game
+  must be unpacked (a `.pkg` is not yet).
+- **The closed binaries in each Release**: the video gateway, Remote Play, streamex and the PC program, as
+  `*-x86_64.tar.gz` archives under the binary license, so that anyone can build their own AppImage with
+  `tools/appimage/` of this repository.
+- **The interface in each Release**: `gameflex-interface.zip`, the web interface of the version, to change it and load
+  it back in the Android app (**Install from a .zip file**). **Back to the APK's interface** downloads the one that
+  matches the app; the app keeps its own copy.
+- **External resources**: **Settings › Internal/external resources** reads the games of Samba, WebDAV, kDrive, FTP and SFTP shares; they
+  join the catalog and can be downloaded. This replaces the separate `gameflex-federation` service (see Removed).
+- **Voice chat while playing**: in the game menu, **My microphone** and **Hear the others**; the owner decides whether
+  spectators may talk.
+- **Send to the TV, on every platform**: the ID of your Google Cast receiver is set in **Settings › Google Cast**,
+  with the receiver address to register at Google (it is no longer a build-time variable:
+  `GAMEFLEX_GOOGLECAST_APPLICATION_ID` is not read anymore). Games offer **Send to the TV** from Chrome on any server,
+  from the Android app, and from the PC window, which opens the cast page in your browser.
+- **1440p and 120 fps streams**, in a console's stream settings. Remote Play stays within the console's own modes
+  (up to 1080p and 60 fps). RPCS3 gets a 200 % resolution scale and a 120 frame limit, KytyPS5 a 1440p render height.
+- **Controller**: the d-pad moves through the header too (left and right), next to L2 and R2. The game menu opens with
+  **Home** for a retro game (the game pauses while the menu is open), and with **L2 + R2 + Home held for two
+  seconds** for the other games, where Home belongs to the game.
+- **The clock** shows on every device, next to the settings button.
+
+### Changed
+
+- **New settings pages**: every section says what it is for and has its colour, a form saves with its own button and
+  answers in a dialog, long lists can be searched and paged, and every page has its guides. The texts were rewritten
+  to say what each setting does.
+- **Notifications**: the last ten on **Live** and the last five in the game menu; a request (a controller, an
+  invitation) is answered right on it, and a finished notification goes away by itself. Spectators come and go
+  silently.
+- **The game menu closes after an action** (a switch, a save state, a disc, the video quality…), except inviting, the
+  QR code and asking a player for their controller.
+- **Default stream: 720p at 60 fps** for every console.
+- **Server configuration moves into the settings**: the server name, the players and the limits of each recent console,
+  and the GPU are set in **Settings › Server configuration**. `GAMEFLEX_SERVER_NAME`, `GAMEFLEX_MAX_PLAYERS`,
+  `GAMEFLEX_CONSOLE_LIMITS` and `GAMEFLEX_GPU` are not read anymore: set them again there after updating.
+- **Account tokens**: each member turns on their own token.
+- **KytyPS5** follows its upstream of 2026-11-22, with GameFlex's changes on top.
+
+### Removed
+
+- **The `gameflex-federation` service**, its volume and its `GAMEFLEX_FEDERATION_ROOT_*` variables: external resources
+  are part of GameFlex now. Remove the service from your Docker Compose file when you update.
+- **Zelda 64: Recompiled** and the page that created a port.
+- **The mirror** (`GAMEFLEX_MIRROR_URL`): emulators, BIOS and patches come from their official sources, a federated
+  server or your own files.
+
 ## [0.17.0] - 2026-11-20
 
 ### Added
@@ -708,7 +773,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **PlayStation 5 games run much faster**, with our own build of KytyPS5 (offered by the
-  [mirror](README.md#the-mirror), in **Settings › Emulators**): its command thread waits for the
+  mirror, in **Settings › Emulators**): its command thread waits for the
   graphics processor far less and does less work per draw, and the shaders it translates run
   faster. On a Radeon 780M, *Astro Bot*'s Celestial Garden went from about 5 to about 20 frames per
   second, *Clair Obscur: Expedition 33* reaches 20 (with its own settings, from the mirror), and
@@ -749,7 +814,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1080p by default instead of 4K. The PlayStation 4 gets *Render height* too.
 - **A game's own settings**, for PlayStation 4 and 5 games: `patches/<console>/<game ID>/settings.json`,
   in the library or on an internal disk, applied at launch over the console's settings and those
-  of the game's engine. The [mirror](README.md#the-mirror) has the ones we use.
+  of the game's engine. The mirror has the ones we use.
 - **The Performance panel in sections** (session, gateway, emulator, machine), with the game's
   resolution and the emulator's, and the emulator's frame rate next to the gateway's.
 - **The game page in portrait**: GameFlex under the video, the controller above the menu, and a
@@ -765,7 +830,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Xenia Canary `57cddf7`, on the server and in the Android app (Xenia: the server only). Download
   them from **Settings › Emulators**. GameFlex's own builds of KytyPS5 and shadPS4, with the
   patches this version relies on (the PlayStation 5 settings above among them), are on the
-  [mirror](README.md#the-mirror).
+  mirror.
 - **PlayStation 5 games run much faster** with GameFlex's build of KytyPS5: the game's memory is
   shared with the graphics card, which also writes the occlusion counters the game waits for.
   *Final Fantasy VII Remake* goes from about 11 to 22 frames per second, on the same picture. A

@@ -151,8 +151,8 @@ func (server *Server) doContext(ctx context.Context, path string, client *http.C
 }
 
 // PreferSource — une copie du client qui demande ses fichiers à une source précise (`?source=<id>`, chantier 61) :
-// gameflex-federation rassemble plusieurs partages, et un élément peut être dans plusieurs (listing.Item.Sources).
-// Vide : la source que le serveur juge la meilleure. Un serveur GameFlex ordinaire ignore le paramètre.
+// un serveur prête aussi ses ressources externes (`#808`), et un élément peut être dans plusieurs (listing.Item.Sources).
+// Vide : la source que le serveur juge la meilleure ; un élément de sa bibliothèque ignore le paramètre.
 func (server *Server) PreferSource(id string) *Server {
 	copied := *server
 	copied.source = strings.TrimSpace(id)
@@ -390,9 +390,6 @@ func (server *Server) Listing() (listing.Listing, error) {
 type Freshness struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 	Scopes    []string  `json:"scopes"`
-	// CatalogOnly — dit par un serveur qui ne lance rien (gameflex-federation) ; absent chez un GameFlex. Comme les
-	// portées, il ne change pas la date du listing : la copie le prend sans tout re-télécharger.
-	CatalogOnly *bool `json:"catalogOnly,omitempty"`
 	// Consoles, DisabledConsoles — ce que notre accès laisse lancer chez lui, et ce qu'il a coupé pour tout le monde
 	// (chantier 66) : ils ne changent pas la date non plus. Nuls : non dits.
 	Consoles         *[]string `json:"consoles,omitempty"`

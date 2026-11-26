@@ -472,6 +472,29 @@ func Open() (*sql.DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("purge the pairing codes: %w", err)
 	}
+	// LA DOUBLE AUTHENTIFICATION (chantier 80, api/mfa.go) : `mfa_required`, l'administrateur l'impose à ce compte ;
+	// `user_mfa`, le secret scellé avec la clé de `keys/` (internal/mfa), son activation, le dernier pas de code
+	// employé (un code ne sert qu'une fois) et les empreintes des codes de secours (JSON). Une ligne sans `enabled_at`
+	// est une activation commencée, pas encore prouvée par un premier code. La règle « imposée à tout le serveur » est
+	// dans `settings` (`mfa_required_all`).
+	if err := ensureColumn(db, "users", "mfa_required", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS user_mfa (
+		user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		secret     TEXT NOT NULL,
+		enabled_at DATETIME,
+		last_step  INTEGER NOT NULL DEFAULT 0,
+		recovery   TEXT NOT NULL DEFAULT '[]'
+	)`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("create user_mfa: %w", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("create settings: %w", err)
+	}
 	if _, err := db.Exec(`UPDATE users SET password_set_at = COALESCE(created_at, strftime('%Y-%m-%d %H:%M:%f', 'now', 'localtime'))
 		WHERE password_set_at IS NULL AND hashed_password != ''`); err != nil {
 		db.Close()

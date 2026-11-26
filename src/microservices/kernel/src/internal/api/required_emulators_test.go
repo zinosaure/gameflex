@@ -98,7 +98,7 @@ func TestARecentConsoleWithoutItsEmulatorIsRefused(t *testing.T) {
 	if err := server.requireEmulator(context.Background(), "ps5", ""); err != nil {
 		t.Fatalf("avec son émulateur, copié à la main : %v", err)
 	}
-	// Une image qui n'attend rien — keytest, ou une console dont l'image manque.
+	// Une image qui n'attend rien — une console dont l'image manque.
 	if err := server.requireEmulator(context.Background(), "xbox", ""); err != nil {
 		t.Fatalf("sans image qui l'attende : %v", err)
 	}

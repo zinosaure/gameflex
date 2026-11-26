@@ -99,7 +99,8 @@ Open a game and press **Play**.
 - **The on-screen controller** appears on the touchscreen. It hides when you connect a Bluetooth or
   USB controller; map your controller in **Settings › Gamepads**.
 - **The game menu:** slide the menu button, at the bottom right of the screen, to the left, or, on a
-  controller, hold **L2** and **Home** together for three seconds.
+  controller, press **Home** in a retro game, or hold **L2**, **R2** and **Home** together for two
+  seconds in the other games.
 - **A controller that clips onto the phone:** in **Settings › Application › Orientation** (or **Orientation** in the game menu), choose **Portrait, half screen**. The game fills the top half, above the
   controller.
 

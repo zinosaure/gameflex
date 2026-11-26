@@ -22,7 +22,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -180,15 +179,17 @@ func (server *Server) tokenConnections(userID int64) ([]tokenConnection, error) 
 	return list, rows.Err()
 }
 
-// handleUpdateAccountToken — PATCH /api/v1/users/{id}/token
-// {enabled, duration}. Activer demande une durée (« quand on le enabled, on
-// doit définir le temps que ça va expirer ») ; désactiver efface l'échéance.
-func (server *Server) handleUpdateAccountToken(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		respondErrorCode(w, http.StatusNotFound, "not_found", "User not found.")
+// handleUpdateMyAccountToken — PATCH /api/v1/auth/me/token {enabled, duration}. Activer demande une durée (« quand on
+// le enabled, on doit définir le temps que ça va expirer ») ; désactiver efface l'échéance.
+//
+// LE MEMBRE ET LUI SEUL (le porteur, 2026-11-20 : « Le membre l'active lui-même ») : la page d'un membre, où un
+// administrateur activait son jeton, est partie avec ses routes (`/users/{id}/token`). Jamais depuis une session ouverte
+// par le jeton (refuseFederated) : un jeton ne se prolonge pas lui-même.
+func (server *Server) handleUpdateMyAccountToken(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
+	if refuseFederated(w, principal) {
 		return
 	}
+	id := principal.ID
 	var body struct {
 		Enabled  bool   `json:"enabled"`
 		Duration string `json:"duration"`
@@ -223,16 +224,14 @@ func (server *Server) handleUpdateAccountToken(w http.ResponseWriter, r *http.Re
 	server.respondAccountToken(w, id)
 }
 
-// handleRegenerateAccountToken — POST /api/v1/users/{id}/token/regenerate.
-// L'ancien jeton cesse de valoir à l'instant, et les sessions qu'il avait
-// ouvertes avec lui (leur génération ne correspond plus) ; l'état — actif,
-// échéance — ne change pas, les compteurs repartent de zéro.
-func (server *Server) handleRegenerateAccountToken(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		respondErrorCode(w, http.StatusNotFound, "not_found", "User not found.")
+// handleRegenerateMyAccountToken — POST /api/v1/auth/me/token/regenerate. L'ancien jeton cesse de valoir à l'instant, et
+// les sessions qu'il avait ouvertes avec lui (leur génération ne correspond plus) ; l'état — actif, échéance — ne change
+// pas, les compteurs repartent de zéro. Le membre lui-même, jamais depuis une session ouverte par le jeton.
+func (server *Server) handleRegenerateMyAccountToken(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
+	if refuseFederated(w, principal) {
 		return
 	}
+	id := principal.ID
 	result, err := server.db.Exec(
 		`UPDATE account_tokens SET token = lower(hex(randomblob(32))), created_at = ?, use_count = 0, last_used_at = NULL WHERE user_id = ?`,
 		now(), id,
@@ -251,7 +250,7 @@ func (server *Server) handleRegenerateAccountToken(w http.ResponseWriter, r *htt
 }
 
 // respondAccountToken — après un changement du jeton : la liste des comptes à
-// jour part au kernel, puis le jeton revient à l'administrateur.
+// jour part au kernel, puis le jeton revient à son propriétaire.
 func (server *Server) respondAccountToken(w http.ResponseWriter, userID int64) {
 	server.accountsChanged()
 	token, err := server.accountToken(userID, true)

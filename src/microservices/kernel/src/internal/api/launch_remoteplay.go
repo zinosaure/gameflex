@@ -38,8 +38,10 @@ type remoteplayStream struct {
 // bornes part vide. La définition reste un libellé : sa traduction en pixels
 // est celle de la console, et le runtime la tient (`streamSettingsOf`).
 func normalizeRemoteplayStream(stream remoteplayStream) remoteplayStream {
-	stream.Resolution = consoles.StreamResolution(stream.Resolution)
-	stream.FPS = consoles.StreamFPS(stream.FPS)
+	// Une PlayStation s'arrête à 1080p et 60 (consoles.RemotePlayResolution) : un 1440p ou un 120 choisis pour toutes
+	// les consoles y prennent son plus grand mode.
+	stream.Resolution = consoles.RemotePlayResolution(stream.Resolution)
+	stream.FPS = consoles.RemotePlayFPS(stream.FPS)
 	stream.Bitrate = consoles.StreamBitrate(stream.Bitrate)
 
 	return stream

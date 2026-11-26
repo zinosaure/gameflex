@@ -93,9 +93,6 @@ func TestALaunchNeedsTheConsole(t *testing.T) {
 	if !granted("marc", "ps3") || granted("marc", "nes") || granted("marc", "rp-ps5") {
 		t.Fatal("marc n'a que la PS3")
 	}
-	if !granted("marc", "keytest") {
-		t.Fatal("la page de test des manettes n'est pas une console")
-	}
 }
 
 // LE REFUS SE DIT AVEC UN CODE que la page traduit.

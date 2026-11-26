@@ -11,7 +11,7 @@
 //
 // QUELLES CONSOLES ? LE REGISTRE LE DIT — pas une liste écrite ici.
 //
-// C'était une liste en dur (`switch/ps3/ps4/xbox/keytest`), et rien ne
+// C'était une liste en dur (`switch/ps3/ps4/xbox`), et rien ne
 // rappelait de l'allonger : une console streamex ajoutée au registre partait
 // donc sans profil, et sa première partie mourait sur une erreur brute du
 // démon Docker (« bind source path does not exist: …/profiles/ps5.json »),
@@ -19,7 +19,7 @@
 // PS5 ; xbox360 et xboxone attendaient le même sort le jour où on les
 // activerait.
 //
-// Il n'y a que QUATRE profils de boutons (switch/ps3/xbox/keytest) pour huit
+// Il n'y a que TROIS profils de boutons (switch/ps3/xbox) pour huit
 // consoles : plusieurs manettes sont la même. Ce qui distingue les fichiers
 // écrits, c'est leur champ `console` — estampillé par withConsoleID, sinon
 // ps4.json annonçait « ps3 » (c'était le cas) et wiiu.json devait être
@@ -46,32 +46,26 @@ var ps3Profile string
 //go:embed xbox.json
 var xboxProfile string
 
-//go:embed keytest.json
-var keytestProfile string
-
 // ForConsole returns the pad profile for a console id, son champ `console`
 // estampillé au nom de CETTE console.
 func ForConsole(console string) string {
 	return withConsoleID(baseProfile(console), console)
 }
 
-// baseProfile — quelle manette, parmi les quatre qu'on sait dessiner.
+// baseProfile — quelle manette, parmi les trois qu'on sait dessiner.
 //
 // La PS4 et la PS5 reprennent celle de la PS3 : c'est la même DualShock/
 // DualSense (seules SHARE/CREATE et OPTIONS remplacent SELECT/START, et le
 // pavé tactile n'est pas encore une surface qu'une manette à l'écran sait
 // offrir — voir docs/TODO.md). La Wii U reprend celle de la Switch, et les
 // trois Xbox la même ; les ports PC aussi (chantier 40) : ils lisent tous une
-// manette SDL moderne. keytest n'est pas une console mais un banc d'essai de
-// touches, avec son propre profil.
+// manette SDL moderne.
 func baseProfile(console string) string {
 	switch console {
 	case "ps3", "ps4", "ps5":
 		return ps3Profile
 	case "xbox", "xbox360", "xboxone", "ports":
 		return xboxProfile
-	case "keytest":
-		return keytestProfile
 	default:
 		return switchProfile
 	}
@@ -108,9 +102,9 @@ func withConsoleID(profile, console string) string {
 // Consoles — les consoles qui ont besoin d'un profil : toutes celles que le
 // registre déclare streamex, désactivées comprises (en écrire un pour une
 // console éteinte ne coûte rien, et lui en faire manquer un le jour où on
-// l'allume coûte une partie), plus keytest, qui n'est pas dans le registre.
+// l'allume coûte une partie).
 func Consoles() []string {
-	out := []string{"keytest"}
+	out := []string{}
 	for _, console := range consoles.All() {
 		if console.Method == consoles.MethodStreamex {
 			out = append(out, console.ID)

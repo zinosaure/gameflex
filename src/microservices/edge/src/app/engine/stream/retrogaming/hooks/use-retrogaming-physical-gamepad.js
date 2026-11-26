@@ -133,7 +133,7 @@ export function useRetroPhysicalGamepadInput(enabled, sendButton, sendAnalog, co
                 const suspended = isGameInputSuspended();
                 const held = new Set();
                 pad.buttons.forEach((button, index) => {
-                    if (button.pressed && !suspended && !isMenuHome(pad, index)) held.add(String(index));
+                    if (button.pressed && !suspended && !isMenuHome(pad, index, "retrogaming")) held.add(String(index));
                 });
                 const desired = new Set();
                 const chordCovered = new Set();

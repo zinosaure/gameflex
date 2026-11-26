@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"gameflex/resources"
 	"log/slog"
 	"net"
 	"net/http"
@@ -46,6 +47,11 @@ type Server struct {
 	// storageRoot — le dossier de ce serveur (config.StorageDir) ; un test
 	// le remplace par un dossier à lui.
 	storageRoot string
+	// Les ressources externes (`#808`, resources_api.go) : ouvertes au premier besoin.
+	resourcesOnce   sync.Once
+	resourceStore   *resources.Store
+	resourceCatalog *resources.Catalog
+	resourcesErr    error
 	// internalDisks — les disques internes (chantier 23), quand un test les
 	// donne ; nil, le manager les découvre.
 	internalDisks func(context.Context) []docker.InternalDisk
@@ -254,6 +260,7 @@ func bridgeManagerToPool(manager *manager.Manager, pool *registry.Pool) {
 				ID:        spawned.SessionID,
 				Platform:  "streamex",
 				ConsoleID: spawned.Console,
+				Pad:       padUnlessConsole(spawned.Pad, spawned.Console),
 				// La référence de bibliothèque : la page y reconnaît la fiche du
 				// jeu en cours. L'identifiant du catalogue pour une partie
 				// lancée sans elle.
@@ -793,46 +800,38 @@ func (server *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// One playing session per user across platforms (étape 4 — the same
-	// guard as retro/remoteplay). Keytest previews are exempt, mirroring
-	// the manager's own exemption: a test screen must never be blocked by
-	// (or kill) a real game in progress.
+	// guard as retro/remoteplay).
 	// LES ÉTAPES PARTENT VERS L'IDENTIFIANT DE LANCEMENT, ici comme pour le
 	// rétro : « session demandée » n'est pas une notion d'émulation, et les
 	// deux gardes ci-dessous sont littéralement le même code.
 	launchID := body.LaunchID
 	server.launches.publish(launchID, "session.requested", body.ConsoleID)
 
-	if body.ConsoleID != "keytest" {
-		if otherID, already := server.alreadyPlaying(username); already {
-			server.launches.fail(launchID, "session.requested", "playing_elsewhere", "already playing another session")
-			server.writeAlreadyPlaying(w, otherID)
-			return
-		}
-		if owned, players, goesOn := server.ownedGameGoesOn(username); goesOn {
-			server.launches.fail(launchID, "session.requested", "game_goes_on", "your game goes on without you")
-			server.writeOwnedGameGoesOn(w, owned, players)
-			return
-		}
+	if otherID, already := server.alreadyPlaying(username); already {
+		server.launches.fail(launchID, "session.requested", "playing_elsewhere", "already playing another session")
+		server.writeAlreadyPlaying(w, otherID)
+		return
+	}
+	if owned, players, goesOn := server.ownedGameGoesOn(username); goesOn {
+		server.launches.fail(launchID, "session.requested", "game_goes_on", "your game goes on without you")
+		server.writeOwnedGameGoesOn(w, owned, players)
+		return
 	}
 
 	// LE FIRMWARE REQUIS, comme pour une partie rétro (#393) : la PS3 sans son
 	// PS3UPDAT.PUP, la Switch sans ses prod.keys démarraient quand même, et
 	// l'émulateur échouait à sa façon.
-	if body.ConsoleID != "keytest" {
-		if err := server.requireBios(body.ConsoleID); err != nil {
-			server.launches.fail(launchID, "bios.required", "bios_missing", err.Error())
-			writeErrorCode(w, http.StatusPreconditionFailed, "bios_missing", err.Error())
+	if err := server.requireBios(body.ConsoleID); err != nil {
+		server.launches.fail(launchID, "bios.required", "bios_missing", err.Error())
+		writeErrorCode(w, http.StatusPreconditionFailed, "bios_missing", err.Error())
 
-			return
-		}
+		return
 	}
 
 	// L'ÉMULATEUR DE LA FICHE, SINON CELUI DE LA CONSOLE (chantier 53,
 	// console_defaults.go) : la fiche choisit pour ce lancement ; sans choix,
 	// celui de la version en service.
-	if body.ConsoleID != "keytest" {
-		core = server.streamexCoreFor(body.ConsoleID, core)
-	}
+	core = server.streamexCoreFor(body.ConsoleID, core)
 
 	// L'ÉMULATEUR DE L'IMAGE (chantier 29) : elle le déballe au lancement
 	// depuis cores/<console>/. Absent, le conteneur s'arrêterait au démarrage ;
@@ -902,6 +901,7 @@ func (server *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 	// ouvert jusqu'à son TTL, et la page n'apprendrait jamais l'identifiant par
 	// le canal qu'elle écoute.
 	server.launches.done(launchID, session.SessionID)
+	server.rememberLaunched(r.Context(), username, body.ConsoleID, session.Reference)
 	writeJSON(w, http.StatusOK, session)
 }
 
@@ -1145,4 +1145,13 @@ func streamexReference(session manager.Session) string {
 	}
 
 	return session.GameID
+}
+
+// padUnlessConsole — la manette d'une partie, quand ce n'est pas celle de sa console (registry.Session.Pad).
+func padUnlessConsole(pad, console string) string {
+	if pad == console {
+		return ""
+	}
+
+	return pad
 }

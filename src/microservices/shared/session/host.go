@@ -259,6 +259,15 @@ func (host *Host) submit(command Command, now time.Time) (string, []Outcome) {
 	return requestID, outcomes
 }
 
+// VoiceRights — ce que chaque onglet peut envoyer et recevoir de voix, par socket, réglé sous le verrou (voice.go).
+func (host *Host) VoiceRights() map[string]VoiceRights {
+	host.mu.Lock()
+	defer host.mu.Unlock()
+	host.session.settleVoice()
+
+	return host.session.VoiceRightsBySocket()
+}
+
 // ControlledSlot — which pad this tab's keys drive, read under the lock (see
 // Session.ControlledSlot).
 func (host *Host) ControlledSlot(socketID string) int {
@@ -430,6 +439,9 @@ type addressed struct {
 //
 // Callers must hold the lock; delivery happens after releasing it.
 func (host *Host) stateMessages() []addressed {
+	// LA VOIX SE RÈGLE ICI (chantier 71, voice.go) : chaque changement de la partie passe par cet état diffusé.
+	host.session.settleVoice()
+
 	players := make([]map[string]any, 0, len(host.session.Players))
 	for _, player := range host.session.Players {
 		players = append(players, map[string]any{
@@ -463,6 +475,12 @@ func (host *Host) stateMessages() []addressed {
 		// Who drives the owner's pad, "" when nobody borrowed it. The owner
 		// stays the owner (see Session.Handover).
 		"lentTo": host.session.Borrower(),
+		// LA VOIX (chantier 71) : la conversation ouverte aux spectateurs, et qui a le micro ouvert.
+		"voice": map[string]any{
+			"spectators": host.session.SpectatorsTalk,
+			"talkers":    host.session.voiceTalkers(),
+			"slots":      VoiceSlots,
+		},
 	}
 	if host.session.IdleSince != nil {
 		base["idleSince"] = host.session.IdleSince.UTC().Format(time.RFC3339)
@@ -502,6 +520,8 @@ func (host *Host) stateMessages() []addressed {
 			// HOW MANY OTHER TABS of this account are open here (chantier 69):
 			// the page offers « release the controller » for them only then.
 			"otherTabs": host.session.otherTabsOf(participant),
+			// SA VOIX (chantier 71) : ses choix, s'il peut s'en servir, et pourquoi sinon.
+			"voice": host.session.voiceOf(participant),
 		}
 		if playing {
 			you["slotId"] = host.session.PlayerOf(participant.Username).SlotID
@@ -630,6 +650,11 @@ func (host *Host) Claim(owner string, maxPlayers int, now time.Time) {
 	host.session.Terminated = false
 	host.session.TerminatedBy = ""
 	host.session.GameExited = false
+	// Une nouvelle partie : la conversation se referme aux spectateurs, et les micros se coupent.
+	host.session.SpectatorsTalk = false
+	for index := range host.session.Participants {
+		host.session.Participants[index].Mic = false
+	}
 	host.session.StartedAt = now
 	host.session.IdleSince = &now
 	messages := host.stateMessages()

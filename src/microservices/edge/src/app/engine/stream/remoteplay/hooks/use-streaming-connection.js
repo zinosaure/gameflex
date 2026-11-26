@@ -296,124 +296,6 @@ export function useStreamingConnection({
 		[KEYFRAME_REQUEST_COOLDOWN_MS, webrtcSessionId],
 	);
 
-	// Externally exposed manual refresh method (requests a keyframe)
-	const refreshStream = useCallback(() => {
-		const ok = requestKeyframe("manual-refresh");
-		// When connected, minimize toast interruptions; only show a brief notice on failure
-		if (!ok) {
-			try {
-				// Only show a brief notice on failure, with a short display duration
-				toast({
-					title: "Refresh unavailable",
-					description: "Session unavailable or still in cooldown",
-					variant: "destructive",
-					duration: 2000, // Auto-dismiss after 2 seconds
-				});
-			} catch {
-				// ignore toast failure in environments without i18n/toast
-			}
-		} else {
-			// On success, if already connected do not show a toast (avoid interrupting gameplay), only log to console
-			if (isConnectedRef.current) {
-				debugTrace("✅ Refresh request sent");
-			} else {
-				// Show a toast when not connected
-				try {
-					toast({
-						title: "Refresh request sent",
-						description: "Please wait, attempting to restore video",
-						duration: 2000, // Auto-dismiss after 2 seconds
-					});
-				} catch {
-					// ignore
-				}
-			}
-		}
-		return ok;
-	}, [requestKeyframe, t, toast]);
-
-	// Force reset ReorderQueue (user-triggered, to resolve a frozen frame)
-	const forceResetReorderQueue = useCallback(async () => {
-		const sessionId = webrtcSessionIdRef.current || webrtcSessionId;
-		if (!sessionId) {
-			console.warn("⚠️ Cannot reset queue, missing SessionId");
-			try {
-				toast({
-					title: "Cannot Reset Queue",
-					description: "Session unavailable",
-					variant: "destructive",
-					duration: 2000,
-				});
-			} catch {
-				// ignore toast failure
-			}
-			return false;
-		}
-
-		if (!isStreamBoundRef.current) {
-			console.warn("⚠️ Cannot reset queue, session not bound");
-			try {
-				toast({
-					title: "Cannot Reset Queue",
-					description: "Session not bound to remote stream",
-					variant: "destructive",
-					duration: 2000,
-				});
-			} catch {
-				// ignore toast failure
-			}
-			return false;
-		}
-
-		console.warn("🔄 User manually triggered ReorderQueue reset", {
-			sessionId,
-		});
-
-		try {
-			const success =
-				await streamingHubService.forceResetReorderQueue(sessionId);
-			if (success) {
-				debugTrace("✅ Queue reset successful");
-				try {
-					toast({
-						title: "Video Queue Reset",
-						description: "Requesting keyframe to restore video...",
-						duration: 2000,
-					});
-				} catch {
-					// ignore toast failure
-				}
-				return true;
-			} else {
-				console.warn("⚠️ Queue reset unsuccessful");
-				try {
-					toast({
-						title: "Queue reset failed",
-						description: "Please try again later",
-						variant: "destructive",
-						duration: 2000,
-					});
-				} catch {
-					// ignore toast failure
-				}
-				return false;
-			}
-		} catch (error) {
-			console.error("❌ Queue reset error:", error);
-			try {
-				toast({
-					title: "Queue reset failed",
-					description: "An error occurred, please try again",
-					variant: "destructive",
-					duration: 2000,
-				});
-			} catch {
-				// ignore toast failure
-			}
-			return false;
-		}
-	}, [webrtcSessionId, toast]);
-
 	const resolveWebrtcSessionId = useCallback(() => {
 		if (webrtcSessionIdRef.current) {
 			return webrtcSessionIdRef.current;
@@ -2118,16 +2000,9 @@ export function useStreamingConnection({
 		isConnected,
 		isConnecting,
 		connectionState,
-		connect,
 		disconnect,
 		connectionStats,
-		isStatsMonitoringEnabled: isStatsEnabled,
 		setStatsMonitoring: setSharedStatsMonitoring,
-		refreshStream,
-		forceResetReorderQueue,
-		webrtcSessionId,
-		stopStickProcessing,
-		startStickProcessing,
 		isStalling,
 		// Wired onto <GatewayWebRTC> by Player.jsx (ref={screenRef},
 		// same pattern retro/streamex's Player.jsx already use, plus the

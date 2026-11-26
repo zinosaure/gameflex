@@ -21,8 +21,6 @@ const WEB_DEFAULTS = {
     // "accounts" : on invite quelqu'un qui a un compte.
     // "lan" : on partage un lien, et qui l'ouvre choisit son nom en arrivant.
     invites: "accounts",
-    // Une bibliothèque lue sur l'appareil lui-même (scanner natif).
-    localLibrary: false,
     // OÙ S'AJOUTE UN DISQUE INTERNE : « compose » sur un serveur (un volume
     // `<chemin>:/mnt/<nom>`, chantier 23), « device » sur le téléphone (son
     // écran d'accueil, chantier 27). Réglages › Ressources internes le dit.
@@ -60,13 +58,6 @@ const WEB_DEFAULTS = {
     // faux seulement tant que le service des comptes de l'hôte n'est pas ouvert.
     issuesCatalogTokens: true,
 
-    // Les CŒURS D'UN PAIR peuvent-ils se poser ici ? Sur un serveur, oui : le
-    // pair est une machine du même genre. Sur un téléphone, non — un cœur de
-    // serveur est une bibliothèque Linux qu'Android ne charge pas ; ses BIOS
-    // et ses jeux, eux, viennent bien des pairs (#286). L'écran des cœurs ne
-    // propose donc les pairs que là où l'hôte les accepte.
-    peerCores: true,
-
     // SEUL UN ADMINISTRATEUR LANCE ? Sur un serveur, non : tout compte y lance
     // une partie, une à la fois. Sur un téléphone, oui (décidé le 2026-10-08,
     // redit le 2026-10-09) : ce n'est pas un serveur qui fait tourner
@@ -92,6 +83,10 @@ const WEB_DEFAULTS = {
     fullscreen: true,
     // Diffuser vers un téléviseur.
     castToTv: true,
+    // Par les fenêtres de l'application plutôt que par le SDK Cast de Chrome, qu'elles n'ont pas (#124) : la page leur
+    // parle par le lien réservé `gameflex://cast` (cast.js) — la WebView du téléphone caste par Android, la fenêtre du
+    // PC ouvre Chrome. Déclaré par requête, chez elles comme chez un serveur rejoint — comme `appHomeLink`.
+    castLink: false,
     // La page rend-elle le son, et peut-elle donc le couper ? Sur un
     // appareil, c'est le haut-parleur qui joue la partie — couper la page ne
     // couperait rien.
@@ -120,19 +115,16 @@ const WEB_DEFAULTS = {
     // UN BANC D'ESSAI (GAMEFLEX_STAGING, 2026-10-26) : « staging » à côté du
     // nom, et l'application se télécharge chez lui plutôt que sur GitHub.
     staging: false,
-    // LE NOM DE CET HÔTE pour ses serveurs fédérés (GAMEFLEX_SERVER_NAME, chantier 60) : la fenêtre d'un code
+    // LE NOM DE CET HÔTE pour ses serveurs fédérés (Réglages › Configuration du serveur, chantier 81) : la fenêtre d'un code
     // d'appairage le montre. Vide : son adresse seule.
     serverName: "",
-    // L'hôte sait-il RÉGLER le statut de ses jeux (chantier 30) ? Le serveur,
-    // oui ; le téléphone pas encore (#471) : il ne propose pas un panneau qui
-    // échouerait.
-    gameStatus: false,
-    // LE MIROIR (chantier 29) : un lien externe où l'administrateur
-    // télécharge lui-même émulateurs, firmwares, correctifs et paramètres, déclaré par le
-    // serveur (GAMEFLEX_MIRROR_URL). Vide — et c'est le cas du téléphone, qui
-    // prend ses émulateurs chez son serveur (chantier 28) : aucun écran ne le
-    // propose.
-    mirrorUrl: "",
+    // SA CONFIGURATION SE RÈGLE-T-ELLE DE LA PAGE (Réglages › Configuration du serveur, chantier 81) ? Un serveur seulement.
+    serverConfig: false,
+    // LES GUIDES PROPRES À CET HÔTE (chantier 81, la vérification des capacités) : `{ sujet: [guide, ancre] }` — le
+    // téléphone a les siens (ses disques, inviter quand il est le serveur) ; ailleurs, la page garde son guide général.
+    // Déclarés par l'hôte, jamais déduits d'une autre capacité (le PC disait « disques de l'appareil » comme le téléphone,
+    // et recevait le guide du téléphone).
+    hostGuides: {},
     // Cette page a-t-elle un ÉCRAN D'ACCUEIL où revenir — la console de
     // l'application Android ? Seule sa WebView en a un, et le kernel ne le
     // déclare qu'à elle (pas à Chrome sur le même téléphone). Un bouton de
@@ -161,6 +153,9 @@ const WEB_DEFAULTS = {
     // défaut, donc pour un hôte qui ne dit rien (le téléphone, dont la page
     // ne sert pas de service worker à un abonné).
     pushNotifications: false,
+
+    // Les paquets d'émulateurs que cet hôte fait tourner : « server » ou « phone » (la fiche d'une console).
+    emulatorPackage: "server",
 
     platform: "web",
 };
@@ -221,6 +216,11 @@ export async function loadHostCapabilities() {
     })();
 
     return bootPromise;
+}
+
+/** Le guide d'un sujet propre à cet hôte (`hostGuides`), sinon `fallback` (null : aucun). */
+export function hostGuide(topic, fallback = null) {
+    return capabilities().hostGuides?.[topic] || fallback;
 }
 
 /** Raccourci lisible : `can("accounts")`. */

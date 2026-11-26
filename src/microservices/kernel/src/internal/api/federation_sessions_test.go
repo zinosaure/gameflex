@@ -13,8 +13,8 @@ import (
 	"gameflex/kernel/internal/registry"
 )
 
-// sessionsPeer — un pair qui a deux parties en cours (une d'ami, vue par un spectateur, avec une manette libre) et le
-// banc d'essai interne ; son jeton de catalogue est `catalogue`, celui qui n'ouvre que ses consoles `consoles`.
+// sessionsPeer — un pair qui a une partie en cours (une d'ami, vue par un spectateur, avec une manette libre) ; son
+// jeton de catalogue est `catalogue`, celui qui n'ouvre que ses consoles `consoles`.
 func sessionsPeer(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
 	identity := newFakeIdentity(t, map[string]string{"catalogue": "catalog", "consoles": "devices"}, nil)
@@ -25,7 +25,6 @@ func sessionsPeer(t *testing.T) (*Server, *httptest.Server) {
 	}
 	peer.pool.Register(registry.Session{ID: "partie-1", Platform: "retrogaming", ConsoleID: "snes", Reference: "ref-aladdin", Title: "Aladdin", Initiator: "ami", MaxPlayers: 2, Players: []string{"ami"}})
 	peer.pool.AddSpectator("partie-1", "voisin")
-	peer.pool.Register(registry.Session{ID: "banc", Platform: "streamex", ConsoleID: "keytest", Title: "keytest", Initiator: "ami", MaxPlayers: 1})
 	surface := httptest.NewServer(http.StripPrefix("/api/v1/federation", peer.federationRouter()))
 	t.Cleanup(surface.Close)
 
@@ -48,7 +47,7 @@ func peerGet(t *testing.T, surface *httptest.Server, token string) *http.Respons
 }
 
 // LES PARTIES D'UN PAIR SE DONNENT AU JETON DE CATALOGUE, ET RIEN DE PLUS (`#747`) : 401 sans jeton ou avec un faux, 403
-// avec un jeton qui n'ouvre pas le catalogue ; au bon, ses parties, sans le banc d'essai, avec ces seuls champs — ni
+// avec un jeton qui n'ouvre pas le catalogue ; au bon, ses parties, avec ces seuls champs — ni
 // jeton, ni adresse, ni les noms de ceux qui regardent.
 func TestPeerSessionsAreGivenToTheCatalogueTokenOnly(t *testing.T) {
 	_, surface := sessionsPeer(t)
@@ -67,7 +66,7 @@ func TestPeerSessionsAreGivenToTheCatalogueTokenOnly(t *testing.T) {
 		t.Fatalf("au jeton de catalogue : %d", response.StatusCode)
 	}
 	if len(answer.Data) != 1 {
-		t.Fatalf("%d parties, attendu 1 (le banc d'essai n'en est pas une) : %+v", len(answer.Data), answer.Data)
+		t.Fatalf("%d parties, attendu 1 : %+v", len(answer.Data), answer.Data)
 	}
 	fields := []string{}
 	for field := range answer.Data[0] {

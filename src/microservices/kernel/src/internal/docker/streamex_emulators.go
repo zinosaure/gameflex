@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	_ "embed"
 	"sort"
 	"strings"
 
@@ -36,12 +37,30 @@ import (
 // « émulateur » est un port : un jeu recompilé, qui ne lit de sa ROM que les
 // données. Chacun a son image et son dossier — `params` le nomme sous
 // `saves/<compte>/streamex/ports/`, `data` dit où le port le cherche.
+//
+// `writeWatch` : l'émulateur suit les écritures dans la mémoire du jeu par
+// userfaultfd (la couche GPU de Kyty dans AstroHybrid). Sans lui, il retombe sur
+// mprotect — dix fois plus lent, et un appel système (read) qui écrit dans une
+// page protégée y rend EFAULT : Astro Bot s'arrêtait en entrant en jeu
+// (« APR: read failed »). Le profil seccomp de Docker n'ouvre userfaultfd qu'avec
+// CAP_SYS_PTRACE, que le conteneur reçoit alors, lui seul.
+//
+// SYS_PTRACE ne suffit pas : le profil seccomp par défaut de Docker (moby/profiles
+// seccomp v0.1.0, celui de Docker 29) ne laisse jamais passer userfaultfd. Le
+// conteneur reçoit donc ce profil-là, recopié tel quel, userfaultfd en plus — et
+// rien d'autre (seccomp-userfaultfd.json ; « unconfined » ouvrirait tout).
 type streamexEmulator struct {
-	core   string
-	params string
-	image  string
-	data   string
+	core       string
+	params     string
+	image      string
+	data       string
+	writeWatch bool
 }
+
+// userfaultfdSeccomp — le profil seccomp par défaut de Docker, userfaultfd en plus (voir streamexEmulator).
+//
+//go:embed seccomp-userfaultfd.json
+var userfaultfdSeccomp string
 
 var streamexEmulators = map[string][]streamexEmulator{
 	"switch": {
@@ -60,7 +79,8 @@ var streamexEmulators = map[string][]streamexEmulator{
 	"ps5":     {{core: "KytyPS5 (streamex)", params: "kyty", image: "streamex-ps5"}},
 	"xbox360": {{core: "Xenia Canary (streamex)", params: "xenia", image: "streamex-xbox360"}},
 	consoles.PortsID: {
-		{core: "Zelda 64: Recompiled (streamex)", params: "zelda64recomp", image: "streamex-ports-zelda64recomp", data: "/root/.config/Zelda64Recompiled"},
+		// AstroHybrid (chantier 72, à l'essai) : son dossier porte la construction du jeu, ses sauvegardes et ses caches.
+		{core: "AstroHybrid (streamex)", params: "astrohybrid", image: "streamex-ports-astrohybrid", data: "/root/.local/share/astrohybrid", writeWatch: true},
 	},
 }
 
@@ -159,7 +179,7 @@ func (dockerClient *Client) RequiredEmulators(ctx context.Context) []RequiredEmu
 
 // RequiredEmulatorFor — le fichier qu'attend l'image d'un lancement (le premier
 // émulateur de la console quand aucun n'est choisi). Faux sans image, ou pour
-// une image qui n'en attend aucun (keytest).
+// une image qui n'en attend aucun.
 func (dockerClient *Client) RequiredEmulatorFor(ctx context.Context, consoleID, core string) (RequiredEmulator, bool) {
 	emulator, ok := streamexEmulatorFor(consoleID, core)
 	if !ok {

@@ -55,7 +55,7 @@ export const streamingService = {
 	// streamOf), son débit « Auto » déjà mesuré (withNetworkBitrate), dans le
 	// vocabulaire et les champs du lancement d'un jeu (`launchSession`,
 	// spawnSessions.js) : le kernel le revalide, puis le runtime le traduit
-	// pour la console. Absent : le défaut de toutes les consoles, 540p à 30.
+	// pour la console. Absent : le défaut de toutes les consoles, 720p à 60.
 	startSession: async (hostId, username, host = null, settings = null) => {
 		const result = await kernelRequest(kernelTarget(host, getStoredToken()), "launch", {
 			platform: "remoteplay",

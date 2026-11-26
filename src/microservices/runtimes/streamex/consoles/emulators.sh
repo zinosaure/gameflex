@@ -80,10 +80,6 @@ emulator_file() {
         # celui rangé ici la porte, pour qu'une montée de version ne
         # retrouve pas l'ancienne sous le même nom.
         xbox360) echo "xenia_canary_linux-f9431eb.AppImage" ;;
-        # Les ports PC (chantier 40) : un port par image, tous rangés sous
-        # cores/ports/ (emulator_console). Zelda 64: Recompiled publie un zip
-        # qui porte une archive tar.gz.
-        ports-zelda64recomp) echo "Zelda64Recompiled-v1.2.2-Linux-X64.zip" ;;
         *)      echo "" ;;
     esac
 }
@@ -111,7 +107,7 @@ emulator_tested() {
 # consoles rétro n'en ont pas : leur « émulateur » est un cœur libretro, que
 # l'admin télécharge depuis Réglages → Émulateurs.
 emulator_consoles() {
-    echo "switch switch-eden switch2 xbox wiiu ps3 ps4 ps5 xbox360 ports-zelda64recomp"
+    echo "switch switch-eden switch2 xbox wiiu ps3 ps4 ps5 xbox360"
 }
 
 # emulator_console <image> — la console d'une image : le dossier cores/<console>/

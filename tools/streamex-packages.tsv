@@ -23,4 +23,3 @@ ps5	streamex-ps5	2026-11-04-gameflex-30c6284	KytyPS5-2026-11-04-91c5820-Linux-x8
 wiiu	streamex-wiiu	2.6	Cemu-2.6-x86_64.AppImage	-
 xbox	streamex-xbox	0.8.139	xemu-0.8.139-x86_64.AppImage	-
 xbox360	streamex-xbox360	f9431eb	xenia_canary_linux-f9431eb.AppImage	-
-ports	streamex-ports-zelda64recomp	1.2.2	Zelda64Recompiled-v1.2.2-Linux-X64.zip	-

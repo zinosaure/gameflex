@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:25 +0000
+Subject: [PATCH] gameflex 0010: dcc both independent blocks
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0010.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/graphics/guest_gpu/command_processor/pm4Handlers.cpp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp b/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp
+index 419293cb..fb4e9cb9 100644
+--- a/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp
++++ b/src/graphics/guest_gpu/command_processor/pm4Handlers.cpp
+@@ -1503,7 +1503,9 @@ static constexpr auto MakeContextIndirectTable() {
+ 			    KYTY_PM4_GET(value, CB_COLOR0_DCC_CONTROL, INDEPENDENT_64B_BLOCKS) != 0;
+ 			const bool independent_128b =
+ 			    KYTY_PM4_GET(value, CB_COLOR0_DCC_CONTROL, INDEPENDENT_128B_BLOCKS) != 0;
+-			EXIT_NOT_IMPLEMENTED(independent_64b && independent_128b);
++			// Both flags together are a valid RDNA2 setting — DCC kept compatible with shader
++			// writes (Final Fantasy VII Rebirth, past its main menu); 64 bytes is the stricter
++			// constraint. Kyty only keeps the value for its debug dump.
+ 			dcc.independent_block_size =
+ 			    independent_64b
+ 			        ? HW::ColorDccControl::IndependentBlockSize::Bytes64

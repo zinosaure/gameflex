@@ -8,9 +8,10 @@ code. This license covers those parts, and only them:
 
 | Binary | Where it is |
 |---|---|
-| The video gateway | `/app/gatewaywebrtc` in the `zinosaure/gameflex-gateway-webrtc` image |
-| Remote Play | `/app/remoteplay` in the `zinosaure/gameflex-remoteplay` image |
-| streamex, the program that runs and streams the recent consoles | `/streamex` in the `zinosaure/gameflex-streamex-bin` image, and `/usr/local/bin/streamex` in each console image |
+| The video gateway | `/app/gatewaywebrtc` in the `zinosaure/gameflex-gateway-webrtc` image, and `gatewaywebrtc-x86_64.tar.gz` in each Release |
+| Remote Play | `/app/remoteplay` in the `zinosaure/gameflex-remoteplay` image, and `remoteplay-x86_64.tar.gz` in each Release |
+| streamex, the program that runs and streams the recent consoles | `/streamex` in the `zinosaure/gameflex-streamex-bin` image, `/usr/local/bin/streamex` in each console image, and `streamex-x86_64.tar.gz` in each Release |
+| The PC program and its window | `usr/bin/gameflex-desktop` and `usr/share/gameflex/window` in `GameFlex-x86_64.AppImage`, and `gameflex-desktop-x86_64.tar.gz` in each Release |
 | The Android app | `gameflex.apk` |
 
 The third-party software inside the images and the app keeps its own license: see

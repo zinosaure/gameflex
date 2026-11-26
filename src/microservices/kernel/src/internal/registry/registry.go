@@ -41,6 +41,9 @@ type Session struct {
 	ID        string `json:"id"`
 	Platform  string `json:"platform"` // "retrogaming" | "remoteplay" | "streamex"
 	ConsoleID string `json:"consoleId"`
+	// Pad — la console dont le jeu lit la manette, quand ce n'est pas ConsoleID (un port : Astro Bot se joue à la
+	// DualSense) ; la page dessine celle-là. Vide : celle de ConsoleID.
+	Pad string `json:"pad,omitempty"`
 	// Reference is a catalog uuid (retrogaming) or the device's own row id
 	// (remoteplay) — an opaque identifier, not for display. Title is the
 	// human-readable name to actually show (game title / device name).

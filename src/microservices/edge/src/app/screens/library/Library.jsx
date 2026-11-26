@@ -1,14 +1,14 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { hostRefusal, matchesQuery, useAuth, useData } from "../../libs/data.jsx";
+import { fromResource, hostRefusal, matchesQuery, useAuth, useData } from "../../libs/data.jsx";
 import { listRoms, romSource } from "../../libs/api.js";
 import { useScreenInput } from "../../libs/input.js";
 import { goUp, rememberGame } from "../../libs/memory.js";
 import { federationSession, PLAY_BLOCK_LABELS, playBlock, useFederationSession } from "../../libs/federation.js";
-import { federatedAccountPath } from "../../settings/account/MyFederation.jsx";
+import { federatedAccountPath } from "../../settings/profile/Federation.jsx";
 import { playPath, useLaunch } from "../../libs/play.js";
-import { GAME_STATUSES, STATUS_VARIANT, statusOf } from "../../libs/format.js";
+import { fact, originOf, STATUS_VARIANT, statusOf } from "../../libs/format.js";
 import { widthFor } from "../../libs/images.js";
 import { useLayoutKind } from "../../libs/layout.js";
 import { useVerticalPager } from "../../libs/pager.js";
@@ -17,11 +17,18 @@ import { summaryOf, useGameMetadata } from "../../libs/metadata.js";
 import { splitTitle } from "../../libs/visuals.js";
 import { toast, Topbar } from "../../shell/Shell.jsx";
 import SidePanel from "../../shell/SidePanel.jsx";
-import NavRow, { Listing, PlaceholderRow, Rows, Section, SwitchRow } from "../../ui/Bricks.jsx";
-import { ICON_BUTTON, useButton } from "../../libs/ui.js";
+import { statusGroup, switchGroup } from "../../bricks/FilterGroups.jsx";
+import { Listing } from "../../bricks/Listing.jsx";
+import NavRow from "../../bricks/NavRow.jsx";
+import { PlaceholderRow } from "../../bricks/PlaceholderRow.jsx";
+import { Section } from "../../bricks/Section.jsx";
+import { hiddenOf, toggleHidden } from "../../globals/filters.js";
+import { ICON_BUTTON, useButton, useDebounced } from "../../libs/ui.js";
 import HeroArt, { GameCover, useGameVisual } from "./HeroArt.jsx";
 import { biosChoice, ContinuePanel, coreChoice, GearPanel, streamOf, useConsoleFacts, useSaveRAM, useUserSaves } from "./GameSettings.jsx";
 import PlayLaunch from "../play/Launch.jsx";
+import { ITEM_SETTINGS_ICON } from "../../globals/icons.js";
+import { pill, STATUS_PILL } from "../../bricks/Pill.jsx";
 
 // NIVEAU 2 — LA BIBLIOTHÈQUE D'UNE CONSOLE : ses fiches, une par écran, qui
 // défilent en vertical comme les consoles (le porteur, 2026-11-12 : « plus de
@@ -78,16 +85,6 @@ const letterOf = (title) => {
 // SON STATUT, pour les interrupteurs : celui que le serveur a calculé ; sans statut, le jeu n'a pas été essayé.
 const statusKey = (rom) => statusOf(rom) || "untested";
 
-// SA PROVENANCE, en court (la fiche, la liste) : le serveur d'un ami, le disque interne, sinon la bibliothèque.
-const originLabel = (rom, servers, t) => {
-    if (rom.peer != null) {
-        const peer = servers.find((server) => String(server.id) === String(rom.peer));
-
-        return peer?.hostname || peer?.link || "";
-    }
-
-    return rom.disk || t("games.source.library");
-};
 
 
 export default function Library({ tab }) {
@@ -105,12 +102,12 @@ export default function Library({ tab }) {
     const { user, isAdmin } = useAuth();
     const console = consoles.find((entry) => entry.id === consoleId);
     const [query, setQuery] = useState(searchParams.get("q") || "");
-    const [debounced, setDebounced] = useState(query);
+    const debounced = useDebounced(query);
     // LES SOURCES ET LES STATUTS ÉCARTÉS (leurs interrupteurs coupés : tous allumés par défaut, le porteur, 2026-11-14,
     // chantier 53, P12) sont dans l'adresse, comme la recherche : revenir des réglages (l'engrenage du haut), ou
     // recharger, retrouve la même fiche, filtrée pareil.
-    const hiddenSources = useMemo(() => (searchParams.get("nosource") || "").split(",").filter(Boolean), [searchParams]);
-    const hiddenStatuses = useMemo(() => (searchParams.get("nostatus") || "").split(",").filter(Boolean), [searchParams]);
+    const hiddenSources = useMemo(() => hiddenOf(searchParams.get("nosource")), [searchParams]);
+    const hiddenStatuses = useMemo(() => hiddenOf(searchParams.get("nostatus")), [searchParams]);
     const [answer, setAnswer] = useState({ loading: true, roms: [] });
     // Les jeux de chaque serveur fédéré, par son identifiant : `{ loading, roms, refusal }`.
     const [peers, setPeers] = useState({});
@@ -118,12 +115,6 @@ export default function Library({ tab }) {
     const [, setSettingsVersion] = useState(0);
     const currentRef = useRef(reference || null);
     const home = `/${tab}/${consoleId}`;
-
-    useEffect(() => {
-        const timer = setTimeout(() => setDebounced(query), 300);
-
-        return () => clearTimeout(timer);
-    }, [query]);
 
     // La requête suit la recherche et la provenance. Construite sur l'adresse
     // d'à présent (et non celle du rendu) : la fiche courante peut avoir changé
@@ -216,8 +207,9 @@ export default function Library({ tab }) {
     const searched = debounced.trim();
     const letter = searched.length === 1 ? letterOf(searched) : null;
     const games = useMemo(() => {
+        // Un jeu qu'un ami tient d'une de ses ressources externes ne se joue pas chez lui : il n'est que dans le catalogue.
         const roms = [...answer.roms, ...Object.values(peers).flatMap((read) => read.roms || [])]
-            .filter((rom) => !hiddenSources.includes(sourceOf(rom)) && !hiddenStatuses.includes(statusKey(rom)) && (letter || matchesQuery(rom, searched)));
+            .filter((rom) => !fromResource(rom) && !hiddenSources.includes(sourceOf(rom)) && !hiddenStatuses.includes(statusKey(rom)) && (letter || matchesQuery(rom, searched)));
         const grouped = groupGames(roms);
 
         return letter ? grouped.filter((game) => letterOf(game.sortKey) === letter) : grouped;
@@ -341,7 +333,7 @@ export default function Library({ tab }) {
             host,
             console,
             rom,
-            core: coreChoice(console, facts, game).selected,
+            core: coreChoice(console, facts, game, rom).selected,
             bios: biosChoice(console, facts, game).selected,
             // Le flux de cette console dans ce navigateur, le défaut pour le reste ; son débit « Auto » se mesure
             // vers le serveur de la partie dans `start` (libs/play.js), l'écran du lancement déjà là.
@@ -368,7 +360,7 @@ export default function Library({ tab }) {
     };
 
     // Un interrupteur basculé : la liste des écartés (`nosource`, `nostatus`) gagne ou perd sa valeur.
-    const toggleIn = (name, hidden) => (value, on) => setParams([[name, (on ? hidden.filter((item) => item !== value) : [...hidden, value]).join(","), ""]]);
+    const toggleIn = (name, hidden) => (value, on) => setParams([[name, toggleHidden(hidden, value, on) || "", ""]]);
 
     useScreenInput({
         // HAUT et BAS changent de jeu ; GAUCHE et DROITE ne font rien (le porteur, 2026-11-12 :
@@ -456,15 +448,15 @@ export default function Library({ tab }) {
                 </div>
                 {rom && !empty && (
                     <div className="pactions d-flex align-items-center justify-content-between gap-2">
-                        {/* UN BOUTON PORTE SOIT UN TEXTE, SOIT UNE ICÔNE (le porteur, 2026-11-13, Bricks.jsx) : Jouer est un
-                            geste, en texte ; l'engrenage, une icône seule. */}
+                        {/* UN BOUTON PORTE SOIT UN TEXTE, SOIT UNE ICÔNE (le porteur, 2026-11-13, bricks/) : Jouer est un
+                            geste, en texte ; la clé, une icône seule. */}
                         <button type="button" className={`${button("main")} w-50 text-truncate`} data-nav data-key="f-play" disabled={!running && !signIn && (Boolean(busy) || !playable || Boolean(block))} onClick={play}>
                             {t(running ? "game.resume" : block ? PLAY_BLOCK_LABELS[block] : hasSaves ? "game.continue" : "game.play")}
                         </button>
-                        {/* L'engrenage : les informations et les réglages du jeu (GameSettings.jsx). */}
+                        {/* La clé : les informations et les réglages du jeu (GameSettings.jsx). */}
                         <button type="button" className={`${ICON_BUTTON} ${button("round")}`} data-nav data-key="f-settings" aria-haspopup="dialog"
                             aria-label={t("gear.title")} title={t("gear.title")} onClick={() => setPanel("gear")}>
-                            <i className="bi bi-gear-fill"></i>
+                            <i className={`bi ${ITEM_SETTINGS_ICON}`}></i>
                         </button>
                     </div>
                 )}
@@ -552,7 +544,7 @@ function Sheet({ console, game, position, rom }) {
     // LE NOMBRE DE JOUEURS, quand une source le sait (le porteur, 2026-11-14 : « si nombre de joueurs dispo, on le rajoute
     // aussi sur la fiche du jeu ») — sur la ligne des informations, après l'année.
     const subtitle = [known.publisher, known.genres.join(", "), known.year, known.players ? t("game.playerCount", { count: known.players }) : ""].filter(Boolean);
-    const origin = originLabel(rom, servers, t);
+    const origin = originOf(rom, servers, t);
 
     return (
         <>
@@ -596,7 +588,7 @@ function Sheet({ console, game, position, rom }) {
 //   - « Sources » puis « Statut » (« au dessus de la section status il faut mettre le titre ») : un interrupteur par source
 //     et par statut, tous allumés au départ (des formulaires, sans traits) ; ils filtrent la liste ET les fiches, et
 //     refermer le panneau les garde (l'adresse) ;
-//   - « Les jeux » : la Listing des Réglages (Bricks.jsx) — sa recherche et « N jeux », un trait, puis les lignes : la
+//   - « Les jeux » : la Listing des Réglages (bricks/) — sa recherche et « N jeux », un trait, puis les lignes : la
 //     jaquette, le titre, en sous-titre « source · statut · série » (la série quand elle réunit plusieurs jeux, comme sur
 //     la fiche), sa pagination et ses fantômes ; elle s'ouvre sur la page du jeu affiché.
 // Choisir un jeu y saute directement. À la manette, la croix parcourt les interrupteurs, la recherche, les jeux et la
@@ -623,26 +615,15 @@ function GameList({ console, games, current, loading, failed, query, onQuery, so
     }, [games, current]);
 
     return (
-        <SidePanel label={t("library.list")} className="glist" firstKey={games[current] ? `gl-${games[current].key}` : `src-${sources[0]?.value}`} onClose={onClose}>
-            <Section title={t("library.sourcesTitle")}>
-                <Rows>
-                    {sources.map((source) => (
-                        <SwitchRow key={source.value} id={`src-${source.value}`} label={source.label} help={source.help} checked={!hiddenSources.includes(source.value)}
-                            onChange={(on) => onSource(source.value, on)} />
-                    ))}
-                </Rows>
-            </Section>
-            {/* Le titre au-dessus des statuts (le porteur : « au dessus de la section status il faut mettre le titre »). */}
-            <Section title={t("games.status")}>
-                <Rows>
-                    {GAME_STATUSES.map((status) => (
-                        <SwitchRow key={status} id={`st-${status}`} label={t(`status.${status}`)} checked={!hiddenStatuses.includes(status)} onChange={(on) => onStatus(status, on)} />
-                    ))}
-                </Rows>
-            </Section>
-            {/* La recherche est celle de toute liste (Listing) : le champ et « N jeux », un trait, puis les jeux. */}
-            <Section title={t("library.gamesTitle")}>
+        <SidePanel label={t("library.gamesTitle")} className="glist" firstKey={games[current] ? `gl-${games[current].key}` : "gl-search"} onClose={onClose}>
+            {/* LE LISTING D'ABORD, SES FILTRES DERRIÈRE SON BOUTON (chantier 81 : le listing en premier, avec sa recherche et
+                son filtre, comme toute liste — Listing, FilterGroups) : la recherche et « N jeux », un trait, puis les jeux. */}
+            <Section title={t("library.gamesTitle")} help={t("library.gamesHelp")} sense="play">
                 <Listing items={items} loading={loading} search={query} onSearch={onQuery} placeholder={t("games.search")} searchKey="gl-search"
+                    filterCount={hiddenSources.length + hiddenStatuses.length} filters={[
+                        switchGroup({ key: "sources", title: t("library.sourcesTitle"), id: "src", choices: sources, hidden: hiddenSources, onChange: onSource }),
+                        statusGroup({ t, id: "st", hidden: hiddenStatuses, onChange: onStatus }),
+                    ]}
                     page={page} onPage={setPage} pageSize={PAGE_SIZE}
                     found={t("library.total", { count: games.length })} empty={failed ? t("games.loadFailed") : t("games.none")}
                     placeholderRow={() => <PlaceholderRow lead="cover" />}
@@ -652,7 +633,7 @@ function GameList({ console, games, current, loading, failed, query, onQuery, so
                         return (
                             <NavRow key={game.key} id={`gl-${game.key}`} lead={<GameCover consoleId={console.id} reference={rom.reference} game={romSource(rom)} />}
                                 label={game.discs.length > 1 ? splitTitle(game.title).main : game.title}
-                                help={[originLabel(rom, servers, t), t(`status.${statusKey(rom)}`), game.seriesSize >= 2 ? game.series : ""].filter(Boolean).join(" · ")}
+                                help={[fact(t("game.origin"), originOf(rom, servers, t)), pill(t(`status.${statusKey(rom)}`), STATUS_PILL[statusKey(rom)])]}
                                 onOpen={() => onChoose(index)} />
                         );
                     }} />

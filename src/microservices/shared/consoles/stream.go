@@ -6,7 +6,7 @@ import "strings"
 // deux kernels (2026-10-11).
 //
 // Le panneau (`stream/shared/StreamSettings.jsx`) parle le même vocabulaire
-// aux trois plateformes : « 540p » … « 1080p », 30 ou 60 images par seconde,
+// aux trois plateformes : « 360p » … « 1440p », 30, 60 ou 120 images par seconde,
 // un débit en kbps. Le serveur le traduisait seul (`manager.resolutionEnvs`),
 // et le téléphone l'ignorait : une PS3 lancée sur le S25 restait en 720p à 60
 // images quoi qu'on choisisse. Plutôt que d'écrire une seconde table là-bas,
@@ -31,20 +31,28 @@ var streamSizes = map[string][2]int{
 	"540p":  {960, 540},
 	"720p":  {1280, 720},
 	"1080p": {1920, 1080},
+	// 1440p (le porteur, 2026-11-26 : « on devrait aussi proposer le flux 1440p et 120fps ») — le Remote Play s'arrête
+	// à 1080p (RemotePlayResolution).
+	"1440p": {2560, 1440},
 }
 
-// LE FLUX PAR DÉFAUT : 540p à 30 images par seconde, pour TOUTES les consoles —
+// LE FLUX PAR DÉFAUT : 720p à 60 images par seconde, pour TOUTES les consoles —
 // le rétro, les consoles de bureau, le Remote Play —, au serveur comme au
-// téléphone (le porteur, 2026-11-16 : « La valeur par défaut ça toujours été
-// 540p@30 pour tout le stream settings de toutes les consoles »). Une
-// définition ou une cadence absente, ou hors de l'échelle, prend celle-ci.
+// téléphone (le porteur, 2026-11-23 : « Tu peux mettre pour tous le stream
+// settings par défaut : 720p@60 »). Une définition ou une cadence absente, ou
+// hors de l'échelle, prend celle-ci.
+//
+// C'était 540p à 30 depuis le 2026-11-16. À 30, une PS5 sous Kyty, qui rend 25 à
+// 45 images irrégulières, perd celles qui passent 30 et attend jusqu'à deux
+// périodes le tic du flux : des saccades (journal 808). À 60, chaque image part
+// dans les 16,7 ms.
 //
 // Il n'y a plus de « défaut de l'appelant » : chacun avait le sien, et ils
 // avaient dérivé — 720p à 60 pour le Remote Play et les consoles de bureau, la
 // taille d'époque à 60 pour le rétro, alors que la page partait de 540p.
 const (
-	DefaultStreamResolution = "540p"
-	DefaultStreamFPS        = 30
+	DefaultStreamResolution = "720p"
+	DefaultStreamFPS        = 60
 )
 
 // StreamSize rend la taille d'un libellé du panneau, ou ok=false pour un
@@ -56,7 +64,7 @@ func StreamSize(label string) (width, height int, ok bool) {
 }
 
 // StreamResolution rend le libellé d'un lancement à l'échelle (« 540P » →
-// « 540p »), ou le défaut, 540p, pour un libellé vide ou inconnu (« 480p »).
+// « 540p »), ou le défaut, 720p, pour un libellé vide ou inconnu (« 480p »).
 func StreamResolution(label string) string {
 	normalized := strings.ToLower(strings.TrimSpace(label))
 	if _, ok := streamSizes[normalized]; ok {
@@ -66,10 +74,10 @@ func StreamResolution(label string) string {
 	return DefaultStreamResolution
 }
 
-// StreamFPS rend la cadence demandée si elle tient entre 15 et 60 images par
-// seconde, le défaut (30) sinon.
+// StreamFPS rend la cadence demandée si elle tient entre 15 et 120 images par
+// seconde (120 depuis le 2026-11-26), le défaut (60) sinon.
 func StreamFPS(fps int) int {
-	if fps < 15 || fps > 60 {
+	if fps < 15 || fps > 120 {
 		return DefaultStreamFPS
 	}
 
@@ -89,17 +97,21 @@ func StreamFPS(fps int) int {
 // hauteur inconnue (0) vaut celle du flux : rien n'est inventé au-dessus.
 var tierLadder = []int{1080, 720, 540}
 
+// maxTierCount — deux paliers au plus (gatewayclient.MaxTiers) : 1080p et 720p
+// sous un 1440p, 720p et 540p sous un 1080p.
+const maxTierCount = 2
+
 // TierHeights — les hauteurs des paliers d'un flux de cette hauteur, du plus
-// grand au plus petit : celles de l'échelle strictement sous le flux, et pas
-// au-dessus de ce que l'émulateur rend. Aucune sous 540p : un flux en 540p ou
-// en 360p n'en a pas.
+// grand au plus petit : les deux plus grandes de l'échelle strictement sous le
+// flux, et pas au-dessus de ce que l'émulateur rend. Aucune sous 540p : un flux
+// en 540p ou en 360p n'en a pas.
 func TierHeights(streamHeight, renderedHeight int) []int {
 	if renderedHeight <= 0 || renderedHeight > streamHeight {
 		renderedHeight = streamHeight
 	}
 	var heights []int
 	for _, height := range tierLadder {
-		if height < streamHeight && height <= renderedHeight {
+		if len(heights) < maxTierCount && height < streamHeight && height <= renderedHeight {
 			heights = append(heights, height)
 		}
 	}
@@ -123,7 +135,7 @@ func StreamTiers(width, height, kbps, renderedHeight int) []StreamTier {
 		tierWidth := (width * tierHeight / height) &^ 1
 		rate := 0
 		if kbps > 0 {
-			rate = max(1000, min(15000, kbps*tierWidth*tierHeight/max(1, width*height)))
+			rate = max(1000, min(maxStreamBitrate, kbps*tierWidth*tierHeight/max(1, width*height)))
 		}
 		tiers = append(tiers, StreamTier{Width: tierWidth, Height: tierHeight, Bitrate: rate})
 	}
@@ -131,18 +143,41 @@ func StreamTiers(width, height, kbps, renderedHeight int) []StreamTier {
 	return tiers
 }
 
+// maxStreamBitrate — le plus haut débit d'un flux, en kbps : de quoi porter un
+// 1440p à 120 images par seconde (20 000 jusqu'au 2026-11-26, le 1080p à 60).
+const maxStreamBitrate = 40000
+
 // StreamBitrate rend le débit demandé, en kbps, s'il tient entre 500 et
-// 20 000, 0 sinon. « Auto » se mesure dans la page, au lancement : le débit
+// 40 000, 0 sinon. « Auto » se mesure dans la page, au lancement : le débit
 // entre le navigateur et le serveur de la partie, dont le flux prend une part
 // (edge, `engine/stream/shared/libs/network-probe.js`), et il arrive ici comme
 // un débit choisi. Zéro ne reste que quand la mesure a manqué : l'encodeur
 // prend alors son propre repli.
 func StreamBitrate(kbps int) int {
-	if kbps < 500 || kbps > 20000 {
+	if kbps < 500 || kbps > maxStreamBitrate {
 		return 0
 	}
 
 	return kbps
+}
+
+// LE REMOTE PLAY S'ARRÊTE À 1080p ET 60 IMAGES PAR SECONDE : une PlayStation
+// n'ouvre que ses modes (360p à 1080p, 30 ou 60) et refuse la partie sinon
+// (« AvCap failed to initialize video »). Plus haut, elle prend son plus grand.
+
+// RemotePlayResolution — StreamResolution, ramenée à 1080p au-delà.
+func RemotePlayResolution(label string) string {
+	resolution := StreamResolution(label)
+	if _, height, _ := StreamSize(resolution); height > 1080 {
+		return "1080p"
+	}
+
+	return resolution
+}
+
+// RemotePlayFPS — StreamFPS, ramenée à 60 au-delà.
+func RemotePlayFPS(fps int) int {
+	return min(60, StreamFPS(fps))
 }
 
 // appLanguages — les langues de l'application (webapp, i18n/index.js), les

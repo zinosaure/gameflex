@@ -54,7 +54,9 @@ let preferences = {
 };
 const listeners = new Set();
 
-function readStoredBool(key, fallback) {
+// readStoredBool, store — exportés pour les autres réglages de l'APPAREIL (la voix, use-voice-chat.js) : une seule
+// façon de lire et d'écrire un interrupteur du navigateur.
+export function readStoredBool(key, fallback) {
     try {
         if (typeof window === "undefined") return fallback;
         const raw = window.localStorage.getItem(key);
@@ -83,7 +85,7 @@ function readStoredRatio(key, fallback) {
     }
 }
 
-function store(key, value) {
+export function store(key, value) {
     try {
         window.localStorage.setItem(key, value ? "true" : "false");
     } catch {

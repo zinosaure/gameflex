@@ -21,7 +21,7 @@ const SAVE_AFTER_MS = 600;
 // disposition. Une seule valeur, lue partout.
 export const DEFAULT_PAD_OPACITY = 0.4;
 
-let current = { name: null, opacity: null, slot: null, slots: [], token: null };
+let current = { name: null, opacity: null, slot: null, slots: [], token: null, lastName: null };
 let timer = null;
 const listeners = new Set();
 
@@ -38,34 +38,18 @@ function subscribe(listener) {
 
 // La manette dessinée dit ce qu'elle a lu (`slot` : l'emplacement en jeu, ou null ; `slots` : tous ceux de cette manette).
 export function publishPadOpacity({ name, opacity, slot, slots, token }) {
-    publish({ name, opacity, slot, slots: slots || [], token });
+    publish({ name, opacity, slot, slots: slots || [], token, lastName: name });
 }
 
-// Elle part (fin de partie, autre manette) : plus rien à régler.
+// Elle part (fin de partie, autre manette, manette à l'écran coupée) : elle n'est plus dessinée (`name` à null), MAIS SA
+// DISPOSITION RESTE (`lastName`, son emplacement, son jeton) : la manette à l'écran coupée, la glissière du menu règle
+// toujours son opacité, celle du pavé tactile resté seul à côté d'une vraie manette (PS4, PS5) et celle que la manette
+// retrouvera (le porteur, 2026-11-24 : « tu peux laisser l'opacité activée car ça concerne aussi le touchpad sur l'écran
+// quand la manette est cachée »). Une écriture en attente part quand même.
 export function forgetPadOpacity(name) {
     if (current.name === name) {
-        clearTimeout(timer);
-        publish({ name: null, opacity: null, slot: null, slots: [], token: null });
+        publish({ ...current, name: null, lastName: name });
     }
-}
-
-// LE PAVÉ TACTILE SEUL, à côté d'une vraie manette (TouchpadSurface `alone`) : il suit la même opacité, et le menu montre
-// alors sa glissière (le porteur, 2026-11-18 : « pour PS4 et PS5, on ne peut pas diminuer l'opacité du touchpad qui est
-// sur l'écran »). Compté : un pavé qui part pendant qu'un autre arrive ne l'efface pas.
-let alonePads = 0;
-const aloneListeners = new Set();
-
-export function markTouchpadAlone(on) {
-    alonePads = Math.max(0, alonePads + (on ? 1 : -1));
-    aloneListeners.forEach((listener) => listener());
-}
-
-export function useTouchpadAlone() {
-    return useSyncExternalStore((listener) => {
-        aloneListeners.add(listener);
-
-        return () => aloneListeners.delete(listener);
-    }, () => alonePads > 0);
 }
 
 export function usePadOpacity() {
@@ -74,7 +58,7 @@ export function usePadOpacity() {
 
 // Régler : la manette suit aussitôt ; le compte, une fois la glissière arrêtée.
 export function setPadOpacity(opacity) {
-    if (!current.name) {
+    if (!current.name && !current.lastName) {
         return;
     }
     publish({ ...current, opacity });
@@ -83,7 +67,8 @@ export function setPadOpacity(opacity) {
 }
 
 async function save() {
-    const { name, opacity, slot, slots, token } = current;
+    const { opacity, slot, slots, token } = current;
+    const name = current.name || current.lastName;
     const used = new Set(slots.map((entry) => entry.slot_index));
     const index = slot ? slot.slot_index : [1, 2, 3, 4, 5].find((candidate) => !used.has(candidate));
 
@@ -93,7 +78,7 @@ async function save() {
     const answer = await saveButtonPositioning(token, name, index, slot ? slot.layout : [], true, opacity);
 
     // L'emplacement créé devient celui en jeu : la prochaine écriture le réécrit au lieu d'en créer un autre.
-    if (answer.ok && answer.item && current.name === name) {
+    if (answer.ok && answer.item && (current.name || current.lastName) === name) {
         publish({ ...current, slot: answer.item, slots: [...slots.filter((entry) => entry.slot_index !== index), answer.item] });
     }
 }

@@ -52,7 +52,7 @@ func TestThePhoneHasBothModes(t *testing.T) {
 	if label, scopes, err := service.VerifyCatalogToken(joined.Token); err != nil || label != "Salon" || scopes != "catalog,metadata-providers" {
 		t.Fatalf("le jeton délivré : %q %q %v", label, scopes, err)
 	}
-	if answer := call(t, service, http.MethodPatch, "/api/v1/users/1/token", root, map[string]any{"enabled": true, "duration": "1w"}); answer.Code != http.StatusOK {
+	if answer := call(t, service, http.MethodPatch, "/api/v1/auth/me/token", root, map[string]any{"enabled": true, "duration": "1w"}); answer.Code != http.StatusOK {
 		t.Fatalf("activation : %d", answer.Code)
 	}
 	if answer := call(t, service, http.MethodPost, "/api/v1/token-invitations/pairing/account/open", root, nil); answer.Code != http.StatusOK {

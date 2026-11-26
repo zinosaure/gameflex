@@ -117,7 +117,7 @@ export function Topbar({ tab }) {
     // invitations, comme avant — est sur l'onglet En direct, qui porte la section Notifications.
     // Les parties des serveurs fédérés comptent aussi (`#747`) : En direct les montre (useFederatedSessions).
     const federatedSessions = useFederatedSessions();
-    const count = sessions.length + federatedSessions.length + invites.length;
+    const count = sessions.length + federatedSessions.length + invites.filter((invite) => !invite.endedAt).length;
     // À sa place, la manette : les raccourcis de l'entrée en cours, visible seulement quand une
     // manette est branchée ou que le clavier a servi (rien au doigt ou à la souris seuls).
     const inputKind = useInputKind();
@@ -183,10 +183,10 @@ export function Topbar({ tab }) {
         }
     }, [tab]);
 
-    // `data-nav-skip` : la croix et les flèches n'entrent jamais dans l'en-tête — seuls L2 / R2 le
-    // parcourent (le porteur, 2026-11-12) ; le doigt, la souris et Tab y vont toujours.
+    // L'en-tête se parcourt à L2 / R2 et à la croix (gauche, droite : libs/input.js, moveInHeader) ; le doigt, la souris
+    // et Tab y vont toujours.
     return (
-        <header className="topbar" data-nav-skip>
+        <header className="topbar">
             <Brand active={tab === "live"} count={count} onOpen={() => navigate(tabById("live").path)} />
             {/* Les onglets : la navigation soulignée de Bootstrap ; sur un écran étroit, la rangée défile. */}
             <nav className="tabs nav nav-underline flex-nowrap overflow-x-auto" ref={stripRef}>
@@ -208,10 +208,10 @@ export function Topbar({ tab }) {
                     <i className="bi bi-info-lg"></i>
                 </button>
             )}
+            <Clock />
             <button type="button" className={`${ICON_BUTTON} ${toggle(tab === "settings")}`} data-nav data-key="gear" aria-label={t("settings.title")} aria-pressed={tab === "settings"} onClick={() => toggleSettings(navigate, location, tab)}>
                 <i className="bi bi-gear"></i>
             </button>
-            <Clock />
             {shortcutsOpen && inputKind && <Shortcuts kind={inputKind} onClose={() => {
                 setShortcutsOpen(false);
                 // La lumière revient sur le bouton, comme atteinte par L2 / R2 : B ou une direction la rendent à l'écran.

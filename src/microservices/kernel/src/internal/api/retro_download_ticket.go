@@ -22,6 +22,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"gameflex/resources"
 	"gameflex/storage/listing"
 	"gameflex/storage/remote"
 	"gameflex/storage/ticket"
@@ -47,6 +48,13 @@ func (server *Server) handleRetroMintDownloadTicket(w http.ResponseWriter, r *ht
 	// l'émission, pour la même raison qu'un jeu d'ici.
 	if serverID, peerRef, ok := parseRemoteReference(ref); ok {
 		if _, _, found := server.resolvePeerGame(w, serverID, consoleID, peerRef); !found {
+			return
+		}
+	} else if _, _, isResource := resources.ParseReference(ref); isResource {
+		// UN JEU D'UNE RESSOURCE EXTERNE (`#808`) : sa ressource doit le porter encore.
+		if _, _, _, found := server.resourceGame(consoleID, ref); !found {
+			writeErrorCode(w, http.StatusNotFound, "game_not_found", "rom not found")
+
 			return
 		}
 	} else if _, _, _, err := server.findRom(r.Context(), consoleID, ref); err != nil {

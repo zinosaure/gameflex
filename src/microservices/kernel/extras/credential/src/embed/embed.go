@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -56,6 +57,13 @@ type Options struct {
 	// page des jours plus tard, et retaper un mot de passe pour rejoindre la
 	// partie du salon n'a aucun sens.
 	TokenLifetime time.Duration
+	// KeysDir — le dossier des clés (chantier 80, la double authentification), comme `keys/` d'un serveur : à la racine
+	// du stockage du téléphone, à côté de `databases/`. Vide : `keys/` à côté du dossier de la base.
+	KeysDir string
+	// Server — le service tourne dans un SERVEUR tout en un (le PC, l'AppImage du chantier 70), pas dans un téléphone :
+	// les règles d'un serveur s'y appliquent (le porteur, 2026-11-24 : « tous la plupart des paramètres du serveur
+	// [doivent être] dans l'AppImage aussi par exemple pour le MFA ») — la double authentification imposée à tous.
+	Server bool
 }
 
 // Service — le service d'identité embarqué.
@@ -82,6 +90,10 @@ func New(options Options) (*Service, error) {
 	// Le chemin est GLOBAL au paquet database : on le pose avant d'ouvrir.
 	// C'est la raison pour laquelle DBPath est une variable (voir config).
 	config.DBPath = options.DBPath
+	config.KeysDir = options.KeysDir
+	if config.KeysDir == "" {
+		config.KeysDir = filepath.Join(filepath.Dir(filepath.Dir(options.DBPath)), "keys")
+	}
 
 	db, err := database.Open()
 	if err != nil {
@@ -94,6 +106,7 @@ func New(options Options) (*Service, error) {
 		RootPassword:      options.RootPassword,
 		VAPIDContactEmail: "admin@example.com",
 		CommitSHA:         "device",
+		Device:            !options.Server,
 	}
 
 	if options.TokenLifetime > 0 {

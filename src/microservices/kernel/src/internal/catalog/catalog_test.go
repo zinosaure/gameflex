@@ -78,3 +78,23 @@ func TestAFolderWithNothingToLaunchIsStillRecognised(t *testing.T) {
 		t.Errorf("Formats(switch) = %q", got)
 	}
 }
+
+// UN PORT D'UN JEU-DOSSIER (chantier 72) : la copie PS5 d'Astro Bot se lance par la console des ports, reconnue à
+// son identifiant et à sa version (sce_sys/param.json) — le listage la montrait, le lancement ne la trouvait pas.
+func TestAPortLaunchesAGameFolderRecognisedByItsTitle(t *testing.T) {
+	roms := t.TempDir()
+	param := filepath.Join(roms, "ps5", "Astro Bot", "sce_sys", "param.json")
+	if err := os.MkdirAll(filepath.Dir(param), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(param, []byte(`{"titleId":"PPSA21567","contentVersion":"01.019.000"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	game, err := For("ports", roms).Resolve("Astro Bot")
+	if err != nil {
+		t.Fatalf("Resolve(Astro Bot): %v", err)
+	}
+	if game.RelPath != filepath.Join("ps5", "Astro Bot") || game.Folder != "ps5" {
+		t.Errorf("got %+v, want ps5/Astro Bot", game)
+	}
+}

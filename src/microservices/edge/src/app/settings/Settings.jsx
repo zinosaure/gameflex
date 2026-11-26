@@ -4,29 +4,19 @@ import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { can, DataProvider, useAuth, useData } from "../libs/data.jsx";
 import { returnToAppHome, setRemoteTarget } from "../libs/api.js";
 import { adminThere, REMOTE_PAGES, RemoteAdminContext } from "../libs/remoteAdmin.js";
-import { COFFEE_URL, EXTERNAL, openExternal, REPOSITORY_URL } from "../libs/links.js";
+import { COFFEE_URL, openExternal } from "../libs/links.js";
 import { toast } from "../shell/Shell.jsx";
-import { ProfileRoutes } from "./account/Profile.jsx";
-import { LogoutPage } from "./account/Logout.jsx";
-import { ApplicationPage } from "./application/Application.jsx";
-import { DownloadPage } from "./about/Download.jsx";
-import { LicencePage } from "./about/Licence.jsx";
-import { ProjectPage } from "./about/Project.jsx";
-import { CacheRoutes } from "./server/Cache.jsx";
-import { MetadataRoutes } from "./server/Metadata.jsx";
-import { RescanPage } from "./server/Rescan.jsx";
-import { LogsRoutes } from "./server/Logs.jsx";
-import { MembersRoutes } from "./people/Members.jsx";
-import { ResourcesRoutes } from "./people/Resources.jsx";
-import { FederationRoutes } from "./people/Federation.jsx";
-import { ConsolesRoutes } from "./server/consoles/Consoles.jsx";
-import Credits from "./about/Credits.jsx";
-import { GamepadsRoutes } from "./application/Gamepads.jsx";
-import { InvitePage } from "./application/Invite.jsx";
-import { RemotePlayRoutes } from "./server/RemotePlay.jsx";
-import { CatalogRoutes } from "./catalog/Games.jsx";
 import SettingsPage, { useSettingsNavigation } from "./SettingsPage.jsx";
-import NavRow, { AccountName, AdminMark, atUsername, Avatar, Note, QuickTiles, Rows, Section } from "../ui/Bricks.jsx";
+import { SETTINGS_ROUTES, settingsPath } from "../globals/routes.js";
+import { AccountName } from "../bricks/AccountName.jsx";
+import { AdminMark } from "../bricks/AdminMark.jsx";
+import { Avatar } from "../bricks/Avatar.jsx";
+import NavRow from "../bricks/NavRow.jsx";
+import { Note } from "../bricks/Note.jsx";
+import { Rows } from "../bricks/Rows.jsx";
+import { Section } from "../bricks/Section.jsx";
+import { atUsername } from "../globals/accounts.js";
+import { CONSOLE_ICON } from "../globals/icons.js";
 
 // LES RÉGLAGES (le porteur, 2026-11-12 : « l'interface des settings »), en direction C (validée le 2026-11-13) :
 // Mon compte (la carte du compte, seule : elle ouvre Profil), les tuiles de ce que TOUT compte voit (Manettes,
@@ -37,7 +27,7 @@ import NavRow, { AccountName, AdminMark, atUsername, Avatar, Note, QuickTiles, R
 //
 // MOT DE PASSE, JETON ET MES SAUVEGARDES SONT DANS PROFIL (le porteur, 2026-11-13 : « mot de passe, jeton et mes
 // sauvegardes vont DANS profil. Là c'est en dehors. ») : des pages enfants, /settings/profile/password, …/token,
-// …/saves (account/Profile.jsx, ProfileRoutes). Leurs anciennes adresses ne restent pas.
+// …/saves (globals/routes.js). Leurs anciennes adresses ne restent pas.
 //
 // CHAQUE ENTRÉE OUVRE SA ROUTE (le porteur, 2026-11-13 : « chaque lien doit ouvrir une ROUTE, plus un
 // offcanvas ») : /settings/<entrée>, et ses propres pages dessous (une console, un membre, un journal…).
@@ -53,11 +43,11 @@ import NavRow, { AccountName, AdminMark, atUsername, Avatar, Note, QuickTiles, R
 // /settings/gamepads, avec ses correspondances, l'écoute d'un accord et l'éditeur de disposition.
 // REMOTE PLAY A SON COIN ADMINISTRATEUR (/settings/remote-play) : les consoles enregistrées, en ajouter une.
 
-// La version de cette construction (le fichier VERSION ; webpack.config.js), dans le pied de la liste.
-const VERSION = process.env.GAMEFLEX_VERSION;
 
 // `url` : une entrée qui n'ouvre pas de page des Réglages mais une adresse d'un autre site (`opens="link"`).
-const item = (key, icon, show = true, tone = "slate", url = null) => (show ? { key, icon, tone, url } : null);
+// `disabled` : une ligne grisée, qui annonce une page pas encore faite.
+// Une entrée : sa clé, son icône (la couleur est celle du sens de sa section), si ce compte la voit, son adresse dehors.
+const item = (key, icon, show = true, url = null, disabled = false) => (show ? { key, icon, url, disabled } : null);
 
 export function useSettingsGroups() {
     const { capabilities } = useData();
@@ -73,48 +63,80 @@ export function useSettingsGroups() {
         // des serveurs fédérés (catalog/Games.jsx ; « Catalogue c'est tout membres/roles »), et Inviter, son adresse à
         // ouvrir sur un autre appareil (application/Invite.jsx) —, juste au-dessus de ce qu'un administrateur seul voit du
         // serveur. Le groupe « Le catalogue », qui n'avait que cette ligne, est parti avec elle.
+        // LES TUILES DEVIENNENT DES SECTIONS (le porteur, 2026-11-25 : « On remplacera les tuiles par des sections dans
+        // settings » ; « remplace le texte "cet appareil" par "réglages" ») : « Réglages » — ce qui ne vaut que pour cet
+        // appareil —, puis « Ce serveur » — ses jeux, y inviter quelqu'un.
         {
-            key: "tiles", tiles: true, items: [
-                item("gamepads", "bi-controller", true, "violet"),
-                item("application", "bi-sliders", true, "indigo"),
-                item("catalogGames", "bi-disc", true, "teal"),
-                item("invite", "bi-qr-code", true, "green"),
+            key: "device", sense: "modify", items: [
+                item("gamepads", "bi-controller"),
+                item("application", "bi-sliders"),
             ],
         },
         {
-            key: "server", admin: true, items: [
-                item("consoles", "bi-joystick", true, "indigo"),
-                item("remotePlay", "bi-playstation", true, "sky"),
-                item("metadata", "bi-images", has("metadataServices"), "indigo"),
-                item("cache", "bi-archive", true, "slate"),
-                item("logs", "bi-journal-text", true, "slate"),
-                item("rescan", "bi-arrow-repeat", true, "slate"),
+            key: "here", sense: "play", items: [
+                item("catalogGames", "bi-disc"),
+                item("invite", "bi-qr-code"),
+            ],
+        },
+        // QUATRE GROUPES POUR L'ADMINISTRATEUR (le porteur, 2026-11-20 : « On remplace "serveur" et "personnes et partage"
+        // par les sections suivantes ») : ce que le serveur sert (Contenu), ce qu'il partage et ce qu'il lit ailleurs
+        // (Partage et Stockage), qui y entre (Personnes), et son entretien (Serveur). Une ligne grisée a la pastille
+        // ardoise, comme les autres lignes désactivées des Réglages.
+        {
+            key: "content", admin: true, sense: "modify", items: [
+                // Leurs icônes à elles (le porteur, 2026-11-25 : « change l'icône de consoles et Remote Play pour un autre »).
+                item("consoles", CONSOLE_ICON),
+                item("remotePlay", "bi-broadcast"),
+                item("metadata", "bi-images", has("metadataServices")),
+                // GOOGLE CAST (le porteur, 2026-11-24 : « ça devrait être dans l'administration directement et non plus
+                // dans le launch.sh ») : l'identifiant du récepteur (Cast.jsx). Sur toutes les plateformes (le porteur,
+                // 2026-11-26 : « le cast to tv c'est toutes les plateformes qui utilise ») : chaque hôte le garde
+                // (`/api/v1/cast`), même vu d'une page qui ne sait pas encore caster elle-même (`castToTv`, #124).
+                item("cast", "bi-cast"),
             ],
         },
         {
-            key: "people", admin: true, items: [
+            key: "sharing", admin: true, sense: "modify", items: [
+                item("federation", "bi-arrow-left-right", has("serverAdmin")),
+                item("resources", "bi-device-hdd", true),
+            ],
+        },
+        {
+            key: "people", admin: true, sense: "modify", items: [
                 // Les sauvegardes d'un compte sont sur la page de son membre (le porteur, 2026-11-14 : « rajoute aussi un
                 // lien pour voir les sauvegardes de l'utilisateur (ce qui fait qu'on enlève "user's saves" dans
                 // settings) »).
-                item("members", "bi-person-badge", has("accounts"), "green"),
-                item("resources", "bi-device-hdd", true, "green"),
-                item("federation", "bi-arrow-left-right", has("serverAdmin"), "green"),
+                item("members", "bi-person-badge", has("accounts")),
             ],
         },
         {
-            key: "about", items: [
+            key: "server", admin: true, sense: "modify", items: [
+                // CE QUI A QUITTÉ LE COMPOSE (chantier 81) : son nom, les manettes, les parties par console, le miroir, le GPU.
+                item("serverConfig", "bi-hdd-network", has("serverConfig")),
+                item("logs", "bi-journal-text", true),
+                item("cache", "bi-archive", true),
+                item("rescan", "bi-arrow-repeat", true),
+            ],
+        },
+        {
+            key: "about", sense: "optional", items: [
                 // LE PROJET SUR GITHUB (le porteur, 2026-11-14, chantier 53, P13 : « dans settings > about rajoute "GameFlex"
                 // avec un lien vers le GitHub : Readme, Licence, Fédération, etc... vers chaque doc et aussi le repos ») : le
                 // dépôt public et chacun de ses documents (about/Project.jsx, ProjectPage).
-                item("gameflex", "bi-github", true, "slate"),
+                item("gameflex", "bi-github", true),
                 // LA LICENCE, CACHÉE POUR LE MOMENT (le porteur, 2026-11-14, chantier 53, P13 : « pour le moment cache le
                 // about "Licence" ») : sa page reste (LicencePage), son entrée revient en décommentant la ligne.
-                // item("licence", "bi-patch-check", isAdmin, "slate"),
-                item("credits", "bi-c-circle", true, "slate"),
-                item("download", "bi-android2", has("appDownload"), "slate"),
-                // BUY ME A COFFEE (le porteur, 2026-11-14, chantier 53, P13 : « Si tu peux rajouter buymeacoffee dans la
-                // section about ce serait bien aussi ») : sa page, hors de l'application (libs/links.js, COFFEE_URL).
-                item("coffee", "bi-cup-hot-fill", true, "amber", COFFEE_URL),
+                // item("licence", "bi-patch-check", isAdmin),
+                item("credits", "bi-c-circle", true),
+                item("download", "bi-android2", has("appDownload")),
+            ],
+        },
+        // BUY ME A COFFEE (le porteur, 2026-11-14, chantier 53, P13), DANS SA SECTION « SOUTIEN » (le porteur, 2026-11-25 :
+        // « Tu peux mettre "buy me a coffee" dans une section Support ? ») : sa page, hors de l'application (libs/links.js,
+        // COFFEE_URL).
+        {
+            key: "support", sense: "optional", items: [
+                item("coffee", "bi-cup-hot-fill", true, COFFEE_URL),
             ],
         },
         // SE DÉCONNECTER N'EST PAS EN DANGER (le porteur, 2026-11-14 : « ne pas mettre sign out en couleur danger ») :
@@ -124,9 +146,9 @@ export function useSettingsGroups() {
         // retourner à l'accueil dans section session ») : à côté de Se déconnecter, plus dans « À propos » — l'application
         // seule le déclare (`appHome`, `appHomeLink`).
         {
-            key: "logout", items: [
-                item("appHome", "bi-house", has("appHome") || has("appHomeLink"), "slate"),
-                item("logout", "bi-box-arrow-right", has("accounts"), "indigo"),
+            key: "logout", sense: "optional", items: [
+                item("appHome", "bi-house", has("appHome") || has("appHomeLink")),
+                item("logout", "bi-box-arrow-right", has("accounts")),
             ],
         },
     ].filter((group) => !group.admin || isAdmin)
@@ -136,30 +158,6 @@ export function useSettingsGroups() {
     [capabilities, isAdmin]);
 }
 
-// L'adresse de chaque entrée, et ce qu'elle ouvre (`/*` : elle a ses propres pages dessous).
-const PAGES = {
-    profile: ["profile/*", ProfileRoutes],
-    catalogGames: ["catalog/games/*", CatalogRoutes],
-    application: ["application", ApplicationPage],
-    gamepads: ["gamepads/*", GamepadsRoutes],
-    invite: ["invite", InvitePage],
-    remotePlay: ["remote-play/*", RemotePlayRoutes],
-    consoles: ["consoles/*", ConsolesRoutes],
-    cache: ["cache/*", CacheRoutes],
-    logs: ["logs/*", LogsRoutes],
-    members: ["members/*", MembersRoutes],
-    resources: ["resources/*", ResourcesRoutes],
-    federation: ["federation/*", FederationRoutes],
-    metadata: ["metadata/*", MetadataRoutes],
-    rescan: ["rescan", RescanPage],
-    gameflex: ["gameflex", ProjectPage],
-    licence: ["licence", LicencePage],
-    credits: ["credits", Credits],
-    download: ["download", DownloadPage],
-    logout: ["logout", LogoutPage],
-};
-
-export const settingsPath = (key) => `/settings/${PAGES[key][0].replace("/*", "")}`;
 
 
 // /settings/remote/<serveur>/* : LES MÊMES PAGES, CHEZ UN SERVEUR FÉDÉRÉ (chantier 73). La session de mon compte de
@@ -201,7 +199,7 @@ function RemoteAdmin() {
 
     if (state.phase !== "ready") {
         return (
-            <SettingsPage title={name || t("remoteAdmin.title")} parent={home}>
+            <SettingsPage title={name || t("remoteAdmin.title")} parent={home} guides={[["install"], ["library", "1-add-a-console"]]}>
                 <Section>
                     <Note className="mt-0">{state.phase === "loading" ? t("settings.loading") : t(state.phase === "notAdmin" ? "remoteAdmin.notAdmin" : "remoteAdmin.unreachable")}</Note>
                 </Section>
@@ -214,11 +212,9 @@ function RemoteAdmin() {
             {/* SES DONNÉES, PAS LES NÔTRES : consoles, disques, serveurs rejoints, consoles Remote Play — lues chez lui. */}
             <DataProvider remote>
             <Routes>
-                {REMOTE_PAGES.map(({ key }) => {
-                    const [path, Page] = PAGES[key];
-
-                    return <Route key={key} path={path} element={<Page />} />;
-                })}
+                {SETTINGS_ROUTES.filter((route) => REMOTE_PAGES.some(({ key }) => key === route.entry)).map(({ path, page: Page }) => (
+                    <Route key={path} path={path} element={<Page />} />
+                ))}
                 <Route path="*" element={<Navigate to={home} replace />} />
             </Routes>
             </DataProvider>
@@ -248,42 +244,29 @@ function SettingsList({ groups }) {
         }
     };
     const row = (entry) => (
-        <NavRow key={entry.key} id={`s-${entry.key}`} icon={entry.icon} tone={entry.tone} label={t(`settings.items.${entry.key}.label`)}
+        <NavRow key={entry.key} id={`s-${entry.key}`} icon={entry.icon} label={t(`settings.items.${entry.key}.label`)}
             help={entry.key === "logout" ? null : t(`settings.items.${entry.key}.help`)} opens={entry.url ? "link" : entry.key === "appHome" ? "action" : "page"}
-            onOpen={() => (entry.url ? openExternal(entry.url) : entry.key === "appHome" ? goHome() : open(settingsPath(entry.key), `s-${entry.key}`))} />
+            disabled={entry.disabled} onOpen={() => (entry.url ? openExternal(entry.url) : entry.key === "appHome" ? goHome() : open(settingsPath(entry.key), `s-${entry.key}`))} />
     );
 
     // Son en-tête est celui de toute page des Réglages (PageHeader) : son Retour les quitte.
     return (
-        <SettingsPage title={t("settings.title")} parent={null}>
+        <SettingsPage title={t("settings.title")} parent={null} guides={[["install"], ["library", "1-add-a-console"]]}>
             {card && (
-                <Section title={t("settings.groups.account")}>
+                <Section title={t("settings.groups.account")} help={t("settings.groupsHelp.account")} sense="info">
                     <Rows>
                         <NavRow id="s-profile" label={<AccountName name={name} admin={isAdmin} />} help={atUsername(user.username)}
                             lead={<Avatar name={name} />} onOpen={() => open(settingsPath("profile"), "s-profile")} />
                     </Rows>
                 </Section>
             )}
-            {groups.map((group) => (group.tiles ? (
-                <QuickTiles key={group.key} items={group.items.map((entry) => ({
-                    id: `s-${entry.key}`, icon: entry.icon, tone: entry.tone, label: t(`settings.items.${entry.key}.label`), value: t(`settings.items.${entry.key}.help`),
-                    onClick: () => open(settingsPath(entry.key), `s-${entry.key}`),
-                }))} />
-            ) : (
+            {groups.map((group) => (
                 // L'INSIGNE DE L'ADMINISTRATION à côté du titre d'un groupe qu'un administrateur seul voit (AdminMark).
-                <Section key={group.key} title={t(`settings.groups.${group.key}`)} badge={group.admin ? <AdminMark label={t("settings.adminOnly")} /> : null}>
+                <Section key={group.key} title={t(`settings.groups.${group.key}`)} help={t(`settings.groupsHelp.${group.key}`)} sense={group.sense}
+                    badge={group.admin ? <AdminMark label={t("settings.adminOnly")} /> : null}>
                     <Rows>{group.items.map(row)}</Rows>
                 </Section>
-            )))}
-            {/* LE PIED DES RÉGLAGES (le porteur, 2026-11-14, chantier 53, P13 : « Ah et dans le footer, tu mets gameflex, le
-                lien GitHub et le lien Buymeacoffee ») : « GameFlex (version) · GitHub · Buy me a coffee », en petit, de la
-                couleur secondaire ; deux liens de texte, hors de l'application, à la croix comme tout lien. LA VERSION (le
-                porteur : « n'oublie pas d'afficher la version. GameFlex ({version}) ») : celle du fichier VERSION, que la
-                construction lit (webpack.config.js, GAMEFLEX_VERSION). */}
-            <Note className="text-center mt-4 mb-2">
-                {VERSION ? `GameFlex (${VERSION})` : "GameFlex"} · <a href={REPOSITORY_URL} {...EXTERNAL} className="text-reset" data-nav data-key="s-footer-github">{t("settings.footerGithub")}</a>
-                {" · "}<a href={COFFEE_URL} {...EXTERNAL} className="text-reset" data-nav data-key="s-footer-coffee">{t("settings.footerCoffee")}</a>
-            </Note>
+            ))}
         </SettingsPage>
     );
 }
@@ -294,17 +277,22 @@ export default function Settings() {
     const { capabilities } = useData();
     // Profil s'ouvre par la carte du compte, en tête de la liste. Les jeux vivent sous chaque console (le porteur,
     // 2026-11-13 ; chantier 53, P8) : Réglages › Consoles › une console › Jeux.
+    const { isAdmin } = useAuth();
+    // LES MODÈLES, SUR LA STAGING SEULEMENT, SUR UNE ROUTE CACHÉE (le porteur, 2026-11-25 : « pour staging on le garde dans
+    // une autre route cachée que pour le staging. Ça permettra d'avoir la référence ») : `/settings/templates`, sans entrée
+    // dans la liste — la référence des composants et les maquettes du chantier 81. La capacité `staging`, un administrateur.
     const available = new Set([
         ...groups.flatMap((group) => group.items.map((entry) => entry.key)),
         ...(can(capabilities, "accounts") ? ["profile"] : []),
+        ...(can(capabilities, "staging") && isAdmin ? ["templates"] : []),
     ]);
 
     return (
         <Routes>
             <Route index element={<SettingsList groups={groups} />} />
             <Route path="remote/:serverId/*" element={<RemoteAdmin />} />
-            {Object.entries(PAGES).map(([key, [path, Page]]) => (
-                <Route key={key} path={path} element={available.has(key) ? <Page /> : <Navigate to="/settings" replace />} />
+            {SETTINGS_ROUTES.map(({ entry, path, page: Page, capability }) => (
+                <Route key={path} path={path} element={available.has(entry) && (!capability || can(capabilities, capability)) ? <Page /> : <Navigate to="/settings" replace />} />
             ))}
             <Route path="*" element={<Navigate to="/settings" replace />} />
         </Routes>

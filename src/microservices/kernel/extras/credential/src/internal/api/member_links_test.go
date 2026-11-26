@@ -596,3 +596,16 @@ func TestADeletedMemberIsNamedToTheKernels(t *testing.T) {
 		t.Fatalf("la liste d'un service qui n'a rien supprimé (ou oublié) : %s %v", payload, err)
 	}
 }
+
+// UN NOUVEAU COMPTE : 20 caractères au plus, sans espace (Réglages › Membres).
+func TestANewUsernameHasTwentyCharactersAtMost(t *testing.T) {
+	server := memberServer(t)
+	for _, name := range []string{strings.Repeat("a", 21), "lea dupont"} {
+		if recorder := asAdmin(server, server.handleCreateUser, admin, "", `{"username":"`+name+`","display_name":"Léa"}`); recorder.Code != http.StatusBadRequest {
+			t.Fatalf("%q : %d, attendu 400", name, recorder.Code)
+		}
+	}
+	if recorder := asAdmin(server, server.handleCreateUser, admin, "", `{"username":"`+strings.Repeat("a", 20)+`","display_name":"Léa"}`); recorder.Code != http.StatusCreated && recorder.Code != http.StatusOK {
+		t.Fatalf("20 caractères : %d", recorder.Code)
+	}
+}

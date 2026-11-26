@@ -11,15 +11,19 @@
 // silently never delivers anything.
 const CUSTOM_NAMESPACE = "urn:x-cast:com.gameflex.session";
 
-// Sourced from GAMEFLEX_GOOGLECAST_APPLICATION_ID (credentials.sh -> launch.sh ->
-// docker-compose.yaml's gameflex-edge service -> webpack.config.js's
-// DefinePlugin), filled
-// in once the receiver app is registered in the Google Cast SDK Developer
-// Console (manual step, ~5$ one-time fee — see the plan's own doc; not
-// something this code can do). Empty/missing is treated the same as
-// "not registered yet": requestCastSession below fails fast with a clear
-// error instead of silently trying to launch a receiver that doesn't exist.
-const RECEIVER_APP_ID = process.env.GOOGLECAST_APPLICATION_ID || "";
+// LES ERREURS DU CAST SE TRADUISENT (la page de la partie, la page de cast) : un code, jamais un texte écrit ici —
+// `unavailable` (ce navigateur ne caste pas), `noReceiver` (aucun récepteur réglé), `cancelled` (le sélecteur refermé
+// sans choisir : pas une erreur à montrer), `failed` (le reste ; `detail`, ce que dit le SDK, pour la console).
+function castError(code, detail = "") {
+    return Object.assign(new Error(detail || code), { code, cancelled: code === "cancelled" });
+}
+
+export const castErrorKey = (error) => ({ unavailable: "play.castUnavailable", noReceiver: "play.castNoReceiver" })[error?.code] || "play.castFailed";
+
+// L'IDENTIFIANT DU RÉCEPTEUR VIENT DE L'ADMINISTRATION (le porteur, 2026-11-24 : « ça devrait être dans
+// l'administration directement et non plus dans le launch.sh ») : Réglages › Google Cast, gardé par le service des
+// comptes (`GET /api/v1/cast`). La page de la partie le lit et le passe à requestCastSession ; sans lui, elle ne
+// propose pas le cast.
 
 // loadCastFramework=1 is required — without it the script only attaches the
 // legacy window.chrome.cast namespace, never window.cast.framework (the CAF
@@ -47,7 +51,7 @@ function loadCastSdk() {
     if (sdkLoadPromise) return sdkLoadPromise;
 
     if (!window.chrome) {
-        return Promise.reject(new Error("Le Cast n'est disponible que sur un navigateur Chrome/Chromium."));
+        return Promise.reject(castError("unavailable"));
     }
 
     sdkLoadPromise = new Promise((resolve, reject) => {
@@ -64,7 +68,7 @@ function loadCastSdk() {
             }
             if (attemptsLeft <= 0) {
                 sdkLoadPromise = null;
-                reject(new Error("Le SDK Cast n'est pas disponible dans ce navigateur — teste sur Google Chrome avec l'icône Cast présente dans la barre d'outils."));
+                reject(castError("unavailable"));
                 return;
             }
             setTimeout(() => waitForFramework(attemptsLeft - 1), 100);
@@ -75,28 +79,28 @@ function loadCastSdk() {
                 waitForFramework(30);
             } else {
                 sdkLoadPromise = null;
-                reject(new Error("Le SDK Cast n'est pas disponible dans ce navigateur — teste sur Google Chrome avec l'icône Cast présente dans la barre d'outils."));
+                reject(castError("unavailable"));
             }
         };
         const script = document.createElement("script");
         script.src = SENDER_SDK_URL;
         script.onerror = () => {
             sdkLoadPromise = null;
-            reject(new Error("Failed to load Cast SDK"));
+            reject(castError("unavailable"));
         };
         document.head.appendChild(script);
     });
     return sdkLoadPromise;
 }
 
-function getCastContext() {
+function getCastContext(applicationId) {
     const context = cast.framework.CastContext.getInstance();
     // AUTO_ACCEPT_SESSION_ID lets Chrome resume a session already running
     // on a device without a fresh user gesture on THIS page — harmless
     // default here, no media-namespace autoplay concerns since our receiver
     // doesn't use PlayerManager at all.
     context.setOptions({
-        receiverApplicationId: RECEIVER_APP_ID,
+        receiverApplicationId: applicationId,
         autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
     });
     return context;
@@ -104,16 +108,18 @@ function getCastContext() {
 
 // requestCastSession — call from a real user click (browsers require a
 // gesture to open the Cast device picker). Resolves once a Cast session is
-// actually established; the caller still has to call sendSessionId itself
-// (kept separate so re-sending on e.g. a session change is just another
-// call, not a fresh cast-session negotiation).
-export async function requestCastSession() {
-    if (!RECEIVER_APP_ID) {
-        throw new Error("Cast receiver app not registered yet — set GAMEFLEX_GOOGLECAST_APPLICATION_ID in credentials.sh (see gameflex/stream/onscreen/cast.js's RECEIVER_APP_ID doc).");
+// actually established.
+async function requestCastSession(applicationId) {
+    if (!applicationId) {
+        throw castError("noReceiver");
     }
     await loadCastSdk();
-    const context = getCastContext();
-    await context.requestSession();
+    const context = getCastContext(applicationId);
+    try {
+        await context.requestSession();
+    } catch (error) {
+        throw castError(error === "cancel" ? "cancelled" : "failed", String(error));
+    }
     return context.getCurrentSession();
 }
 
@@ -125,19 +131,88 @@ export async function requestCastSession() {
 // here previously swallowed delivery failures silently (confirmed via real
 // testing — the receiver launched and the sender reported success, but the
 // message never arrived, with zero error surfaced anywhere).
-export async function sendSessionIdToReceiver(sessionId) {
-    const context = cast.framework.CastContext.getInstance();
-    const session = context.getCurrentSession();
-    if (!session) throw new Error("No active Cast session.");
+async function sendSessionIdToReceiver(sessionId) {
+    const session = cast.framework.CastContext.getInstance().getCurrentSession();
+    if (!session) throw castError("failed");
     await session.sendMessage(CUSTOM_NAMESPACE, { sessionId });
 }
 
-export function getCurrentCastSession() {
+function currentWebSession() {
     if (!window.cast?.framework) return null;
     return cast.framework.CastContext.getInstance().getCurrentSession();
 }
 
-export function endCastSession() {
-    const context = cast.framework.CastContext.getInstance();
-    context.endCurrentSession(true);
+// DEUX ENVOYEURS, UNE SEULE FAÇON DE S'EN SERVIR (#124 ; le porteur, 2026-11-26 : « le cast to tv c'est toutes les
+// plateformes qui utilise ») — la page de la partie prend celui que l'hôte déclare (`castLink`) et ne connaît que ceci :
+//   - `start(applicationId, sessionId)` : choisir la TV (une première fois), puis lui dire la partie ; une promesse ;
+//   - `stop()` : arrêter le cast ;
+//   - `casting()` : l'état connu tout de suite ;
+//   - `watch(onChange)` : l'état quand il change hors de la page (la TV arrêtée depuis la notification du téléphone) ;
+//     rend de quoi se désabonner.
+
+// LE SDK CAST DE CHROME : tout navigateur Chrome, quel que soit l'hôte.
+const webCaster = {
+    async start(applicationId, sessionId) {
+        if (!currentWebSession()) {
+            await requestCastSession(applicationId);
+        }
+        await sendSessionIdToReceiver(sessionId);
+    },
+    stop() {
+        if (currentWebSession()) {
+            cast.framework.CastContext.getInstance().endCurrentSession(true);
+        }
+    },
+    casting: () => Boolean(currentWebSession()),
+    watch: () => () => {},
+};
+
+// LES FENÊTRES DE L'APPLICATION, qui n'ont pas le SDK de Chrome : la page leur parle par le lien réservé `gameflex://cast`,
+// qu'elles interceptent — comme `gameflex://home`, il marche aussi chez un serveur rejoint. La WebView du téléphone
+// caste par Android (TvCast.java) ; la fenêtre du PC ouvre la page de cast de l'hôte dans le navigateur du système
+// (window/main.js, screens/access/Cast.jsx) et répond aussitôt qu'ici rien ne caste :
+//   - `gameflex://cast?application=<id>&session=<id>` : le sélecteur de TV d'Android, puis la partie au récepteur ;
+//   - `gameflex://cast?stop=1` ; `gameflex://cast?state=1` : redire l'état.
+// L'application répond par l'évènement `gameflex-cast` de la fenêtre : `{ casting, error, cancelled }` — `cancelled`, le
+// sélecteur refermé sans choisir de TV.
+const APP_EVENT = "gameflex-cast";
+const APP_LINK = "gameflex://cast";
+let appCasting = false;
+
+function askApp(query) {
+    window.location.href = `${APP_LINK}?${new URLSearchParams(query)}`;
 }
+
+const appCaster = {
+    start(applicationId, sessionId) {
+        return new Promise((resolve, reject) => {
+            const answered = (event) => {
+                window.removeEventListener(APP_EVENT, answered);
+                appCasting = Boolean(event.detail?.casting);
+                if (appCasting) {
+                    resolve();
+                } else {
+                    reject(castError(event.detail?.cancelled ? "cancelled" : "failed", event.detail?.error));
+                }
+            };
+            window.addEventListener(APP_EVENT, answered);
+            askApp({ application: applicationId, session: sessionId });
+        });
+    },
+    stop() {
+        askApp({ stop: "1" });
+    },
+    casting: () => appCasting,
+    watch(onChange) {
+        const changed = (event) => {
+            appCasting = Boolean(event.detail?.casting);
+            onChange(appCasting);
+        };
+        window.addEventListener(APP_EVENT, changed);
+        askApp({ state: "1" });
+
+        return () => window.removeEventListener(APP_EVENT, changed);
+    },
+};
+
+export const castSender = (throughApp) => (throughApp ? appCaster : webCaster);

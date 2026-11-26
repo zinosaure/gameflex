@@ -135,14 +135,18 @@ func TestStreamexSavesTravelIntoCopiesOnly(t *testing.T) {
 		t.Fatalf("source hors du compte : %d", answer.Code)
 	}
 
-	if answer := savesRequest(t, router, http.MethodDelete, game, here, nil); answer.Code != http.StatusBadRequest {
-		t.Fatalf("effacer le principal d'ici : %d", answer.Code)
-	}
 	if answer := savesRequest(t, router, http.MethodDelete, game+"&source=local", here, nil); answer.Code != http.StatusOK {
 		t.Fatalf("effacer une copie : %d", answer.Code)
 	}
 	if _, err := os.Stat(backup); !os.IsNotExist(err) {
 		t.Fatal("la copie n'est pas effacée")
+	}
+	// Le principal s'efface aussi, depuis la fiche de la sauvegarde (aucune partie ne tourne ici).
+	if answer := savesRequest(t, router, http.MethodDelete, game, here, nil); answer.Code != http.StatusOK {
+		t.Fatalf("effacer le principal : %d", answer.Code)
+	}
+	if _, err := os.Stat(kept); !os.IsNotExist(err) {
+		t.Fatal("le principal n'est pas effacé")
 	}
 }
 

@@ -2,14 +2,14 @@ import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { consoleDefaults, fetchServer, listBios, listCores, listStreamexSaves, listUserStates, readToken, romSource, saveRAMOf, stateThumbnailPath } from "../../libs/api.js";
-import { formatSize, STATUS_VARIANT, statusOf } from "../../libs/format.js";
+import { counted, fact, formatSize, originOf, STATUS_VARIANT, statusOf } from "../../libs/format.js";
 import { discName } from "../../libs/games.js";
-import { sourcesOf, summaryOf } from "../../libs/metadata.js";
+import { sourcesOf } from "../../libs/metadata.js";
 import { splitTitle } from "../../libs/visuals.js";
 import { probeNetworkAndSuggestPreset } from "../../engine/stream/shared/libs/network-probe.js";
 import { useFederationSession } from "../../libs/federation.js";
 import { FederatedRefusal } from "../access/FederatedAccount.jsx";
-import { federatedAccountPath } from "../../settings/account/MyFederation.jsx";
+import { federatedAccountPath } from "../../settings/profile/Federation.jsx";
 import { allows, hostRefusal, useAuth, useData } from "../../libs/data.jsx";
 import { isFavorite, setFavorite, useFavorites } from "../../libs/favorites.js";
 import { focusElement } from "../../libs/input.js";
@@ -17,8 +17,20 @@ import { toast } from "../../shell/Shell.jsx";
 import SidePanel from "../../shell/SidePanel.jsx";
 import { FormButton } from "../../ui/Forms.jsx";
 import { GameBanner } from "./HeroArt.jsx";
-import { gameSettingsPath } from "../../settings/server/consoles/Games.jsx";
-import NavRow, { ChoiceRow, EmptyState, InfoRow, Note, QuickTiles, Rows, Section, SelectRow, SubmitRow } from "../../ui/Bricks.jsx";
+import { gameSettingsPath } from "../../settings/consoles/Games.jsx";
+import { ChoiceRow } from "../../bricks/ChoiceRow.jsx";
+import { EmptyState } from "../../bricks/EmptyState.jsx";
+import { GameFacts } from "../../bricks/GameFacts.jsx";
+import { InfoRow } from "../../bricks/InfoRow.jsx";
+import { Loading } from "../../bricks/Loading.jsx";
+import NavRow from "../../bricks/NavRow.jsx";
+import { Note } from "../../bricks/Note.jsx";
+import { QuickTiles } from "../../bricks/QuickTiles.jsx";
+import { Rows } from "../../bricks/Rows.jsx";
+import { Section } from "../../bricks/Section.jsx";
+import { SelectRow } from "../../bricks/SelectRow.jsx";
+import { SubmitRow } from "../../bricks/SubmitRow.jsx";
+import { useFeedback } from "../../bricks/useFeedback.jsx";
 
 // L'ENGRENAGE D'UN JEU : « Informations et réglages » — ce que la fiche verrouillée
 // montrait, et les réglages de la fiche d'un jeu de la webapp (GameDetailPanel.jsx),
@@ -69,40 +81,45 @@ const saveStreamChoice = (key, value) => {
     }
 };
 
-// L'échelle unique du flux (StreamSettings.jsx de la webapp), et ses défauts quand rien n'est choisi : 540p à 30, le
+// L'échelle unique du flux (StreamSettings.jsx de la webapp), et ses défauts quand rien n'est choisi : 720p à 60, le
 // débit « Auto », pour TOUTES les consoles — les jeux comme le Remote Play, d'ici comme d'un serveur fédéré (le
-// porteur, 2026-11-16 : « La valeur par défaut ça toujours été 540p@30 pour tout le stream settings de toutes les
-// consoles »). Les deux kernels ont le même (`consoles.DefaultStreamResolution`).
+// porteur, 2026-11-23 : « Tu peux mettre pour tous le stream settings par défaut : 720p@60 » ; 540p à 30 depuis le
+// 2026-11-16). Les deux kernels ont le même (`consoles.DefaultStreamResolution`).
+// 1440p ET 120 (le porteur, 2026-11-26 : « on devrait aussi proposer le flux 1440p et 120fps ») ; leurs débits avec eux.
 const STREAM_OPTIONS = {
-    resolution: ["360p", "540p", "720p", "1080p"],
-    frameRate: ["30", "60"],
-    bitrate: ["auto", "2000", "4000", "8000", "15000"],
+    resolution: ["360p", "540p", "720p", "1080p", "1440p"],
+    frameRate: ["30", "60", "120"],
+    bitrate: ["auto", "2000", "4000", "8000", "15000", "25000", "40000"],
 };
-const STREAM_DEFAULTS = { resolution: "540p", frameRate: "30", bitrate: "auto" };
+// LE REMOTE PLAY S'ARRÊTE À 1080p, 60 ET 15 Mbps : une PlayStation n'ouvre que ses modes (consoles.RemotePlayResolution,
+// côté kernel) — ses choix s'arrêtent là aussi.
+const REMOTE_PLAY_LIMITS = { resolution: "1080p", frameRate: "60", bitrate: "15000" };
+const streamOptionsOf = (name, remotePlay) => (remotePlay
+    ? STREAM_OPTIONS[name].slice(0, STREAM_OPTIONS[name].indexOf(REMOTE_PLAY_LIMITS[name]) + 1)
+    : STREAM_OPTIONS[name]);
+const STREAM_DEFAULTS = { resolution: "720p", frameRate: "60", bitrate: "auto" };
 const streamLabel = (name, value) => (name === "frameRate" ? `${value} FPS` : name === "bitrate" ? (value === "auto" ? "Auto" : `${Number(value) / 1000} Mbps`) : value);
 
 // Le flux d'une console dans ce navigateur : son choix, et le défaut pour ce qu'il n'a pas touché — ce que sa tuile
 // résume et ce que son lancement envoie.
 export const streamOf = (key) => ({ ...STREAM_DEFAULTS, ...streamChoiceOf(key) });
 
-// Le résumé d'un flux, sur sa tuile : « 540p · 30 FPS · Auto ».
-export const streamSummaryOf = (stream) => Object.keys(STREAM_OPTIONS).map((name) => streamLabel(name, stream[name])).join(" · ");
+// Le résumé d'un flux, sur sa tuile : « 720p · 60 FPS · Auto ».
+export const streamSummaryOf = (stream, t) => [fact(t("gear.resolution"), stream.resolution), fact(t("facts.fps"), counted(t, "fps", stream.frameRate)), fact(t("gear.bitrate"), streamLabel("bitrate", stream.bitrate))];
 
-// LES CHAMPS DU FLUX — la définition et la cadence en choix segmentés, le débit en sélecteur (cinq débits : au-delà de
-// quatre choix, un sélecteur, Bricks.jsx). Des lignes de `Rows`, que StreamPanel complète de son bouton.
-function StreamFields({ values, onChange }) {
+// LES CHAMPS DU FLUX — chacun en choix segmenté jusqu'à quatre choix, en sélecteur au-delà (bricks/). Des lignes de
+// `Rows`, que StreamPanel complète de son bouton.
+function StreamFields({ values, onChange, remotePlay }) {
     const { t } = useTranslation();
 
-    return (
-        <>
-            {["resolution", "frameRate"].map((name) => (
-                <ChoiceRow key={name} id={name} label={t(`gear.${name}`)} help={t(`gear.${name}Help`)} value={values[name]} onChange={(value) => onChange(name, value)}
-                    options={STREAM_OPTIONS[name].map((value) => [value, streamLabel(name, value)])} />
-            ))}
-            <SelectRow id="bitrate" label={t("gear.bitrate")} help={t("gear.bitrateHelp")} value={values.bitrate} onChange={(value) => onChange("bitrate", value)}
-                options={STREAM_OPTIONS.bitrate.map((value) => ({ value, label: streamLabel("bitrate", value) }))} />
-        </>
-    );
+    return ["resolution", "frameRate", "bitrate"].map((name) => {
+        const options = streamOptionsOf(name, remotePlay);
+        const common = { key: name, id: name, label: t(`gear.${name}`), help: t(`gear.${name}Help`), value: values[name], onChange: (value) => onChange(name, value) };
+
+        return options.length > 4
+            ? <SelectRow {...common} options={options.map((value) => ({ value, label: streamLabel(name, value) }))} />
+            : <ChoiceRow {...common} options={options.map((value) => [value, streamLabel(name, value)])} />;
+    });
 }
 
 // LE PANNEAU DU FLUX, LE MÊME PARTOUT : celui de l'engrenage d'un jeu (`choiceKey`, sa console) et celui de l'engrenage
@@ -111,8 +128,9 @@ function StreamFields({ values, onChange }) {
 // l'auto-détection (StreamSettings.jsx de la webapp) : la latence et le débit vers ce serveur
 // (engine/stream/shared/libs/network-probe.js), qui proposent une définition et une cadence. Ce qui n'est pas choisi
 // montre le défaut, le même pour toutes les consoles (`streamOf`) ; `onChanged` : la tuile qui le résume se redessine.
-export function StreamPanel({ choiceKey, onChanged, onClose }) {
+export function StreamPanel({ choiceKey, onChanged, onClose, remotePlay = false }) {
     const { t } = useTranslation();
+    const feedback = useFeedback();
     const [, redraw] = useState(0);
     const [probing, setProbing] = useState(false);
     const stream = streamOf(choiceKey);
@@ -129,21 +147,21 @@ export function StreamPanel({ choiceKey, onChanged, onClose }) {
 
             if (suggestion) {
                 keep({ resolution: suggestion.resolution, frameRate: suggestion.frameRate });
-                toast(t("gear.probeApplied", { resolution: suggestion.resolution, frameRate: suggestion.frameRate }));
+                feedback.success(t("gear.probeApplied", { resolution: suggestion.resolution, frameRate: suggestion.frameRate }));
             } else {
-                toast(t("gear.probeUnreachable"));
+                feedback.warning(t("gear.probeUnreachable"));
             }
         } catch {
-            toast(t("gear.probeFailed"));
+            feedback.failed(t("gear.probeFailed"));
         }
         setProbing(false);
     };
 
     return (
         <SidePanel label={t("gear.stream")} firstKey={`resolution-${stream.resolution}`} onClose={onClose}>
-            <Section title={t("gear.stream")} help={t("gear.streamHelp")}>
+            <Section title={t("gear.stream")} help={t("gear.streamHelp")} sense="modify">
                 <Rows>
-                    <StreamFields values={stream} onChange={(name, value) => keep({ [name]: value })} />
+                    <StreamFields values={stream} remotePlay={remotePlay} onChange={(name, value) => keep({ [name]: value })} />
                     {/* L'auto-détection règle les champs de ce groupe : son bouton est dans l'encadré (le porteur,
                         2026-11-13). Un geste, rien à comparer : `isReplaced` tel quel. */}
                     <SubmitRow>
@@ -244,8 +262,10 @@ export function useSaveRAM(consoleId, reference, enabled) {
 // Les cœurs qui peuvent tourner ici, et le choisi : celui de la fiche (pour ce lancement, rien n'est enregistré), sinon
 // l'émulateur par défaut de la console (le porteur, 2026-11-13 : « dans la fiche de jeu avant de lancer le jeu on peut
 // toujours choisir quel émulateur on veut »), sinon le premier installé, sinon le premier.
-export const coreChoice = (console, facts, game) => {
-    const names = console.cores || [];
+//
+// UN JEU QUI NE SE JOUE QU'AVEC CERTAINS (`rom.cores`, posé par le kernel) : un jeu des ports PC n'a que son port.
+export const coreChoice = (console, facts, game, rom) => {
+    const names = (console.cores || []).filter((name) => !rom?.cores?.length || rom.cores.includes(name));
     const installed = (name) => !facts?.cores?.length || facts.cores.some((core) => core.installed && core.name === name);
     const chosen = choiceOf(game.key).core;
 
@@ -323,13 +343,6 @@ export function StateThumbnail({ consoleId, reference, slot, source = "", host =
     );
 }
 
-// Le nom d'un serveur fédéré, tel que l'annuaire le dit (son nom, sinon son adresse) — celui de PeerAccount.
-const peerName = (servers, serverId) => {
-    const server = (servers || []).find((entry) => String(entry.id) === String(serverId));
-
-    return server ? server.hostname || server.link : "";
-};
-
 const dateTime = (iso, language) => (iso ? new Date(iso).toLocaleString(language === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "");
 
 // « INFORMATIONS ET RÉGLAGES » — l'engrenage.
@@ -354,13 +367,13 @@ function PeerAccount({ serverId }) {
         return <Section title={t("federation.playingAtTitle", { server: server.name })} help={t("federation.playingAtHelp", { name: session.displayName || session.username, server: server.name })} />;
     }
     if (loading) {
-        return <Section title={t("gear.peerAccount")}><Note className="mt-0">{t("settings.loading")}</Note></Section>;
+        return <Section title={t("gear.peerAccount")} sense="info"><Loading /></Section>;
     }
     if (code === "noFederatedAccount" || code === "accountRefused") {
         return (
-            <Section title={t("gear.peerAccount")} help={t(`federation.errors.${code}`, { server: server.name })}>
+            <Section title={t("gear.peerAccount")} help={t(`federation.errors.${code}`, { server: server.name })} sense="info">
                 <Rows>
-                    <NavRow id="g-peer-account" icon="bi-person-plus" tone="green" label={t("gear.peerAccountManage")} help={t("gear.peerAccountManageHelp")}
+                    <NavRow id="g-peer-account" icon="bi-person-plus" label={t("gear.peerAccountManage")} help={t("gear.peerAccountManageHelp")}
                         onOpen={() => navigate(federatedAccountPath(server.id))} />
                 </Rows>
             </Section>
@@ -398,7 +411,7 @@ export function serverInfo(console, rom, capabilities, peer, t) {
     if (!resources) {
         return null;
     }
-    const phone = here && capabilities?.platform === "android";
+    const phone = here && capabilities?.emulatorPackage === "phone";
     const rows = [
         ["machine", "bi-hdd-rack", t("gear.server.machine"), phone ? t("gear.server.thisPhone") : here ? t("gear.server.thisServer") : peer?.hostname || t("gear.server.thatServer")],
         ["gpu", "bi-gpu-card", t("gear.server.gpu"), resources.gpu || t("gear.server.noGpu")],
@@ -406,7 +419,7 @@ export function serverInfo(console, rom, capabilities, peer, t) {
         resources.gpu && resources.vramBytes > 0 && ["vram", "bi-display", t("gear.server.vram"), formatSize(resources.vramBytes)],
         // LE PROCESSEUR PAR SON NOM, puis ses cœurs (le porteur, 2026-11-14 : « tu peux aussi rajouter le nom du processus ? »).
         (resources.cpu || resources.cpuThreads > 0) && ["cpu", "bi-cpu", t("gear.server.cpu"),
-            [resources.cpu, resources.cpuThreads > 0 ? t("gear.server.threads", { count: resources.cpuThreads }) : ""].filter(Boolean).join(" · ")],
+            [resources.cpu, resources.cpuThreads > 0 ? t("gear.server.threads", { count: resources.cpuThreads }) : ""]],
         resources.memoryBytes > 0 && ["memory", "bi-memory", t("gear.server.memory"), formatSize(resources.memoryBytes)],
     ].filter(Boolean);
 
@@ -439,9 +452,8 @@ export function GearPanel({ console, game, rom, metadata, facts, playable, state
     const [marking, setMarking] = useState(false);
     // Le sous-panneau ouvert par une tuile : preset, stream.
     const [sub, setSub] = useState(null);
-    const known = summaryOf(metadata);
     const sources = sourcesOf(metadata);
-    const cores = coreChoice(console, facts, game);
+    const cores = coreChoice(console, facts, game, rom);
     const bios = biosChoice(console, facts, game);
     const stream = streamOf(console.id);
     // Le statut du jeu, celui de la liste et de la fiche ; sans statut, il n'a pas été essayé.
@@ -463,16 +475,17 @@ export function GearPanel({ console, game, rom, metadata, facts, playable, state
     } else if (!rom.peer && bios.missing) {
         noLaunch = "biosMissing";
     }
-    const details = [
-        ["developer", "bi-building", t("game.developer"), known.developer],
-        // La provenance d'un jeu d'un serveur fédéré : le NOM de ce serveur (le porteur, 2026-11-17 : « Pourquoi la provenance
-        // dans GamesSettings ne mets pas le nom du serveur fédéré ? »), comme le dit l'annuaire ; « Un serveur fédéré » le temps
-        // qu'il se lise.
-        ["origin", "bi-hdd", t("game.origin"), rom.peer ? peerName(servers, rom.peer) || t("game.originPeer") : rom.disk ? t("games.onDisk", { name: rom.disk }) : t("game.originLibrary")],
-        ["engine", "bi-boxes", t("gear.engine"), rom.engine ? t(`gear.engines.${rom.engine}`, { defaultValue: rom.engine }) : ""],
-        ["size", "bi-file-earmark-zip", t("game.size"), formatSize(rom.sizeBytes)],
-        ["files", "bi-files", t("game.files"), (rom.files || []).length ? t("game.fileCount", { count: rom.files.length }) : ""],
-    ].filter(([, , , value]) => value);
+    // CE QUE L'ENGRENAGE SAIT DU JEU, dans la forme de toute fiche (GameFacts, bricks/). La provenance d'un jeu d'un serveur
+    // fédéré : le NOM de ce serveur (le porteur, 2026-11-17 : « Pourquoi la provenance dans GamesSettings ne mets pas le nom
+    // du serveur fédéré ? »), comme le dit l'annuaire ; « Un serveur fédéré » le temps qu'il se lise. Le statut, de la
+    // couleur de son badge, et SOUS LE BADGE, LE TEXTE DU STATUT (chantier 68 ; le porteur, 2026-11-19 : « rajoute le texte
+    // de la status en dessous du badge. Si pas de texte alors tu mets rien »).
+    const gameFacts = {
+        console: console.name,
+        origin: originOf(rom, servers, t),
+        engine: rom.engine ? t(`gear.engines.${rom.engine}`, { defaultValue: rom.engine }) : "",
+        status, statusNote, sizeBytes: rom.sizeBytes,
+    };
     const change = (update) => {
         setChoice(game.key, update);
         redraw((value) => value + 1);
@@ -504,8 +517,8 @@ export function GearPanel({ console, game, rom, metadata, facts, playable, state
     const discLabel = pickDisc ? t("library.discOf", { name: discName(game.discs[disc], disc), count: game.discs.length }) : "";
     const tiles = [
         // Sa tuile dit l'essentiel : l'émulateur, et le disque quand il y en a plusieurs.
-        { id: "gt-preset", icon: "bi-sliders", tone: "indigo", label: t("gear.preset"), value: [cores.selected || t("gear.noEmulator"), discLabel].filter(Boolean).join(" · "), onClick: () => setSub("preset") },
-        { id: "gt-stream", icon: "bi-broadcast", tone: "sky", label: t("gear.streamTile"), value: streamSummaryOf(stream), onClick: () => setSub("stream") },
+        { id: "gt-preset", icon: "bi-sliders", tone: "indigo", label: t("gear.preset"), value: [fact(t("gear.emulator"), cores.selected || t("gear.noEmulator")), fact(t("facts.disc"), discLabel)], onClick: () => setSub("preset") },
+        { id: "gt-stream", icon: "bi-broadcast", tone: "sky", label: t("gear.streamTile"), value: streamSummaryOf(stream, t), onClick: () => setSub("stream") },
     ];
     const presetFirst = pickDisc ? "g-disc" : cores.names.length ? "g-core" : pickBios ? "g-bios" : "p-close";
 
@@ -525,11 +538,11 @@ export function GearPanel({ console, game, rom, metadata, facts, playable, state
                 <GameBanner consoleId={console.id} reference={game.discs[0].reference} source={romSource(game.discs[0])} title={splitTitle(game.discs[0].title).main} />
                 <QuickTiles items={tiles} />
 
-                <Section title={t("gear.saves")} help={t(console.method === "retrogaming" ? "gear.savesHelp" : "gear.streamexSavesHelp")}>
+                <Section title={t("gear.saves")} help={t(console.method === "retrogaming" ? "gear.savesHelp" : "gear.streamexSavesHelp")} sense="modify">
                     {console.method === "retrogaming" ? (
                         states.length === 0 && !sram?.exists ? <EmptyState icon="bi-sd-card" text={t("gear.noSaves")} /> : (
                             <Rows>
-                                {sram?.exists && <InfoRow icon="bi-sd-card" tone="green" label={t("gear.sramLabel")} value={dateTime(sram.timestamp, i18n.language)} />}
+                                {sram?.exists && <InfoRow icon="bi-sd-card" label={t("gear.sramLabel")} value={dateTime(sram.timestamp, i18n.language)} />}
                                 {states.map((state) => (
                                     <InfoRow key={state.slot} lead={<StateThumbnail consoleId={console.id} reference={rom.reference} slot={state.slot} />}
                                         label={slotName(state.slot, t)} value={dateTime(state.timestamp, i18n.language)} />
@@ -537,55 +550,32 @@ export function GearPanel({ console, game, rom, metadata, facts, playable, state
                             </Rows>
                         )
                     ) : streamexSave
-                        ? <Rows><InfoRow icon="bi-sd-card" tone="green" label={t("gear.streamexSaveLabel")} value={dateTime(streamexSave.updatedAt, i18n.language)} /></Rows>
+                        ? <Rows><InfoRow icon="bi-sd-card" label={t("gear.streamexSaveLabel")} value={dateTime(streamexSave.updatedAt, i18n.language)} /></Rows>
                         : <EmptyState icon="bi-sd-card" text={t("gear.noSaves")} />}
                 </Section>
 
-                <Section title={t("gear.informations")}>
-                    <Rows>
+                <Section title={t("details")} help={t("gameAdmin.sections.detailsHelp")} sense="info">
+                    <GameFacts facts={gameFacts} metadata={metadata} sources={sources}>
                         {/* POURQUOI LE JEU NE PARTIRAIT PAS D'ICI, la première des informations — plus une alerte en tête du
                             panneau (le porteur, 2026-11-16 : « retirer les alerts » ; un renseignement est une ligne). */}
-                        {noLaunch && <InfoRow icon="bi-slash-circle" tone="rose" label={t("gear.launch")} value={t(`noLaunch.${noLaunch}`)} />}
-                        {details.map(([key, icon, label, value]) => <InfoRow key={key} icon={icon} label={label} value={value} />)}
-                        {/* Le statut, de la couleur de son badge (celle de la liste et de la fiche) ; SOUS LE BADGE, LE TEXTE DU
-                            STATUT (chantier 68 ; le porteur, 2026-11-19 : « rajoute le texte de la status en dessous du badge. Si
-                            pas de texte alors tu mets rien ») : la note du signalement le plus récent (`view.note`), rien quand il n'en a pas. */}
-                        <InfoRow icon="bi-patch-check" label={t("games.status")} value={(
-                            <>
-                                <span className={`badge rounded-pill text-bg-${STATUS_VARIANT[status] || "secondary"}`}>{t(`status.${status}`)}</span>
-                                {statusNote && <span className="d-block small text-body-secondary text-wrap mt-1">{statusNote}</span>}
-                            </>
-                        )} />
-                        {/* Les joueurs, seulement quand une source le sait (libretro-database ; rien n'est déduit de la console). */}
-                        {known.players > 0 && <InfoRow icon="bi-people" label={t("game.players")} value={String(known.players)} />}
-                    </Rows>
-                    {sources.length > 0 && (
-                        <Note>
-                            <b className="text-body">{t("game.sources")}</b>{" "}
-                            {sources.map((source, index) => (
-                                <React.Fragment key={source.label}>
-                                    {index > 0 && " · "}
-                                    {source.href ? <a href={source.href} target="_blank" rel="noopener noreferrer" data-nav>{source.label}</a> : source.label}
-                                </React.Fragment>
-                            ))}
-                        </Note>
-                    )}
+                        {noLaunch && <InfoRow icon="bi-slash-circle" label={t("gear.launch")} value={t(`noLaunch.${noLaunch}`)} />}
+                    </GameFacts>
                 </Section>
                 {server && (
-                    <Section title={t("gear.server.title")} help={server.help}>
+                    <Section title={t("gear.server.title")} help={server.help} sense="info">
                         <Rows>{server.rows.map(([key, icon, label, value]) => <InfoRow key={key} icon={icon} label={label} value={value} />)}</Rows>
                     </Section>
                 )}
                 {/* Le compte chez le serveur fédéré du jeu : un renseignement et son lien, avant « Plus » (l'ordre d'une page). */}
                 {rom.peer && <PeerAccount serverId={rom.peer} />}
                 {/* Un geste orphelin, donc une ligne du groupe « Plus » (le porteur, 2026-11-13). */}
-                <Section title={t("more")}>
+                <Section title={t("more")} help={t("gear.moreHelp")} sense="optional">
                     <Rows>
-                        <NavRow id="g-favorite" icon={favorite ? "bi-star-fill" : "bi-star"} tone="amber" label={t(favorite ? "favorites.remove" : "favorites.add")}
+                        <NavRow id="g-favorite" icon={favorite ? "bi-star-fill" : "bi-star"} label={t(favorite ? "favorites.remove" : "favorites.add")}
                             help={t("favorites.help")} pending={marking || !favorites.loaded} opens="action" onOpen={toggleFavorite} />
                         {/* L'ALLER-RETOUR AVEC LES RÉGLAGES, pour un administrateur (chantier 68) : la page du jeu dans Réglages ›
                             Consoles › Jeux, depuis sa source (cette machine, son disque, son serveur). */}
-                        {isAdmin && <NavRow id="g-admin" icon="bi-pencil-square" tone="slate" label={t("gameAdmin.editSheet")} help={t("gameAdmin.editSheetHelp")}
+                        {isAdmin && <NavRow id="g-admin" icon="bi-pencil" label={t("gameAdmin.editSheet")} help={t("gameAdmin.editSheetHelp")}
                             onOpen={() => navigate(gameSettingsPath(console.id, { disk: rom.disk || null, peer: rom.peer || null }, rom.reference))} />}
                     </Rows>
                 </Section>
@@ -593,7 +583,7 @@ export function GearPanel({ console, game, rom, metadata, facts, playable, state
 
             {sub === "preset" && (
                 <SidePanel label={t("gear.preset")} firstKey={presetFirst} onClose={closeSub}>
-                    <Section title={t("gear.launchTitle")}>
+                    <Section title={t("gear.launchTitle")} help={t("gear.launchHelp")} sense="play">
                         {!pickDisc && !cores.names.length && !pickBios ? <EmptyState icon="bi-cpu" text={t("gear.noEmulator")} /> : (
                             <Rows>
                                 {pickDisc && (
@@ -632,12 +622,12 @@ export function ContinuePanel({ console, rom, states, onChoose, onClose }) {
 
     return (
         <SidePanel label={t("continue.title")} className="continue" firstKey="cs-start" onClose={onClose}>
-            <Section title={t("continue.whereTitle")}>
+            <Section title={t("continue.whereTitle")} help={t("continue.whereHelp")} sense="play">
             <Rows>
                 <NavRow id="cs-start" label={t("continue.start")} help={t("continue.startHelp")} opens="action" onOpen={() => onChoose(null)}
                     lead={<span className="thumb ratio ratio-4x3 rounded overflow-hidden bg-body-secondary flex-shrink-0"><span className="d-flex align-items-center justify-content-center"><i className="bi bi-play-fill"></i></span></span>} />
                 {states.map((state) => (
-                    <NavRow key={state.slot} id={`cs-${state.slot}`} label={slotName(state.slot, t)} help={dateTime(state.timestamp, i18n.language)} opens="action" onOpen={() => onChoose(state.slot)}
+                    <NavRow key={state.slot} id={`cs-${state.slot}`} label={slotName(state.slot, t)} help={fact(t("facts.date"), dateTime(state.timestamp, i18n.language))} opens="action" onOpen={() => onChoose(state.slot)}
                         lead={<StateThumbnail consoleId={console.id} reference={rom.reference} slot={state.slot} />} />
                 ))}
             </Rows>

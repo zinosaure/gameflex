@@ -120,8 +120,13 @@ type DownloadJob struct {
 	Run  func(ctx context.Context) (status int, answer []byte)
 }
 
-// DownloadEntry — un téléchargement qui attend ou tourne, tel que la liste de
-// son propriétaire le montre (le sujet `downloads`).
+// DownloadEntry — un téléchargement qui attend, tourne, ou vient de finir, tel
+// que la liste de son propriétaire le montre (le sujet `downloads`). Fini
+// (`done`, `failed`, `cancelled`), il y reste le temps que le salon garde sa fin
+// (downloadGrace), avec son heure (`EndedAt`) et sa raison (`Error`) : les
+// notifications de la page le montrent encore un moment (le porteur,
+// 2026-11-25 : « 1 min 30 après que c'est écrit fini, ça va disparaître »), et
+// c'est la page qui compte ce délai.
 type DownloadEntry struct {
 	DownloadID string `json:"downloadId"`
 	Key        string `json:"key,omitempty"`
@@ -139,6 +144,9 @@ type DownloadEntry struct {
 	Kind   string `json:"kind,omitempty"`
 	Queued bool   `json:"queued"`
 	At     int64  `json:"at"`
+	// EndedAt — la fin, en millisecondes ; 0 tant qu'il attend ou tourne.
+	EndedAt int64  `json:"endedAt,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
 
 type downloadRoom struct {
@@ -487,17 +495,26 @@ func (downloads *Downloads) List(owner string) []DownloadEntry {
 	}
 	entries := []DownloadEntry{}
 	for _, room := range downloads.rooms {
-		if room.job.Owner != owner || !room.finishedAt.IsZero() {
+		if room.job.Owner != owner {
 			continue
 		}
 		entry := DownloadEntry{DownloadID: room.id, Key: room.job.Key, Label: room.job.Label, Source: room.job.Source, State: "running",
 			Received: room.received, Total: room.total, Phase: room.phase, Kind: room.job.Kind, Queued: room.job.Queued, At: room.createdAt.UnixMilli()}
-		if room.waiting {
+		switch {
+		case !room.finishedAt.IsZero():
+			entry.State, entry.EndedAt, entry.Error = room.last.Type, room.finishedAt.UnixMilli(), room.last.Error
+			if room.last.Error == DownloadCancelled {
+				entry.State, entry.Error = "cancelled", ""
+			}
+		case room.waiting:
 			entry.State, entry.Position = "queued", positions[room.id]
 		}
 		entries = append(entries, entry)
 	}
 	sort.SliceStable(entries, func(left, right int) bool {
+		if (entries[left].EndedAt == 0) != (entries[right].EndedAt == 0) {
+			return entries[left].EndedAt == 0
+		}
 		if (entries[left].State == "running") != (entries[right].State == "running") {
 			return entries[left].State == "running"
 		}

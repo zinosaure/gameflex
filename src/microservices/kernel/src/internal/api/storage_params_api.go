@@ -21,6 +21,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"gameflex/resources"
 	"log/slog"
 	"net/http"
 
@@ -147,6 +148,12 @@ func (server *Server) handleFederationParams(w http.ResponseWriter, r *http.Requ
 	for _, roots := range server.libraryRootsInOrder(r.Context()) {
 		if lent, err = (emuparams.Store{Root: roots.Params}).Lend(ref, chi.URLParam(r, "preset")); err == nil {
 			break
+		}
+	}
+	if err != nil {
+		// Les paramètres qu'une ressource externe prête (`#808`).
+		if _, catalog, openErr := server.externalResources(); openErr == nil {
+			lent, err = catalog.LendParams(ref, chi.URLParam(r, "preset"), resources.PreferredSource(r))
 		}
 	}
 	if err != nil {

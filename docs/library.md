@@ -79,8 +79,7 @@ bios/ps1/scph5502.bin      Europe
 then the console, lists under **BIOS** the files it has; a console without one says *This console
 needs no BIOS*.
 
-You can find BIOS and firmware files on [RetroBIOS](https://abdess.github.io/retrobios/), or on
-the [mirror](../README.md#the-mirror). RetroBIOS sorts its files for other programs: take them from
+You can find BIOS and firmware files on [RetroBIOS](https://abdess.github.io/retrobios/). RetroBIOS sorts its files for other programs: take them from
 its RetroArch pack, then put each one in `bios/<console>/` under the name listed in
 [Consoles](consoles.md). For example, RetroArch keeps the Dreamcast files in `dc/`; GameFlex wants
 them in `bios/dreamcast/`.
@@ -134,7 +133,7 @@ progress, and **Cancel** stops it.
   used by two consoles goes in both folders: `dolphin_libretro.so` in `cores/gc/` and `cores/wii/`.
 - **A recent console's emulator:** the file its publisher releases, as it is, in
   `cores/<console>/`. GameFlex unpacks it each time a game starts. Take it from the
-  [mirror](../README.md#the-mirror) or from the emulator's own website ([Consoles](consoles.md)
+  emulator's own website ([Consoles](consoles.md)
   links to each one). Take the same variant as the tested version, and give the file a name like
   the one GameFlex shows: it recognizes its files by name. Xenia, for one, publishes
   `xenia_canary_linux.AppImage`: rename it `xenia_canary_linux-<commit>.AppImage`.
@@ -144,7 +143,7 @@ progress, and **Cancel** stops it.
 - on a recent console, **Use this version** makes it the version its games start with, when
   `cores/<console>/` holds several;
 - on a retro console with several emulators, **Default emulator** makes it the one its games use.
-  A game's settings (the gear on its page) can still pick another one for a launch.
+  A game's settings (the wrench on its page) can still pick another one for a launch.
 
 Without a choice, a recent console starts the file added last, and a retro console its first
 emulator. **Danger › Delete this emulator** removes the file from the server. A version other than
@@ -199,7 +198,7 @@ role, even one that cannot launch a console.
     the reason, when the game has no save yet or when you have not signed in at that server;
   - **Add to my favorites** or **Remove from my favorites**.
 - **Favorites** belong to your account: they follow you on every device. You can also add or remove
-  one from a game's settings (the gear on its page, section **More**).
+  one from a game's settings (the wrench on its page, section **More**).
 - **Settings › Profile › My favorites** lists them, a federated server's games included. A favorite
   opens the same page as in the catalog. When its game is gone (removed from its source, its
   console removed, or its server no longer federated), the list says so, and its page lets you

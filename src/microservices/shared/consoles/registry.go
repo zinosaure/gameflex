@@ -574,7 +574,7 @@ var registry = []Console{
 	// DOSSIER À ELLE : ses jeux sont les ROM des autres consoles qu'un port
 	// accepte (le porteur : « trouvés dans roms/n64 »). Pas d'extensions donc,
 	// ni d'année : comme ScummVM, ce n'est pas une machine.
-	{ID: PortsID, Name: "PC Ports", Publisher: "Community", Method: MethodStreamex, Cores: []string{"Zelda 64: Recompiled (streamex)"}, MaxPlayers: 4, Width: 1280, Height: 720, Enabled: true},
+	{ID: PortsID, Name: "PC Ports", Publisher: "Community", Method: MethodStreamex, Cores: []string{"Zelda 64: Recompiled (streamex)", "AstroHybrid (streamex)"}, MaxPlayers: 4, Width: 1280, Height: 720, Enabled: true},
 
 	// ── Consoles jouées À DISTANCE : identifiants préfixés `rp-` ──
 	//
@@ -767,8 +767,7 @@ func MaxPlayers(id string) int {
 
 // SeatsOr — les places d'une PARTIE de cette console : celles du registre
 // (Wii U 2 ; PS3, PS4, PS5 et Xbox 4 ; Switch 8…), ou `fallback` pour ce qu'il
-// ne connaît pas. Le banc KeyTest n'y est pas, et c'est voulu : mesurer la
-// latence à plusieurs demande autant de manettes que le conteneur en porte.
+// ne connaît pas.
 //
 // Streamex donnait 4 places à toutes ses consoles — sa file prenait le
 // plafond général du conteneur, jamais ce nombre-ci (relevé le 2026-10-09).

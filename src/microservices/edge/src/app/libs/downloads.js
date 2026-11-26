@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { explained, kernelCommand, subscribeTopic } from "./api.js";
 import { can } from "./data.jsx";
+import { fact } from "./format.js";
 import { followLink } from "./links.js";
 import { handToBrowser } from "../engine/api/retrogaming.js";
 
@@ -26,7 +27,11 @@ export async function browserDownload(url, capabilities) {
 // rouverte la relit, et En direct montre aussi ce qu'une autre page a lancé. Un seul abonnement pour toute la page,
 // ouvert par le premier lecteur, refermé avec le dernier. Une ligne : `{id, downloadId, key, label, source, state,
 // position, received, total}` — `state` vaut `queued` (il attend son tour, `position` : 1 pour le prochain) ou
-// `running` ; `key` : ce qu'on télécharge, `source` : d'où.
+// `running` ; `key` : ce qu'on télécharge, `source` : d'où. LE KERNEL Y GARDE AUSSI CEUX QUI VIENNENT DE FINIR (`done`,
+// `failed`, `cancelled`, leur heure `endedAt`, leur raison `error`) : les notifications d'En direct les montrent encore un
+// moment (useDownloadNotices) ; les pages d'un jeu, d'un émulateur, d'un correctif ne lisent que ce qui attend ou tourne
+// (useDownloads).
+let all = [];
 let current = [];
 const listeners = new Set();
 let stopFollowing = null;
@@ -35,9 +40,11 @@ const notify = () => listeners.forEach((listener) => listener());
 
 // Un hôte qui ne sert pas le sujet (un téléphone d'une version d'avant) : aucune ligne, plutôt qu'une erreur.
 const follow = () => subscribeTopic("downloads", (list) => {
-    current = (Array.isArray(list) ? list : []).map((entry) => ({ ...entry, id: entry.downloadId }));
+    all = (Array.isArray(list) ? list : []).map((entry) => ({ ...entry, id: entry.downloadId }));
+    current = all.filter((entry) => !entry.endedAt);
     notify();
 }, () => {
+    all = [];
     current = [];
     notify();
 });
@@ -103,8 +110,8 @@ export const downloadOutcome = (answer, name, t) => (answer.ok ? t("consoles.dow
 export const queuedNotice = (name, position, t) => t("downloads.queued", { name, position });
 
 // Où en est un téléchargement, en un mot (la ligne d'un jeu dans une liste) : son rang dans la file, ou son pourcentage.
-export const downloadState = (entry, t) => (!entry ? null : entry.state === "queued" ? t("downloads.queuedShort", { position: entry.position })
-    : entry.total ? t("downloads.percent", { percent: Math.min(100, Math.round((entry.received / entry.total) * 100)) }) : t("downloads.running"));
+export const downloadState = (entry, t) => (!entry ? null : entry.state === "queued" ? fact(t("facts.queue"), t("facts.position", { position: entry.position }))
+    : entry.total ? fact(t("downloads.phaseDownload"), t("downloads.percent", { percent: Math.min(100, Math.round((entry.received / entry.total) * 100)) })) : t("downloads.running"));
 
 const subscribe = (listener) => {
     listeners.add(listener);
@@ -119,9 +126,11 @@ const subscribe = (listener) => {
         if (!listeners.size && stopFollowing) {
             stopFollowing();
             stopFollowing = null;
+            all = [];
             current = [];
         }
     };
 };
 
 export const useDownloads = () => useSyncExternalStore(subscribe, () => current);
+export const useDownloadNotices = () => useSyncExternalStore(subscribe, () => all);

@@ -26,7 +26,7 @@ type SourceSpec struct {
 	// Name — le nom de montage, qui devient le premier segment du chemin.
 	Name string `json:"name"`
 	// Kind — "local" : la bibliothèque n'a plus d'autre source. Les partages (Samba, WebDAV, kDrive, FTP, SFTP) se
-	// lisent par un gameflex-federation, que l'appareil rejoint comme un serveur fédéré (chantier 61, P6).
+	// lisent par un serveur GameFlex qui les prête (ses ressources externes, `#808`), que l'appareil rejoint.
 	Kind string `json:"kind"`
 	// Root — le chemin racine, pour une source locale.
 	Root string `json:"root"`
@@ -36,7 +36,7 @@ type SourceSpec struct {
 // trouvés, en JSON — chacune posée sur un dossier des jeux, rangé selon la
 // convention `<consoleid>/<jeu>` (chantier 15).
 //
-// La bibliothèque n'a que des sources locales : un partage se lit par un gameflex-federation (chantier 61). Un autre
+// La bibliothèque n'a que des sources locales : un partage se lit par un serveur qui le prête (`#808`). Un autre
 // type est une erreur qui le nomme.
 //
 // Une erreur revient en erreur, jamais en JSON vide : « aucun jeu » et « je

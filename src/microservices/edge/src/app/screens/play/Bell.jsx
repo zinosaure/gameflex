@@ -11,8 +11,9 @@ import { ROUND_BUTTON_LOOK } from "../../engine/stream/shared/hooks/use-streamin
 // demandée par mon autre appareil), les arrivées et les départs, les réponses à mes demandes. Chacune :
 //   - fait sonner la cloche (si le son de la partie est ouvert) et la montre en haut à droite, à moitié transparente —
 //     5 s pour une information, le temps qu'elle reste valable pour une demande (jusqu'à sa réponse, ou son délai) ;
-//   - s'ajoute en tête de la section Notifications du menu, où elle reste toute la partie (5 par page).
-// Une demande (`asks`) se répond depuis le menu : sa ligne ouvre la confirmation. Sans réponse à son échéance
+//   - s'ajoute à la section Notifications du menu, les cinq dernières (RecentNotices) : une information y reste 1 min 30,
+//     une demande jusqu'à sa réponse ou son délai, puis 1 min 30 (`endedAt`).
+// Une demande (`asks`) se répond depuis le menu, sur sa ligne (RequestRow : Ignorer, et son geste). Sans réponse à son échéance
 // (`expiresAt`), `onExpire` la règle (garder ma place, par exemple) et la ligne dit « sans réponse ».
 
 const INFO_MS = 5000;
@@ -55,7 +56,8 @@ export function useSessionNotifications(soundRef) {
     const push = useCallback((entry) => {
         seq.current += 1;
         const id = seq.current;
-        setList((current) => [{ id, at: Date.now(), state: entry.asks ? "pending" : "info", ...entry }, ...current]);
+        const at = Date.now();
+        setList((current) => [{ id, at, endedAt: entry.asks ? null : at, state: entry.asks ? "pending" : "info", ...entry }, ...current]);
 
         if (!entry.asks) {
             setInfoUntil(Date.now() + INFO_MS);
@@ -67,7 +69,7 @@ export function useSessionNotifications(soundRef) {
         return id;
     }, []);
     // RÉGLER UNE DEMANDE EN ATTENTE (`state` : « accepted », « refused », « expired ») ; une demande déjà réglée ne change plus.
-    const settle = useCallback((id, patch) => setList((current) => current.map((entry) => (entry.id === id && entry.state === "pending" ? { ...entry, ...patch } : entry))), []);
+    const settle = useCallback((id, patch) => setList((current) => current.map((entry) => (entry.id === id && entry.state === "pending" ? { ...entry, ...patch, endedAt: Date.now() } : entry))), []);
     const answer = useCallback((id, yes) => {
         const entry = listRef.current.find((item) => item.id === id);
 

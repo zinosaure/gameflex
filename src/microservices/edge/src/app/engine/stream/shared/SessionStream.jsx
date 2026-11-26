@@ -130,6 +130,10 @@ export function SessionStream({
     hasInput = false,
     username = null,
     muted = true,
+    // LA VOIX (chantier 71) : `voice`, la page de jeu la négocie (un compte, jamais une vignette) ; `voicesMuted`,
+    // « Entendre les autres » coupé. Voir GatewayWebRTC.
+    voice = false,
+    voicesMuted = false,
     // Forwarded to the surface that can actually see it — GatewayWebRTC owns
     // the <video> and watches whether its frames still advance.
     onVideoSilent = null,
@@ -243,7 +247,7 @@ export function SessionStream({
                 return;
             }
 
-            const viewer = await ownRef.current?.createViewer({ hasInput, username, quality, preview, launch });
+            const viewer = await ownRef.current?.createViewer({ hasInput, username, quality, preview, launch, voice });
 
             if (cancelled) {
                 return;
@@ -348,7 +352,7 @@ export function SessionStream({
             // endroit qui compte vraiment : la sortie.
             ownRef.current?.cleanup?.();
         };
-    }, [sessionId, hasInput, username, maxAttempts, pictureTimeoutMs]);
+    }, [sessionId, hasInput, username, voice, maxAttempts, pictureTimeoutMs]);
 
     return (
         <div style={{
@@ -368,6 +372,8 @@ export function SessionStream({
                 sessionId={sessionId}
                 host={host}
                 muted={muted}
+                voices={voice}
+                voicesMuted={voicesMuted}
                 // A caller that asks for a muted surface means it: the
                 // autoplay fade-in would otherwise unmute the element on
                 // its own the moment playback starts, so the Dashboard

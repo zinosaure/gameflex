@@ -13,6 +13,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"gameflex/resources"
 	"io"
 	"net/http"
 	"os"
@@ -97,6 +98,10 @@ func (server *Server) handleFederationPatch(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	if err != nil {
+		// Les ressources externes, derrière la bibliothèque et les disques (`#808`).
+		if server.serveFromResources(w, r, listing.Patches, consoleID, name, resources.LocatorPath) {
+			return
+		}
 		writeErrorCode(w, http.StatusNotFound, "not_found", "patch not found")
 
 		return

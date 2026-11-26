@@ -15,9 +15,8 @@ Retro consoles run on libretro cores, which GameFlex downloads for you from the
 [libretro buildbot](https://buildbot.libretro.com/), in **Settings › Consoles**. Every console
 below also accepts a `.zip` archive that contains a single game file.
 
-You can find the BIOS files below on [RetroBIOS](https://abdess.github.io/retrobios/) or on the
-[mirror](../README.md#the-mirror). Rename them if needed: GameFlex looks for the exact names in this
-table.
+You can find the BIOS files below on [RetroBIOS](https://abdess.github.io/retrobios/). Rename them if needed: GameFlex
+looks for the exact names in this table.
 
 | Console | ID | Game formats | BIOS |
 |---|---|---|---|
@@ -74,8 +73,7 @@ in `bios/`:
 Recent consoles run on a full emulator, in `cores/<ID>/`, under the name GameFlex expects
 (**Settings › Consoles** shows it). The simplest is **Get it** on the emulator's page in
 **Settings › Consoles**, with the **Official source**: the console's streamex package, with the
-version tested with your version of GameFlex (for shadPS4 and KytyPS5, our build of it as well). A friend's server and the
-[mirror](../README.md#the-mirror) have them too. If `cores/<ID>/` holds several versions, a game
+version tested with your version of GameFlex (for shadPS4 and KytyPS5, our build of it as well). A friend's server has them too. If `cores/<ID>/` holds several versions, a game
 starts with the one chosen with **Use this version**, or else the file added last (see [Organize your library](library.md#3-get-the-emulators)).
 
 *Experimental* means: many games work, some crash or need a particular firmware, and things change
@@ -100,19 +98,6 @@ copies and lets you delete them.
 **Wii U graphic packs.** Some games need a graphic pack to run well. Put each pack in its own
 folder, in `patches/wiiu/<pack name>/` (the folder holds a `rules.txt`).
 
-## PC Ports
-
-Some Nintendo 64 games have been remade for the PC by their community: widescreen, 60 frames per
-second, high definition. A port reads only its data from your own ROM, which stays in `roms/n64/`
-(the console has no folder of its own): GameFlex lists the game under **PC Ports** as soon as the
-ROM matches the one the port accepts. The port itself is a file from its authors, in
-`cores/ports/`; **Get it**, on its page in **Settings › Consoles**, downloads it. Its image is `ports` in
-`COMPOSE_PROFILES` ([Install](install.md)).
-
-| Game | Port | The ROM it accepts |
-|---|---|---|
-| *The Legend of Zelda: Majora's Mask* | [Zelda 64: Recompiled](https://github.com/Zelda64Recomp/Zelda64Recomp) | the US version 1.0, as a `.z64` file (big-endian byte order) |
-
 ## Remote Play
 
 Remote Play brings **your own PlayStation 4 or PlayStation 5** to GameFlex. It plays the console's
@@ -127,7 +112,7 @@ own games: nothing goes in your library.
 
 - **PSP, GameCube and Wii:** the latest cores on the official libretro server may not start
   (PPSSPP stops when a game loads; Dolphin needs a newer system library). Take these cores from
-  the [mirror](../README.md#the-mirror) instead.
+  a friend's server, or an older build from the libretro buildbot, instead.
 - **Neo Geo, CPS-1 and CPS-2:** arcade game sets (`.zip`) do not start yet.
 - **PlayStation 3:** extracted game folders (`PS3_GAME/…`) are not supported. Use an `.iso` or a
   `.pkg`.

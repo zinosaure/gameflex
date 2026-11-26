@@ -178,8 +178,7 @@ func (d *Display) Size() (int, int) {
 // retournent l'image).
 //
 // `dst` doit faire au moins Width*Height*4 octets. Rien n'est alloué ici : le
-// même tampon se réutilise d'une trame à l'autre, comme la boucle de
-// KeytestHost le fait déjà.
+// même tampon se réutilise d'une trame à l'autre.
 func (d *Display) GrabRGBA(dst []byte) error {
 	need := d.Width * d.Height * 4
 	if len(dst) < need {

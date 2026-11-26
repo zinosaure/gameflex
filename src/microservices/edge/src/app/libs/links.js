@@ -17,13 +17,13 @@ export const repositoryFile = (path) => `${REPOSITORY_URL}/blob/main/${path}`;
 
 // LES GUIDES DU DÉPÔT PUBLIC (`docs/`), nommés ICI une fois : la page « GameFlex » des Réglages les liste tous
 // (settings/about/Project.jsx), et chaque page qui explique quelque chose renvoie au sien dans sa section « Guide »
-// (ui/Bricks.jsx, GuideSection ; le porteur, 2026-11-16 : « Toujours proposer des liens vers la documentation si
+// (bricks/, GuideSection ; le porteur, 2026-11-16 : « Toujours proposer des liens vers la documentation si
 // possible »). Leur nom et leur aide sont `project.<clé>` et `project.<clé>Help`.
 export const GUIDES = {
     install: { icon: "bi-box-arrow-in-down", path: "docs/install.md" },
     update: { icon: "bi-arrow-up-circle", path: "docs/update.md" },
     android: { icon: "bi-android2", path: "docs/android.md" },
-    consoles: { icon: "bi-joystick", path: "docs/consoles.md" },
+    consoles: { icon: "bi-dpad", path: "docs/consoles.md" },
     library: { icon: "bi-collection", path: "docs/library.md" },
     controllers: { icon: "bi-controller", path: "docs/controllers.md" },
     emulatorSettings: { icon: "bi-sliders", path: "docs/emulator-settings.md" },

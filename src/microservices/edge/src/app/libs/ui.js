@@ -1,4 +1,18 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+
+// UNE VALEUR QUI SE POSE UN INSTANT APRÈS SA DERNIÈRE MODIFICATION — une recherche part un instant après la dernière lettre :
+// la même attente partout (300 ms), plus longue quand chaque recherche coûte (les fournisseurs d'images).
+export function useDebounced(value, delay = 300) {
+    const [settled, setSettled] = useState(value);
+
+    useEffect(() => {
+        const timer = setTimeout(() => setSettled(value), delay);
+
+        return () => clearTimeout(timer);
+    }, [value, delay]);
+
+    return settled;
+}
 
 // LES CLASSES BOOTSTRAP QUE PLUSIEURS ÉCRANS COMPOSENT À L'IDENTIQUE — nommées une fois
 // (l'homogénéité est la règle : un écart se définit une fois, jamais écran par écran).
@@ -6,7 +20,7 @@ import { createContext, useContext } from "react";
 
 // L'INTITULÉ D'UN GROUPE, LE MÊME PARTOUT : celui de la direction C (validée par le porteur le 2026-11-13), en
 // minuscules, `.gf-group-title` de launcher.css — sa taille, sa graisse, sa couleur et l'écart sous lui (mb-3, ou
-// mb-1 quand une aide le suit). Les groupes des panneaux et des pages (Section, ui/Bricks.jsx) comme ceux
+// mb-1 quand une aide le suit). Les groupes des panneaux et des pages (Section, bricks/) comme ceux
 // des écrans (En direct, les séries de la liste des jeux) : le porteur, 2026-11-13, « Oui » à leur alignement sur C.
 // Il n'y en a qu'un : le titre d'une section des Réglages (SECTION_HEADING), que le 8cf5e34d avait mis en capitales,
 // est le même intitulé.
@@ -84,11 +98,10 @@ export const ICON_BUTTON = "btn-icon rounded-circle";
 export const SQUARE_ICON_BUTTON = "btn-icon";
 
 // Plus de bouton qui porte une icône ET un libellé : soit un texte, soit une icône (le porteur, 2026-11-13 ; la
-// règle des boutons, ui/Bricks.jsx). WITH_ICON est parti avec le dernier.
+// règle des boutons, bricks/). WITH_ICON est parti avec le dernier.
 
-// CE QUE LA CONSOLE PREND SANS CHOIX — l'émulateur en service, le BIOS par défaut — se lit à son libellé, en couleur
-// et en gras (le porteur, 2026-11-13) : un seul par console et par liste.
-export const IN_SERVICE = "text-primary fw-bold";
+// CE QUE LA CONSOLE PREND SANS CHOIX — l'émulateur en service, le BIOS par défaut — se lit à la validation verte à
+// côté de son libellé (`checked` de NavRow ; le porteur, 2026-11-25, au lieu du titre en couleur et en gras).
 
 // La pastille d'un état (une partie, un appareil) : un petit rond de couleur, sans texte.
 export const STATUS_DOT = "d-inline-block p-1 rounded-circle";

@@ -5,10 +5,11 @@ go 1.23
 require (
 	gameflex/auth v0.0.0-00010101000000-000000000000
 	gameflex/consoles v0.0.0
-	gameflex/emuparams v0.0.0-00010101000000-000000000000
+	gameflex/emuparams v0.0.0
 	gameflex/facade v0.0.0-00010101000000-000000000000
 	gameflex/logfile v0.0.0
 	gameflex/metadata v0.0.0
+	gameflex/resources v0.0.0
 	gameflex/sessionstatus v0.0.0-00010101000000-000000000000
 	gameflex/storage v0.0.0
 	github.com/docker/docker v27.3.1+incompatible
@@ -20,12 +21,20 @@ require (
 
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
+	github.com/geoffgarside/ber v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/hashicorp/errwrap v1.0.0 // indirect
+	github.com/hashicorp/go-multierror v1.1.1 // indirect
+	github.com/hirochachacha/go-smb2 v1.1.0 // indirect
+	github.com/jlaffaye/ftp v0.2.0 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/makiuchi-d/gozxing v0.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pkg/sftp v1.13.7 // indirect
 	github.com/stretchr/testify v1.9.0 // indirect
+	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/net v0.29.0 // indirect
-	golang.org/x/text v0.19.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 )
 
@@ -51,7 +60,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.21.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.21.0 // indirect
 	go.opentelemetry.io/otel/trace v1.21.0 // indirect
-	golang.org/x/sys v0.26.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 )
@@ -65,6 +74,9 @@ replace gameflex/sessionstatus => /shared/sessionstatus
 replace gameflex/logfile => /shared/logfile
 
 replace gameflex/storage => /shared/storage
+
+// Les ressources externes (`#808`), partagées avec le kernel du téléphone.
+replace gameflex/resources => /shared/resources
 
 // Les images et la fiche d'un jeu (chantier 57, P1) : le paquet du kernel, partagé avec le kernel du téléphone.
 replace gameflex/metadata => /shared/metadata

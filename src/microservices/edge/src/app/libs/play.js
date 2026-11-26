@@ -6,7 +6,7 @@ import { federatedId } from "./federatedHost.js";
 import { withStep } from "../engine/stream/shared/hooks/use-launch-progress.js";
 import { withNetworkBitrate } from "../engine/stream/shared/libs/network-probe.js";
 import { connectedGamepads } from "../engine/libs/keyMapping.js";
-import { MENU_CHORD } from "../engine/libs/gameInput.js";
+import { menuGestureOf } from "../engine/libs/gameInput.js";
 import { explained, readToken } from "./api.js";
 import { getStoredUsername } from "./sharedHost.js";
 
@@ -147,19 +147,14 @@ export function useLaunch() {
     return { screen, start, cancel, close };
 }
 
-// LE MENU D'UNE PARTIE, À LA MANETTE : L2 + Home tenus ensemble TROIS SECONDES, sur toute manette et
-// toute console (le porteur, 2026-11-13 : « C'est Home + L2 pendant 3 secondes »). Home seul est au jeu
-// ou à la console (le bouton PS de la PS3 et du Remote Play, le Home de la Switch ; rien en rétro) ;
-// tant que L2 est tenu, Home n'atteint PAS le jeu (isMenuHome, engine/libs/gameInput.js : les
-// trois plateformes le lisent comme lâché) — l'appui ne déclenche donc jamais le menu de la console,
-// et un Home lâché avant la fin n'envoie rien. L2, lui, reste au jeu.
+// LE MENU D'UNE PARTIE, À LA MANETTE (le geste : libs/gameInput.js, menuGestureOf) — Home seul en rétro, un appui ;
+// L2 + R2 + Home tenus deux secondes pour streamex et le Remote Play. Tant que le geste est tenu, Home n'atteint pas le
+// jeu (isMenuHome : les trois plateformes le lisent comme lâché).
 //
-// Rend l'avancement (0 à 1) de l'appui en cours, pour que la page le montre ; il faut relâcher pour
-// réarmer. Toutes les manettes branchées comptent, pas les manettes virtuelles du serveur
-// (connectedGamepads les écarte). Échap et le bouton rond ouvrent le menu sur-le-champ (PlayShell.jsx).
-const CHORD_HOLD_MS = 3000;
-
-export function useMenuHotkey(enabled, onOpen) {
+// Rend l'avancement (0 à 1) d'un geste tenu, pour que la page le montre ; il faut relâcher pour réarmer. Toutes les
+// manettes branchées comptent, pas les manettes virtuelles du serveur (connectedGamepads les écarte). Échap ouvre le
+// menu sur-le-champ (PlayShell.jsx).
+export function useMenuHotkey(enabled, onOpen, platform) {
     const [progress, setProgress] = useState(0);
     const onOpenRef = useRef(onOpen);
     onOpenRef.current = onOpen;
@@ -170,6 +165,7 @@ export function useMenuHotkey(enabled, onOpen) {
 
             return undefined;
         }
+        const { buttons, holdMs } = menuGestureOf(platform);
         let raf;
         let since = null;
         let armed = true;
@@ -181,18 +177,18 @@ export function useMenuHotkey(enabled, onOpen) {
             }
         };
         const tick = () => {
-            const chord = connectedGamepads().some((pad) => pad && MENU_CHORD.every((index) => pad.buttons?.[index]?.pressed));
+            const held = connectedGamepads().some((pad) => pad && buttons.every((index) => pad.buttons?.[index]?.pressed));
             const now = performance.now();
 
-            if (!chord) {
+            if (!held) {
                 since = null;
                 armed = true;
                 show(0);
             } else if (armed) {
                 since ??= now;
-                // Par pas de 2 % : cinquante positions pour l'anneau, pas un rendu par image.
-                const value = Math.min(1, Math.floor(((now - since) / CHORD_HOLD_MS) * 50) / 50);
-                show(value);
+                // Par pas de 2 % : cinquante positions pour l'anneau, pas un rendu par image. Un appui (holdMs 0) : aussitôt.
+                const value = holdMs > 0 ? Math.min(1, Math.floor(((now - since) / holdMs) * 50) / 50) : 1;
+                show(holdMs > 0 ? value : 0);
 
                 if (value >= 1) {
                     armed = false;
@@ -206,7 +202,7 @@ export function useMenuHotkey(enabled, onOpen) {
         raf = requestAnimationFrame(tick);
 
         return () => cancelAnimationFrame(raf);
-    }, [enabled]);
+    }, [enabled, platform]);
 
     return progress;
 }

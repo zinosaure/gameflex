@@ -1,0 +1,78 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Tue, 24 Nov 2026 07:29:02 +0100
+Subject: [PATCH] gameflex 0102: the buffer cache remembers the ranges its
+ views cover until the views change
+
+UnifiedWindow walked the map of guest views for every buffer of every draw to find out whether the range
+was bound; the answer changes only when BindUnifiedPieces changes the views. Ranges found covered are kept
+in a small table, dropped by a generation bump on every change. It was 13 % of the command thread in
+Black Myth: Wukong on a Radeon 780M (perf, 2026-11-24).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../host_gpu/renderer/cache/bufferCache.cpp       | 15 ++++++++++++---
+ .../host_gpu/renderer/cache/bufferCache.h         | 10 ++++++++++
+ 2 files changed, 22 insertions(+), 3 deletions(-)
+
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+index 46e8eddd..24aaa9fa 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+@@ -899,8 +899,13 @@ BufferId BufferCache::UnifiedWindow(uint64_t vaddr, uint64_t size) {
+ 	// Bound already? Every page of the range must be one of the guest's views.
+ 	const auto page_begin = Common::AlignDown(vaddr, CACHING_PAGESIZE);
+ 	const auto page_end   = Common::AlignUp(vaddr + size, CACHING_PAGESIZE);
+-	bool       bound      = false;
+-	{
++	// GameFlex: the answer changes only when the views do. A range found covered since their last
++	// change is answered here, instead of walking the views for every buffer of every draw (13 % of the
++	// command thread in Black Myth: Wukong, 2026-11-24).
++	auto& remembered = m_unified_covered[((page_begin ^ (page_end >> 7)) >> 12) & (UnifiedCoveredSlots - 1)];
++	bool  bound      = remembered.generation == m_unified_views_generation && remembered.begin <= page_begin &&
++	             page_end <= remembered.end;
++	if (!bound) {
+ 		auto it = m_unified_views.upper_bound(page_begin);
+ 		if (it != m_unified_views.begin()) {
+ 			--it;
+@@ -910,6 +915,9 @@ BufferId BufferCache::UnifiedWindow(uint64_t vaddr, uint64_t size) {
+ 			covered = std::max(covered, it->first + it->second.first);
+ 		}
+ 		bound = covered >= page_end;
++		if (bound) {
++			remembered = {page_begin, page_end, m_unified_views_generation};
++		}
+ 	}
+ 	if (!bound && !BindUnified(page_begin, page_end - page_begin)) {
+ 		return {};
+@@ -1042,7 +1050,8 @@ void BufferCache::BindUnifiedPieces(uint64_t begin, uint64_t end,
+ 	}
+ 	m_scheduler.WaitInLaterSubmits(m_unified_bind_semaphore, signal);
+ 
+-	// The record of what is bound.
++	// The record of what is bound. Its change forgets the ranges UnifiedWindow found covered.
++	m_unified_views_generation++;
+ 	{
+ 		auto it = m_unified_views.upper_bound(begin);
+ 		if (it != m_unified_views.begin() && std::prev(it)->first + std::prev(it)->second.first > begin) {
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.h b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+index 8be7a606..f8bbf8ce 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.h
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+@@ -246,6 +246,16 @@ private:
+ 	std::unordered_map<uint64_t, BufferId>            m_unified_windows;
+ 	// The guest views bound in the windows: address -> (size, offset in the dma-buf).
+ 	std::map<uint64_t, std::pair<uint64_t, uint64_t>> m_unified_views;
++	// GameFlex: ranges found covered by the views since they last changed (UnifiedWindow), a slot per
++	// hash of the range; a change of the views (BindUnifiedPieces) bumps the generation and drops them all.
++	struct UnifiedCovered {
++		uint64_t begin      = 0;
++		uint64_t end        = 0;
++		uint64_t generation = UINT64_MAX;
++	};
++	static constexpr size_t                           UnifiedCoveredSlots = 1024;
++	std::array<UnifiedCovered, UnifiedCoveredSlots>   m_unified_covered {};
++	uint64_t                                          m_unified_views_generation = 0;
+ 	// GameFlex: the timeline the sparse rebinds signal; later submissions wait for it on the GPU.
+ 	vk::Semaphore                                     m_unified_bind_semaphore {};
+ 	uint64_t                                          m_unified_bind_value = 0;

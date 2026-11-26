@@ -84,9 +84,12 @@ type catalogEntry struct {
 	// Engine — le moteur du jeu (storage.GameEngine, chantier 36).
 	Engine string
 	// From — la console dont le DOSSIER porte ce jeu, quand ce n'est pas la
-	// sienne : un jeu des ports PC est une ROM de `roms/n64` (chantier 40).
+	// sienne : un jeu des ports PC est une copie de `roms/ps5` (chantier 72).
 	// Vide pour tous les autres.
 	From string
+	// Cores — les ports qui acceptent ce jeu (storage.PortOf), pour un jeu des ports PC : la fiche ne propose qu'eux
+	// (Astro Bot proposait aussi les autres ports de la console). Vide pour tous les autres.
+	Cores []string
 }
 
 type catalogState struct {
@@ -226,17 +229,20 @@ func addPortGames(root string, byID map[string]catalogEntry, byConsole map[strin
 	for _, from := range consoles.PortSources() {
 		for _, sourceID := range byConsole[from] {
 			source := byID[sourceID]
-			if source.IsDir || len(source.Files) != 1 {
+			// Une ROM (un seul fichier) ou un jeu-dossier (une copie PS5, reconnue à son identifiant : chantier 72).
+			if !source.IsDir && len(source.Files) != 1 {
 				continue
 			}
 			path, err := safeJoin(root, from, source.Path)
 			if err != nil {
 				continue
 			}
-			if _, ok := storage.PortOf(from, path); !ok {
+			port, ok := storage.PortOf(from, path)
+			if !ok {
 				continue
 			}
 			game := source
+			game.Cores = []string{port.Core}
 			game.ID = deriveRomID(consoles.PortsID, source.Path)
 			game.ConsoleID = consoles.PortsID
 			game.From = from
@@ -341,7 +347,7 @@ func ListCatalog(root, consoleID, query string) ([]RomEntry, error) {
 
 	out := make([]RomEntry, len(matches))
 	for i, e := range matches {
-		out[i] = RomEntry{Reference: e.ID, Title: e.Title, Files: e.Files, SizeBytes: e.SizeBytes, Folder: e.IsDir, Engine: e.Engine}
+		out[i] = RomEntry{Reference: e.ID, Title: e.Title, Files: e.Files, SizeBytes: e.SizeBytes, Folder: e.IsDir, Engine: e.Engine, Cores: e.Cores}
 	}
 	return out, nil
 }
@@ -418,6 +424,16 @@ func CatalogTitle(root, consoleID, id string) (string, bool) {
 // cache-backed replacement for ResolveRom, used by ServeRom and
 // resolveGameFile (stream_session.go). Directory case (multi-file game)
 // mirrors ResolveRom's: Files holds every file inside consoleID/Title/.
+// CatalogCores — les ports qui acceptent ce jeu des ports PC (catalogEntry.Cores), vide s'il n'est pas au catalogue.
+// Le listing de la bibliothèque ne les connaît pas : la liste les reprend ici.
+func CatalogCores(root, id string) []string {
+	catalog := ensureCatalogScanned(root)
+	catalog.mu.RLock()
+	defer catalog.mu.RUnlock()
+
+	return catalog.byID[id].Cores
+}
+
 func ResolveCatalogRom(root, consoleID, id string) (path string, isDir bool, err error) {
 	catalog := ensureCatalogScanned(root)
 

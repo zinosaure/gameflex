@@ -167,14 +167,14 @@ func TestRemoteplayLaunchCarriesTheChosenStream(t *testing.T) {
 			`{"platform":"remoteplay","hostId":"192.168.1.12","resolution":"540P","fps":60}`,
 			map[string]any{"resolution": "540p", "fps": float64(60)}},
 		// Hors de l'échelle et des bornes, ou rien de choisi : le défaut de
-		// toutes les consoles, 540p à 30 (le porteur, 2026-11-16) — il partait
-		// vide, et le runtime prenait 720p à 60. 480p : une PS5 refuse la
-		// partie après la poignée de main.
+		// toutes les consoles, 720p à 60 (le porteur, 2026-11-23 ; 540p à 30
+		// depuis le 2026-11-16) — il partait vide, et le runtime prenait le sien.
+		// 480p : une PS5 refuse la partie après la poignée de main.
 		{"hors de l'échelle et des bornes",
 			`{"platform":"remoteplay","hostId":"192.168.1.12","resolution":"480p","fps":240,"bitrate":99999}`,
-			map[string]any{"resolution": "540p", "fps": float64(30)}},
+			map[string]any{"resolution": "720p", "fps": float64(60)}},
 		{"rien de choisi", `{"platform":"remoteplay","hostId":"192.168.1.12"}`,
-			map[string]any{"resolution": "540p", "fps": float64(30)}},
+			map[string]any{"resolution": "720p", "fps": float64(60)}},
 	} {
 		t.Run(cas.name, func(t *testing.T) {
 			var handshake map[string]any

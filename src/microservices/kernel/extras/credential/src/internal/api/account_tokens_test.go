@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -45,12 +46,14 @@ func tokenServer(t *testing.T) (*Server, *sql.DB) {
 		t.Fatal(err)
 	}
 
-	return &Server{db: db, config: config.Config{InternalSecret: testInternalSecret, JWTSecret: "le-secret-des-jetons"}, pairing: newPairing(systemClock{})}, db
+	config.KeysDir = filepath.Join(t.TempDir(), "keys")
+
+	return &Server{db: db, config: config.Config{InternalSecret: testInternalSecret, JWTSecret: "le-secret-des-jetons"},
+		pairing: newPairing(systemClock{}), logins: newLoginLimiter(), mfa: newMfaChallenges()}, db
 }
 
 // testAccess — le jeton de catalogue que le serveur des tests présente en ouvrant une session.
 const testAccess = "acces-du-serveur-d-essai-0123456789"
-
 
 func tokenOf(t *testing.T, db *sql.DB, userID int64) string {
 	t.Helper()
@@ -67,6 +70,17 @@ func adminCall(server *Server, handler func(http.ResponseWriter, *http.Request, 
 	request := httptest.NewRequest(method, "/", strings.NewReader(body))
 	request.SetPathValue("id", id)
 	handler(recorder, request, auth.Principal{ID: 1, Username: "admin", RoleLevel: auth.RoleAdmin})
+
+	return recorder
+}
+
+// ownerCall — un gestionnaire au nom du membre `id` lui-même, comme son jeton le demande (le porteur, 2026-11-20 : « Le
+// membre l'active lui-même »).
+func ownerCall(server *Server, handler func(http.ResponseWriter, *http.Request, auth.Principal), id, body string) *httptest.ResponseRecorder {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPatch, "/", strings.NewReader(body))
+	user, _ := strconv.ParseInt(id, 10, 64)
+	handler(recorder, request, auth.Principal{ID: user, Username: "member", RoleLevel: auth.RoleUser})
 
 	return recorder
 }
@@ -126,10 +140,10 @@ func TestATokenOpensNothingUntilEnabledForAWhile(t *testing.T) {
 	if answer := sessionCall(server, token); answer.Code != http.StatusUnauthorized {
 		t.Fatalf("désactivé : %d, attendu 401", answer.Code)
 	}
-	if answer := adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true}`); answer.Code != http.StatusBadRequest {
+	if answer := ownerCall(server, server.handleUpdateMyAccountToken, "2", `{"enabled":true}`); answer.Code != http.StatusBadRequest {
 		t.Fatalf("activé sans durée : %d, attendu 400", answer.Code)
 	}
-	if answer := adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1m"}`); answer.Code != http.StatusOK {
+	if answer := ownerCall(server, server.handleUpdateMyAccountToken, "2", `{"enabled":true,"duration":"1m"}`); answer.Code != http.StatusOK {
 		t.Fatalf("activé pour un mois : %d %s", answer.Code, answer.Body.String())
 	}
 	answer := sessionCall(server, token)
@@ -146,7 +160,7 @@ func TestATokenOpensNothingUntilEnabledForAWhile(t *testing.T) {
 		t.Fatalf("un accès inconnu : %d %s, attendu 403 access_refused", recorder.Code, recorder.Body.String())
 	}
 
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":false}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, "2", `{"enabled":false}`)
 	if answer := sessionCall(server, token); answer.Code != http.StatusUnauthorized {
 		t.Fatalf("désactivé de nouveau : %d, attendu 401", answer.Code)
 	}
@@ -170,10 +184,10 @@ func TestAnExpiredTokenIsRefused(t *testing.T) {
 func TestRegeneratingRetiresTheOldToken(t *testing.T) {
 	server, db := tokenServer(t)
 	old := tokenOf(t, db, 2)
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1w"}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, "2", `{"enabled":true,"duration":"1w"}`)
 	sessionCall(server, old)
 
-	if answer := adminCall(server, server.handleRegenerateAccountToken, http.MethodPost, "2", ""); answer.Code != http.StatusOK {
+	if answer := ownerCall(server, server.handleRegenerateMyAccountToken, "2", ""); answer.Code != http.StatusOK {
 		t.Fatalf("régénérer : %d %s", answer.Code, answer.Body.String())
 	}
 	fresh := tokenOf(t, db, 2)
@@ -196,7 +210,7 @@ func TestRegeneratingRetiresTheOldToken(t *testing.T) {
 // jeton, ne dure pas plus que lui, et compte une connexion.
 func TestATokenSessionIsNeverAdminAndCountsAConnection(t *testing.T) {
 	server, db := tokenServer(t)
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "1", `{"enabled":true,"duration":"1d"}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, "1", `{"enabled":true,"duration":"1d"}`)
 	token := tokenOf(t, db, 1)
 
 	answer := sessionCall(server, token)
@@ -237,9 +251,11 @@ func TestATokenSessionIsNeverAdminAndCountsAConnection(t *testing.T) {
 // rang inventé aussi ; un administrateur a tout, quoi que dise sa ligne.
 func TestConsolesAndRolesAreBounded(t *testing.T) {
 	server, db := tokenServer(t)
-	// La réponse remplace la ligne du membre sur place : son jeton y est.
+	// La réponse remplace la ligne du membre sur place : l'état de son jeton y est, JAMAIS sa valeur (2026-11-20 : le
+	// jeton est à son propriétaire seul).
 	if answer := adminCall(server, server.handleUpdateUser, http.MethodPatch, "2", `{"consoles":["switch","retro"]}`); answer.Code != http.StatusOK ||
-		!strings.Contains(answer.Body.String(), `"consoles":["retro","switch"]`) || !strings.Contains(answer.Body.String(), tokenOf(t, db, 2)) {
+		!strings.Contains(answer.Body.String(), `"consoles":["retro","switch"]`) || !strings.Contains(answer.Body.String(), `"enabled":false`) ||
+		strings.Contains(answer.Body.String(), tokenOf(t, db, 2)) {
 		t.Fatalf("consoles : %d %s", answer.Code, answer.Body.String())
 	}
 	if answer := adminCall(server, server.handleUpdateUser, http.MethodPatch, "2", `{"consoles":["ps33"]}`); answer.Code != http.StatusBadRequest {
@@ -276,7 +292,7 @@ func TestMyTokenShowsItsValueOnlyWhenEnabled(t *testing.T) {
 	if body := mine(); strings.Contains(body, token) || !strings.Contains(body, `"enabled":false`) {
 		t.Fatalf("désactivé : %s", body)
 	}
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"6m"}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, "2", `{"enabled":true,"duration":"6m"}`)
 	if body := mine(); !strings.Contains(body, token) || !strings.Contains(body, `"consoles":["*"]`) {
 		t.Fatalf("actif : %s", body)
 	}
@@ -347,7 +363,7 @@ func TestTheKernelReceivesTheAccounts(t *testing.T) {
 // l'a ouverte apprend ainsi qu'il faut la redemander.
 func TestATokenSessionDiesWithItsToken(t *testing.T) {
 	server, db := tokenServer(t)
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1w"}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, "2", `{"enabled":true,"duration":"1w"}`)
 	answer := sessionCall(server, tokenOf(t, db, 2))
 	var body struct {
 		Item struct {
@@ -367,7 +383,7 @@ func TestATokenSessionDiesWithItsToken(t *testing.T) {
 	if err := me(); err != nil {
 		t.Fatalf("session neuve : %v", err)
 	}
-	adminCall(server, server.handleRegenerateAccountToken, http.MethodPost, "2", "")
+	ownerCall(server, server.handleRegenerateMyAccountToken, "2", "")
 	if err := me(); err != auth.ErrInvalidToken {
 		t.Fatalf("après régénération : %v, attendu ErrInvalidToken", err)
 	}
@@ -379,7 +395,7 @@ func TestATokenSessionDiesWithItsToken(t *testing.T) {
 // connecté normalement, relit son jeton.
 func TestATokenSessionCannotManageTheAccount(t *testing.T) {
 	server, db := tokenServer(t)
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1w"}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, "2", `{"enabled":true,"duration":"1w"}`)
 	answer := sessionCall(server, tokenOf(t, db, 2))
 	var body struct {
 		Item struct {
@@ -442,7 +458,7 @@ func TestDeletingAnAdminKeepsTheMetadataProviderItConfigured(t *testing.T) {
 // dernière fois, combien ; le plus récent d'abord dans le jeton que la page lit. Régénérer la vide.
 func TestTheTokenListsItsConnections(t *testing.T) {
 	server, db := tokenServer(t)
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1w"}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, "2", `{"enabled":true,"duration":"1w"}`)
 	token := tokenOf(t, db, 2)
 	open := func(from, member, kind, address string) {
 		t.Helper()
@@ -497,7 +513,7 @@ func TestTheTokenListsItsConnections(t *testing.T) {
 		}
 	}
 
-	adminCall(server, server.handleRegenerateAccountToken, http.MethodPost, "2", "")
+	ownerCall(server, server.handleRegenerateMyAccountToken, "2", "")
 	if state, err := server.accountToken(2, false); err != nil || len(state.Connections) != 0 {
 		t.Fatalf("après régénération : %+v (%v), attendu aucune", state.Connections, err)
 	}

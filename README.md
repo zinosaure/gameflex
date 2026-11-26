@@ -59,11 +59,10 @@ GameFlex on the phone, which plays its own games and streams them to the screens
 - **Emulators, BIOS files and settings.** A friend's server is also where you find the emulator
   versions, firmware, patches and emulator settings they use.
 - **Your PlayStation, too.** Let a friend play your PS4 or PS5 through your server.
-- **One address for all your devices.** gameflex-federation shares a library without running any
-  game, so a NAS or a small computer can host it. It gathers your disks and network shares (Samba,
-  WebDAV, kDrive, FTP, SFTP) into one list, and every phone, computer and GameFlex you link to it
-  sees the same games, emulators, BIOS files, patches and settings
-  ([gameflex-federation](docs/federation.md#gameflex-federation-one-address-for-all-your-devices)).
+- **Your network shares, lent too.** Add a NAS or a cloud drive (Samba, WebDAV, kDrive, FTP, SFTP)
+  in Settings › Resources: every phone, computer and GameFlex you gave an access to sees its games,
+  emulators, BIOS files, patches and settings with yours
+  ([external resources](docs/federation.md#share-your-network-shares-external-resources)).
 
 ### Never lose your progress
 
@@ -132,14 +131,12 @@ runs it faster.
 |---|---|
 | **Retro** | NES, Super Nintendo, Game Boy and Game Boy Color, Game Boy Advance, Virtual Boy, Nintendo 64, Nintendo DS, GameCube, Wii, Master System, Mega Drive / Genesis, Saturn, Dreamcast, PlayStation, PlayStation 2, PSP, Neo Geo, Neo Geo Pocket, Capcom CPS-1 and CPS-2, PC Engine, PC-FX, Atari 2600, 7800, Lynx and Jaguar, WonderSwan, ColecoVision, Vectrex, Commodore 64, Amstrad CPC, ZX Spectrum, Doom |
 | **Recent, with Streamex** | PlayStation 3, Xbox, and, still experimental, PlayStation 4, PlayStation 5, Nintendo Switch, Wii U and Xbox 360 |
-| **PC Ports, with Streamex** | Nintendo 64 games remade for the PC by their community, which read your own ROM: *The Legend of Zelda: Majora's Mask* (Zelda 64: Recompiled) |
 | **Remote Play** | your own PlayStation 4 or PlayStation 5 |
 
 The full list, with the files each console needs, is in [Consoles](docs/consoles.md).
 
 Retro consoles run on [libretro](https://www.libretro.com) cores. Recent consoles run on their own
-Linux emulators: RPCS3, xemu, shadPS4, KytyPS5, Eden, Citron, Cemu and Xenia Canary. PC Ports
-run on the port published by its authors for Linux.
+Linux emulators: RPCS3, xemu, shadPS4, KytyPS5, Eden, Citron, Cemu and Xenia Canary.
 
 **Streamex** is what plays them: GameFlex's own engine for the recent consoles, the same skeleton in
 every console's image. It starts the console's emulator, captures its picture and sound, encodes the
@@ -183,7 +180,6 @@ should work, but has not been tried.
   - **PlayStation 3:** Final Fantasy XIII. **Switch:** Mini Metro, EA Sports FC 27. **Switch 2:** The
     Legend of Zelda: Ocarina of Time, with its saves. **Wii U:** New Super Mario Bros. U (as a disc
     image and extracted). **Xbox:** Dead or Alive 3. **Xbox 360:** Halo 3.
-  - **PC Ports:** The Legend of Zelda: Majora's Mask (Zelda 64: Recompiled).
 
   Not yet playable: Final Fantasy XVI (it stays on its loading screen), the Marvel games. Every game is different: see the
   known limitations in [Consoles](docs/consoles.md).
@@ -203,6 +199,13 @@ should work, but has not been tried.
 
   The other games that play on the server have not been tried on the phone yet. Played from the
   phone on the server, or on a friend's server, games run like in a browser.
+- **The PC (AppImage):** on Ubuntu 24.04, with the same Radeon 780M. Retro games, and the recent consoles:
+  Final Fantasy XIII (PlayStation 3), Final Fantasy VII Remake (PlayStation 4), Astro Bot (PlayStation 5),
+  Dead or Alive 3 (Xbox), New Super Mario Bros. U (Wii U), Super Mario Odyssey (Switch), The Legend of
+  Zelda: Ocarina of Time (Switch 2), and Halo 3 (Xbox 360) up to its menu, without a controller. Not tried
+  yet on a real desktop with a double-click, nor on Wayland.
+- **Send to the TV (Google Cast):** not tried up to a TV yet. The Android app opens its TV picker, and the PC
+  window opens the cast page in the browser.
 - **Not tried yet:** playing with friends over the phone's own hotspot, without Internet.
 
 ## Quick start
@@ -236,7 +239,7 @@ check, troubleshoot and report an issue on your behalf, and what to ask you firs
 7. [Remote Play](docs/remote-play.md): your own PS4 or PS5.
 8. [Share with friends: federation](docs/federation.md): give a friend access to your server, add
    theirs, copy their games or play them on their server, step by step with screenshots; and
-   gameflex-federation, one address that shares your library with all your devices.
+   your network shares (Samba, WebDAV, kDrive, FTP, SFTP) lent with your library.
 9. [Emulator settings](docs/emulator-settings.md): tune the recent consoles' emulators, keep and
    share presets.
 10. [Storage](docs/storage.md): more disks, network shares, saves, cache and logs.
@@ -270,8 +273,7 @@ Most of GameFlex is open source, in this repository, under the [MIT License](LIC
 
 - **the services:** the kernel that runs the sessions (`src/microservices/kernel/`), the accounts
   service (`kernel/extras/credential/`), the retro engine (`runtimes/retrogaming/`), the front
-  server and the web interface (`edge/`), gameflex-federation (`federation/`) and the modules they
-  share (`shared/`);
+  server and the web interface (`edge/`), and the modules they share (`shared/`);
 - **the console recipes:** each recent console's Dockerfile, entry point and settings
   (`runtimes/streamex/consoles/`, `profiles/`);
 - **our emulator builds:** the patches and build scripts for shadPS4, KytyPS5, Eden and Box64
@@ -309,31 +311,6 @@ and what you download from them is your responsibility.
   Consoles**, on each console's page: the version tested with GameFlex, from the
   [gameflex-streamex](https://github.com/zinosaure/gameflex-streamex/releases) packages. Each
   emulator's website is linked from [Consoles](docs/consoles.md).
-- **All of the above, laid out like a GameFlex library:** the mirror below.
-
-### The mirror
-
-You can find a mirror with recent emulator builds, firmware, patches and emulator settings, laid
-out like a GameFlex library:
-
-- **Address:** <https://gameflex-cdn.skino.app>
-- **User name:** `gameflex`
-- **Password:** `gameflex`
-
-Download what you need and put it in the same folder of your library. To copy all of it, or one
-part, at once: take `gameflex-mirror.py` from its root and give it your library folder (Python 3.9
-or newer, nothing to install). Run it again later: it only downloads what changed.
-
-```bash
-python3 gameflex-mirror.py /path/to/your/library                  # everything (about 6 GB)
-python3 gameflex-mirror.py /path/to/your/library --only cores/ps4  # one part
-```
-
-Its `src/` folder says where the source of each emulator file is: the exact upstream revision, and
-for the builds we patch (shadPS4, KytyPS5, Eden, Box64 on the phone), our patches and build scripts.
-
-To show this link in GameFlex's settings, set `GAMEFLEX_MIRROR_URL` to its address. The mirror is
-not part of GameFlex: it can change or disappear.
 
 ## Thanks
 

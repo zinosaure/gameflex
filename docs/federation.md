@@ -6,7 +6,7 @@ on the other's server.
 
 ## How it works
 
-- **Access goes through a token**, a long key that an administrator creates for one person. A token
+- **Access goes through a token**, a long key created for one person or one server. A token
   opens **only the catalog**: games, BIOS files, emulators, patches, emulator settings, and, if you
   choose, your Remote Play consoles. It opens no game session, no save and no administration.
 - **You send an invitation, not the token.** An invitation is a link, also shown as a QR code,
@@ -180,15 +180,12 @@ there (see [Federated servers and federated accounts](#federated-servers-and-fed
 **On your friend's side:**
 
 1. In **Settings › Members**, they create an account for you, with the consoles you may play.
-2. In that account, under **Account token**, they choose a **Duration** and press
-   **Enable the token**.
-
-   ![Settings › Members, an account's token: choose a duration, then Enable the token](images/federation-member-token.png)
 
 **On your side:**
 
-3. Sign in on your friend's GameFlex page with that account. In **Settings › Profile ›
-   Federation › See my connection token**, open **Use a QR code instead**: GameFlex shows an invitation for your
+2. Sign in on your friend's GameFlex page with that account. In **Settings › Profile › Federation › See my connection
+   token**, choose a **Duration** and press **Enable the token**.
+3. On the same page, open **Use a QR code instead**: GameFlex shows an invitation for your
    account, valid once within 12 hours. Copy its link, or download or share its QR.
 
    ![Settings › Profile › Federation › See my connection token, on the friend's server](images/federation-my-token.png)
@@ -226,7 +223,7 @@ that pasted your token there and whether it is a GameFlex server or the app, the
 from, and the first and last time. **From your current network** marks a connection that came from
 where you are reading the page: unlike the rest, the caller cannot make that up. If one of them is not yours, **Revoke the
 connections** regenerates your token: every connection is cut, your own devices included, which
-then need the new token. Only an administrator can do it.
+then need the new token.
 
 ## What you should see
 
@@ -241,43 +238,38 @@ GameFlex keeps a copy of their list, and fetches it again when their list change
 - **Cut off a friend:** in **Settings › Federation › Delivered accesses**, open their access and
   choose **Revoke this access**. Their server immediately loses access to yours. An invitation not
   used yet is revoked the same way, under **Pending delivered accesses**.
-- **Stop a friend playing on your server:** in **Settings › Members**, open their account and press
-  **Disable the token**. The games they opened with it stop at once.
+- **Stop a friend playing on your server:** in **Settings › Members**, open their account and turn off its consoles in
+  **Console access**, or delete the account. Their token stays theirs: they enable, disable and regenerate it themselves.
 - **Remove a friend's server:** open it in **Settings › Federation › Joined servers** and choose
   **Remove this server**. What you copied from it stays in your library.
 
-## gameflex-federation: one address for all your devices
+## Share your network shares: external resources
 
-gameflex-federation is a service of its own, in the same `docker-compose.yml`. It runs no game: it
-shares a library (games, BIOS files, emulators, patches, emulator settings) with every device and
-every GameFlex you link to it, from one address. It can also gather other shares (Samba, WebDAV,
-kDrive, FTP, SFTP) and show them as one list. A computer without a graphics card, such as a NAS,
-can run it alone: `./launch.sh federation`.
+Your server can also lend what sits on other machines: a NAS, a cloud drive, a small FTP server. Add them in
+**Settings › Resources** (an administrator): **More › Add an external resource**, then the kind:
 
-1. Open `http://<GAMEFLEX_PUBLIC_HOST>:10206` and sign in with the
-   `GAMEFLEX_FEDERATION_ROOT_USERNAME` and `GAMEFLEX_FEDERATION_ROOT_PASSWORD` of your `.env`.
-2. **More › Resources** lists what it shares. Your library folder is there from the start. Add a
-   network share there, or another folder of this computer: one line in the volumes of
-   `gameflex-federation`, such as `- /media/games:/mnt/games:ro`.
-3. Its home page works like **Settings › Federation** in GameFlex, for what it lends:
-   **Delivered accesses** creates an access for a device or a server (an invitation with its QR
-   code, or the address and a token) or a pairing code while **Discovery mode** is on, lists the
-   accesses with when each was last used, and revokes them. **Remote metadata providers**,
-   on an access or when you create it, lets that device or server search sheets and images with
-   the service's IGDB and SteamGridDB accounts (step 5), without seeing the keys. In GameFlex, add it
-   like a friend's server ([Add a friend's server](#add-a-friends-server)). It joins no server itself.
-   Since it runs no game, its games show only in the catalog (**Settings › Games**), to copy into a
-   library, never as playable in the console menus; its BIOS files, emulators, patches and settings
-   are offered on each console's page.
-4. **Internal resources** lists its disks and shares, and **More › Logs** shows what the service
-   did.
-5. **More › Metadata providers** takes your IGDB and SteamGridDB accounts. A game on a disk that
-   already has its sheet (a GameFlex library) keeps it; for the others, such as the games of a
-   network share, the service makes the sheet with these accounts.
+| Kind | Address | Account |
+|---|---|---|
+| Samba (Windows share, NAS) | `smb://` + server + `/share`, port 445 by default | user and password, or anonymous (guest) |
+| WebDAV (Nextcloud, ownCloud…) | `https://` or `http://` + server and path | user and password, or anonymous |
+| kDrive (Infomaniak) | the number of the drive | an API token |
+| FTP | `ftp://` + server, port 21 by default | user and password, or anonymous |
+| SFTP | `sftp://` + server, port 22 by default | user and password, or anonymous |
 
-When the same game, patch or file is on several of its resources, the list shows it once. The
-game's page in GameFlex then shows its **Sources**, the recommended one first, and you can choose
-another one before you download it.
+**Folder** is where the library starts in that resource (the folder that holds `roms/`, `bios/`, `cores/`,
+`patches/`, `params/`): empty for its root. A resource is laid out like a GameFlex library.
+
+Once saved, the resource is read in the background, and its page shows what was found (*N games · last read …*),
+or why it could not be reached. **Read again** reads it after you add or remove files; its page also changes its
+address or account (an empty password keeps the saved one) and removes it. Passwords are stored encrypted on the
+server and never shown again.
+
+What the resources hold is added to what your server lends to the servers and devices you gave an access to, behind
+your library and your internal disks: a game you already have is not listed twice. Your server runs no game from a
+resource, so for them these games show only in the catalog (**Settings › Games**), to copy into their library; their
+BIOS files, emulators, patches and settings are offered on each console's page. When the same game is on several
+resources, it is listed once, and the game's page shows its **Sources**, the recommended one first (the one that
+answers, then the fittest for its size, then the fastest); another one can be chosen before downloading.
 
 ## If something goes wrong
 
@@ -287,10 +279,10 @@ another one before you download it.
 | Their server refuses your token | The token was revoked or mistyped: ask for a new one. |
 | *This invitation was already used, has expired or was revoked* | Ask for a new one: an invitation works once, within 12 hours. |
 | *This invitation goes elsewhere* | A server invitation goes in **Join a server**, an account one in **Settings › Profile › Federation › Sign in at federated servers**. It was not used up: paste it in the right place. |
-| *The token of this account is disabled over there* | Ask your friend to enable the token of your account. The invitation was not used up. |
+| *The token of this account is disabled over there* | Sign in on their GameFlex and enable your token in **Settings › Profile › Federation › See my connection token**. The invitation was not used up. |
 | *No QR could be read in this image* | Choose a sharper image, or paste the link instead. |
 | *Too many refused invitations* | Wait a few minutes, then try again. |
-| **Play at <their server>** refuses your account token | It was disabled, expired or regenerated: ask your friend to enable it again, then copy it from **Settings › Profile › Federation › See my connection token** on their GameFlex. |
+| **Play at <their server>** refuses your account token | It was disabled, expired or regenerated: enable it again, then copy it from **Settings › Profile › Federation › See my connection token** on their GameFlex. |
 | A game is listed but unavailable there | Your account on their server has no access to this console (*Not on your account* on the server's page): they can grant it in **Settings › Members**. |
 | A download into the library waits | Games download one at a time: it waits its turn in the queue, shown in **Live**. |
 | A download says the file already exists | You already have one: delete yours first to take theirs. |

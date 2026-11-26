@@ -53,7 +53,7 @@ func TestParseGrants(t *testing.T) {
 	if got, err := ParseGrants(nil); err != nil || got != "" {
 		t.Fatalf("rien : %q / %v", got, err)
 	}
-	for _, bad := range []string{"ps33", "nes", "keytest"} {
+	for _, bad := range []string{"ps33", "nes", "banc"} {
 		if _, err := ParseGrants([]string{bad}); err == nil {
 			t.Errorf("%q devrait être refusé", bad)
 		}

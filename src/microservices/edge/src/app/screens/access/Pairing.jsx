@@ -1,10 +1,19 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { readToken } from "../../libs/api.js";
+import { closePairing, openPairing, readToken } from "../../libs/api.js";
+import { useData } from "../../libs/data.jsx";
 import { kernelReachable, kernelTarget, useKernelChannel, useKernelTopic } from "../../libs/kernelChannel.js";
-import { useFederationHost } from "../../settings/people/federationHost.js";
+import { useShareOrigin } from "./Invitation.jsx";
 import { toast } from "../../shell/Shell.jsx";
-import NavRow, { EmptyRow, InfoRow, Note, Rows, Section, SwitchRow, useConfirm } from "../../ui/Bricks.jsx";
+import { EmptyRow } from "../../bricks/EmptyRow.jsx";
+import { InfoRow } from "../../bricks/InfoRow.jsx";
+import NavRow from "../../bricks/NavRow.jsx";
+import { Note } from "../../bricks/Note.jsx";
+import { Rows } from "../../bricks/Rows.jsx";
+import { Section } from "../../bricks/Section.jsx";
+import { SwitchRow } from "../../bricks/SwitchRow.jsx";
+import { SaveSection } from "../../bricks/SaveSection.jsx";
+import { fact } from "../../libs/format.js";
 
 // LE CODE D'APPAIRAGE (chantier 60 ; le porteur, 2026-11-17 : « Comme ça à côté de la création du token on a "code
 // appairage" et dans rejoins un serveur et s'authentifier on aura entrér le code d'appairage ») : six chiffres, affichés
@@ -60,36 +69,31 @@ const modeOf = (pairing, scope) => (scope === "server" ? pairing?.server : pairi
 const closureOf = (pairing, scope) => [...(pairing?.closed || [])].reverse().find((entry) => entry.scope === scope) || null;
 
 // LA SECTION « MODE DÉCOUVERTE », une seule pour les deux modes (`scope` : "server" ou "account") : l'interrupteur, son
-// aide qui suit le sujet, et « Prolonger de 5 minutes » une fois ouvert. L'allumer passe par la fenêtre de Skeleton ;
-// l'éteindre ne demande rien, on n'y perd rien.
-// `children` : des lignes de plus, montrées tant que le mode est ouvert — sur l'accueil de la fédération, les deux
+// aide qui suit le sujet, enregistré par le bouton de la section (le porteur, 2026-11-25 : « Faudra rajouter des boutons
+// pour tous les formulaires qui n'en ont pas ») — le bouton tient lieu de la confirmation d'avant —, la réponse en
+// fenêtre (SaveSection) ; puis « Prolonger de 5 minutes ». Le sujet le referme seul : l'interrupteur le suit.
+// `children` : des lignes de plus, actives tant que le mode est ouvert — sur l'accueil de la fédération, les deux
 // formulaires qui acceptent une connexion (le porteur, 2026-11-18 : « Comme ça on va directement sur les formulaires
 // pour accepter une connexion »).
 export function DiscoveryModeSection({ scope, pairing, children }) {
     const { t, i18n } = useTranslation();
-    const confirm = useConfirm();
-    const { api } = useFederationHost();
     const [pending, setPending] = useState(false);
     const mode = modeOf(pairing, scope);
     const closure = closureOf(pairing, scope);
 
     const open = async () => {
         setPending(true);
-        const answer = await api.openPairing(scope);
+        const answer = await openPairing(scope);
         setPending(false);
 
         if (!answer.ok) {
             toast(answer.detail || t("settings.actionFailed"));
         }
     };
-    const close = async () => {
-        setPending(true);
-        const answer = await api.closePairing(scope);
-        setPending(false);
+    const saveMode = async ({ on }) => {
+        const answer = on ? await openPairing(scope) : await closePairing(scope);
 
-        if (!answer.ok && answer.status !== 204) {
-            toast(answer.detail || t("settings.actionFailed"));
-        }
+        return answer.status === 204 ? { ok: true } : answer;
     };
 
     let help = t(scope === "server" ? "pairing.serverModeHelp" : "pairing.accountModeHelp");
@@ -101,27 +105,22 @@ export function DiscoveryModeSection({ scope, pairing, children }) {
     }
 
     return (
-        <Section title={t("pairing.modeTitle")}>
-            <Rows>
-                <SwitchRow id={`pr-${scope}-mode`} label={t("pairing.modeSwitch")} help={help} checked={Boolean(mode)} disabled={pending || !pairing}
-                    onChange={(on) => {
-                        if (!on) {
-                            close();
-
-                            return;
-                        }
-                        confirm({
-                            title: t(scope === "server" ? "pairing.confirmServerTitle" : "pairing.confirmAccountTitle"),
-                            message: t(scope === "server" ? "pairing.confirmServer" : "pairing.confirmAccount"),
-                            confirmLabel: t("pairing.confirmOpen"),
-                            onConfirm: open,
-                        });
-                    }} />
-                {mode && <NavRow id={`pr-${scope}-extend`} icon="bi-clock-history" tone="indigo" label={t("pairing.extend")} help={t("pairing.extendHelp")}
-                    pending={pending} opens="action" onOpen={open} />}
-                {mode && children}
-            </Rows>
-        </Section>
+        <SaveSection id={`pr-${scope}`} title={t("pairing.modeTitle")} help={t("pairing.modeHelp")} saved={{ on: Boolean(mode) }} disabled={!pairing}
+            onSave={saveMode} success={({ on }) => t(on ? "pairing.opened" : "pairing.closed")}
+            after={(
+                <Rows className="mt-3">
+                    {/* JAMAIS CACHÉES, DÉSACTIVÉES (le porteur, 2026-11-25 : « le discovery mode ne respecte pas la règle "pas de
+                        hide/show". Il faut que les switches soient en enabled/disabled ») : fermé, ses lignes restent là, leur
+                        raison à la place de leur aide. */}
+                    <NavRow id={`pr-${scope}-extend`} icon="bi-clock-history" label={t("pairing.extend")} help={mode ? t("pairing.extendHelp") : t("pairing.needsMode")}
+                        pending={pending} disabled={!mode} opens="action" onOpen={open} />
+                    {mode ? children : React.Children.map(children, (child) => (React.isValidElement(child) ? React.cloneElement(child, { disabled: true, help: t("pairing.needsMode") }) : child))}
+                </Rows>
+            )}>
+            {(values, set) => (
+                <SwitchRow id={`pr-${scope}-mode`} label={t("pairing.modeSwitch")} help={help} checked={values.on} disabled={!pairing} onChange={(on) => set({ on })} />
+            )}
+        </SaveSection>
     );
 }
 
@@ -154,9 +153,8 @@ const leftText = (t, milliseconds) => {
 // annulé — `onDone(texte)` dit pourquoi.
 export function PairingReveal({ created, pairing, onCancel, onDone }) {
     const { t } = useTranslation();
-    const host = useFederationHost();
-    const origin = host.useOrigin();
-    const serverName = host.useServerName();
+    const origin = useShareOrigin();
+    const serverName = useData().capabilities?.serverName || "";
     const [now, setNow] = useState(Date.now());
     const seen = useRef(false);
     const finished = useRef(false);
@@ -184,18 +182,18 @@ export function PairingReveal({ created, pairing, onCancel, onDone }) {
 
     return (
         <>
-            <Section title={t("pairing.code")}>
+            <Section title={t("pairing.code")} sense="modify">
                 <p className="display-4 font-monospace text-center mb-0" data-key="pr-code" aria-label={t("pairing.code")}>{groupedCode(created.code)}</p>
                 <Note>{t("pairing.validFor", { left: leftText(t, Date.parse(created.expires_at) - now) })}</Note>
             </Section>
-            <Section title={t("fed.serverTitle")}>
+            <Section title={t("fed.serverTitle")} sense="info">
                 <Rows>
-                    <InfoRow icon="bi-hdd-network" tone="amber" label={serverName || t("fed.urlLabel")} value={origin} help={t("pairing.thisServerHelp")} />
+                    <InfoRow icon="bi-hdd-network" label={serverName || t("fed.urlLabel")} value={serverName ? fact(t("fed.urlLabel"), origin) : origin} help={t("pairing.thisServerHelp")} />
                 </Rows>
             </Section>
-            <Section title={t("more")}>
+            <Section title={t("more")} sense="modify">
                 <Rows>
-                    <NavRow id="pr-cancel" icon="bi-x-circle" tone="slate" label={t("pairing.cancel")} help={t("pairing.cancelHelp")} opens="action" onOpen={onCancel} />
+                    <NavRow id="pr-cancel" icon="bi-x-circle" label={t("pairing.cancel")} help={t("pairing.cancelHelp")} opens="action" onOpen={onCancel} />
                 </Rows>
             </Section>
         </>
@@ -215,16 +213,16 @@ export function LocalServersSection({ onChoose }) {
     });
 
     return (
-        <Section title={t("pairing.localTitle")} help={t("pairing.localHelp")}>
+        <Section title={t("pairing.localTitle")} help={t("pairing.localHelp")} sense="modify">
             <Rows>
                 {(servers || []).map((server) => (
-                    <NavRow key={`${server.instance}-${server.address}`} id={`pr-found-${server.address}-${server.instance}`} icon="bi-hdd-network" tone="amber"
-                        label={server.name} help={counted[server.name] > 1 ? t("pairing.sameName", { address: server.address }) : server.link}
+                    <NavRow key={`${server.instance}-${server.address}`} id={`pr-found-${server.address}-${server.instance}`} icon="bi-hdd-network"
+                        label={server.name} help={counted[server.name] > 1 ? [fact(t("fed.urlLabel"), server.address), t("pairing.sameName")] : fact(t("fed.urlLabel"), server.link)}
                         opens="action" onOpen={() => onChoose(server)} />
                 ))}
                 {servers && servers.length === 0 && <EmptyRow icon="bi-wifi-off" text={t("pairing.localEmpty")} />}
                 {servers === null && <EmptyRow icon="bi-wifi" text={t("pairing.localSearching")} />}
-                <NavRow id="pr-search" icon="bi-arrow-repeat" tone="indigo" label={t("pairing.searchAgain")} help={t("pairing.searchAgainHelp")} opens="action"
+                <NavRow id="pr-search" icon="bi-arrow-repeat" label={t("pairing.searchAgain")} help={t("pairing.searchAgainHelp")} opens="action"
                     disabled={servers === null} onOpen={() => search()} />
             </Rows>
         </Section>

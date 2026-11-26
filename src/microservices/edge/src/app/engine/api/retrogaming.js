@@ -112,8 +112,8 @@ async function api(path, options = {}, host = null) {
 // `settings` — le flux de la console dans ce navigateur (#150 ; `streamOf`,
 // GameSettings.jsx), même panneau et même vocabulaire que streamex et
 // remote-play, son débit « Auto » déjà mesuré (withNetworkBitrate). Absent :
-// le kernel prend le défaut de toutes les consoles, 540p à 30 (le porteur,
-// 2026-11-16) — ce n'est plus la géométrie d'époque. La cadence et le débit
+// le kernel prend le défaut de toutes les consoles, 720p à 60 (le porteur,
+// 2026-11-23) — ce n'est plus la géométrie d'époque. La cadence et le débit
 // partent aussi, comme pour `launchSession` : le téléphone lance ses consoles
 // streamex par ici, et les ignorait — une PS3 restait en 720p à 60 images quoi
 // qu'on choisisse (2026-10-11).

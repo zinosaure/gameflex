@@ -1,14 +1,34 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useNames } from "../../../libs/displayNames.js";
 import { useTranslation } from "react-i18next";
 import { dropMetadataSource, fetchGameStatus, fetchMetadataSource, metadataCandidates, putManualImage, removeGameStatus, reportGameStatus, saveManualMetadata, searchGameImages } from "../../../libs/api.js";
 import { useData } from "../../../libs/data.jsx";
-import { GAME_STATUSES, STATUS_TONE } from "../../../libs/format.js";
+import { fact, GAME_STATUSES, STATUS_TONE } from "../../../libs/format.js";
 import { forgetGameImages, gamePath, useImage } from "../../../libs/images.js";
 import { forgetGameMetadata, setGameMetadata, useGameMetadata } from "../../../libs/metadata.js";
 import { toast } from "../../../shell/Shell.jsx";
 import { Form, FormButton, Ruleset, useCalendarDays } from "../../../ui/Forms.jsx";
 import { ImageSearch, imageOrigin } from "./ImageSearch.jsx";
-import NavRow, { BlockRow, ChoiceRow, DangerRow, EmptyRow, IconAddon, InfoRow, Listing, Note, PlaceholderRow, Rows, SubmitRow, Section, SelectRow, TextRow, Thumb, useConfirm } from "../../../ui/Bricks.jsx";
+import { BlockRow } from "../../../bricks/BlockRow.jsx";
+import { ChoiceRow } from "../../../bricks/ChoiceRow.jsx";
+import { DangerRow } from "../../../bricks/DangerRow.jsx";
+import { EmptyRow } from "../../../bricks/EmptyRow.jsx";
+import { IconAddon } from "../../../bricks/IconAddon.jsx";
+import { InfoRow } from "../../../bricks/InfoRow.jsx";
+import { Listing, useListSearch } from "../../../bricks/Listing.jsx";
+import { Loading } from "../../../bricks/Loading.jsx";
+import NavRow from "../../../bricks/NavRow.jsx";
+import { Note } from "../../../bricks/Note.jsx";
+import { PlaceholderRow } from "../../../bricks/PlaceholderRow.jsx";
+import { Rows } from "../../../bricks/Rows.jsx";
+import { Section } from "../../../bricks/Section.jsx";
+import { SelectRow } from "../../../bricks/SelectRow.jsx";
+import { SubmitRow } from "../../../bricks/SubmitRow.jsx";
+import { TextRow } from "../../../bricks/TextRow.jsx";
+import { Thumb } from "../../../bricks/Thumb.jsx";
+import { useConfirm } from "../../../bricks/useConfirm.jsx";
+import { helpLines } from "../../../globals/subtitles.jsx";
+import { useFeedback } from "../../../bricks/useFeedback.jsx";
 
 // LES MÉTADONNÉES D'UN JEU, CORRIGÉES À LA MAIN (les gestes du kernel, 869923ad) : les pages du « Plus » d'un jeu
 // d'ici (Réglages › Consoles › une console › Jeux, Games.jsx ; chantier 53, P8, modèles 23 à 25), une page
@@ -91,15 +111,15 @@ export function GameAppearance({ consoleId, reference, game = {}, title, onOpenI
 
     return (
         <>
-            <Section title={t("appearance.gameTitle")}>
-                {metadata === undefined ? <Note className="mt-0">{t("settings.loading")}</Note> : (
+            <Section title={t("appearance.gameTitle")} sense="modify">
+                {metadata === undefined ? <Loading /> : (
                     <Rows>
                         <InfoRow icon="bi-fonts" label={t("gameAdmin.fields.title")} value={name} />
                         <InfoRow icon="bi-calendar3" label={t("gameAdmin.fields.releaseDate")} value={metadata?.releaseDate} />
                     </Rows>
                 )}
             </Section>
-            <Section title={t("appearance.imagesTitle")} help={t("appearance.gameImagesHelp")}>
+            <Section title={t("appearance.imagesTitle")} help={t("appearance.gameImagesHelp")} sense="modify">
                 <Listing items={IMAGE_KINDS} loading={metadata === undefined} placeholderRow={() => <PlaceholderRow lead="thumb" />}
                     render={(kind) => <KindRow key={kind} consoleId={consoleId} reference={reference} game={game} kind={kind} onOpen={() => onOpenImage(kind)} />} />
             </Section>
@@ -113,12 +133,13 @@ export function GameAppearance({ consoleId, reference, game = {}, title, onOpenI
 // ce que donnent les services (`DELETE …/metadata?source=manual`). Sa fenêtre de confirmation, celle de Skeleton.
 export function GameReset({ consoleId, reference, game = {}, title }) {
     const { t } = useTranslation();
+    const feedback = useFeedback();
 
     return (
         <DangerRow id="gm-reset" icon="bi-arrow-counterclockwise" label={t("gameAdmin.resetSheet")} help={t("gameAdmin.resetSheetHelp")}
             question={t("gameAdmin.resetSheetConfirm", { name: title })} confirmLabel={t("gameAdmin.resetSheetAction")} onConfirm={async () => {
                 const answer = await dropMetadataSource(consoleId, reference, game, "manual");
-                toast(answer.ok ? t("gameAdmin.resetSheetDone", { name: title }) : answer.errorMessage || t("settings.actionFailed"));
+                feedback.result(answer.ok, t("gameAdmin.resetSheetDone", { name: title }), answer.errorMessage || t("settings.actionFailed"));
 
                 if (answer.ok) {
                     reread(consoleId, reference, game);
@@ -148,17 +169,17 @@ export function GameImage({ consoleId, reference, game = {}, kind, onReplace }) 
 
     return (
         <>
-            <Section title={t("appearance.preview")}>
+            <Section title={t("appearance.preview")} sense="info">
                 <KindPreview image={image} />
             </Section>
-            <Section title={t("details")}>
+            <Section title={t("details")} sense="info">
                 <Rows>
                     <InfoRow icon="bi-image" label={t("appearance.kind")} value={t(`gameAdmin.meta.kinds.${kind}`)} />
                 </Rows>
             </Section>
-            <Section title={t("more")}>
+            <Section title={t("more")} sense="modify">
                 <Rows>
-                    <NavRow id="ap-replace" icon="bi-search" tone="indigo" label={t(image === null ? "appearance.choose" : "appearance.replace")} help={t("appearance.replaceGameHelp")}
+                    <NavRow id="ap-replace" icon="bi-search" label={t(image === null ? "appearance.choose" : "appearance.replace")} help={t("appearance.replaceGameHelp")}
                         onOpen={onReplace} />
                 </Rows>
             </Section>
@@ -180,11 +201,11 @@ export function GameImageSearch({ consoleId, reference, game = {}, kind, title, 
     return (
         <>
             {current !== null && (
-                <Section title={t("appearance.current")}>
+                <Section title={t("appearance.current")} sense="info">
                     <KindPreview image={current} />
                 </Section>
             )}
-            <Section title={t("appearance.searchTitle")} help={t("appearance.searchGameHelp", { kind: kindName })}>
+            <Section title={t("appearance.searchTitle")} help={t("appearance.searchGameHelp", { kind: kindName })} sense="modify">
                 <ImageSearch key={kind} initial={searchTitleOf(title)} fit={fitOf(kind)} search={(query) => searchGameImages(consoleId, reference, game, kind, query)}
                     confirmOf={(image) => ({
                         title: t("appearance.setKindConfirmTitle", { kind: kindName }),
@@ -225,6 +246,7 @@ const reread = (consoleId, reference, game) => {
 // un copie sa fiche ici.
 function WrongGame({ consoleId, reference, game, service, name, help = null }) {
     const { t } = useTranslation();
+    const feedback = useFeedback();
     const peer = service.startsWith("server:");
     const [query, setQuery] = useState("");
     const [items, setItems] = useState(null);
@@ -245,23 +267,25 @@ function WrongGame({ consoleId, reference, game, service, name, help = null }) {
         }
     };
 
-    const fetchFrom = async (externalId) => {
+    // `viaForm` : « Chercher à nouveau », son FormButton, répond par la fenêtre de Skeleton (useFeedback) ; un candidat
+    // touché dans la liste, par un toast.
+    const fetchFrom = async (externalId, viaForm = false) => {
         setBusy(true);
         const answer = await fetchMetadataSource(consoleId, reference, game, service, externalId);
         setBusy(false);
 
         if (!answer.ok) {
-            toast(answer.status === 404 && !answer.errorCode ? t("gameAdmin.meta.unknownId") : serviceError(answer, t, name));
+            (viaForm ? feedback.failed : toast)(answer.status === 404 && !answer.errorCode ? t("gameAdmin.meta.unknownId") : serviceError(answer, t, name));
 
             return;
         }
-        toast(answer.data?.error ? t("gameAdmin.meta.fetchError", { error: answer.data.error }) : t(externalId ? "gameAdmin.meta.pinned" : "gameAdmin.meta.refetched", { name: answer.data?.name || "" }));
+        (viaForm ? (answer.data?.error ? feedback.warning : feedback.success) : toast)(answer.data?.error ? t("gameAdmin.meta.fetchError", { error: answer.data.error }) : t(externalId ? "gameAdmin.meta.pinned" : "gameAdmin.meta.refetched", { name: answer.data?.name || "" }));
         setItems(null);
         reread(consoleId, reference, game);
     };
 
     return (
-        <Section title={name} help={help}>
+        <Section title={name} help={help} sense="modify">
             <Rows>
                 <TextRow id={`mw-q-${service}`} label={t("gameAdmin.meta.candidates")} help={t("gameAdmin.meta.searchHelp")} value={query} onChange={(value) => setQuery(value || "")}
                     props={{ placeholder: t("gameAdmin.meta.searchPlaceholder") }}
@@ -269,14 +293,15 @@ function WrongGame({ consoleId, reference, game, service, name, help = null }) {
                 {(items || []).map((item, index) => (
                     <NavRow key={item.externalId} id={`mw-pick-${peer ? service.replace(":", "-") : service}-${peer ? index : item.externalId}`} icon="bi-controller" label={item.name} disabled={busy}
                         opens="action" onOpen={() => fetchFrom(item.externalId)} lead={item.coverPath || item.coverUrl ? <CandidateCover item={item} /> : null}
-                        help={[item.year, (item.platforms || []).join(", "), item.provider ? t(`gameAdmin.meta.services.${item.provider}`) : peer ? null : `#${item.externalId}`].filter(Boolean).join(" · ")}
+                        help={[fact(t("gameAdmin.fields.releaseDate"), item.year), fact(t("facts.platforms"), (item.platforms || []).join(", ")),
+                            item.provider ? fact(t("facts.service"), t(`gameAdmin.meta.services.${item.provider}`)) : peer ? null : fact(t("gameAdmin.fields.gameId"), `#${item.externalId}`)]}
                         value={<span className="badge text-bg-primary">{t("gameAdmin.meta.pin")}</span>} />
                 ))}
                 {items && !items.length && <EmptyRow icon="bi-search" text={t("gameAdmin.meta.noCandidate")} />}
                 <SubmitRow>
                     {/* Chez un serveur fédéré, rien n'est automatique : sans candidat choisi, la copie prend le même jeu (son
                         identifiant, puis son titre). */}
-                    <FormButton id={`mw-refetch-${service}`} type="button" kind="other" isReplaced label={t(peer ? "gameAdmin.meta.serverCopyBest" : "gameAdmin.meta.searchAgain")} pending={busy} onClick={() => fetchFrom("")} />
+                    <FormButton id={`mw-refetch-${service}`} type="button" kind="other" isReplaced label={t(peer ? "gameAdmin.meta.serverCopyBest" : "gameAdmin.meta.searchAgain")} pending={busy} onClick={() => fetchFrom("", true)} />
                 </SubmitRow>
             </Rows>
             {/* LE REFUS D'UN SERVICE, une ligne sans encadré (le porteur, 2026-11-16 : « retirer les alerts ») — comme les refus
@@ -348,7 +373,7 @@ const releaseBounds = (consoles, saved) => {
 
 // LA SORTIE, SES DEUX LIGNES : sa précision (le choix segmenté), puis son champ — le sélecteur des années ou le
 // calendrier, l'un caché par le Ruleset du formulaire (`context`) —, la gomme accolée (`addon`). La ligne du champ a la
-// forme d'une ligne empilée (BlockRow, son Form.Group), comme les bornes du journal (settings/server/Logs.jsx) ; la croix va
+// forme d'une ligne empilée (BlockRow, son Form.Group), comme les bornes du journal (settings/Logs.jsx) ; la croix va
 // jusqu'aux jours du calendrier (useCalendarDays).
 function ReleaseDateRows({ context, help, bounds, addon }) {
     const { t } = useTranslation();
@@ -362,7 +387,7 @@ function ReleaseDateRows({ context, help, bounds, addon }) {
             <ChoiceRow id="mm-precision" label={t("gameAdmin.meta.precision")} help={t("gameAdmin.meta.precisionHelp")} value={context.values.releasePrecision}
                 options={[["year", t("gameAdmin.meta.yearOnly")], ["full", t("gameAdmin.meta.fullDate")]]} onChange={(value) => Form.set(context, "releasePrecision", value)} />
             <BlockRow>
-                <Form.Group label={label} helpText={help} props={{ className: "mb-0 w-100" }}>
+                <Form.Group label={label} helpText={helpLines(help)} props={{ className: "mb-0 w-100" }}>
                     <div className="d-flex gap-2 align-items-start">
                         <div ref={days} className="flex-grow-1 min-w-0">
                             <Form.Select name="releaseYear" context={context} options={[{ value: "", label: t("gameAdmin.meta.pickYear") }, ...years.map((year) => ({ value: year, label: year }))]}
@@ -380,13 +405,14 @@ function ReleaseDateRows({ context, help, bounds, addon }) {
 // LE TEXTE D'UN JEU : chaque champ, Enregistrer dans son encadré.
 function GameTextForm({ consoleId, reference, game = {}, fallbackTitle }) {
     const { t } = useTranslation();
+    const feedback = useFeedback();
     const { consoles } = useData();
     const metadata = useGameMetadata(consoleId, reference, game);
     const [drafts, setDrafts] = useState({});
     const [pending, setPending] = useState(false);
 
     if (metadata === undefined) {
-        return <Section title={t("gameAdmin.infos")}><Note className="mt-0">{t("settings.loading")}</Note></Section>;
+        return <Section title={t("information")} sense="info"><Loading /></Section>;
     }
     const sheet = metadata || {};
     const sources = sheet.sources || {};
@@ -416,11 +442,11 @@ function GameTextForm({ consoleId, reference, game = {}, fallbackTitle }) {
         setPending(false);
 
         if (!answer.ok) {
-            toast(answer.errorMessage || t("settings.actionFailed"));
+            feedback.failed(answer.errorMessage || t("settings.actionFailed"));
 
             return;
         }
-        toast(t("gameAdmin.meta.saved"));
+        feedback.success(t("gameAdmin.meta.saved"));
         setDrafts({});
 
         if (answer.data && typeof answer.data === "object" && Object.keys(answer.data).length) {
@@ -447,7 +473,7 @@ function GameTextForm({ consoleId, reference, game = {}, fallbackTitle }) {
     };
 
     return (
-        <Section title={t("gameAdmin.infos")} help={t("gameAdmin.meta.textHelp")}>
+        <Section title={t("information")} help={t("gameAdmin.meta.textHelp")} sense="info">
             <Form props={{ onSubmit: (event) => {
                 event.preventDefault();
 
@@ -459,7 +485,7 @@ function GameTextForm({ consoleId, reference, game = {}, fallbackTitle }) {
                     {TEXT_FIELDS.map(([field, list]) => {
                         const current = asText(sheet[field], list);
                         const source = [].concat(sources[field] || []).join(", ");
-                        const help = [source ? t("gameAdmin.from", { source }) : current ? null : t("gameAdmin.meta.noSource"), list && t("gameAdmin.meta.listHelp")].filter(Boolean).join(" · ");
+                        const help = [source ? t("gameAdmin.from", { source }) : current ? null : t("gameAdmin.meta.noSource"), list && t("gameAdmin.meta.listHelp")];
                         const touched = field === "releaseDate" ? RELEASE_FIELDS.some((name) => name in drafts) : Boolean(drafts[field]);
                         const eraser = <IconAddon id={`mm-clear-${field}`} icon="bi-eraser" label={t("gameAdmin.meta.clear")} disabled={pending || (!current && !touched)} onClick={() => save({ [field]: list ? [] : "" })} />;
 
@@ -496,6 +522,7 @@ function GameTextForm({ consoleId, reference, game = {}, fallbackTitle }) {
 // concerne, sa note, qui, quand, et la version de chacun à ce moment (`versions`, que seul l'administrateur lit).
 function GameStatusForm({ consoleId, reference }) {
     const { t, i18n } = useTranslation();
+    const feedback = useFeedback();
     const { patchHere } = useData();
     const confirm = useConfirm();
     const [answer, setAnswer] = useState(undefined);
@@ -514,10 +541,15 @@ function GameStatusForm({ consoleId, reference }) {
             cancelled = true;
         };
     }, [consoleId, reference]);
+    // Les auteurs de l'historique, sous leur nom affiché (libs/displayNames.js).
+    const names = useNames((answer?.data?.reports || []).map((report) => report.by));
+    // Ses signalements, le plus récent d'abord, qui se cherchent par leur statut, leur auteur, leur version, leur note.
+    const history = useListSearch([...(answer?.data?.reports || [])].reverse(), (report) => [t(`status.${report.status}`), report.by, names[report.by],
+        ...Object.entries(report.versions || {}).flat(), ...(report.emulators || []), report.note].join(" "));
 
     if (!answer?.ok) {
         return (
-            <Section title={t("games.status")}>
+            <Section title={t("games.status")} sense="info">
                 <Note className="mt-0">{answer === undefined ? t("settings.loading") : answer.errorMessage || t("gameAdmin.statusForm.unreadable")}</Note>
             </Section>
         );
@@ -528,7 +560,6 @@ function GameStatusForm({ consoleId, reference }) {
     const chosenOf = (name) => drafts[name] ?? savedOf(name);
     const changed = emulators.filter(({ name }) => chosenOf(name) !== savedOf(name));
     const written = note.trim();
-    const history = [...(answer.data?.reports || [])].reverse();
 
     const save = async () => {
         const finals = new Set(emulators.map(({ name }) => chosenOf(name)));
@@ -553,7 +584,7 @@ function GameStatusForm({ consoleId, reference }) {
         // Un signalement refusé en route : ce qui est passé avant lui est écrit — la page relit le statut.
         const settled = last.ok ? last : await fetchGameStatus(consoleId, reference);
         setPending(false);
-        toast(last.ok ? t("gameAdmin.statusForm.saved") : last.errorMessage || t("settings.actionFailed"));
+        feedback.result(last.ok, t("gameAdmin.statusForm.saved"), last.errorMessage || t("settings.actionFailed"));
 
         if (settled.ok) {
             setAnswer(settled);
@@ -571,7 +602,7 @@ function GameStatusForm({ consoleId, reference }) {
         confirmLabel: t("gameAdmin.statusForm.remove"),
         onConfirm: async () => {
             const settled = await removeGameStatus(consoleId, reference, report.at);
-            toast(settled.ok ? t("gameAdmin.statusForm.removed") : settled.errorMessage || t("settings.actionFailed"));
+            feedback.result(settled.ok, t("gameAdmin.statusForm.removed"), settled.errorMessage || t("settings.actionFailed"));
 
             if (settled.ok) {
                 setAnswer(settled);
@@ -582,7 +613,7 @@ function GameStatusForm({ consoleId, reference }) {
 
     return (
         <>
-        <Section title={t("games.status")} help={t("gameAdmin.statusForm.help")}>
+        <Section title={t("games.status")} help={t("gameAdmin.statusForm.help")} sense="info">
             <Form props={{ onSubmit: (event) => {
                 event.preventDefault();
 
@@ -598,7 +629,7 @@ function GameStatusForm({ consoleId, reference }) {
                     )) : <EmptyRow icon="bi-cpu" text={t("gameAdmin.statusForm.none")} />}
                     {emulators.length > 0 && (
                         <TextRow id="ms-note" kind="longtext" label={t("gameAdmin.statusForm.note")} help={t("gameAdmin.statusForm.noteHelp")} value={note}
-                            onChange={(value) => setNote(String(value || "").slice(0, 500))} props={{ maxLength: 500, rows: 3, disabled: pending }} />
+                            onChange={(value) => setNote(String(value || "").slice(0, 1500))} props={{ maxLength: 1500, rows: 3, disabled: pending }} />
                     )}
                     <SubmitRow>
                         <FormButton id="ms-save" label={t("settings.save")} isReplaced={changed.length > 0 || written.length > 0} pending={pending} />
@@ -606,14 +637,17 @@ function GameStatusForm({ consoleId, reference }) {
                 </Rows>
             </Form>
         </Section>
-        <Section title={t("gameAdmin.statusForm.history")} help={t("gameAdmin.statusForm.historyHelp")}>
-            <Listing items={history} empty={t("gameAdmin.statusForm.historyEmpty")} render={(report, index) => {
+        {/* UN SIGNALEMENT SUR PLUSIEURS LIGNES, SANS « • » (le porteur, 2026-11-25 : « l'auteur (en display name) et la date en
+            pastilles, la version, et ensuite la note s'il y en a une ») : les pastilles, puis une ligne chacune. */}
+        <Section title={t("gameAdmin.statusForm.history")} help={t("gameAdmin.statusForm.historyHelp")} sense="modify">
+            <Listing items={history.found} search={history.search} onSearch={history.onSearch} placeholder={t("gameAdmin.statusForm.searchHistory")}
+                searchKey="ms-history-search" empty={t("gameAdmin.statusForm.historyEmpty")} render={(report, index) => {
                 const versions = Object.entries(report.versions || {}).map(([name, version]) => `${name} ${version}`).join(", ");
 
                 return (
                     <NavRow key={`${report.at}-${index}`} id={`ms-history-${index}`} icon="bi-clock-history" tone={STATUS_TONE[report.status] || "slate"} opens="confirm"
-                        label={`${t(`status.${report.status}`)} · ${report.emulators?.length ? report.emulators.join(", ") : t("gameAdmin.statusForm.allEmulators")}`}
-                        value={[report.note, t("gameAdmin.statusForm.reportedBy", { by: report.by, at: dated(report.at) }), versions].filter(Boolean).join(" — ")}
+                        label={t(`status.${report.status}`)} value={[names[report.by] || report.by, dated(report.at)]} separator={null}
+                        help={[versions || (report.emulators?.length ? report.emulators.join(", ") : t("gameAdmin.statusForm.allEmulators")), report.note]}
                         onOpen={() => remove(report)} />
                 );
             }} />
@@ -629,6 +663,7 @@ function GameStatusForm({ consoleId, reference }) {
 // (`mf-forget-ask`).
 export function GameForget({ consoleId, reference, game = {} }) {
     const { t } = useTranslation();
+    const feedback = useFeedback();
     const [forgotten, setForgotten] = useState("");
     const confirm = useConfirm();
 
@@ -638,7 +673,7 @@ export function GameForget({ consoleId, reference, game = {} }) {
 
         confirm({ title: t("gameAdmin.meta.forgetSource"), message: t("gameAdmin.meta.forgetConfirm", { source: name }), confirmLabel: t("gameAdmin.meta.forgetSource"), onConfirm: async () => {
             const answer = await dropMetadataSource(consoleId, reference, game, chosen);
-            toast(answer.ok ? t("gameAdmin.meta.forgotten", { source: name }) : answer.errorMessage || t("settings.actionFailed"));
+            feedback.result(answer.ok, t("gameAdmin.meta.forgotten", { source: name }), answer.errorMessage || t("settings.actionFailed"));
 
             if (answer.ok) {
                 reread(consoleId, reference, game);
@@ -647,7 +682,7 @@ export function GameForget({ consoleId, reference, game = {} }) {
     };
 
     return (
-        <Section title={t("gameAdmin.meta.sources")} help={t("gameAdmin.meta.forgetHelp")}>
+        <Section title={t("gameAdmin.meta.sources")} help={t("gameAdmin.meta.forgetHelp")} sense="modify">
             <Rows>
                 <SelectRow id="mf-source" label={t("gameAdmin.meta.forgetWhich")} value={forgotten} onChange={(value) => setForgotten(value || "")}
                     options={[{ value: "", label: t("gameAdmin.meta.forgetPick") }, ...SOURCES.map((source) => ({ value: source, label: t(`gameAdmin.meta.services.${source}`) }))]} />

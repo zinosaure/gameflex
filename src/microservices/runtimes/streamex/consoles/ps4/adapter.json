@@ -1,5 +1,6 @@
 {
   "window_name": "shadPS4",
+  "shader_progress": "shadps4",
   "games": {
     "dir": "/opt/game",
     "rules": [

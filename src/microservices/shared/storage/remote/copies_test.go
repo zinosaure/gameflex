@@ -93,29 +93,6 @@ func TestUnePorteeAccordeeSeVoitSansReTelecharger(t *testing.T) {
 	}
 }
 
-// UN SERVEUR QUI NE LANCE RIEN (gameflex-federation, `catalogOnly`) le fait savoir à une copie prise avant : elle
-// l'apprend à la question suivante, sans tout re-télécharger — sa date n'a pas changé.
-func TestUnServeurQuiNeLanceRienSeVoitDansLaCopie(t *testing.T) {
-	fake := newFakePeer(t, "bon-jeton")
-	copies := &remote.Copies{Dir: t.TempDir(), Every: time.Nanosecond}
-	peer := peerAt(fake, 4)
-	if header, err := copies.Fresh(peer); err != nil || (header.Server != nil && header.Server.CatalogOnly) {
-		t.Fatalf("première copie : %+v (%v)", header.Server, err)
-	}
-	fake.mu.Lock()
-	fake.catalogOnly = true
-	fake.mu.Unlock()
-	if header, err := copies.Fresh(peer); err != nil || header.Server == nil || !header.Server.CatalogOnly {
-		t.Fatalf("après le changement : %+v (%v)", header.Server, err)
-	}
-	if kept, _ := copies.Header(peer); kept.Server == nil || !kept.Server.CatalogOnly {
-		t.Fatalf("la copie garde %+v", kept.Server)
-	}
-	if served, _ := fake.counts(); served != 1 {
-		t.Fatalf("listings servis = %d, attendu 1 : rien de re-téléchargé", served)
-	}
-}
-
 // LA FICHE D'UN JEU DEMANDE MAINTENANT (Check) : une portée retirée chez l'ami
 // dans la minute se voit tout de suite — là où la liste, elle, attend.
 func TestCheckDemandeSansAttendreLaMinute(t *testing.T) {

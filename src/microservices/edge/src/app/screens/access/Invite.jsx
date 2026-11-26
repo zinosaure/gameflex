@@ -49,7 +49,7 @@ export default function Invite() {
                     <li>{t("invitations.pageAccount")}</li>
                 </ul>
                 <p className="small text-body-secondary mb-0">{t("invitations.pageValid")}</p>
-                <input type="text" className="form-control font-monospace" data-nav data-key="invite-link" aria-label={t("invitations.pageLink")} value={link} readOnly
+                <input type="text" className="form-control" data-nav data-key="invite-link" aria-label={t("invitations.pageLink")} value={link} readOnly
                     onFocus={(event) => event.target.select()} />
                 <button type="button" className={button("main")} data-nav data-key="invite-copy" onClick={copy}>{t("invitations.pageCopy")}</button>
                 <button type="button" className={button("other")} data-nav data-key="invite-login" onClick={() => navigate("/", { replace: true })}>{t("invitations.pageOpen")}</button>

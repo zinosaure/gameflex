@@ -61,8 +61,8 @@ func For(console, romsDir string) *Catalog {
 	return New(console, filepath.Join(romsDir, console))
 }
 
-// scanPorts — les ROM qu'un port accepte (storage.PortOf), rangées à plat
-// chez leur console. `RelPath` part de `roms/` (« n64/Majora's Mask.z64 ») :
+// scanPorts — les jeux-dossiers qu'un port accepte (storage.PortOf), rangés chez leur console.
+// `RelPath` part de `roms/` (« ps5/Astro Bot ») :
 // le conteneur ne reçoit que le dossier de cette console, à sa place sous
 // /opt/game (docker.go).
 func scanPorts(_, romsDir string) []Game {
@@ -74,16 +74,21 @@ func scanPorts(_, romsDir string) []Game {
 		}
 		for _, entry := range entries {
 			name := entry.Name()
-			if entry.IsDir() || strings.HasPrefix(name, ".") {
+			if strings.HasPrefix(name, ".") {
 				continue
 			}
+			// Une ROM, ou un jeu-dossier (une copie PS5, reconnue à son identifiant et à sa version : chantier 72).
 			if _, ok := storage.PortOf(from, filepath.Join(romsDir, from, name)); !ok {
 				continue
+			}
+			title := name
+			if !entry.IsDir() {
+				title = strings.TrimSuffix(name, filepath.Ext(name))
 			}
 			relativePath := filepath.Join(from, name)
 			games = append(games, Game{
 				ID:      shortID(relativePath),
-				Title:   strings.TrimSuffix(name, filepath.Ext(name)),
+				Title:   title,
 				Folder:  from,
 				RelPath: relativePath,
 			})
@@ -92,15 +97,6 @@ func scanPorts(_, romsDir string) []Game {
 	sort.Slice(games, func(i, j int) bool { return games[i].RelPath < games[j].RelPath })
 
 	return games
-}
-
-// NewKeyTest builds the keytest catalog: ONE fixed entry — the console has
-// no games, the adapter ignores the path (see the streamex keytest console).
-// Banc d'essai interne, plus visible du joueur depuis le 2026-11-13.
-func NewKeyTest() *Catalog {
-	return &Catalog{console: "keytest", scan: func(_, _ string) []Game {
-		return []Game{{ID: "keytest", Title: "Key test", Folder: "", RelPath: "keytest"}}
-	}}
 }
 
 func (catalog *Catalog) List() []Game {

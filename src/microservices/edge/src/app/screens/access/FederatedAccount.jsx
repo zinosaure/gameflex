@@ -3,13 +3,18 @@ import { useTranslation } from "react-i18next";
 import { forgetFederationAccount, pasteFederationToken, typeFederationCode } from "../../libs/federation.js";
 import { InvitationField } from "./Invitation.jsx";
 import { pairingRefusal } from "./Pairing.jsx";
-import { toast } from "../../shell/Shell.jsx";
 import { Form, formContext, FormButton, PadReach } from "../../ui/Forms.jsx";
-import { ChoiceRow, DangerRow, Rows, Section, SubmitRow, TextRow } from "../../ui/Bricks.jsx";
+import { ChoiceRow } from "../../bricks/ChoiceRow.jsx";
+import { DangerRow } from "../../bricks/DangerRow.jsx";
+import { Rows } from "../../bricks/Rows.jsx";
+import { Section } from "../../bricks/Section.jsx";
+import { SubmitRow } from "../../bricks/SubmitRow.jsx";
+import { TextRow } from "../../bricks/TextRow.jsx";
+import { useFeedback } from "../../bricks/useFeedback.jsx";
 
 // NOTRE COMPTE CHEZ UN SERVEUR FÉDÉRÉ (shared/FederatedAccountPanel.jsx de la webapp) : le coller
 // une fois (son invitation — son lien, ou l'image de son QR — ou son jeton), le voir, l'oublier ; ou
-// pourquoi on n'y est pas. En direction C (Bricks.jsx) : chacun est UN groupe (Section), son titre compris —
+// pourquoi on n'y est pas. En direction C (bricks/) : chacun est UN groupe (Section), son titre compris —
 // la page ou le panneau qui le montre le pose tel quel, sans groupe autour.
 
 // Le message d'un refus, avec le nom du serveur ; un code inconnu : « ne répond pas ».
@@ -25,6 +30,7 @@ export const refusalText = (t, code, server) => t(`federation.errors.${code === 
 // PadReach y mène la manette jusqu'aux contrôles que Skeleton dessine seul.
 export function FederatedTokenForm({ server, refused = false }) {
     const { t } = useTranslation();
+    const feedback = useFeedback();
     const [mode, setMode] = useState("invitation");
     const [values, setValues] = useState({ invitation: "", code: "", token: "" });
     const [pending, setPending] = useState(false);
@@ -39,9 +45,9 @@ export function FederatedTokenForm({ server, refused = false }) {
         if (result.ok) {
             setValues({ invitation: "", code: "", token: "" });
         } else if (mode === "code") {
-            toast(result.code === "pairingClosed" ? t("pairing.errors.accountPairingClosed", { server: server.name }) : pairingRefusal(t, result.code, server.name));
+            feedback.failed(result.code === "pairingClosed" ? t("pairing.errors.accountPairingClosed", { server: server.name }) : pairingRefusal(t, result.code, server.name));
         } else {
-            toast(refusalText(t, result.code, server));
+            feedback.failed(refusalText(t, result.code, server));
         }
     };
 
@@ -54,7 +60,7 @@ export function FederatedTokenForm({ server, refused = false }) {
                     submit();
                 }
             } }}>
-                <Section title={t("federation.tokenTitle", { server: server.name })} help={t(refused ? "federation.tokenRefusedHelp" : "federation.tokenHelp", { server: server.name })}>
+                <Section title={t("federation.tokenTitle", { server: server.name })} help={t(refused ? "federation.tokenRefusedHelp" : "federation.tokenHelp", { server: server.name })} sense="modify">
                     <Rows>
                         <ChoiceRow id="fa-mode" label={t("federation.methodLabel")} help={t("federation.methodHelp", { server: server.name })} value={mode} onChange={setMode}
                             options={[["invitation", t("invitations.tab")], ["code", t("pairing.code")], ["token", t("federation.tokenLabel")]]} />
@@ -97,7 +103,7 @@ export function FederatedAccount({ server, account }) {
     const { t } = useTranslation();
 
     return (
-        <Section title={t("federation.playingAtTitle", { server: server.name })} help={t("federation.playingAtHelp", { name: account.displayName || account.username, server: server.name })}>
+        <Section title={t("federation.playingAtTitle", { server: server.name })} help={t("federation.playingAtHelp", { name: account.displayName || account.username, server: server.name })} sense="info">
             <Rows>
                 <DangerRow id="fa-forget" icon="bi-key" label={t("federation.tokenForget")} question={t("federation.tokenForgetConfirm", { server: server.name })}
                     onConfirm={() => forgetFederationAccount(server.id)} />

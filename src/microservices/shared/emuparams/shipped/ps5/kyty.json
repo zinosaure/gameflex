@@ -134,6 +134,7 @@
       "value": "auto",
       "options": {
         "auto": "Follow the stream",
+        "60": "60",
         "30": "30",
         "20": "20",
         "0": "No limit"
@@ -176,6 +177,8 @@
       "value": "540",
       "options": {
         "0": "Game default",
+        "1440": "1440p",
+        "1080": "1080p",
         "720": "720p",
         "540": "540p",
         "360": "360p (fastest)"

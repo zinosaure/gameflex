@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:25 +0000
+Subject: [PATCH] gameflex 0017: guest exit without static destructors
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+un jeu qui sort de lui-même ne fait plus planter Kyty
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0017.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/libs/libC.cpp      | 7 ++++++-
+ src/libs/libKernel.cpp | 4 +++-
+ 2 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/src/libs/libC.cpp b/src/libs/libC.cpp
+index 5c8ed37e..378540d9 100644
+--- a/src/libs/libC.cpp
++++ b/src/libs/libC.cpp
+@@ -67,7 +67,12 @@ const char** GetArgv() {
+ static KYTY_SYSV_ABI void exit(int code) {
+ 	PRINT_NAME();
+ 
+-	::exit(code);
++	// Guest threads and the window loop are still running: ::exit() would destroy the
++	// statics they read (Config::GetVblankFrequency() on a reset g_config) and turn the
++	// game exit into a crash. Leave the way a closed window does (Emulator::Execute).
++	// quick_exit flushes nothing: the console lines that say why the game left go first.
++	std::fflush(nullptr);
++	std::quick_exit(code);
+ }
+ 
+ static void PrintAbortStringCandidate(const char* name, uint64_t addr) {
+diff --git a/src/libs/libKernel.cpp b/src/libs/libKernel.cpp
+index c774deab..ccd948ba 100644
+--- a/src/libs/libKernel.cpp
++++ b/src/libs/libKernel.cpp
+@@ -1600,7 +1600,9 @@ static void KYTY_SYSV_ABI KernelDebugRaiseException(int /*c1*/, int /*c2*/) {
+ static void KYTY_SYSV_ABI exit(int code) {
+ 	PRINT_NAME();
+ 
+-	::exit(code);
++	// Same as libc exit(): guest threads still run, so no static destructors.
++	std::fflush(nullptr);
++	std::quick_exit(code);
+ }
+ 
+ static KYTY_SYSV_ABI MallocReplace* KernelGetSanitizerMallocReplaceExternal() {

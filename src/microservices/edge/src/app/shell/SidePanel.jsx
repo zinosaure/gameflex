@@ -11,7 +11,7 @@ import { ICON_BUTTON, useButton } from "../libs/ui.js";
 // titre comme pour les titres des pages settings. C'est à dire avoir le bouton à gauche et ensuite le titre (pas besoin
 // de sous titres). Dans ce cas on aura (X) blablabla (et rajouter la même margin bottom que dans Settings) ») — défini
 // ICI une fois, pour tous les panneaux : l'engrenage d'un jeu, la liste des jeux, le menu d'une partie, les filtres
-// d'une liste (Listing, Bricks.jsx), les raccourcis :
+// d'une liste (Listing, bricks/), les raccourcis :
 //   - le rond de fermeture au bord gauche (ICON_BUTTON, la sorte `round` : success sur les écrans, primary dans les
 //     Réglages — la couleur de son lieu, comme le Retour de PageHeader), la croix pour icône ; puis le titre, celui de
 //     PageHeader (`.ltitle`) ;

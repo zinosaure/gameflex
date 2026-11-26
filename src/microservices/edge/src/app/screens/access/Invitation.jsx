@@ -1,15 +1,20 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { createInvitation, readInvitationImage } from "../../libs/api.js";
-import { useData } from "../../libs/data.jsx";
+import { createInvitation, invitationQR, readInvitationImage } from "../../libs/api.js";
+import { can, useData } from "../../libs/data.jsx";
 import { toast } from "../../shell/Shell.jsx";
 import { Ruleset } from "../../ui/Forms.jsx";
-import { useFederationHost } from "../../settings/people/federationHost.js";
-import NavRow, { CopyField, FileRow, Note, Rows, Section, TextRow } from "../../ui/Bricks.jsx";
+import { CopyField } from "../../bricks/CopyField.jsx";
+import { FileRow } from "../../bricks/FileRow.jsx";
+import NavRow from "../../bricks/NavRow.jsx";
+import { Note } from "../../bricks/Note.jsx";
+import { Rows } from "../../bricks/Rows.jsx";
+import { Section } from "../../bricks/Section.jsx";
+import { TextRow } from "../../bricks/TextRow.jsx";
 
 // LES INVITATIONS (shared/Invitation.jsx de la webapp, chantier 33) : un lien, ou son QR, que
 // l'autre serveur échange contre un jeton — le jeton, lui, ne voyage jamais. Valable 12 heures,
-// une seule fois. En direction C (Bricks.jsx) : l'invitation créée et « Mon QR » sont chacun UN groupe
+// une seule fois. En direction C (bricks/) : l'invitation créée et « Mon QR » sont chacun UN groupe
 // (Section), son titre compris — la page qui les montre les pose tels quels, sans groupe autour.
 
 const dateTime = (iso, language) => (iso ? new Date(iso).toLocaleString(language === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "");
@@ -42,14 +47,15 @@ export const useMemberLink = () => {
 // place de celle d'un serveur — comment elle sert, et combien de temps elle vaut (une clé, qui reçoit `at`).
 export function InvitationReveal({ link, expiresAt, title, onDone, canShare = true, help = null, validity = null }) {
     const { t, i18n } = useTranslation();
-    const host = useFederationHost();
     const [image, setImage] = useState(null);
-    const inApp = host.useInApp();
+    // Dans l'application (son propre partage) : la révélation n'y propose pas le partage d'un fichier.
+    const { capabilities } = useData();
+    const inApp = can(capabilities, "appHome") || can(capabilities, "appHomeLink");
 
     useEffect(() => {
         let url = null;
         let cancelled = false;
-        host.invitationQR(link).then((blob) => {
+        invitationQR(link).then((blob) => {
             if (!cancelled && blob) {
                 url = URL.createObjectURL(blob);
                 setImage({ url, blob });
@@ -94,7 +100,7 @@ export function InvitationReveal({ link, expiresAt, title, onDone, canShare = tr
 
     return (
         <>
-            <Section title={title}>
+            <Section title={title} sense="modify">
                 <Note className="mt-0">{help || t("invitations.revealHelp")}</Note>
                 <div className="text-center mt-3">
                     {image === false ? <Note className="mt-0">{t("invitations.qrUnavailable")}</Note> : image
@@ -104,16 +110,16 @@ export function InvitationReveal({ link, expiresAt, title, onDone, canShare = tr
                 {/* Sa validité, en ligne atténuée sous le code — plus une alerte (le porteur, 2026-11-16). */}
                 <Note>{t(validity || "invitations.validUntil", { at: dateTime(expiresAt, i18n.language) })}</Note>
             </Section>
-            <Section title={t("invitations.linkTitle")}>
+            <Section title={t("invitations.linkTitle")} sense="modify">
                 <Rows>
                     <CopyField id="iv-link" label={t("invitations.linkLabel")} help={t("invitations.linkHelp")} value={link} />
                 </Rows>
             </Section>
-            <Section title={t("more")}>
+            <Section title={t("more")} sense="modify">
                 <Rows>
-                    {!inApp && <NavRow id="iv-download" icon="bi-download" tone={image ? "indigo" : "slate"} label={t("invitations.download")} disabled={!image} opens="action" onOpen={download} />}
-                    {canShare && <NavRow id="iv-share" icon="bi-share" tone="indigo" label={t("invitations.share")} help={t("invitations.shareHelp")} opens="action" onOpen={share} />}
-                    {onDone && <NavRow id="iv-done" icon="bi-check2" tone="slate" label={t("invitations.done")} help={t("invitations.doneHelp")} opens="action" onOpen={onDone} />}
+                    {!inApp && <NavRow id="iv-download" icon="bi-download" label={t("invitations.download")} disabled={!image} opens="action" onOpen={download} />}
+                    {canShare && <NavRow id="iv-share" icon="bi-share" label={t("invitations.share")} help={t("invitations.shareHelp")} opens="action" onOpen={share} />}
+                    {onDone && <NavRow id="iv-done" icon="bi-check2" label={t("invitations.done")} help={t("invitations.doneHelp")} opens="action" onOpen={onDone} />}
                 </Rows>
             </Section>
         </>
@@ -195,7 +201,7 @@ export function MyInvitation({ live, children }) {
     }
 
     return children(
-        <NavRow id="iv-my-qr" icon="bi-qr-code" tone={live ? "indigo" : "slate"} label={t("invitations.myQRCreate")} help={live ? t("invitations.accountHelp") : t("invitations.myQRNeedsToken")}
+        <NavRow id="iv-my-qr" icon="bi-qr-code" label={t("invitations.myQRCreate")} help={live ? t("invitations.accountHelp") : t("invitations.myQRNeedsToken")}
             pending={pending} disabled={!live} opens="action" onOpen={async () => {
                 setPending(true);
                 const answer = await createInvitation({ kind: "account" });

@@ -97,7 +97,7 @@ func (gateway *fakeLANGateway) seen() ([]string, []map[string]any) {
 // seul n'annonce rien.
 func TestTheAnnouncementFollowsTheServerModeOnly(t *testing.T) {
 	gateway, httpGateway := newFakeLANGateway(t)
-	t.Setenv("GAMEFLEX_SERVER_NAME", "Salon")
+	namedServer(t, "Salon")
 	server := &Server{config: config.Config{GatewayControlURL: httpGateway.URL, InternalSecret: "secret-interne", PublicHost: "192.168.1.50", EdgePort: "11200"}}
 	frame := func(server, accounts string) []byte {
 		return []byte(`{"type":"pairing","server":` + server + `,"accounts":` + accounts + `,"codes":[],"ended":[],"closed":[]}`)

@@ -1,12 +1,16 @@
 import React, { useEffect, useRef } from "react";
+import { InSettings } from "../globals/backoffice.js";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { toRemote, useRemoteAdmin } from "../libs/remoteAdmin.js";
 import { focusElement, useScreenInput } from "../libs/input.js";
 import { ButtonPlace, MUTED } from "../libs/ui.js";
-import { PageHeader, Section } from "../ui/Bricks.jsx";
+import { PageHeader } from "../bricks/PageHeader.jsx";
+import { Section } from "../bricks/Section.jsx";
 import { usePadReach } from "../ui/Forms.jsx";
 import { leaveSettings, Topbar } from "../shell/Shell.jsx";
+import { Footer } from "../bricks/Footer.jsx";
+import { GuideSection } from "../bricks/GuideSection.jsx";
 
 // UNE PAGE DES RÉGLAGES (le porteur, 2026-11-13 : « dans Settings, chaque lien doit ouvrir une ROUTE, plus un
 // offcanvas » ; « le format de Settings doit être une box, max-width 600px, margin auto, comme l'ancienne
@@ -38,7 +42,7 @@ const titles = new Map();
 export const PROFILE = "/settings/profile";
 
 // Le titre d'une page, et l'aide de son entrée dans la liste (une page d'un seul geste la reprend en tête) : celles
-// du compte, d'Application et d'À propos (settings/account, settings/application, settings/about).
+// du compte, d'Application et d'À propos (settings/profile, settings/application, settings/about).
 export const usePageText = (key) => {
     const { t } = useTranslation();
 
@@ -171,7 +175,10 @@ function useInitialFocus(box) {
 // (sans fil d'Ariane : rien n'est au-dessus d'elle). Pas de sous-titre : l'en-tête ne porte que le rond, le titre et le
 // fil (PageHeader). `enter` : où BAS mène depuis Retour (PageHeader). `levels` : `{ adresse: nom }`, les niveaux
 // au-dessus d'elle que la page sait nommer — le fil d'Ariane les dit même quand on ne les a pas traversés.
-export default function SettingsPage({ title, parent = "/settings", enter = null, levels = {}, children }) {
+// `guides` : le guide de la page (GuideSection), posé ici, après son contenu et avant le pied de page (le porteur,
+// 2026-11-25 : « n'oublie pas de mettre le guide et footer dans chaque page ») — une page qui l'écrit elle-même dans son
+// contenu ne le donne pas ici.
+export default function SettingsPage({ title, parent = "/settings", enter = null, levels = {}, guides = null, children }) {
     const navigate = useNavigate();
     const location = useLocation();
     const { back } = useSettingsNavigation();
@@ -205,10 +212,15 @@ export default function SettingsPage({ title, parent = "/settings", enter = null
                         Réglages » — primary pour valider, danger pour ce qui est désactivé ou dangereux. La barre du
                         haut, la même sur chaque écran, reste un écran. */}
                     <ButtonPlace.Provider value="settings">
-                        <div ref={box} className="settings-box w-100 mx-auto">
-                            <PageHeader title={title} onBack={goBack} trail={parent ? trail : []} enter={enter} remote={remote?.name || ""} />
-                            {children}
-                        </div>
+                        {/* LES VALEURS EN PASTILLES, DANS LES RÉGLAGES SEULEMENT (globals/backoffice.js). */}
+                        <InSettings.Provider value>
+                            <div ref={box} className="settings-box w-100 mx-auto">
+                                <PageHeader title={title} onBack={goBack} trail={parent ? trail : []} enter={enter} remote={remote?.name || ""} />
+                                {children}
+                                {guides && <GuideSection guides={guides} />}
+                                <Footer />
+                            </div>
+                        </InSettings.Provider>
                     </ButtonPlace.Provider>
                 </div>
             </div>

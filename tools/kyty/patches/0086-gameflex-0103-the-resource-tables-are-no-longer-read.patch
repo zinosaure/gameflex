@@ -1,0 +1,239 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Tue, 24 Nov 2026 10:19:58 +0100
+Subject: [PATCH] gameflex 0103: the resource tables are no longer read ahead
+
+0063 took a word of a resource table the GPU might still write from memory without waiting, once it had come
+out of eight waits unchanged; 0098 did it in large ranges too. The GPU's value was checked afterwards, and a
+difference meant a draw already recorded with a wrong resource: Clair Obscur had one at every start, Astro Bot
+four to fifteen a session, and one came right before a GPU hang at Clair Obscur's title (2026-11-24). The
+words wait for the GPU again. Without them, at the same places: Clair Obscur 17.6 -> 17.1 images/s, Astro Bot
+36.9 -> 36.7.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/common/commandThreadProfile.h             |   9 +-
+ .../host_gpu/renderer/cache/bufferCache.cpp   | 135 +++---------------
+ .../host_gpu/renderer/cache/bufferCache.h     |  19 ---
+ 3 files changed, 22 insertions(+), 141 deletions(-)
+
+diff --git a/src/common/commandThreadProfile.h b/src/common/commandThreadProfile.h
+index 4b26426e..5f461b42 100644
+--- a/src/common/commandThreadProfile.h
++++ b/src/common/commandThreadProfile.h
+@@ -76,12 +76,6 @@ enum class Event : uint8_t {
+ 	GpuWaits,       // Waits of this thread for the GPU.
+ 	MemoryAllocations, // Vulkan device memory allocated (driver buffer objects), any thread.
+ 	MemoryReleases,
+-	// GameFlex (0098): the words of resource tables in ranges the GPU may still write. Read ahead: trusted and
+-	// taken from memory without waiting; held: trusted, but memory did not hold the value the GPU left there last,
+-	// so they waited; missed: read ahead, and the GPU wrote another value afterwards.
+-	SrtReadAhead,
+-	SrtHeld,
+-	SrtMissed,
+ 	Count
+ };
+ 
+@@ -804,8 +798,7 @@ struct Report {
+ [[nodiscard]] constexpr const char* Name(Event event) noexcept {
+ 	constexpr const char* NAMES[EVENT_COUNT] = {
+ 	    "packets", "draws",       "dispatches", "barriers",    "command buffers", "submits",
+-	    "retries", "label polls", "label waits GPU", "label waits CPU", "trusted waits", "GPU waits", "allocations", "releases",
+-	    "SRT words read ahead", "SRT words held", "SRT words missed"};
++	    "retries", "label polls", "label waits GPU", "label waits CPU", "trusted waits", "GPU waits", "allocations", "releases"};
+ 	return NAMES[static_cast<size_t>(event)];
+ }
+ 
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+index 24aaa9fa..9b8d1955 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+@@ -1136,130 +1136,37 @@ bool BufferCache::HasPendingGpuWrites(uint64_t vaddr, uint64_t size) {
+ 
+ // The recompiler reads a shader's tables of resources on the CPU when it records a draw or a dispatch. When a
+ // word it reads lies in a range the GPU may still write, the only safe value is the GPU's: submit everything and
+-// wait for it (Finish), which leaves the GPU dry while the thread records what follows. Games keep small counters
+-// there that a compute pass rewrites every frame to the same value (Astro Bot: two 32-byte counters, 40 waits an
+-// image, unchanged 5 196 times out of 5 218): once a word came out of eight waits unchanged, the read takes the
+-// value in memory without waiting, and the GPU's value is checked once its work is done. A difference withdraws
+-// the trust and says so on the console. A word that changes once, when a level loads, and then holds still
+-// (Astro Bot's light counter: 4 then 6 for good) earned it back nowhere and cost two full drains an image,
+-// 33 ms, once the thread stopped waiting for labels (0072): the trust comes back after twice as many unchanged
+-// waits as the time before, and only the fifth difference revokes the word for good.
++// wait for it (Finish).
+ //
+-// GameFlex (0098): words of large ranges too. Clair Obscur waits four times an image for words of its tables, two of
+-// them always 0 in ranges of 1.9 and 2.4 MB a pass rewrites every frame: 3.6 ms of the command thread and two drains
+-// of the GPU an image. 0078 let any range speculate and was wrong five times, each a draw recorded with a wrong
+-// resource: a word Clair Obscur alternates with another, a frame in four, held 0xffffffff in memory when the game came
+-// back to it, which the GPU then cleared to 0. The value in memory was not the one the GPU had left there: the
+-// region served something else meanwhile. A trusted word is now read ahead only while memory holds the value it
+-// settled at, after its last wait or check; otherwise it waits, and keeps its trust. A word of a range larger than a
+-// counter that is still wrong is a table entry that moves: its first difference revokes it for good.
+-namespace {
+-constexpr uint32_t kSpeculationConfirmations = 8;
+-constexpr uint32_t kSpeculationMisses        = 5;   // differences before the word is revoked for good
+-constexpr uint64_t kCounterRangeBytes        = 256; // a counter, not a table the GPU fills
+-} // namespace
+-
+-void BufferCache::VerifySrtSpeculations() {
+-	const auto done = m_scheduler.GetMasterSemaphore().KnownGpuTick();
+-	std::erase_if(m_srt_verifications, [&](uint64_t address) {
+-		auto& speculation = m_srt_speculation[address];
+-		if (speculation.verify_tick == 0) {
+-			return true;
+-		}
+-		if (speculation.verify_tick > done) {
+-			return false;
+-		}
+-		speculation.verify_tick = 0;
+-		uint32_t landed = 0;
+-		if (!LibKernel::Memory::TryReadBacking(address, &landed, sizeof(landed))) {
+-			return true;
+-		}
+-		speculation.settled = landed;
+-		if (landed == speculation.used) {
+-			return true;
+-		}
+-		Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::SrtMissed);
+-		speculation.trusted       = false;
+-		speculation.confirmations = 0;
+-		speculation.revoked       = ++speculation.misses >= (speculation.large ? 1u : kSpeculationMisses);
+-		static uint32_t misses = 0;
+-		if (misses++ < 50) {
+-			std::printf("SRT speculation: the GPU wrote 0x%08x at 0x%016" PRIx64 " after 0x%08x was used%s; "
+-			            "this word waits again%s\n",
+-			            landed, address, speculation.used, speculation.large ? " (large range)" : "",
+-			            speculation.revoked ? " from now on" : " until it holds still for longer");
+-		}
+-		return true;
+-	});
+-}
+-
++// GameFlex (0103): no word is read ahead any more. 0063 took from memory, without waiting, a word that had come out of
++// eight waits unchanged, 0098 did it in large ranges too, and the GPU's value was checked afterwards. A difference
++// meant a draw already recorded with a wrong resource: Clair Obscur had one at every start, Astro Bot four to
++// fifteen a session, and one came right before a GPU hang at Clair Obscur's title (2026-11-24). Without them, at the
++// same places: Clair Obscur 17.6 -> 17.1 images/s, Astro Bot 36.9 -> 36.7.
+ bool BufferCache::FinishPendingGpuWritesUnder(std::span<const uint64_t> addresses) {
+ 	Common::CommandThreadProfile::WaitReasonScope ctp_reason(Common::CommandThreadProfile::WaitReason::Srt);
+ 	if (m_pending_gpu_writes.Empty()) {
+ 		return false;
+ 	}
+ 	m_pending_gpu_writes.Expire(m_scheduler.GetMasterSemaphore().KnownGpuTick());
+-	if (!m_srt_verifications.empty()) {
+-		VerifySrtSpeculations();
+-	}
+-	if (m_pending_gpu_writes.Empty()) {
+-		return false;
+-	}
++	bool     pending = false;
++	uint64_t writer  = 0;
+ 	for (const auto address: addresses) {
+-		const auto* range = m_pending_gpu_writes.Find(address);
+-		if (range == nullptr) {
+-			continue;
+-		}
+-		auto& speculation = m_srt_speculation[address];
+-		if (speculation.trusted) {
+-			uint32_t used = 0;
+-			if (LibKernel::Memory::TryReadBacking(address, &used, sizeof(used))) {
+-				// Memory holds what the GPU left there last (or what an unchecked read ahead took): read ahead.
+-				if (used == (speculation.verify_tick != 0 ? speculation.used : speculation.settled)) {
+-					if (speculation.verify_tick == 0) {
+-						speculation.used = used;
+-						m_srt_verifications.push_back(address);
+-					}
+-					speculation.verify_tick = std::max(speculation.verify_tick, range->tick);
+-					Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::SrtReadAhead);
+-					continue;
+-				}
+-				Common::CommandThreadProfile::Count(Common::CommandThreadProfile::Event::SrtHeld);
+-			}
+-		}
+-		uint32_t before = 0;
+-		LibKernel::Memory::TryReadBacking(address, &before, sizeof(before));
+-		const auto range_size = range->end - range->start;
+-		// GameFlex: this Finish settles every word of the table the GPU may still write, not this one alone: a wait
+-		// for their writers alone would wait for the latest of those not trusted (CommandThreadProfile).
+-		auto ctp_writer = range->tick;
+-		if (Common::CommandThreadProfile::Counting()) {
+-			for (const auto other: addresses) {
+-				const auto* other_range = m_pending_gpu_writes.Find(other);
+-				const auto  trust       = m_srt_speculation.find(other);
+-				if (other_range != nullptr && (trust == m_srt_speculation.end() || !trust->second.trusted)) {
+-					ctp_writer = std::max(ctp_writer, other_range->tick);
+-				}
+-			}
++		if (const auto* range = m_pending_gpu_writes.Find(address); range != nullptr) {
++			pending = true;
++			writer  = std::max(writer, range->tick);
+ 		}
+-		const auto ctp_wait = WordWaitAt(m_scheduler, ctp_writer);
+-		m_scheduler.Finish();
+-		Common::CommandThreadProfile::EndWordWait(ctp_wait);
+-		m_pending_gpu_writes.Clear();
+-		uint32_t after = 0;
+-		LibKernel::Memory::TryReadBacking(address, &after, sizeof(after));
+-		speculation.settled = after;
+-		speculation.large   = range_size > kCounterRangeBytes;
+-		if (!speculation.revoked) {
+-			if (after != before) {
+-				speculation.confirmations = 0;
+-			} else if (++speculation.confirmations >= kSpeculationConfirmations << speculation.misses) {
+-				speculation.trusted = true;
+-			}
+-		}
+-		return true;
+ 	}
+-	return false;
++	if (!pending) {
++		return false;
++	}
++	// This Finish settles every word of the table the GPU may still write: the wait is for the latest of their
++	// writers (CommandThreadProfile).
++	const auto ctp_wait = WordWaitAt(m_scheduler, writer);
++	m_scheduler.Finish();
++	Common::CommandThreadProfile::EndWordWait(ctp_wait);
++	m_pending_gpu_writes.Clear();
++	return true;
+ }
+ 
+ // The command processor's own comparison (graphicsRun.cpp).
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.h b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+index f8bbf8ce..15840982 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.h
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+@@ -100,21 +100,6 @@ public:
+ 	[[nodiscard]] bool HasPendingGpuWrites(uint64_t vaddr, uint64_t size);
+ 	// As FinishPendingGpuWrites, for the 4-byte reads of the SRT walker; true when it waited.
+ 	bool FinishPendingGpuWritesUnder(std::span<const uint64_t> addresses);
+-	// A word of a table of resources inside a range the GPU may still write, read without waiting once its value
+-	// came out of eight waits unchanged, and only while memory holds the value the GPU left there last; the GPU's
+-	// value is compared afterwards. A difference withdraws the trust, which comes back after twice as many unchanged
+-	// waits each time; the fifth revokes the word for good, the first one in a range larger than a counter.
+-	struct SrtSpeculation {
+-		uint32_t confirmations = 0; // consecutive waits that changed nothing
+-		bool     trusted       = false;
+-		bool     revoked       = false; // wrong five times (once in a large range): never trusted again
+-		bool     large         = false; // last seen in a range larger than a counter (kCounterRangeBytes)
+-		uint32_t misses        = 0;     // differences seen so far
+-		uint32_t used          = 0;     // the value read without waiting
+-		uint32_t settled       = 0;     // the value after the last wait or check: what the GPU left there last
+-		uint64_t verify_tick   = 0;     // the GPU work it skipped waiting for; 0 when nothing is to verify
+-	};
+-	void VerifySrtSpeculations();
+ 	// GameFlex: a guest wait (WAIT_REG_MEM) for a value a shader recorded before will write. The GPU runs the
+ 	// stream in order: behind a barrier, everything recorded after the wait runs after that shader, which is all
+ 	// the wait asks, as long as the shader writes the value. An address is trusted once four waits there ended
+@@ -261,10 +246,6 @@ private:
+ 	uint64_t                                          m_unified_bind_value = 0;
+ 	// The ranges bound for writing in command buffers the GPU has not finished.
+ 	PendingGpuWrites                                  m_pending_gpu_writes;
+-	std::unordered_map<uint64_t, SrtSpeculation>      m_srt_speculation;
+-	// The words and addresses whose prediction waits to be checked, with the GPU tick in their entry: the checks
+-	// walk these, not every address ever seen (a ring of flags grows the maps for good).
+-	std::vector<uint64_t>                             m_srt_verifications;
+ 	uint64_t                                          m_transfers = 0;
+ 	struct FlagSpeculation {
+ 		uint32_t confirmations = 0;

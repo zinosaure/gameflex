@@ -27,31 +27,31 @@ func TestStreamSize(t *testing.T) {
 	}
 }
 
-// LE DÉFAUT, 540p À 30, POUR TOUTES LES CONSOLES (le porteur, 2026-11-16) : un
-// libellé vide ou hors de l'échelle prend 540p, une cadence absente ou hors des
-// bornes prend 30. Avant, ils rendaient « rien », et chaque appelant mettait
+// LE DÉFAUT, 720p À 60, POUR TOUTES LES CONSOLES (le porteur, 2026-11-23 ; 540p à
+// 30 depuis le 2026-11-16) : un libellé vide ou hors de l'échelle prend 720p, une
+// cadence absente ou hors des bornes prend 60. Avant, ils rendaient « rien », et chaque appelant mettait
 // le sien (720p à 60, la taille d'époque à 60).
-func TestStreamDefaultIs540pAt30(t *testing.T) {
-	for label, want := range map[string]string{"": "540p", "480p": "540p", "4k": "540p", " 720P ": "720p", "360p": "360p", "1080p": "1080p"} {
+func TestStreamDefaultIs720pAt60(t *testing.T) {
+	for label, want := range map[string]string{"": "720p", "480p": "720p", "4k": "720p", " 540P ": "540p", "360p": "360p", "1080p": "1080p", "1440p": "1440p"} {
 		if got := StreamResolution(label); got != want {
 			t.Errorf("StreamResolution(%q) = %q ; attendu %q", label, got, want)
 		}
 	}
-	if width, height, ok := StreamSize(StreamResolution("")); width != 960 || height != 540 || !ok {
-		t.Errorf("la taille du défaut = %dx%d (%v) ; attendu 960x540", width, height, ok)
+	if width, height, ok := StreamSize(StreamResolution("")); width != 1280 || height != 720 || !ok {
+		t.Errorf("la taille du défaut = %dx%d (%v) ; attendu 1280x720", width, height, ok)
 	}
-	if got := StreamFPS(0); got != 30 {
-		t.Errorf("StreamFPS(0) = %d ; attendu 30", got)
+	if got := StreamFPS(0); got != 60 {
+		t.Errorf("StreamFPS(0) = %d ; attendu 60", got)
 	}
 }
 
 func TestStreamBounds(t *testing.T) {
-	for fps, want := range map[int]int{0: 30, 14: 30, 15: 15, 30: 30, 60: 60, 61: 30} {
+	for fps, want := range map[int]int{0: 60, 14: 60, 15: 15, 30: 30, 60: 60, 120: 120, 121: 60} {
 		if got := StreamFPS(fps); got != want {
 			t.Errorf("StreamFPS(%d) = %d ; attendu %d", fps, got, want)
 		}
 	}
-	for kbps, want := range map[int]int{0: 0, 499: 0, 500: 500, 8000: 8000, 20000: 20000, 20001: 0} {
+	for kbps, want := range map[int]int{0: 0, 499: 0, 500: 500, 8000: 8000, 40000: 40000, 40001: 0} {
 		if got := StreamBitrate(kbps); got != want {
 			t.Errorf("StreamBitrate(%d) = %d ; attendu %d", kbps, got, want)
 		}
@@ -100,6 +100,9 @@ func TestTierHeightsOnlyBelowTheStream(t *testing.T) {
 		{1080, 540, []int{540}},
 		{1080, 810, []int{720, 540}},
 		{720, 480, nil},
+		{1440, 0, []int{1080, 720}},
+		{1440, 1080, []int{1080, 720}},
+		{1440, 720, []int{720, 540}},
 	}
 	for _, c := range cases {
 		got := TierHeights(c.stream, c.rendered)
@@ -118,3 +121,18 @@ func TestStreamTiersWidthAndBitrate(t *testing.T) {
 		t.Errorf("720p sans débit : %s", got)
 	}
 }
+
+// Le Remote Play garde ses modes : 1080p et 60 au plus.
+func TestRemotePlayStaysWithinTheConsoleModes(t *testing.T) {
+	for label, want := range map[string]string{"1440p": "1080p", "1080p": "1080p", "540p": "540p", "": "720p"} {
+		if got := RemotePlayResolution(label); got != want {
+			t.Errorf("RemotePlayResolution(%q) = %q, want %q", label, got, want)
+		}
+	}
+	for fps, want := range map[int]int{120: 60, 60: 60, 30: 30, 0: 60} {
+		if got := RemotePlayFPS(fps); got != want {
+			t.Errorf("RemotePlayFPS(%d) = %d, want %d", fps, got, want)
+		}
+	}
+}
+

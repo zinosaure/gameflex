@@ -65,11 +65,12 @@ func TestCorpusScanKeepsEveryShape(t *testing.T) {
 		t.Fatalf("taille USA = %d, attendu les deux cartouches", usa.Size)
 	}
 
-	// Le jeu-dossier AVEC un sous-dossier : media/ n'est pas compté dans la
-	// taille annoncée par le scanner — elle ne voit que les fichiers du
-	// dossier lui-même. Le transfert, lui, emportera tout (GameFiles).
+	// Le jeu-dossier AVEC un sous-dossier : media/ compte dans sa taille
+	// (#808, 2026-11-23 : elle n'était que celle de sa racine, et un PS5
+	// déballé sur un kDrive affichait 30,4 Mo pour 3,4 Go). Ses fichiers à
+	// lancer restent ceux de sa racine ; le transfert emporte tout (GameFiles).
 	slug, ok := byTitle["[PS2] Metal Slug 4"]
-	if !ok || slug.Size != 75+209715200 {
+	if !ok || slug.Size != 75+209715200+32000 {
 		t.Fatalf("Metal Slug 4 mal lu : %+v", slug)
 	}
 

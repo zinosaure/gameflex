@@ -18,6 +18,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -80,6 +81,11 @@ type Config struct {
 	// and who holds a pad is PUSHED to its pages, never re-read on a clock (« Pas de sondage »). The sweep calls it on
 	// every tick too: a caller that only wants real changes compares Host.Snapshot.
 	OnChange func()
+
+	// OnVoice — ce que chaque viewer de la passerelle peut envoyer et recevoir de voix (chantier 71, voice.go), par
+	// identifiant de viewer, poussé quand cela change. Le moteur le transmet à sa passerelle, qui ne relaie rien
+	// d'autre. Optionnel.
+	OnVoice func(rights map[string]VoiceRights)
 }
 
 // HTTPHost serves one session over HTTP/WS and keeps the kernel's mirror fed.
@@ -104,6 +110,14 @@ type HTTPHost struct {
 	// ending — EndSession runs once: a terminate ends the game at once, and
 	// the sweep would otherwise end it a second time on its next tick.
 	ending atomic.Bool
+
+	// voiceMu, voiceSent — les derniers droits de voix poussés (pushVoice).
+	voiceMu   sync.Mutex
+	voiceSent map[string]VoiceRights
+
+	// shadersMu, shaders — la dernière rafale de compilation poussée (PushShaders), pour l'onglet qui arrive pendant.
+	shadersMu sync.Mutex
+	shaders   map[string]any
 }
 
 type hostSocket struct {
@@ -129,10 +143,10 @@ func NewHTTPHost(config Config) *HTTPHost {
 		New(config.SessionID, config.PlatformID, config.Owner, config.MaxPlayers, time.Now()),
 		httpHost.sendTo,
 	)
-	httpHost.Host.OnChange = httpHost.reportSoon
-	if config.OnChange != nil {
-		httpHost.Host.OnChange = func() {
-			httpHost.reportSoon()
+	httpHost.Host.OnChange = func() {
+		httpHost.reportSoon()
+		httpHost.pushVoice()
+		if config.OnChange != nil {
 			config.OnChange()
 		}
 	}
@@ -172,6 +186,57 @@ func (httpHost *HTTPHost) PortForViewer(viewerID string) (slot int, managed bool
 	// watching — refused, never handed to a legacy mapping that would let a
 	// watcher play.
 	return httpHost.Host.ControlledSlot(value.(string)), true
+}
+
+// pushVoice — les droits de voix par viewer de la passerelle, poussés quand ils changent (chantier 71). Un viewer que
+// la file ne connaît pas n'a aucun droit : la passerelle ne relaie rien pour lui. Le sweep appelle OnChange à chaque
+// tour : la comparaison avec le dernier envoi évite de redire la même chose.
+func (httpHost *HTTPHost) pushVoice() {
+	if httpHost.config.OnVoice == nil {
+		return
+	}
+	bySocket := httpHost.Host.VoiceRights()
+	rights := map[string]VoiceRights{}
+	httpHost.viewers.Range(func(key, value any) bool {
+		if right, found := bySocket[value.(string)]; found {
+			rights[key.(string)] = right
+		}
+
+		return true
+	})
+
+	httpHost.voiceMu.Lock()
+	defer httpHost.voiceMu.Unlock()
+	if httpHost.voiceSent != nil && maps.Equal(rights, httpHost.voiceSent) {
+		return
+	}
+	httpHost.voiceSent = rights
+	httpHost.config.OnVoice(rights)
+}
+
+// PushShaders — LA COMPILATION DES SHADERS (chantier 50, `#658`) : l'émulateur compile (compiling, et count, le
+// nombre déjà compilé dans la rafale) ou a fini. Poussé à tous les onglets de la partie, joueurs et spectateurs : la
+// roue de la page de jeu le dessine. Le compte vient de shaderprogress, qui en borne la fréquence.
+func (httpHost *HTTPHost) PushShaders(compiling bool, count int) {
+	message := map[string]any{"type": "shaders", "compiling": compiling, "count": count}
+	httpHost.shadersMu.Lock()
+	httpHost.shaders = message
+	httpHost.shadersMu.Unlock()
+	httpHost.sockets.Range(func(_, value any) bool {
+		_ = value.(*hostSocket).write(message)
+
+		return true
+	})
+}
+
+// sendShadersTo — un onglet qui arrive en pleine rafale voit la roue tout de suite ; hors rafale, rien.
+func (httpHost *HTTPHost) sendShadersTo(socketID string) {
+	httpHost.shadersMu.Lock()
+	message := httpHost.shaders
+	httpHost.shadersMu.Unlock()
+	if message != nil && message["compiling"] == true {
+		_ = httpHost.sendTo(socketID, message)
+	}
 }
 
 // ViewerForSlot est la question INVERSE de PortForViewer : quel viewer tient
@@ -436,6 +501,7 @@ func (httpHost *HTTPHost) serveSocket(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	httpHost.Host.Attach(socketID, username)
+	httpHost.sendShadersTo(socketID)
 
 	for {
 		var message struct {
@@ -459,6 +525,8 @@ func (httpHost *HTTPHost) serveSocket(w http.ResponseWriter, r *http.Request) {
 			// gain by lying.
 			if message.ViewerID != "" {
 				httpHost.viewers.Store(message.ViewerID, socketID)
+				// Ses droits de voix suivent ce viewer (chantier 71).
+				httpHost.pushVoice()
 			}
 		case "intent":
 			// In its own goroutine: the kernel may be asked first (P1), and a

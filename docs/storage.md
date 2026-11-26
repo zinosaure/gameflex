@@ -7,7 +7,7 @@ Most of it is in **Settings**, for administrators:
 
 | Screen | What it shows |
 |---|---|
-| **Resources** | The other disks of games plugged into the server. |
+| **Resources** | The other disks of games plugged into the server, and the network shares and cloud folders it reads. |
 | **Consoles** | Each console's emulators, BIOS files, games and settings: see [Organize your library](library.md) and [Emulator settings](emulator-settings.md). |
 | **Members**, then a member, **Their saves** | The room an account's saves take. |
 | **Profile › My saves** | Your own saves, for every account. |
@@ -51,16 +51,32 @@ library of their console, next to the others.
 
 ## Games on a network share
 
-GameFlex reads a network share (Samba, NFS, WebDAV…) as one more disk: mount it on the server's
-computer first, then declare the mount point like any disk (see above).
+GameFlex reads games from a NAS, a server or a cloud folder by itself: **Settings › Resources ›
+Add an external resource**, then its kind — Samba, WebDAV, kDrive, FTP or SFTP.
 
-1. Mount the share on the computer that runs GameFlex, at a fixed place, for example with a line in
-   `/etc/fstab`. Your system's documentation, or your NAS's, explains how.
-2. Add its volume line to `gameflex-kernel`, as for a disk: `- /media/nas-games:/mnt/nas`.
-3. Restart: `docker compose up -d`.
+1. Give it a name, its address, and the folder that holds your games, if they are not at the root.
+   That folder holds a `roms` folder, laid out by console like your library: `roms/<console>/`.
+2. Choose **Anonymous**, or **With an account** and give its name and password. The password stays
+   on the server, encrypted.
+3. Save: GameFlex reads its list of games in the background.
 
-Mount it before GameFlex starts: a share mounted later shows as *Missing* until the next restart.
-If the share is read-only, turn off **Keep metadata on the games' disk** (above).
+**What you should see:** the resource in **Settings › Resources**, with its status and its number
+of games. Open it to see its games by console; **Read again** reads it after you add games to it.
+**Edit the connection** changes its address, folder or account.
+
+- **Its games are downloaded, not played from the share:** in **Settings › Consoles**, a console,
+  **Games**, choose the resource as the source, then download a game into your library. A game you
+  already have says so.
+- **The Catalog** lists its games too, to download onto your device.
+- **Your friends** see the games only your resources hold, with the rest of your library, and can
+  download them.
+- **A resource that can't be read** says why on its page: the server does not answer, the account is
+  refused, or the folder is not found. An empty one suggests a folder where it found games.
+
+You can also mount a share on the server's computer yourself (for example NFS, with a line in
+`/etc/fstab`), then declare it like a disk (see above): its games then play from it. Mount it before
+GameFlex starts, or it shows as *Missing* until the next restart. If the share is read-only, turn
+off **Keep metadata on the games' disk** (above).
 
 ## Saves
 
@@ -78,9 +94,15 @@ account, games in progress included. Each player also sees their own in **My sav
 
 Each save is named after its game. An emulator stores the save of a recent console's game (Switch,
 PlayStation 3, 4 and 5) under the game's title ID, such as `01000EA014150000`; GameFlex finds the
-game with that ID in your library or on an internal disk, and shows its title. When no game has it,
-the save keeps the title it gives itself, if any, and its ID last. Every line starts with its
-console, then where its game is (the disk, or *Library*).
+game with that ID in your library or on an internal disk, and shows its title. Every line starts
+with its console, then where its game is (the disk, or *Library*).
+
+The name stays with the save. Each place that holds saves keeps a `titles.json` file, with the
+title, the ID and the path of each save's game, written when you play, when the list names a save,
+and when a save is backed up, restored, sent or downloaded. A save whose game has left your
+library, or a copy from a server that does not have the game, keeps its name, and its page shows
+the game's old **Path**. With nothing kept, the save shows the title it gives itself, if any, then
+its ID.
 
 From *This server*, **Backup** sets a save aside in *Backups*, in place of the previous backup of
 that save. You can add a short **Note** to it — why you made it, before which part of the game —,
@@ -119,8 +141,7 @@ A report stays on your server: to send it to us, attach it to an issue (see
 [Troubleshooting](troubleshooting.md)).
 
 The other services (`gameflex-edge`, `gameflex-credential`, `gameflex-gateway`,
-`gameflex-remoteplay`) log to Docker: `./launch.sh logs <service>`. gameflex-federation shows its
-own on its page, under **More › Logs**.
+`gameflex-remoteplay`) log to Docker: `./launch.sh logs <service>`.
 
 ## Back up
 

@@ -1,7 +1,7 @@
 import React from "react";
 import { useGameImage } from "../../libs/images.js";
 import { posterBackground } from "../../libs/visuals.js";
-import { Chip } from "../../ui/Bricks.jsx";
+import { Chip } from "../../bricks/Chip.jsx";
 
 // LES IMAGES D'UN JEU, DÉFINIES ICI UNE FOIS : son visuel (la fiche, l'engrenage), son logo sur la fiche, sa jaquette en
 // tête d'une ligne. Les sortes sont celles du kernel (background, screenshot, cover, icon, logo) ; rien n'est inventé.

@@ -2,8 +2,11 @@ import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listNotificationPreferences } from "../../libs/api.js";
 import { pushSubscriptionState, secureContext, subscribeToPush, unsubscribeFromPush } from "../../libs/push.js";
-import { toast } from "../../shell/Shell.jsx";
-import { InfoRow, Note, Rows, Section, SwitchRow } from "../../ui/Bricks.jsx";
+import { InfoRow } from "../../bricks/InfoRow.jsx";
+import { Note } from "../../bricks/Note.jsx";
+import { Rows } from "../../bricks/Rows.jsx";
+import { Section } from "../../bricks/Section.jsx";
+import { SwitchRow } from "../../bricks/SwitchRow.jsx";
 
 // LES NOTIFICATIONS (profile/settings/Notifications.jsx de la webapp), sur la page Application
 // (Application.jsx) : l'abonnement de CET appareil (les invitations, même la page fermée) est une tuile en
@@ -40,24 +43,24 @@ export function usePush(enabled) {
         };
     }, [enabled]);
 
+    // ALLUMER OU ÉTEINDRE, au bouton de la section (Application.jsx, SaveSection) : la réponse lui revient
+    // (`{ ok, detail | errorMessage }`), qu'elle montre en fenêtre.
     const toggle = async (wanted) => {
         setDevice(wanted);
 
         if (!wanted) {
             await unsubscribeFromPush().catch(() => {});
-            toast(t("push.disabledToast"));
 
-            return;
+            return { ok: true, detail: t("push.disabledToast") };
         }
         const result = await subscribeToPush().catch(() => ({ ok: false }));
 
         if (result.ok) {
-            toast(t("push.grantedToast"));
-
-            return;
+            return { ok: true, detail: t("push.grantedToast") };
         }
         setDevice(result.reason === "unsupported" ? "unsupported" : false);
-        toast(t({ denied: "push.deniedToast", unsupported: "push.unsupported" }[result.reason] || "push.failedToast"));
+
+        return { ok: false, errorMessage: t({ denied: "push.deniedToast", unsupported: "push.unsupported" }[result.reason] || "push.failedToast") };
     };
 
     return { device, permission, secure: secureContext(), blocked: device === "unsupported" || permission === "denied", toggle };
@@ -81,9 +84,9 @@ export function PushSection({ push }) {
     }, []);
 
     return (
-        <Section title={t("settings.items.push.label")} help={t("settings.items.push.help")}>
+        <Section title={t("settings.items.push.label")} help={t("settings.items.push.help")} sense="modify">
             <Rows>
-                <InfoRow icon="bi-shield-lock" tone="amber" label={t("push.browserPermission")} value={t(PERMISSIONS[push.permission] || PERMISSIONS.denied)} />
+                <InfoRow icon="bi-shield-lock" label={t("push.browserPermission")} value={t(PERMISSIONS[push.permission] || PERMISSIONS.denied)} />
             </Rows>
             {/* Une adresse qui n'est pas sûre : une ligne atténuée, comme les autres raisons de la page (plus d'alerte). */}
             {!push.secure && <Note>{t("push.insecure", { origin: location.origin })}</Note>}
@@ -94,7 +97,7 @@ export function PushSection({ push }) {
                     <Note>{t("push.notSent")}</Note>
                     <Rows className="mt-3">
                         {TYPES.map(([key, name]) => (
-                            <SwitchRow key={key} id={`pu-${key}`} label={t(name)} help={t("push.typeHelp", { type: t(name) })}
+                            <SwitchRow key={key} id={`pu-${key}`} label={t(name)} texts="enabled" help={t("push.typeHelp", { type: t(name) })}
                                 checked={preferences[key] !== false} disabled onChange={() => {}} />
                         ))}
                     </Rows>

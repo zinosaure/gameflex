@@ -609,12 +609,6 @@ class RemoteplayInputService {
 		return true;
 	}
 
-	async forceResetReorderQueue() {
-		if (!this.isSocketOpen() || !this.sessionId) return false;
-		this.send({ type: "forceResetReorderQueue" });
-		return true;
-	}
-
 	async reportNetworkLoss(ratio) {
 		if (typeof ratio !== "number" || !Number.isFinite(ratio)) return;
 		this.send({ type: "reportNetworkStats", ratio });

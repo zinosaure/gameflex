@@ -9,6 +9,7 @@
 // stockage de la webapp, et garde donc son propre jeton, sous sa propre clé.
 
 import i18n from "../i18n.js";
+import { capabilities } from "./capabilities.js";
 
 const TOKEN_KEY = "gameflex-edge-token";
 const AUTH_LOST = "gameflex-edge:auth-lost";
@@ -231,7 +232,8 @@ export async function credential(path, options = {}) {
     }
 
     // Un 401 du serveur visé ne ferme pas la session d'ici.
-    if (path !== "/auth/login" && !target) {
+    // La connexion et son second temps (chantier 80) disent « mauvais mot de passe » ou « mauvais code ».
+    if (!path.startsWith("/auth/login") && !target) {
         lose(response.status, used);
     }
 
@@ -252,15 +254,38 @@ export async function credential(path, options = {}) {
         // Le refus du service des comptes, traduit par son code (chantier 59, P5) ; son anglais ne s'affiche jamais.
         detail: explained(body?.exception?.code || "", typeof body?.exception?.detail === "string" ? body.exception.detail : ""),
         codes: body?.exception?.codes || [],
+        // Le code du refus lui-même (`mfa_expired`…), pour une page qui doit réagir à un refus précis.
+        refusal: body?.exception?.code || "",
         retryAfter: Number(response.headers.get("Retry-After")) || 0,
     };
 }
 
-export const login = (username, password) => credential("/auth/login", {
+// LE NOM SOUS LEQUEL L'APPLICATION D'AUTHENTIFICATION RANGE LE CODE (chantier 81) : celui du serveur (sa capacité
+// `serverName`, Réglages › Configuration du serveur), pour les appels qui peuvent commencer une double authentification.
+const issued = (path) => `${path}?issuer=${encodeURIComponent(capabilities().serverName || "")}`;
+
+export const login = (username, password) => credential(issued("/auth/login"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
 });
+
+// LE SECOND TEMPS DE LA CONNEXION (chantier 80) : le jeton d'étape que la connexion a rendu (`mfa: "code"` ou "enroll") et
+// un code de l'application d'authentification, ou un code de secours. Rend la session comme la connexion.
+export const loginMfa = (token, code) => credential("/auth/login/mfa", jsonBody("POST", { mfa_token: token, code }));
+
+// MA DOUBLE AUTHENTIFICATION (chantier 80) : son état (`enabled`, `required`, `required_by` : "server" ou "member",
+// `recovery_left`), la commencer (le mot de passe, puis le secret et son adresse otpauth), l'activer (un premier code ;
+// rend les codes de secours), la désactiver ou refaire les codes de secours (le mot de passe et un code).
+export const fetchMfa = () => credential("/auth/mfa");
+export const startMfa = (password) => credential(issued("/auth/mfa/setup"), jsonBody("POST", { password }));
+export const enableMfa = (code) => credential("/auth/mfa/enable", jsonBody("POST", { code }));
+export const disableMfa = (password, code) => credential("/auth/mfa/disable", jsonBody("POST", { password, code }));
+export const renewRecoveryCodes = (password, code) => credential("/auth/mfa/recovery", jsonBody("POST", { password, code }));
+// L'ADMINISTRATEUR : l'imposer à tout le serveur (un serveur seulement), effacer celle d'un membre.
+export const fetchMfaPolicy = () => credential("/auth/mfa/policy");
+export const setMfaPolicy = (requiredAll) => credential("/auth/mfa/policy", jsonBody("PUT", { required_all: requiredAll }));
+export const resetMemberMfa = (id) => credential(`/users/${id}/mfa/reset`, { method: "POST" });
 
 export const fetchMe = () => credential("/auth/me");
 
@@ -287,10 +312,14 @@ export const logoutAllDevices = () => credential("/auth/logout/all", { method: "
 // LE LIEN D'UN COMPTE (chantier 55, la page /join/<code>) : à qui il est, puis le mot de passe choisi — le code dans le
 // corps, jamais dans une adresse. Un lien mort répond 410, trop d'essais 429 (`retryAfter`).
 export const checkJoin = (code) => credential("/auth/join/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
-export const joinWithLink = (code, password) => credential("/auth/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, password }) });
+export const joinWithLink = (code, password) => credential(issued("/auth/join"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, password }) });
 
 // Mon jeton (chantier 20) : `{token: {enabled, expires_at, token, use_count, last_used_at}, consoles}`.
 export const fetchMyToken = () => credential("/auth/me/token");
+// MON JETON, ET MOI SEUL (le porteur, 2026-11-20 : « Le membre l'active lui-même ») : l'activer pour une durée, le
+// désactiver, le régénérer — sous ma session, jamais celle qu'il a ouverte ailleurs.
+export const updateMyToken = ({ enabled, duration = "" }) => credential("/auth/me/token", jsonBody("PATCH", { enabled, duration }));
+export const regenerateMyToken = () => credential("/auth/me/token/regenerate", { method: "POST" });
 
 // MES FAVORIS (le porteur, 2026-11-16 ; le service des comptes, favorites.go) : ceux du compte connecté, sur tous ses
 // appareils — `items` : `[{id, console_id, reference, server_id, title, created_at}]`. Un jeu d'un serveur fédéré
@@ -328,8 +357,6 @@ const jsonBody = (method, body) => ({ method, headers: { "Content-Type": "applic
 export const createUser = (data) => credential("/users", jsonBody("POST", data));
 export const updateUser = (id, patch) => credential(`/users/${id}`, jsonBody("PATCH", patch));
 export const deleteUser = (id) => credential(`/users/${id}`, { method: "DELETE" });
-export const updateUserToken = (id, { enabled, duration = "" }) => credential(`/users/${id}/token`, jsonBody("PATCH", { enabled, duration }));
-export const regenerateUserToken = (id) => credential(`/users/${id}/token/regenerate`, { method: "POST" });
 // Le lien d'un membre (chantier 55) : un nouveau pour celui qui attend ; la réinitialisation de celui qui a rejoint. La
 // réponse est le membre, son lien et — cette fois seulement — son code (`invitation.code`).
 export const newMemberLink = (id) => credential(`/users/${id}/invitation`, { method: "POST" });
@@ -410,6 +437,9 @@ export const logFileUrl = (path) => `/api/v1/retrogaming/storage/logs/file?path=
 // administrateur ; le kernel le suit dès sa ligne suivante. Changer n'envoie que ce qui change.
 export const fetchLogSettings = () => kernel("/retrogaming/storage/logs/settings");
 export const saveLogSettings = (patch) => kernel("/retrogaming/storage/logs/settings", jsonBody("PUT", patch));
+// LA CONFIGURATION DU SERVEUR (chantier 81, server_config.go) : ses réglages et, à côté (`fixed`), ce que fixe le compose.
+export const fetchServerConfig = () => kernel("/retrogaming/storage/server-config");
+export const saveServerConfig = (values) => kernel("/retrogaming/storage/server-config", jsonBody("PUT", values));
 
 export const fetchUserSaves = () => kernel("/retrogaming/storage/saves");
 export const deleteUserSaves = (username) => kernel(`/retrogaming/storage/saves?user=${encodeURIComponent(username)}`, { method: "DELETE" });
@@ -428,6 +458,9 @@ export const removeMetadataService = (service) => credential(`/metadata-services
 // changé par un administrateur ; le kernel en tire où vivent les métadonnées d'un jeu d'un disque interne.
 export const fetchMetadataSettings = () => credential("/metadata-services/settings");
 export const saveMetadataSettings = (settings) => credential("/metadata-services/settings", jsonBody("PUT", settings));
+// GOOGLE CAST (cast.go du service des comptes) : l'identifiant du récepteur — lu par tout compte, réglé par un administrateur.
+export const fetchCastSettings = () => credential("/cast");
+export const saveCastSettings = (applicationId) => credential("/cast", jsonBody("PUT", { application_id: applicationId }));
 
 // Revenir à l'accueil de l'application Android (Settings.jsx de la webapp, returnToAppHome).
 export async function returnToAppHome(capabilities) {
@@ -472,7 +505,7 @@ export async function fetchCapabilities() {
 
 // Les jeux d'une console, d'UNE source (Games.jsx) : la bibliothèque, un
 // disque interne (`disk`), ou un serveur fédéré (`server`).
-export function listRoms(consoleId, { query = "", disk = null, server = null } = {}) {
+export function listRoms(consoleId, { query = "", disk = null, server = null, resource = null } = {}) {
     const params = new URLSearchParams();
 
     if (query) {
@@ -486,6 +519,11 @@ export function listRoms(consoleId, { query = "", disk = null, server = null } =
     if (server != null) {
         params.set("server", String(server));
     }
+
+    // Une ressource externe (`#808`) : ses jeux, à importer (Réglages › Consoles › Jeux ; administrateur).
+    if (resource != null) {
+        params.set("resource", String(resource));
+    }
     const search = params.toString();
 
     return kernel(`/retrogaming/${encodeURIComponent(consoleId)}/roms${search ? `?${search}` : ""}`);
@@ -493,6 +531,17 @@ export function listRoms(consoleId, { query = "", disk = null, server = null } =
 
 export const listDisks = () => kernel("/retrogaming/disks");
 export const rescanDisk = (name) => kernel(`/retrogaming/disks/${encodeURIComponent(name)}/rescan`, { method: "POST" });
+
+// LES RESSOURCES EXTERNES (`#808`, kernel : resources_api.go) — Samba, WebDAV, kDrive, FTP, SFTP ; administrateur. Leur
+// liste vit aussi sur le sujet `resources` du centre de messages (Resources.jsx), qui la repousse à chaque parcours.
+const asJSON = (method, body) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+export const listResources = () => kernel("/retrogaming/resources");
+// Ce que tout compte voit des ressources (le Catalogue) : leur nom, leur genre, leurs jeux par console.
+export const listLentResources = () => kernel("/retrogaming/resources/catalog");
+export const addResource = (body) => kernel("/retrogaming/resources", asJSON("POST", body));
+export const updateResource = (id, body) => kernel(`/retrogaming/resources/${encodeURIComponent(id)}`, asJSON("PATCH", body));
+export const removeResource = (id) => kernel(`/retrogaming/resources/${encodeURIComponent(id)}`, { method: "DELETE" });
+export const rescanResource = (id) => kernel(`/retrogaming/resources/${encodeURIComponent(id)}/rescan`, { method: "POST" });
 
 // LE NOMBRE DE JEUX D'ICI PAR CONSOLE (`handleRetroConsoles`) : la bibliothèque et les
 // disques internes réunis, une même référence comptée une fois — ce que la bibliothèque
@@ -566,20 +615,43 @@ export const listSaveNotes = () => kernel("/saves/notes");
 export const writeSaveNote = (item, note) => kernel("/saves/notes", jsonBody("PUT", { ...item, note }));
 
 // Les octets d'une sauvegarde (un état, sa vignette, l'archive d'un jeu récent), ici ou chez `host`.
-export async function fetchBytes(path, host = null) {
+// `onProgress(reçus, total)` : la lecture par morceaux, pour une ligne de téléchargement (DownloadRow) ; `signal` : son
+// annulation (AbortController) — `aborted` le dit.
+export async function fetchBytes(path, host = null, { onProgress = null, signal = undefined } = {}) {
     const token = host ? host.token : readToken();
 
     try {
-        const response = await fetch(host ? `${host.origin}/api/v1${path}` : `/api/v1${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        const response = await fetch(host ? `${host.origin}/api/v1${path}` : `/api/v1${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal });
 
-        return response.ok ? { ok: true, blob: await response.blob() } : { ok: false, status: response.status };
+        if (!response.ok) {
+            return { ok: false, status: response.status };
+        }
+        if (!onProgress || !response.body) {
+            return { ok: true, blob: await response.blob() };
+        }
+        const total = Number(response.headers.get("Content-Length")) || 0;
+        const reader = response.body.getReader();
+        const chunks = [];
+        let received = 0;
+
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) {
+                break;
+            }
+            chunks.push(value);
+            received += value.length;
+            onProgress(received, total);
+        }
+
+        return { ok: true, blob: new Blob(chunks, { type: response.headers.get("Content-Type") || "" }) };
     } catch {
-        return { ok: false, status: 0 };
+        return { ok: false, status: 0, aborted: Boolean(signal?.aborted) };
     }
 }
 
-export const fetchStateFile = (consoleId, reference, slot, source, host, screenshot = false) => fetchBytes(`/retrogaming/savestate/${screenshot ? "screenshot" : "file"}?${withSource({ consoleId, reference, slot }, source)}`, host);
-export const fetchStreamexSave = (console, id, source, host) => fetchBytes(`/saves/streamex/game?${withSource({ console, id }, source)}`, host);
+export const fetchStateFile = (consoleId, reference, slot, source, host, screenshot = false, options = {}) => fetchBytes(`/retrogaming/savestate/${screenshot ? "screenshot" : "file"}?${withSource({ consoleId, reference, slot }, source)}`, host, options);
+export const fetchStreamexSave = (console, id, source, host, options = {}) => fetchBytes(`/saves/streamex/game?${withSource({ console, id }, source)}`, host, options);
 
 // ÉCRIRE dans une COPIE (`source` : le nom que la fédération donne à celui qui envoie). Le corps
 // est les octets ; `timestamp` garde la date de l'original, `title` le titre du jeu.
@@ -602,7 +674,19 @@ export function uploadStateFile(consoleId, reference, slot, blob, { host = null,
     return kernel(`/retrogaming/savestate/file?${params}`, { method: "POST", body: blob }, host);
 }
 
-export const uploadStreamexSave = (console, id, blob, source, host = null) => kernel(`/saves/streamex/game?${withSource({ console, id }, source)}`, { method: "POST", body: blob }, host);
+// `game` : ce que la liste d'où vient la sauvegarde dit de son jeu (`title`, `reference`, `path`) — la copie le garde, et
+// la sauvegarde garde son nom chez un serveur qui n'a pas le jeu (chantier 76, titles.json).
+export function uploadStreamexSave(console, id, blob, source, host = null, game = {}) {
+    const params = withSource({ console, id }, source);
+
+    for (const [key, value] of [["title", game.title], ["gameId", game.reference], ["path", game.path]]) {
+        if (value) {
+            params.set(key, value);
+        }
+    }
+
+    return kernel(`/saves/streamex/game?${params}`, { method: "POST", body: blob }, host);
+}
 export const listEmulatorParams = () => kernel("/retrogaming/storage/params");
 
 // LE STOCKAGE (storage-admin.js) : les émulateurs (cœurs), les BIOS, les paramètres, ici ou chez une
@@ -729,9 +813,7 @@ export const wakeDevice = (deviceId, host = null) => kernel(`/playstation/wake/$
 // Pas de sondage (règle du projet) ; une reconnexion qui s'espace si le
 // kernel se tait.
 // Les parties en cours, en direct (le sujet `sessions`).
-// La session keytest est un banc d'essai interne (tools/webtest), plus visible du joueur depuis le 2026-11-13 :
-// ni dans En direct, ni comme partie à reprendre.
-export const subscribeSessions = (onList) => subscribeTopic("sessions", (data) => onList((Array.isArray(data) ? data : []).filter((session) => session.consoleId !== "keytest")));
+export const subscribeSessions = (onList) => subscribeTopic("sessions", (data) => onList(Array.isArray(data) ? data : []));
 
 // L'adresse du canal du kernel, le jeton en paramètre (une poignée de main WebSocket ne porte pas d'en-tête).
 // LE CANAL DU KERNEL VISÉ : le nôtre, ou celui du serveur fédéré qu'on administre d'ici (chantier 73) — une commande

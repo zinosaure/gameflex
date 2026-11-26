@@ -90,7 +90,7 @@ func pairingServer(t *testing.T) (*Server, *fakeClock) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"1", "2", "3"} {
-		adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, id, `{"enabled":true,"duration":"1w"}`)
+		ownerCall(server, server.handleUpdateMyAccountToken, id, `{"enabled":true,"duration":"1w"}`)
 	}
 
 	return server, clock
@@ -189,7 +189,7 @@ func TestPairingModesBelongToTheirOwners(t *testing.T) {
 	if recorder := as(server.handleOpenAccountPairing, federated, "", ""); recorder.Code != http.StatusForbidden {
 		t.Fatalf("une session ouverte par jeton ouvre un mode : %d", recorder.Code)
 	}
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "3", `{"enabled":false}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, "3", `{"enabled":false}`)
 	if recorder := as(server.handleOpenAccountPairing, thirdMember, "", ""); recorder.Code != http.StatusForbidden || !strings.Contains(recorder.Body.String(), "token_not_enabled") {
 		t.Fatalf("jeton éteint : %d %s", recorder.Code, recorder.Body.String())
 	}
@@ -350,13 +350,13 @@ func TestAccountPairingCode(t *testing.T) {
 		t.Fatalf("le premier code vaut encore : %v", err)
 	}
 
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":false}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, "2", `{"enabled":false}`)
 	for range 6 {
 		if _, err := server.RedeemInvitation(second.Code, InvitationAccount, "Gamebox", "a"); !errors.Is(err, ErrInvitationTokenOff) {
 			t.Fatalf("jeton éteint : %v", err)
 		}
 	}
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1d"}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, "2", `{"enabled":true,"duration":"1d"}`)
 	redeemed, err := server.RedeemInvitation(second.Code, InvitationAccount, "Gamebox", "a")
 	if err != nil || redeemed.Token != tokenOf(t, server.db, 2) || redeemed.Identity != "marc" {
 		t.Fatalf("échange : %+v %v", redeemed, err)

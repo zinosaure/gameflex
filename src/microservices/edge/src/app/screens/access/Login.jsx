@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../../libs/data.jsx";
 import { focusElement, useScreenInput } from "../../libs/input.js";
 import { Form, formContext, FormButton } from "../../ui/Forms.jsx";
+import MfaStep from "./MfaStep.jsx";
 
 // LA CONNEXION DU LAUNCHER : une autre origine que la webapp, donc son propre
 // jeton (`POST /api/v1/auth/login`, comme profile/auth/AuthContext.jsx). Ses deux champs sont ceux
@@ -11,12 +12,15 @@ import { Form, formContext, FormButton } from "../../ui/Forms.jsx";
 
 export default function Login() {
     const { t } = useTranslation();
-    const { login } = useAuth();
+    const { login, adopt } = useAuth();
     const [values, setValues] = useState({ username: "", password: "" });
     const form = formContext(values, setValues);
     const { username, password } = values;
     const [error, setError] = useState("");
     const [pending, setPending] = useState(false);
+    // LA DOUBLE AUTHENTIFICATION (chantier 80) : le bon mot de passe d'un compte qui l'a, ou à qui elle est imposée, rend
+    // un second temps au lieu de la session (MfaStep.jsx).
+    const [challenge, setChallenge] = useState(null);
 
     useEffect(() => {
         focusElement(document.querySelector('[data-key="login-user"]'), true);
@@ -31,10 +35,24 @@ export default function Login() {
         const result = await login(username, password);
         setPending(false);
 
-        if (!result.ok) {
+        if (result.ok && result.item?.mfa) {
+            setChallenge(result.item);
+        } else if (!result.ok) {
             setError(result.status === 0 ? t("login.unreachable") : t("login.refused"));
         }
     };
+
+    if (challenge) {
+        return (
+            <main className="login">
+                <MfaStep challenge={challenge} onSession={adopt} onCancel={(reason) => {
+                    setChallenge(null);
+                    setValues({ ...values, password: "" });
+                    setError(reason);
+                }} />
+            </main>
+        );
+    }
 
     return (
         <main className="login">

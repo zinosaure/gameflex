@@ -8,19 +8,40 @@ import { can, capabilities } from "../../libs/capabilities.js";
 import { canInvite, shareOrigin, streamAuthToken, streamHostOrigin } from "../../libs/serverBase.js";
 import { copyTextToClipboard, canShareLink, qrImage, shareLink } from "../../libs/share-link.js";
 import { readToken } from "../../libs/api.js";
-import { formatDuration } from "../../libs/format.js";
+import { fact, formatDuration } from "../../libs/format.js";
 import { authHeaders, useConsoles } from "../../libs/sharedHost.js";
 import { focusElement } from "../../libs/input.js";
-import { setHapticFeedback, setRumbleEnabled, useGamepadPreferences } from "../../engine/libs/gamepadPreferences.js";
-import { DEFAULT_PAD_OPACITY, setPadOpacity, usePadOpacity, useTouchpadAlone } from "../../engine/stream/onscreen/padOpacity.js";
+import { setHapticFeedback, setInvisibleSticks, setRumbleEnabled, useGamepadPreferences } from "../../engine/libs/gamepadPreferences.js";
+import { DEFAULT_PAD_OPACITY, setPadOpacity, usePadOpacity } from "../../engine/stream/onscreen/padOpacity.js";
 import i18n from "../../i18n.js";
 import SidePanel from "../../shell/SidePanel.jsx";
 import { Form, FormButton, formContext } from "../../ui/Forms.jsx";
 import { slotName } from "../library/GameSettings.jsx";
-import NavRow, {
-    Avatar, ChoiceRow, CopyField, Listing, DangerSection, EmptyState, InfoRow, InvisibleSticksRow, Note, OrientationFailed, OrientationRows, PadOpacityRow, QuickTiles, RadioRow, Rows, Section, SelectRow, SubmitRow,
-    SwitchRow, TextRow, offersOrientation, useConfirm,
-} from "../../ui/Bricks.jsx";
+import { Avatar } from "../../bricks/Avatar.jsx";
+import { ChoiceRow } from "../../bricks/ChoiceRow.jsx";
+import { CopyField } from "../../bricks/CopyField.jsx";
+import { DangerSection } from "../../bricks/DangerSection.jsx";
+import { EmptyState } from "../../bricks/EmptyState.jsx";
+import { InfoRow } from "../../bricks/InfoRow.jsx";
+import { RecentNotices, RequestRow } from "../../bricks/RecentNotices.jsx";
+import { InvisibleSticksRow } from "../../bricks/InvisibleSticksRow.jsx";
+import NavRow from "../../bricks/NavRow.jsx";
+import { Note } from "../../bricks/Note.jsx";
+import { OrientationFailed } from "../../bricks/OrientationFailed.jsx";
+import { offersOrientation, OrientationRows } from "../../bricks/OrientationRows.jsx";
+import { PadOpacityRow } from "../../bricks/PadOpacityRow.jsx";
+import { QuickTiles } from "../../bricks/QuickTiles.jsx";
+import { RadioRow } from "../../bricks/RadioRow.jsx";
+import { Rows } from "../../bricks/Rows.jsx";
+import { Section } from "../../bricks/Section.jsx";
+import { SelectRow } from "../../bricks/SelectRow.jsx";
+import { SubmitRow } from "../../bricks/SubmitRow.jsx";
+import { SwitchRow } from "../../bricks/SwitchRow.jsx";
+import { TextRow } from "../../bricks/TextRow.jsx";
+import { useConfirm } from "../../bricks/useConfirm.jsx";
+
+// Le sens de chaque groupe du menu : ce qui se règle (modifier), qui joue (info), inviter (ajouter), sortir (danger).
+const GROUP_SENSES = { game: "play", sound: "modify", picture: "modify", pad: "modify", players: "info", together: "add", leave: "danger" };
 
 // LE MENU D'UNE PARTIE (#408, #409 ; chantier 52, P3) — un panneau du launcher, la moitié de l'écran en
 // paysage, tout l'écran en portrait, en direction C (validée par le porteur le 2026-11-13, les modèles de
@@ -57,15 +78,13 @@ import NavRow, {
 // Les sous-panneaux, par leur nom dans la pile de la page (PlayShell.jsx : `panels`).
 const SUBPANELS = ["states", "disk", "cheats", "invite", "keyboard", "video", "link", "qr"];
 
-export function PlayMenu({ session, user, input, isWatching, switchesStore, sessionSend, players, roster, departed, notifications, loan, context, panels, openPanel, closePanel, closeMenu, onQuit, watchOnly = false, hostName = "" }) {
+export function PlayMenu({ session, user, input, isWatching, switchesStore, sessionSend, players, roster, departed, notifications, loan, context, panels, openPanel, closePanel, closeMenu, onQuit, watchOnly = false, hostName = "", voice = null }) {
     const { t } = useTranslation();
     const switches = useSyncExternalStore(switchesStore.subscribe, switchesStore.getSnapshot);
     // Les réglages de la manette de CET APPAREIL : leur seule source, celle de Réglages › Manettes (#758).
     const device = useGamepadPreferences();
     // L'opacité de la manette à l'écran : celle de sa disposition en jeu (padOpacity.js), lue par la manette dessinée.
     const padOpacity = usePadOpacity();
-    // Une vraie manette : la manette à l'écran se cache, mais le pavé tactile (PS4, PS5) reste — sa glissière aussi.
-    const touchpadAlone = useTouchpadAlone();
     // L'orientation : l'application pivote son activité ; un navigateur, le plein écran et le verrou. Refusée, la ligne le dit.
     const turnsTheApp = can("screenOrientation");
     const [turnFailed, setTurnFailed] = useState(false);
@@ -127,14 +146,20 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
         }
     }, [top]);
 
+    // UN GESTE FAIT REFERME LE MENU (le porteur, 2026-11-26 : « certaines actions doivent automatiquement fermer le menu
+    // après […] Même les switches. […] c'est seulement sur les invités, QR code et envoyer une demande de manette que ça
+    // ne se ferme pas ») : les interrupteurs, les choix, une sauvegarde d'état, un disque, un code activé, la vidéo,
+    // l'orientation, le clavier, la manette prise ou rendue, une notification répondue. Restent ouverts : inviter, le QR
+    // code, demander la manette d'un joueur — et l'opacité de la manette, qu'on règle en la faisant glisser.
     const act = (gesture) => {
         gesture();
         closeMenu();
     };
-    const askForPad = (username) => act(() => {
+    const then = (gesture) => (...values) => act(() => gesture(...values));
+    const askForPad = (username) => {
         sessionSend({ type: "requestslot", to: username });
         context.toast.open(t("play.handover.sent"));
-    });
+    };
     const copyLink = async () => {
         if (await copyTextToClipboard(shareUrl)) {
             act(() => context.toast.open(t("play.share.copied"), { variant: "success" }));
@@ -157,9 +182,7 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
         closeMenu();
     };
 
-    const tone = (on) => t(on ? "settings.switchOn" : "settings.switchOff");
-    // LES TUILES (direction C) : Reprendre, puis ce qu'on touche le plus en jouant — chacune là où son entrée
-    // existait (mêmes conditions) ; une tuile qui règle s'allume avec son réglage, puis ferme le menu (`act`).
+    // LES TUILES (direction C) : Reprendre, puis la manette — à prendre, à récupérer, ou à rendre.
     // PRENDRE OU LIBÉRER LA MANETTE, UNE TUILE (chantier 69 ; le porteur, 2026-11-19 : « quand le même joueur a 2 ou
     // plusieurs onglets ouverts, le lien pour "prendre la manette" ou "libérer la manette" doit être dans une tuile ») :
     // cet onglet regarde et peut jouer (sa partie, une place libre, ou sa place tenue par un autre de ses onglets — qui
@@ -180,26 +203,33 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
     const watchingHere = isWatching && !watchOnly && !loan.canReturn;
     const releases = !isWatching && !loan.canReclaim && loan.otherTabs > 0;
     const take = () => act(() => sessionSend({ type: "requestslot" }));
+    // RENDRE LA MANETTE (le porteur, 2026-11-23 : « valable que quand on a pris une manette. Si c'est une manette empruntée
+    // alors on rend à la personne. Mais si c'est un slot alors on libère le slot. La tuile est grisée quand on est owner ») :
+    // l'emprunteur la rend à qui l'a prêtée ; un joueur libère sa place ; le propriétaire ne rend pas la sienne.
+    const myPlace = players.find((player) => player.username === self)?.slot;
+    const giveBackTile = loan.canReturn
+        ? { id: "pm-give-back", icon: "bi-arrow-return-left", tone: "green", label: t("play.handover.return"), value: t("play.giveBack.toOwner", { name: nameOf(roster.owner || session.owner) }), onClick: () => act(() => sessionSend({ type: "returnslot" })) }
+        : !isWatching && !watchOnly
+            ? isOwner
+                ? { id: "pm-give-back", icon: "bi-arrow-return-left", tone: "slate", label: t("play.handover.return"), value: t("play.giveBack.owner"), disabled: true }
+                : { id: "pm-give-back", icon: "bi-arrow-return-left", tone: "green", label: t("play.handover.return"), value: t("play.giveBack.place", { slot: myPlace ?? "?", max: padsMax || "?" }), onClick: () => act(() => sessionSend({ type: "releaseslot" })) }
+            : null;
     const padTile = watchingHere
         ? mineElsewhere
             ? { id: "pm-take", icon: "bi-controller", tone: "green", label: t("play.retrieve"), value: t("play.retrieveTile"), primary: true, onClick: take }
             : firstFree
                 ? { id: "pm-take", icon: "bi-controller", tone: "green", label: t("play.takeSlot", { slot: firstFree, max: padsMax }), value: t("play.joinTile"), primary: true, onClick: take }
                 : { id: "pm-take", icon: "bi-controller", tone: "slate", label: t("play.noPad"), value: t("play.noPadTile"), disabled: true }
-        : releases
-            ? { id: "pm-release", icon: "bi-box-arrow-right", tone: "green", label: t("play.release"), value: t("play.releaseTile"), onClick: () => act(() => sessionSend({ type: "releaseslot" })) }
-            : null;
+        : loan.canReclaim
+            ? { id: "pm-reclaim-tile", icon: "bi-arrow-counterclockwise", tone: "green", label: t("play.handover.reclaim"), value: t("play.giveBack.lentTo", { name: nameOf(loan.lentTo) }), primary: true, onClick: () => act(() => sessionSend({ type: "reclaimslot" })) }
+            : releases
+                ? { id: "pm-release", icon: "bi-box-arrow-right", tone: "green", label: t("play.release"), value: t("play.releaseTile"), onClick: () => act(() => sessionSend({ type: "releaseslot" })) }
+                : giveBackTile;
+    // LES TUILES : reprendre la partie, et prendre ou récupérer la manette (le porteur, 2026-11-23). La manette à l'écran,
+    // le son du jeu et le plein écran sont des interrupteurs de leur section (Manette, Son, Vidéo).
     const tiles = [
-        { id: "pm-resume", icon: "bi-play-fill", tone: "indigo", label: t("play.menu.resume"), value: playTime ? t("play.menu.resumeTileTime", { time: playTime }) : t("play.menu.resumeTile"), primary: true, onClick: closeMenu },
+        { id: "pm-resume", icon: "bi-play-fill", tone: "indigo", label: t("play.menu.resume"), value: playTime ? fact(t("play.info.duration"), playTime) : t("play.menu.resumeTile"), primary: true, onClick: closeMenu },
         padTile,
-        !isWatching && {
-            // Le libellé court d'une tuile : la manette qu'elle montre (« Super Nintendo… ») allongeait sa rangée.
-            id: "pm-pad", icon: "bi-phone-landscape", tone: "violet", label: t("play.pad.label"),
-            value: tone(switches.isControllerVisible), on: Boolean(switches.isControllerVisible), onClick: () => act(() => set({ isControllerVisible: !switches.isControllerVisible })),
-        },
-        can("pageAudio") && { id: "pm-sound", icon: "bi-volume-up", tone: "sky", label: t("play.sound.label"), value: tone(switches.isSoundEnabled), on: Boolean(switches.isSoundEnabled), onClick: () => act(() => set({ isSoundEnabled: !switches.isSoundEnabled })) },
-        // Sans objet dans l'application, déjà en plein écran : l'hôte le dit (`fullscreen`).
-        can("fullscreen") && { id: "pm-fullscreen", icon: "bi-arrows-fullscreen", tone: "slate", label: t("play.fullscreen.label"), value: tone(switches.isFullscreen), on: Boolean(switches.isFullscreen), onClick: () => act(() => set({ isFullscreen: !switches.isFullscreen })) },
     ];
     // LES MESURES À L'ÉCRAN : les statistiques et la vue discrète s'excluent — un choix à trois cases le dit.
     const measures = switches.isResourceMonitoringVisible ? "panel" : switches.isCompactStatsVisible ? "compact" : "none";
@@ -208,21 +238,29 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
     // LA PARTIE (chantier 69 ; le porteur, 2026-11-19) : les sauvegardes d'état y viennent des tuiles ; le retour et
     // l'avance rapides sont partis à l'écran (PlayShell.jsx), là où l'on voit ce qu'ils font.
     const game = [
-        playing && emulates && extra.saves && <NavRow key="states" id="pm-states" icon="bi-floppy" tone="teal" label={t("play.states.title")} help={t("play.states.tile")} onOpen={() => openPanel("states")} />,
-        playing && emulates && disks.count > 1 && <NavRow key="disk" id="pm-disk" icon="bi-disc" tone="teal" label={t("play.disk.title")} help={t("play.disk.help")} value={t("play.disk.number", { number: disks.current + 1 })} onOpen={() => openPanel("disk")} />,
-        playing && emulates && extra.cheats?.cheatsSupported && <NavRow key="cheats" id="pm-cheats" icon="bi-braces" tone="amber" label={t("play.cheats.title")} help={t("play.cheats.help")} onOpen={() => openPanel("cheats")} />,
+        playing && emulates && extra.saves && <NavRow key="states" id="pm-states" icon="bi-floppy" label={t("play.states.title")} help={t("play.states.tile")} onOpen={() => openPanel("states")} />,
+        playing && emulates && disks.count > 1 && <NavRow key="disk" id="pm-disk" icon="bi-disc" label={t("play.disk.title")} help={t("play.disk.help")} value={t("play.disk.number", { number: disks.current + 1 })} onOpen={() => openPanel("disk")} />,
+        playing && emulates && extra.cheats?.cheatsSupported && <NavRow key="cheats" id="pm-cheats" icon="bi-braces" label={t("play.cheats.title")} help={t("play.cheats.help")} onOpen={() => openPanel("cheats")} />,
     ].filter(Boolean);
-    // LA MANETTE : seulement ce que touche le pouce de CET appareil ; les réglages de la manette à l'écran tant qu'elle est
-    // montrée — dont les sticks invisibles, la même ligne que dans Réglages › Manettes.
+    // LA MANETTE : seulement ce que touche le pouce de CET appareil, dont les sticks invisibles, la même ligne que dans
+    // Réglages › Manettes.
+    // LA MANETTE À L'ÉCRAN COUPÉE, SES RÉGLAGES RESTENT, GRISÉS (le porteur, 2026-11-24 : « on doit quand même voir les
+    // autres paramètres qui sont liés à la manette […] au pire tu les mets en disabled mais jamais tu les caches ») —
+    // SAUF L'OPACITÉ, qui reste active : elle règle aussi le pavé tactile resté seul (« ça concerne aussi le touchpad sur
+    // l'écran quand la manette est cachée »), et la manette la retrouve (`lastName`, padOpacity.js).
+    // L'OPACITÉ EN DERNIER, APRÈS LES VIBRATIONS (le porteur, 2026-11-24 : « tu peux mettre le range opacité après le
+    // switch de la vibration, en dernier dans la section ») ; le 2026-11-23 elle venait en premier.
+    const padHidden = !switches.isControllerVisible;
     const pad = [
-        !isWatching && switches.isControllerVisible && <SwitchRow key="haptic" id="pm-haptic" label={t("play.haptic.label")} help={t("play.haptic.help")} checked={device.hapticFeedback} onChange={setHapticFeedback} />,
-        !isWatching && switches.isControllerVisible && <InvisibleSticksRow key="invisible-sticks" id="pm-invisible-sticks" />,
+        !isWatching && <SwitchRow key="pad" id="pm-pad" label={t("play.pad.label")} texts="shownF" help={t("play.pad.help")} checked={Boolean(switches.isControllerVisible)} onChange={then((on) => set({ isControllerVisible: on }))} />,
+        !isWatching && <SwitchRow key="haptic" id="pm-haptic" label={t("play.haptic.label")} texts="enabled" help={t("play.haptic.help")} checked={device.hapticFeedback} disabled={padHidden} onChange={then(setHapticFeedback)} />,
+        !isWatching && <InvisibleSticksRow key="invisible-sticks" id="pm-invisible-sticks" disabled={padHidden} onChange={then(setInvisibleSticks)} />,
+        !isWatching && session.consoleId === "ps1" && <SwitchRow key="dualshock" id="pm-dualshock" label={t("play.dualShock.label")} help={t("play.dualShock.help")} checked={switches.isDualShockController} onChange={then((on) => set({ isDualShockController: on }))} />,
+        !watchOnly && <SwitchRow key="rumble" id="pm-rumble" label={t("play.rumble.label")} texts="enabled" help={t("play.rumble.help")} checked={device.rumble} onChange={then(setRumbleEnabled)} />,
         // L'OPACITÉ (#758) : celle de « Modifier la disposition », pour la disposition en jeu ; la manette la suit aussitôt.
-        !isWatching && (switches.isControllerVisible || touchpadAlone) && padOpacity.name && <PadOpacityRow key="opacity" id="pm-pad-opacity" value={padOpacity.opacity ?? DEFAULT_PAD_OPACITY} onChange={setPadOpacity} />,
-        !isWatching && session.consoleId === "ps1" && <SwitchRow key="dualshock" id="pm-dualshock" label={t("play.dualShock.label")} help={t("play.dualShock.help")} checked={switches.isDualShockController} onChange={(on) => set({ isDualShockController: on })} />,
-        !watchOnly && <SwitchRow key="rumble" id="pm-rumble" label={t("play.rumble.label")} help={t("play.rumble.help")} checked={device.rumble} onChange={setRumbleEnabled} />,
+        !isWatching && (padOpacity.name || padOpacity.lastName) && <PadOpacityRow key="opacity" id="pm-pad-opacity" value={padOpacity.opacity ?? DEFAULT_PAD_OPACITY} onChange={setPadOpacity} />,
         // LE CLAVIER, déclaré par la plateforme (#420) : streamex seul tape dans son émulateur.
-        !isWatching && extra.keyboard && <NavRow key="keyboard" id="pm-keyboard" icon="bi-keyboard" tone="violet" label={t("play.keyboard.title")} help={t("play.keyboard.help")} onOpen={() => openPanel("keyboard")} />,
+        !isWatching && extra.keyboard && <NavRow key="keyboard" id="pm-keyboard" icon="bi-keyboard" label={t("play.keyboard.title")} help={t("play.keyboard.help")} onOpen={() => openPanel("keyboard")} />,
     ].filter(Boolean);
     // LES JOUEURS (chantier 68 ; le porteur, 2026-11-19) : une ligne par manette de la console — son joueur (connecté, et
     // depuis quand), un joueur parti (« déconnecté », 30 s, PlayShell.jsx), le propriétaire absent (sa place l'attend ; le
@@ -234,70 +272,104 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
     const together = [
         // PRENDRE LA MANETTE : tout le monde arrive en spectateur, le propriétaire aussi ; c'est le geste qui démarre
         // une partie, et le retour après un rechargement. Les autres rejoignent par une place libre de la section Joueurs.
-        loan.canReclaim && <NavRow key="reclaim" id="pm-reclaim" icon="bi-arrow-counterclockwise" tone="green" label={t("play.handover.reclaim")} help={t("play.handover.reclaimHelp")} opens="action" onOpen={() => act(() => sessionSend({ type: "reclaimslot" }))} />,
-        loan.canReturn && <NavRow key="return" id="pm-return" icon="bi-arrow-return-left" tone="green" label={t("play.handover.return")} help={t("play.handover.returnHelp")} opens="action" onOpen={() => act(() => sessionSend({ type: "returnslot" }))} />,
+        loan.canReclaim && <NavRow key="reclaim" id="pm-reclaim" icon="bi-arrow-counterclockwise" label={t("play.handover.reclaim")} help={t("play.handover.reclaimHelp")} opens="action" onOpen={() => act(() => sessionSend({ type: "reclaimslot" }))} />,
+        loan.canReturn && <NavRow key="return" id="pm-return" icon="bi-arrow-return-left" label={t("play.handover.return")} help={t("play.handover.returnHelp")} opens="action" onOpen={() => act(() => sessionSend({ type: "returnslot" }))} />,
         // LE PARTAGE, dès que quelqu'un peut rejoindre : sans adresse sur le réseau, le lien pointerait vers le
         // localhost de qui le reçoit (`canInvite`). Copier OU envoyer, jamais les deux.
-        canInvite() && invitesAccounts && !watchOnly && <NavRow key="invite" id="pm-invite" icon="bi-person-plus" tone="green" label={t("play.invite.title")} help={t("play.invite.help")} onOpen={() => openPanel("invite")} />,
+        canInvite() && invitesAccounts && !watchOnly && <NavRow key="invite" id="pm-invite" icon="bi-person-plus" label={t("play.invite.title")} help={t("play.invite.help")} onOpen={() => openPanel("invite")} />,
         canInvite() && (canShareLink()
-            ? <NavRow key="send" id="pm-send" icon="bi-send" tone="green" label={t("play.share.send")} help={t("play.share.sendHelp")} opens="action" onOpen={sendLink} />
-            : <NavRow key="copy" id="pm-copy" icon="bi-link-45deg" tone="green" label={t("play.share.copy")} help={t("play.share.copyHelp")} opens="action" onOpen={copyLink} />),
+            ? <NavRow key="send" id="pm-send" icon="bi-send" label={t("play.share.send")} help={t("play.share.sendHelp")} opens="action" onOpen={sendLink} />
+            : <NavRow key="copy" id="pm-copy" icon="bi-link-45deg" label={t("play.share.copy")} help={t("play.share.copyHelp")} opens="action" onOpen={copyLink} />),
         // LE QR CODE DU MÊME LIEN, pour un téléphone à côté : l'ouvrir, c'est regarder la partie, puis la rejoindre s'il
         // reste une manette. Son panneau (`qr`) le montre en grand, seul : le lien se copie par sa propre ligne (le
         // porteur, 2026-11-14 : « Dans QR code pas besoin de mettre le lien. Car on l'a déjà dans copy the link »).
-        canInvite() && <NavRow key="qr" id="pm-qr" icon="bi-qr-code" tone="green" label={t("play.share.qr")} help={t("play.share.qrHelp")} onOpen={() => openPanel("qr")} />,
+        canInvite() && <NavRow key="qr" id="pm-qr" icon="bi-qr-code" label={t("play.share.qr")} help={t("play.share.qrHelp")} onOpen={() => openPanel("qr")} />,
+    ].filter(Boolean);
+    // LA VOIX (chantier 71 ; le porteur, 2026-11-23 : « Le micro et le son des joueurs, c'est eux qui décident. Le micro
+    // et le son des spectateurs, c'est le owner qui décide s'ils peuvent interagir ») : mon micro et entendre les autres,
+    // à chacun ; la conversation ouverte aux spectateurs, au propriétaire seul. Chacun désactivé avec sa raison, dite
+    // par la file : seul, conversation fermée aux spectateurs — et le micro sur une page non sécurisée. Pas pour le
+    // spectateur sans compte : la file ne le connaît pas.
+    const voiceYou = !watchOnly ? voice?.you : null;
+    const voiceWhy = voiceYou && !voiceYou.usable ? t(`play.voice.why.${voiceYou.reason}`) : null;
+    const voiceRows = voiceYou ? [
+        <SwitchRow key="voice-mic" id="pm-voice-mic" label={t("play.voice.mic")} texts="open" help={voiceWhy || t(voice.microphone ? "play.voice.micHelp" : "play.voice.why.insecure")}
+            checked={Boolean(voiceYou.mic)} disabled={!voiceYou.usable || !voice.microphone} onChange={then(voice.toggleMic)} />,
+        <SwitchRow key="voice-hear" id="pm-voice-hear" label={t("play.voice.hear")} help={voiceWhy || t("play.voice.hearHelp")}
+            checked={voice.hearing} disabled={!voiceYou.usable} onChange={then(voice.toggleHear)} />,
+        isOwner && <SwitchRow key="voice-spectators" id="pm-voice-spectators" label={t("play.voice.spectators")} help={t(voiceYou.canOpen ? "play.voice.spectatorsHelp" : "play.voice.why.nobody")}
+            checked={Boolean(voice.room?.spectators)} disabled={!voiceYou.canOpen} onChange={then(voice.toggleSpectators)} />,
+    ].filter(Boolean) : [];
+    // LE SON (le porteur, 2026-11-23 : « rajouter dans la section son, le son du jeu. C'est un switch qui n'est pas
+    // grisé ») : le son du jeu, puis la voix.
+    const sound = [
+        can("pageAudio") && <SwitchRow key="sound" id="pm-sound" label={t("play.sound.label")} texts="open" help={t("play.sound.help")} checked={Boolean(switches.isSoundEnabled)} onChange={then((on) => set({ isSoundEnabled: on }))} />,
+        ...voiceRows,
     ].filter(Boolean);
     const picture = [
         // LA VIDÉO (chantier 58) : toujours là (le porteur, 2026-11-16 : « Le second flux s'affiche toujours ») — une
         // partie qui n'a qu'un flux le dit dans son panneau.
-        <NavRow key="video" id="pm-video" icon="bi-badge-hd" tone="sky" label={t("play.video.title")} help={t("play.video.short")} value={videoChoiceLabel(t, switches)} onOpen={() => openPanel("video")} />,
+        <NavRow key="video" id="pm-video" icon="bi-badge-hd" label={t("play.video.title")} help={t("play.video.short")} value={videoChoiceLabel(t, switches)} onOpen={() => openPanel("video")} />,
+        // LE PLEIN ÉCRAN (le porteur, 2026-11-23 : « dans la section vidéo, rajoute le switch Fullscreen ») ; sans objet dans
+        // l'application, déjà en plein écran : l'hôte le dit (`fullscreen`).
+        can("fullscreen") && <SwitchRow key="fullscreen" id="pm-fullscreen" label={t("play.fullscreen.label")} texts="fullscreen" help={t("play.fullscreen.help")} checked={Boolean(switches.isFullscreen)} onChange={then((on) => set({ isFullscreen: on }))} />,
         // L'ORIENTATION DE L'ÉCRAN (#758) : les lignes de Réglages › Application, le même réglage ; choisie ici, elle vaut
         // tout de suite, la partie continue. Le spectateur sans compte ne l'a pas (son menu est au strict minimum).
-        !watchOnly && offersOrientation(turnsTheApp) && <OrientationRows key="orientation" idPrefix="pm" turnsTheApp={turnsTheApp} onFailed={setTurnFailed} />,
-        can("castToTv") && !watchOnly && <SwitchRow key="cast" id="pm-cast" label={t("play.cast.label")} help={t("play.cast.help")} checked={switches.isChromeCasting} onChange={(on) => set({ isChromeCasting: on })} />,
+        !watchOnly && offersOrientation(turnsTheApp) && <OrientationRows key="orientation" idPrefix="pm" turnsTheApp={turnsTheApp} onFailed={setTurnFailed} onApplied={closeMenu} />,
+        can("castToTv") && !watchOnly && switches.castApplicationId && <SwitchRow key="cast" id="pm-cast" label={t("play.cast.label")} help={t("play.cast.help")} checked={switches.isChromeCasting} onChange={then((on) => set({ isChromeCasting: on }))} />,
         !watchOnly && <ChoiceRow key="measures" id="pm-measures" label={t("play.stats.label")} help={t("play.stats.help")} value={measures}
             options={[["none", t("play.stats.none")], ["compact", t("play.stats.compact")], ["panel", t("play.stats.panel")]]}
-            onChange={(next) => set({ isResourceMonitoringVisible: next === "panel", isCompactStatsVisible: next === "compact" })} />,
+            onChange={then((next) => set({ isResourceMonitoringVisible: next === "panel", isCompactStatsVisible: next === "compact" }))} />,
     ].filter(Boolean);
     // LES INFORMATIONS DU SPECTATEUR SANS COMPTE : ce que la partie dit d'elle ; le menu d'un joueur les a ailleurs (la
     // tuile Reprendre, la page du jeu).
     const info = watchOnly ? [
-        <InfoRow key="console" icon="bi-controller" tone="indigo" label={t("play.info.console")} value={consoleName} />,
-        <InfoRow key="owner" icon="bi-person" tone="green" label={t("play.info.owner")} value={session.owner || ""} />,
-        <InfoRow key="duration" icon="bi-clock" tone="amber" label={t("play.info.duration")} value={playTime || ""} />,
-        <InfoRow key="server" icon="bi-hdd-network" tone="sky" label={t("play.info.server")} value={hostName} />,
+        <InfoRow key="console" icon="bi-controller" label={t("play.info.console")} value={consoleName} />,
+        <InfoRow key="owner" icon="bi-person" label={t("play.info.owner")} value={session.owner || ""} />,
+        <InfoRow key="duration" icon="bi-clock" label={t("play.info.duration")} value={playTime || ""} />,
+        <InfoRow key="server" icon="bi-hdd-network" label={t("play.info.server")} value={hostName} />,
     ] : [];
     // `after` : ce qui se lit sous les lignes d'un groupe (l'avis d'une orientation refusée).
-    const group = (key, title, rows, after = null) => rows.length > 0 && <Section key={key} title={title}><Rows>{rows}</Rows>{after}</Section>;
+    // CHAQUE GROUPE, SA DESCRIPTION ET SON SENS (chantier 81 ; le porteur, 2026-11-25 : « ces modifications s'appliquent aussi
+    // côté front office, sur les panneaux latéraux comme le menu du streaming ») — `play.menuHelp.<clé>`, GROUP_SENSES.
+    const group = (key, title, rows, after = null) => rows.length > 0 && (
+        <Section key={key} title={title} help={t(`play.menuHelp.${key}`)} sense={GROUP_SENSES[key] || "modify"}><Rows>{rows}</Rows>{after}</Section>
+    );
 
     return (
         <>
             <SidePanel label={input.title || session.title || t("play.menu.title")} firstKey="pm-resume" onClose={closeMenu}>
                 <QuickTiles items={tiles} />
-                {/* LES NOTIFICATIONS DE LA PARTIE (chantier 68, Bell.jsx), en tête : toute la partie, la plus récente en haut, 2
-                    par page (le porteur, 2026-11-19) ; une demande en attente se répond ici. TOUJOURS LÀ, même vide (le porteur, 2026-11-19 : « fais
-                    comme sur la page d'accueil ») : sa ligne « Aucune notification. ». Pas pour le spectateur sans compte. */}
+                {/* LES NOTIFICATIONS DE LA PARTIE (chantier 68, Bell.jsx), en tête : les cinq dernières (RecentNotices ; le
+                    porteur, 2026-11-25) ; une demande en attente se répond sur sa ligne. TOUJOURS LÀ, même vide (le porteur,
+                    2026-11-19 : « fais comme sur la page d'accueil ») : sa ligne « Aucune notification. ». Pas pour le spectateur
+                    sans compte. */}
                 {notifications && !watchOnly && (
-                    <Section title={t("play.notifications.title")}>
-                        {notifications.list.length > 0
-                            ? <Listing items={notifications.list} pageSize={2} render={(entry) => <NotificationRow key={entry.id} entry={entry} now={now} nameOf={nameOf} ask={ask} answer={(yes) => act(() => notifications.answer(entry.id, yes))} />} />
-                            : <EmptyState icon="bi-bell" text={t("notifications.none")} />}
+                    <Section title={t("play.notifications.title")} help={t("play.notifications.help")} sense="info">
+                        <RecentNotices limit={5} notices={notifications.list.map((entry) => ({
+                            key: entry.id, changedAt: entry.endedAt || entry.at, endedAt: entry.endedAt,
+                            row: <NotificationRow entry={entry} nameOf={nameOf} answer={(yes) => act(() => notifications.answer(entry.id, yes))} />,
+                        }))} />
                     </Section>
                 )}
-                {watchOnly && <Section title={t("play.menu.info")} help={t("play.info.watchOnly")}><Rows>{info}</Rows></Section>}
+                {watchOnly && <Section title={t("details")} help={t("play.info.watchOnly")} sense="info"><Rows>{info}</Rows></Section>}
                 {group("game", t("play.menu.game"), game)}
+                {/* LE SON, PUIS LA VIDÉO, AVANT LA MANETTE (le porteur, 2026-11-23 : « dans le menu de la session, tu peux mettre
+                    son et vidéo au dessus de la section manette », puis « la section son doit être en haut avant la section
+                    vidéo »). */}
+                {group("sound", t("play.menu.sound"), sound)}
+                {group("picture", t("play.menu.picture"), picture, turnFailed && <OrientationFailed turnsTheApp={turnsTheApp} />)}
                 {group("pad", t("play.menu.controller"), pad)}
                 {group("players", t("play.players.title"), playerRows)}
                 {group("together", t("play.menu.together"), together)}
-                {group("picture", t("play.menu.picture"), picture, turnFailed && <OrientationFailed turnsTheApp={turnsTheApp} />)}
                 {/* SORTIR : les deux gestes qui mettent fin à ce qu'on fait, à part, en bas — loin des réglages qu'on
                     touche en jouant. Remettre à zéro se confirme. */}
                 {group("leave", t("play.menu.leave"), [
                     playing && emulates && extra.reset && (
-                        <NavRow key="reset" id="pm-reset" icon="bi-arrow-counterclockwise" tone="rose" label={t("play.reset.title")} help={t("play.reset.help")} opens="confirm"
+                        <NavRow key="reset" id="pm-reset" icon="bi-arrow-counterclockwise" label={t("play.reset.title")} help={t("play.reset.help")} opens="confirm"
                             onOpen={() => ask({ title: t("play.reset.confirmTitle"), message: t("play.reset.confirmMessage"), confirm: t("play.reset.confirm"), danger: true, onConfirm: () => act(() => extra.reset()) })} />
                     ),
-                    <NavRow key="quit" id="pm-quit" icon="bi-box-arrow-left" tone="rose" label={t("play.menu.quit")} help={t(isWatching ? "play.menu.quitHelpWatching" : "play.menu.quitHelp")} opens="confirm" onOpen={onQuit} />,
+                    <NavRow key="quit" id="pm-quit" icon="bi-box-arrow-left" label={t("play.menu.quit")} help={t(isWatching ? "play.menu.quitHelpWatching" : "play.menu.quitHelp")} opens="confirm" onOpen={onQuit} />,
                 ].filter(Boolean))}
             </SidePanel>
 
@@ -306,19 +378,19 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
                     case "states":
                         return <SaveStates key={name} session={session} saves={extra.saves} context={context} onClose={closePanel} onDone={closeMenu} />;
                     case "disk":
-                        return <DiskPanel key={name} disks={disks} change={extra.disks?.change} context={context} onChange={setDisks} onClose={closePanel} />;
+                        return <DiskPanel key={name} disks={disks} change={extra.disks?.change} context={context} onChange={setDisks} onClose={closePanel} onDone={closeMenu} />;
                     case "cheats":
-                        return <CheatsPanel key={name} cheats={extra.cheats} context={context} onClose={closePanel} />;
+                        return <CheatsPanel key={name} cheats={extra.cheats} context={context} onClose={closePanel} onDone={closeMenu} />;
                     case "invite":
-                        return <InvitePanel key={name} session={session} self={self} ask={ask} context={context} onClose={closePanel} onDone={closeMenu} />;
+                        return <InvitePanel key={name} session={session} self={self} ask={ask} context={context} onClose={closePanel} />;
                     case "keyboard":
                         return <KeyboardPanel key={name} typeText={extra.keyboard?.typeText} context={context} onClose={closePanel} onDone={closeMenu} />;
                     case "video":
-                        return <VideoPanel key={name} switches={switches} set={set} platform={session.platform} onClose={closePanel} />;
+                        return <VideoPanel key={name} switches={switches} set={set} platform={session.platform} onClose={closePanel} onDone={closeMenu} />;
                     case "qr":
                         return (
                             <SidePanel key={name} label={t("play.share.qr")} onClose={closePanel}>
-                                <Section title={t("play.share.qrTitle")} help={t("play.share.qrHelp")}>
+                                <Section title={t("play.share.qrTitle")} help={t("play.share.qrHelp")} sense="modify">
                                     <div className="bg-white rounded-4 p-3 mx-auto gf-qr">
                                         <img className="d-block w-100" src={qrImage(shareUrl)} alt={t("play.share.qr")} />
                                     </div>
@@ -328,7 +400,7 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
                     case "link":
                         return (
                             <SidePanel key={name} label={t("play.share.copyFailedTitle")} firstKey="pk-link-copy" onClose={closePanel}>
-                                <Section title={t("invitations.linkTitle")} help={t("play.share.copyFailedMessage")}>
+                                <Section title={t("invitations.linkTitle")} help={t("play.share.copyFailedMessage")} sense="modify">
                                     <Rows><CopyField id="pk-link" value={shareUrl} /></Rows>
                                 </Section>
                             </SidePanel>
@@ -342,7 +414,7 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
 }
 
 // LES SAUVEGARDES D'ÉTAT DE LA PARTIE : dix emplacements, le premier réservé à « sauvegarder en partant ».
-// Chacun est une entrée (sa vignette, sa date) qui ouvre son panneau — aucun geste sur la ligne (Bricks.jsx) :
+// Chacun est une entrée (sa vignette, sa date) qui ouvre son panneau — aucun geste sur la ligne (bricks/) :
 // sauver ici, ou écraser, charger, chaque remplacement confirmé sur place, et la suppression en bas. Sauver ou
 // charger ferme le menu, pour qu'on voie le jeu repartir.
 function SaveStates({ session, saves, context, onClose, onDone }) {
@@ -392,11 +464,11 @@ function SaveStates({ session, saves, context, onClose, onDone }) {
     return (
         <>
             <SidePanel label={t("play.states.title")} onClose={onClose}>
-                <Section title={t("saves.slotsTitle")} help={t("play.states.help")}>
+                <Section title={t("saves.slotsTitle")} help={t("play.states.help")} sense="modify">
                     {slots === null ? <Note className="mt-0">{t("play.loading")}</Note> : (
                         <Rows>
                             {Array.from({ length: 10 }, (_, slot) => (
-                                <NavRow key={slot} id={`ps-slot-${slot}`} label={nameOf(slot)} help={when(info(slot))} onOpen={() => setOpen(slot)}
+                                <NavRow key={slot} id={`ps-slot-${slot}`} label={nameOf(slot)} help={info(slot)?.exists && info(slot).timestamp ? fact(t("facts.date"), when(info(slot))) : when(info(slot))} onOpen={() => setOpen(slot)}
                                     lead={<SlotThumbnail session={session} slot={slot} info={info(slot)} />} />
                             ))}
                         </Rows>
@@ -405,23 +477,23 @@ function SaveStates({ session, saves, context, onClose, onDone }) {
             </SidePanel>
             {open !== null && (
                 <SidePanel key={open} label={nameOf(open)} subtitle={when(info(open))} firstKey={info(open)?.exists ? "ps-load-ask" : "ps-save"} onClose={() => closeSlot(open)}>
-                    <Section title={t("saves.stateTitle")}>
+                    <Section title={t("saves.stateTitle")} sense="info">
                         <SlotThumbnail session={session} slot={open} info={info(open)} />
                     </Section>
                     {/* Ses gestes en lignes, dans « Plus » (le porteur, 2026-11-13 : un geste orphelin est une ligne) ;
                         charger et écraser se confirment dans la fenêtre de Skeleton. Le premier emplacement s'écrit
                         seul, en quittant la partie : on n'y sauvegarde pas. */}
                     {(info(open)?.exists || open !== 0) && (
-                        <Section title={t("more")}>
+                        <Section title={t("more")} sense="modify">
                             <Rows>
                                 {info(open)?.exists && (
-                                    <NavRow id="ps-load-ask" icon="bi-box-arrow-in-down" tone="teal" label={t("play.states.load")} help={t("play.states.loadConfirm")} opens="confirm"
+                                    <NavRow id="ps-load-ask" icon="bi-box-arrow-in-down" label={t("play.states.load")} help={t("play.states.loadConfirm")} opens="confirm"
                                         onOpen={() => confirmWith({ title: t("play.states.load"), message: t("play.states.loadConfirm"), onConfirm: () => load(open) })} />
                                 )}
                                 {open !== 0 && (info(open)?.exists
-                                    ? <NavRow id="ps-save-ask" icon="bi-floppy" tone="teal" label={t("play.states.overwrite")} help={t("play.states.overwriteConfirm")} opens="confirm"
+                                    ? <NavRow id="ps-save-ask" icon="bi-floppy" label={t("play.states.overwrite")} help={t("play.states.overwriteConfirm")} opens="confirm"
                                         onOpen={() => confirmWith({ title: t("play.states.overwrite"), message: t("play.states.overwriteConfirm"), onConfirm: () => save(open) })} />
-                                    : <NavRow id="ps-save" icon="bi-floppy" tone="teal" label={t("play.states.save")} opens="action" onOpen={() => save(open)} />)}
+                                    : <NavRow id="ps-save" icon="bi-floppy" label={t("play.states.save")} opens="action" onOpen={() => save(open)} />)}
                             </Rows>
                         </Section>
                     )}
@@ -472,10 +544,11 @@ function SlotThumbnail({ session, slot, info }) {
 }
 
 // LE DISQUE INSÉRÉ : optimiste à l'affichage, puis recalé sur ce que l'hôte dit avoir monté.
-function DiskPanel({ disks, change, context, onChange, onClose }) {
+function DiskPanel({ disks, change, context, onChange, onClose, onDone }) {
     const { t } = useTranslation();
     const choose = async (index) => {
         onChange({ ...disks, current: index });
+        onDone();
         const state = await change(index);
 
         if (state?.error) {
@@ -488,7 +561,7 @@ function DiskPanel({ disks, change, context, onChange, onClose }) {
 
     return (
         <SidePanel label={t("play.disk.title")} firstKey={`pd-disk-${disks.current}`} onClose={onClose}>
-            <Section title={t("play.disk.listTitle")}>
+            <Section title={t("play.disk.listTitle")} sense="modify">
                 <Rows>
                     <RadioRow id="pd-disk" help={t("play.disk.help")} value={disks.current} onChange={choose}
                         options={Array.from({ length: disks.count }, (_, index) => ({ value: index, icon: "bi-disc", label: t("play.disk.number", { number: index + 1 }), help: index === disks.current ? t("play.disk.inserted") : null }))} />
@@ -500,8 +573,8 @@ function DiskPanel({ disks, change, context, onChange, onClose }) {
 
 // LES CODES DE TRICHE : enregistrés sur le compte par le moteur (`setCheats`), appliqués en direct.
 // Un code s'ajoute (nom, code) ; chacun est une entrée de la liste qui ouvre son panneau — l'activer, le
-// modifier, le retirer (aucun geste sur la ligne : Bricks.jsx).
-function CheatsPanel({ cheats, context, onClose }) {
+// modifier, le retirer (aucun geste sur la ligne : bricks/).
+function CheatsPanel({ cheats, context, onClose, onDone }) {
     const { t } = useTranslation();
     const [entries, setEntries] = useState(cheats?.initialCheats || []);
     const [values, setValues] = useState({ "pt-name": "", "pt-code": "" });
@@ -538,7 +611,7 @@ function CheatsPanel({ cheats, context, onClose }) {
         <>
             <SidePanel label={t("play.cheats.title")} firstKey="pt-name" onClose={onClose}>
                 <Form props={{ onSubmit: add }}>
-                    <Section title={t("play.cheats.addTitle")} help={t("play.cheats.help")}>
+                    <Section title={t("play.cheats.addTitle")} help={t("play.cheats.help")} sense="modify">
                     <Rows>
                         <TextRow id="pt-name" label={t("play.cheats.name")} context={formContext(values, setValues)} props={{ placeholder: t("play.cheats.namePlaceholder") }} />
                         <TextRow id="pt-code" kind="longtext" label={t("play.cheats.code")} help={t("play.cheats.codeHelp")} context={formContext(values, setValues)}
@@ -550,12 +623,12 @@ function CheatsPanel({ cheats, context, onClose }) {
                     </Rows>
                     </Section>
                 </Form>
-                <Section title={t("play.cheats.list")}>
+                <Section title={t("play.cheats.list")} sense="modify">
                     {entries.length ? (
                         <Rows>
                             {entries.map((entry, index) => (
-                                <NavRow key={index} id={`pt-cheat-${index}`} icon={entry.enabled ? "bi-magic" : "bi-slash-circle"} tone={entry.enabled ? "amber" : "slate"} label={entry.description || entry.code}
-                                    help={`${entry.description ? `${entry.code} · ` : ""}${t(entry.enabled ? "settings.switchOn" : "settings.switchOff")}`} onOpen={() => setOpen(index)} />
+                                <NavRow key={index} id={`pt-cheat-${index}`} icon={entry.enabled ? "bi-magic" : "bi-slash-circle"} label={entry.description || entry.code}
+                                    help={[entry.description ? fact(t("play.cheats.code"), entry.code) : null, fact(t("facts.state"), t(entry.enabled ? "settings.switchOn" : "settings.switchOff"))]} onOpen={() => setOpen(index)} />
                             ))}
                         </Rows>
                     ) : <EmptyState icon="bi-braces" text={t("play.cheats.none")} />}
@@ -564,7 +637,7 @@ function CheatsPanel({ cheats, context, onClose }) {
             {open !== null && entries[open] && (
                 <CheatPanel key={open} entry={entries[open]} pending={pending} onClose={() => closeEntry(open)}
                     onSave={(next) => push(entries.map((item, at) => (at === open ? next : item)), () => closeEntry(open))}
-                    onToggle={(enabled) => push(entries.map((item, at) => (at === open ? { ...item, enabled } : item)))}
+                    onToggle={(enabled) => push(entries.map((item, at) => (at === open ? { ...item, enabled } : item)), onDone)}
                     onDelete={() => push(entries.filter((_, at) => at !== open), () => closeEntry(open))} />
             )}
         </>
@@ -583,13 +656,13 @@ function CheatPanel({ entry: cheat, pending, onClose, onSave, onToggle, onDelete
 
     return (
         <SidePanel label={cheat.description || t("play.cheats.title")} firstKey="pc-enabled" onClose={onClose}>
-            <Section title={t("play.cheats.usageTitle")}>
+            <Section title={t("play.cheats.usageTitle")} sense="info">
                 <Rows>
                     <SwitchRow id="pc-enabled" label={t("play.cheats.apply")} help={t("play.cheats.applyHelp")} checked={Boolean(cheat.enabled)} onChange={onToggle} />
                 </Rows>
             </Section>
             <Form props={{ onSubmit: save }}>
-                <Section title={t("play.cheats.code")}>
+                <Section title={t("play.cheats.code")} sense="modify">
                     <Rows>
                         <TextRow id="pc-code" kind="longtext" label={t("play.cheats.code")} help={t("play.cheats.codeHelp")} context={formContext(values, setValues)} props={{ rows: 3, className: "font-monospace" }} />
                         <SubmitRow>
@@ -607,7 +680,6 @@ function CheatPanel({ entry: cheat, pending, onClose, onSave, onToggle, onDelete
 // peut prendre ou lâcher une manette pendant que le panneau est ouvert. `picks` : ce que fait une ligne touchée (NavRow,
 // `opens`) — demander part aussitôt, passer la manette se confirme.
 // LE TEMPS QUI RESTE avant une échéance, « -HH:MM:SS ».
-const countdown = (until, now) => `-${formatDuration(now, until)}`;
 // Le délai d'une partie où plus personne ne joue (kernel, `unifiedIdleTimeout`) : passé, elle s'arrête.
 const IDLE_STOP_MS = 5 * 60 * 1000;
 
@@ -623,25 +695,26 @@ function playersRows({ players, roster, departed, consoleMax, now, self, t, name
         const owned = !held && !gone && slot === 1 && ownerAway;
         const name = held ? nameOf(held.username) : gone ? nameOf(gone.username) : owned ? nameOf(roster.owner) : t("play.players.nobody");
         const place = t("play.players.place", { slot, max });
-        const help = held ? [place, t("play.players.connected"), formatDuration(held.joinedAt, now)].filter(Boolean).join(" • ")
-            : gone ? [place, t("play.players.disconnected")].join(" • ")
-                : owned ? [place, t("play.players.disconnected"), idleEnd ? countdown(idleEnd, now) : ""].filter(Boolean).join(" • ")
-                    : [place, t("play.players.free")].join(" • ");
+        const seat = fact(t("facts.place"), place);
+        const help = held ? [seat, fact(t("facts.state"), t("play.players.connected")), fact(t("play.info.duration"), formatDuration(held.joinedAt, now))]
+            : gone ? [seat, fact(t("facts.state"), t("play.players.disconnected"))]
+                : owned ? [seat, fact(t("facts.state"), t("play.players.disconnected")), idleEnd ? fact(t("facts.comeBack"), formatDuration(now, idleEnd)) : null]
+                    : [seat, fact(t("facts.state"), t("play.players.free"))];
         const icon = held ? "bi-person-fill" : gone || owned ? "bi-person-dash" : "bi-controller";
         const tone = held ? "green" : "slate";
         const askable = canAsk && held && held.username !== self && !held.lentTo;
         const joinable = canAsk && !held && !gone && !owned && freeSlots > 0;
 
         if (askable) {
-            rows.push(<NavRow key={slot} id={`pm-player-${slot}`} icon={icon} tone={tone} label={name} help={help} opens="confirm"
+            rows.push(<NavRow key={slot} id={`pm-player-${slot}`} icon={icon} label={name} help={help} opens="confirm"
                 onOpen={() => ask({ title: t("play.players.askTitle"), message: t("play.players.askMessage", { name }), confirm: t("play.players.ask"), onConfirm: () => askForPad(held.username) })} />);
         } else if (joinable) {
             // Une place libre : « > » (le porteur, 2026-11-19 : « "?" quand c'est déjà pris par un joueur, et ">" quand
             // c'est un free slot ») ; elle se confirme quand même.
-            rows.push(<NavRow key={slot} id={`pm-player-${slot}`} icon={icon} tone={tone} label={name} help={help} opens="page"
+            rows.push(<NavRow key={slot} id={`pm-player-${slot}`} icon={icon} label={name} help={help} opens="page"
                 onOpen={() => ask({ title: t("play.players.joinTitle"), message: t("play.players.joinMessage"), confirm: t("play.join"), onConfirm: join })} />);
         } else {
-            rows.push(<InfoRow key={slot} icon={icon} tone={tone} label={name} value={help} />);
+            rows.push(<InfoRow key={slot} icon={icon} label={name} value={help} />);
         }
     }
 
@@ -652,33 +725,30 @@ function playersRows({ players, roster, departed, consoleMax, now, self, t, name
 // une demande réglée avec son issue.
 // Son sous-titre, quand il nomme quelqu'un, se lit à l'affichage (`subtitle(nameOf)`) : le nom affiché arrive parfois après
 // la notification.
-// QUAND ELLE EST ARRIVÉE, à la fin du sous-titre (le porteur, 2026-11-19 : « rajoute un time ago […] il y a trop de
-// notifications qui se ressemblent ») : « il y a 5 secondes », dans la langue de l'interface, à la seconde.
-function ago(at, now, language) {
-    const seconds = Math.max(0, Math.round((now - at) / 1000));
-    const format = new Intl.RelativeTimeFormat(language, { numeric: "always" });
+// PLUS DE « IL Y A 5 SECONDES » (le porteur, 2026-11-25 : « tu peux enlever le timer. Ça ne sert plus à rien ») : une
+// notification finie part d'elle-même 1 min 30 après (RecentNotices).
+const OUTCOME_TONES = { accepted: "success", refused: "danger", expired: "secondary" };
 
-    return seconds < 60 ? format.format(-seconds, "second") : seconds < 3600 ? format.format(-Math.floor(seconds / 60), "minute") : format.format(-Math.floor(seconds / 3600), "hour");
-}
-
-function NotificationRow({ entry, now, nameOf, ask, answer }) {
-    const { t, i18n } = useTranslation();
-    const outcome = entry.asks && entry.state !== "pending" ? t(`play.notifications.state.${entry.state}`) : "";
+function NotificationRow({ entry, nameOf, answer }) {
+    const { t } = useTranslation();
     const subtitle = typeof entry.subtitle === "function" ? entry.subtitle(nameOf) : entry.subtitle;
-    const help = [subtitle, outcome, ago(entry.at, now, i18n.language)].filter(Boolean).join(" • ");
 
+    // UNE DEMANDE EN ATTENTE SE RÉPOND SUR SA LIGNE (le porteur, 2026-11-25) : Ignorer, puis son geste.
     if (entry.asks && entry.state === "pending") {
         return (
-            <NavRow id={`pm-notification-${entry.id}`} icon="bi-controller" tone="green" label={entry.title} help={help} opens="confirm"
-                onOpen={() => ask({ ...entry.confirm, confirm: entry.confirm.confirmLabel, onConfirm: () => answer(true), onCancel: () => answer(false) })} />
+            <RequestRow id={`pm-notification-${entry.id}`} label={entry.title} help={subtitle} acceptLabel={entry.confirm.confirmLabel}
+                onIgnore={() => answer(false)} onAccept={() => answer(true)} />
         );
     }
 
-    return <InfoRow icon={entry.asks ? "bi-controller" : "bi-bell"} tone={entry.asks ? "green" : "sky"} label={entry.title} value={help} />;
+    // RÉGLÉE, SON ISSUE EST UN ÉTAT : en pastille colorée, comme un statut (acceptée, refusée, sans réponse).
+    return entry.asks
+        ? <InfoRow icon="bi-controller" label={entry.title} value={t(`play.notifications.state.${entry.state}`)} pill={OUTCOME_TONES[entry.state] || "secondary"} help={subtitle} />
+        : <InfoRow icon="bi-bell" label={entry.title} value={subtitle} />;
 }
 
 // INVITER UN MEMBRE : une notification (en direct s'il est connecté, en push sinon) qui ouvre la partie.
-function InvitePanel({ session, self, ask, context, onClose, onDone }) {
+function InvitePanel({ session, self, ask, context, onClose }) {
     const { t } = useTranslation();
     const [members, setMembers] = useState(null);
 
@@ -699,7 +769,6 @@ function InvitePanel({ session, self, ask, context, onClose, onDone }) {
             confirm: t("play.invite.send"),
             onConfirm: async () => {
                 const answer = await sendInvite(readToken(), member.username, session.platform, session.consoleId, session.reference, session.id);
-                onDone();
                 context.toast.open(t(answer.ok ? "play.invite.sent" : "play.invite.failed", { name }), { variant: answer.ok ? "success" : "error" });
             },
         });
@@ -708,7 +777,7 @@ function InvitePanel({ session, self, ask, context, onClose, onDone }) {
 
     return (
         <SidePanel label={t("play.invite.title")} onClose={onClose}>
-            <Section title={t("members.listTitle")} help={t("play.invite.help")}>
+            <Section title={t("members.listTitle")} help={t("play.invite.help")} sense="modify">
             {members === null ? <Note className="mt-0">{t("play.loading")}</Note> : visible.length ? (
                 <Rows>
                     {visible.map((member) => <NavRow key={member.username} id={`pi-${member.username}`} lead={<Avatar name={member.display_name || member.username} />} label={member.display_name || member.username} help={member.username} opens="confirm" onOpen={() => invite(member)} />)}
@@ -741,7 +810,7 @@ function KeyboardPanel({ typeText, context, onClose, onDone }) {
                 event.preventDefault();
                 text && send();
             } }}>
-                <Section title={t("play.keyboard.text")} help={t("play.keyboard.help")}>
+                <Section title={t("play.keyboard.text")} help={t("play.keyboard.help")} sense="modify">
                 <Rows>
                     <TextRow id="pk-text" label={t("play.keyboard.text")} help={t("play.keyboard.textHelp")} value={text} onChange={(value) => setText(value || "")}
                         props={{ id: "pk-text", autoCapitalize: "off", spellCheck: false }} />
@@ -775,7 +844,7 @@ function videoChoiceLabel(t, switches) {
 // ou un type de partie sans paliers (le rétro, le téléphone).
 const singleReason = (platform) => (platform === "streamex" ? "single" : platform === "remoteplay" ? "singleConsole" : "singleKind");
 
-function VideoPanel({ switches, set, platform, onClose }) {
+function VideoPanel({ switches, set, platform, onClose, onDone }) {
     const { t } = useTranslation();
     const streams = switches.videoStreams;
     const single = streams.length < 2;
@@ -795,10 +864,13 @@ function VideoPanel({ switches, set, platform, onClose }) {
 
     return (
         <SidePanel label={t("play.video.title")} firstKey={`pv-quality-${Math.max(0, options.findIndex((option) => option.value === value))}`} onClose={onClose}>
-            <Section title={t("play.video.streamTitle")}>
+            <Section title={t("play.video.streamTitle")} sense="modify">
                 {options.length > 0 && (
                     <Rows>
-                        <RadioRow id="pv-quality" help={t("play.video.short")} value={value} onChange={(next) => set({ videoQuality: next })} options={options} disabled={single} />
+                        <RadioRow id="pv-quality" help={t("play.video.short")} value={value} onChange={(next) => {
+                            set({ videoQuality: next });
+                            onDone();
+                        }} options={options} disabled={single} />
                     </Rows>
                 )}
                 {single ? <Note>{t(`play.video.${singleReason(platform)}`)}</Note> : current && <Note>{t("play.video.now", { stream: streamLabel(t, current) })}</Note>}

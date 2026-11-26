@@ -143,15 +143,17 @@ func Supported(console string) bool {
 }
 
 // Game — la sauvegarde d'un jeu, dans un rangement. `Title` : ce que la
-// sauvegarde dit de son jeu, puis, nommée par la bibliothèque
-// (metadata.NameSaves), le titre de son jeu ; `Reference` et `Disk` disent
-// alors quel jeu, et sur quel disque interne ("" : la bibliothèque).
+// sauvegarde dit de son jeu, puis, nommée (metadata.NameSaves), le titre de
+// son jeu ; `Reference` et `Disk` disent quel jeu de la bibliothèque, et sur
+// quel disque interne ("" : la bibliothèque) ; `Path`, son chemin depuis le
+// dossier des jeux (« ps5/Astro Bot »), gardé même quand il est parti.
 type Game struct {
 	Console   string    `json:"console"`
 	ID        string    `json:"id"`
 	Title     string    `json:"title,omitempty"`
 	Reference string    `json:"reference,omitempty"`
 	Disk      string    `json:"disk,omitempty"`
+	Path      string    `json:"path,omitempty"`
 	UpdatedAt time.Time `json:"updatedAt"`
 	SizeBytes int64     `json:"sizeBytes"`
 }
@@ -552,6 +554,9 @@ func Backup(savesRoot, username, console, id string) error {
 	if err := replaceGame(to, staging, console, id); err != nil {
 		return err
 	}
+	if err := carryKnown(principal, local, console, id, id); err != nil {
+		return err
+	}
 
 	return ForgetNote(local, NoteItem{Kind: KindStreamex, Console: console, ID: id})
 }
@@ -593,8 +598,11 @@ func Restore(savesRoot, username, source, console, id string) error {
 			return err
 		}
 	}
+	if err := replaceGame(to, staging, console, id); err != nil {
+		return err
+	}
 
-	return replaceGame(to, staging, console, id)
+	return carryKnown(from, principal, console, id, id)
 }
 
 // Remove — la sauvegarde d'un jeu, effacée d'un rangement, avec sa note.

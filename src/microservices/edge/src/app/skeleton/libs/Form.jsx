@@ -226,18 +226,17 @@ Form.Group = function ({ label = null, helpText = null, hidden = () => false, pr
     );
 };
 
+// LA BULLE D'UN CHAMP INVALIDE, TOUJOURS OUVERTE (GameFlex, le porteur 2026-11-25 : « si tu peux le faire afficher
+// directement sans le mouse over (hover) ce serait mieux » ; « je pensais plus à faire afficher le popup plutôt que de le
+// remplacer ») : la bulle de Skeleton, qui ne s'ouvrait qu'au survol — sur un téléphone, jamais. Elle ne porte que le
+// message d'une ERREUR (les champs ne passent que `ruleset.isInvalid() ? message : null`) : la raison d'un champ
+// désactivé se dit dans sa description, pas en rouge.
 Form.Feedback = function ({ children, message = null, isFeedbackOnLeft = false, arrowPositions = {}, props = {} }) {
-    const [isFeedbackVisible, setFeedbackVisible] = useState();
-
     return (
-        <div
-            onMouseEnter={() => setFeedbackVisible(true)}
-            onMouseLeave={() => setFeedbackVisible(false)}
-            {...props}
-        >
+        <div {...props}>
             <div className="position-relative">
                 {message && (
-                    <div style={isFeedbackVisible ? { display: 'block' } : { display: 'none' }}>
+                    <div>
                         <div style={{
                             position: 'absolute',
                             bottom: '-2px',
@@ -297,7 +296,7 @@ Form.Input = function ({ name, context, type = "text", isFeedbackOnLeft = false,
     }
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={isFeedbackOnLeft}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={isFeedbackOnLeft}>
             <bs.Form.Control
                 type={type}
                 name={name}
@@ -344,7 +343,7 @@ Form.SearchText = function ({ name, context, freeText = true, callback = null, p
     const [selectedItem, setSelectedItem] = useState(-1);
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={false}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={false}>
             <div style={{ position: 'relative' }}>
                 <bs.Form.Control
                     type="text"
@@ -916,7 +915,7 @@ Form.Date = function ({ name, context, minDate = null, maxDate = null, styles = 
     }
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={true}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={true}>
             <div
                 className={`border rounded p-2 ${ruleset.isInvalid() ? 'border-danger' : ''}`}
                 style={styles}
@@ -949,7 +948,7 @@ Form.DateRange = function ({ name, context, minDate = null, maxDate = null, styl
     const dateComponents = Form.DateRange.components({ name, context });
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={true}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={true}>
             <div className={`border rounded p-2 ${ruleset.isInvalid() ? 'border-danger' : ''}`} style={styles}>
                 <div className="d-flex gap-2">
                     <div style={{ width: '50%' }}>
@@ -1135,7 +1134,7 @@ Form.Time = function ({ name, context, minTime = null, maxTime = null, PM = fals
     }
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={true}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={true}>
             <div style={styles}>
                 <Form.ClockTime
                     name={name}
@@ -1163,7 +1162,7 @@ Form.TimeRange = function ({ name, context, minTime = null, maxTime = null, PM =
     const components = Form.TimeRange.components({ name, context });
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={true}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={true}>
             <div className="d-flex gap-2 align-items-center justify-content-start" style={styles}>
                 <components.Left
                     minTime={minTime}
@@ -1250,7 +1249,7 @@ Form.Datetime = function ({ name, context, minDate = null, maxDate = null, minTi
     }
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={true}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={true}>
             <div
                 className={`border rounded p-2 ${ruleset.isInvalid() ? 'border-danger' : ''}`}
                 style={styles}
@@ -1292,7 +1291,7 @@ Form.DatetimeRange = function ({ name, context, minDate = null, maxDate = null, 
     const time = Form.TimeRange.components({ name: `${name}_time`, context });
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={true}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={true}>
             <div className={`border rounded p-2 ${ruleset.isInvalid() ? 'border-danger' : ''}`} style={styles}>
                 <div className="d-flex gap-2">
                     <div style={{ width: '50%' }}>
@@ -1338,7 +1337,7 @@ Form.Select = function ({ name, context, options = [], props = {} }) {
     }
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={false} arrowPositions={{ right: '39px' }}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={false} arrowPositions={{ right: '39px' }}>
             <bs.Form.Select
                 name={name}
                 value={context.values[name] || ""}
@@ -1378,7 +1377,9 @@ Form.Select = function ({ name, context, options = [], props = {} }) {
     );
 };
 
-Form.Longtext = function ({ name, context, props = { autoComplete: "off" } }) {
+// `counter` (GameFlex, le porteur 2026-11-25) : le nombre de caractères sous le champ, à gauche — `true` le nombre seul,
+// un nombre « 42 / 120 », en rouge au-delà. La limite elle-même reste au Ruleset du champ.
+Form.Longtext = function ({ name, context, counter = null, props = { autoComplete: "off" } }) {
     let ruleset = Ruleset.fallback();
 
     if (context?.rulesets?.[name]) {
@@ -1394,7 +1395,7 @@ Form.Longtext = function ({ name, context, props = { autoComplete: "off" } }) {
     }
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={false}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={false}>
             <bs.Form.Control
                 as="textarea"
                 name={name}
@@ -1408,6 +1409,16 @@ Form.Longtext = function ({ name, context, props = { autoComplete: "off" } }) {
                 }}
                 {...props}
             />
+            {counter !== null && counter !== false && (() => {
+                const length = String(context.values[name] || "").length;
+                const over = typeof counter === "number" && length > counter;
+
+                return (
+                    <small className={`d-block text-start mt-1 ${over ? "text-danger" : "text-body-secondary"}`} aria-live="polite">
+                        {typeof counter === "number" ? `${length} / ${counter}` : length}
+                    </small>
+                );
+            })()}
         </Form.Feedback>
     );
 };
@@ -1428,7 +1439,7 @@ Form.Checkbox = function ({ name, context, label = null, props = {} }) {
     }
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={true}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={true}>
             <bs.Form.Label htmlFor={`checkbox-${name}`} className="d-flex align-items-center">
                 <bs.Form.Check
                     id={`checkbox-${name}`}
@@ -1464,7 +1475,7 @@ Form.Multicheckbox = function ({ name, context, options = [], props = {} }) {
     }
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={true}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={true}>
             {(options || []).map((option, i) => (
                 <bs.Form.Check
                     id={`checkbox-${name}-${i}`}
@@ -1506,7 +1517,7 @@ Form.Radio = function ({ name, context, options = [], props = {} }) {
     }
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={true}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={true}>
             {options.map((option, i) => (
                 <bs.Form.Check
                     key={i}
@@ -1541,7 +1552,7 @@ Form.SkeletonRadio = function ({ name, context, options = [], props = {} }) {
     }
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={true}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={true}>
             <div className="d-flex flex-column gap-2">
                 {(options || []).map(({ icon, title, subtitle }) => {
                     return (
@@ -1608,7 +1619,7 @@ Form.SkeletonCheckbox = function ({ name, context, options = [], props = {} }) {
     }
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={true}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={true}>
             <div className="d-flex flex-column gap-2">
                 {(options || []).map(({ icon, title, subtitle }) => {
                     return (
@@ -1687,7 +1698,7 @@ Form.Range = function ({ name, context, min = 0, max = 100, step = 1, variant = 
     const progress = `${((Number(context.values[name] || min) - min) / (max - min)) * 100}%`;
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={false}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={false}>
             <div className={`form-range-group ${ruleset.isDisabled() ? "opacity-50" : ""}`}>
                 <bs.Form.Range
                     name={name}
@@ -1732,7 +1743,7 @@ Form.Switch = function ({ name, context, helpText = "", props = {} }) {
     }
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={true}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={true}>
             <bs.Form.Label htmlFor={`switch-${name}`} className="d-flex align-items-center">
                 <bs.Form.Check
                     id={`switch-${name}`}
@@ -1769,7 +1780,7 @@ Form.SkeletonSwitch = function ({ name, context, onText = "On", offText = "Off",
     }
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={true}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={true}>
             <label
                 className={`d-flex align-items-center gap-3 py-2 ${reverse ? "flex-row" : "flex-row-reverse"} ${ruleset.isDisabled() ? "opacity-50 pe-none" : ""}`}
                 style={{ cursor: ruleset.isDisabled() ? 'not-allowed' : 'pointer' }}
@@ -1784,6 +1795,7 @@ Form.SkeletonSwitch = function ({ name, context, onText = "On", offText = "Off",
                         checked={context.values[name] || false}
                         disabled={ruleset.isDisabled()}
                         onChange={e => context.setValues({ ...context.values, [name]: e.target.checked })}
+                        {...props}
                     />
                     <span className="switch-track" data-on={onText} data-off={offText}></span>
                 </div>
@@ -1815,7 +1827,7 @@ Form.SkeletonSwitchMode = function ({ name, context, options = [], label = null,
     }
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={true}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={true}>
             <div className="d-flex align-items-center gap-3 py-2">
                 <div
                     className={`d-inline-flex p-1 gap-1 text-center ${ruleset.isDisabled() ? "opacity-50 pe-none" : ""}`}
@@ -2007,7 +2019,7 @@ Form.File = function ({ name, context, maxFiles = 1, maxFileSize = null, accept 
     }, [files]);
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={false}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={false}>
             <div
                 className={ruleset.isDisabled() ? 'opacity-50 pe-none' : ''}
                 style={ruleset.isInvalid() ? { outline: '1px solid var(--bs-danger)', borderRadius: 'var(--bs-border-radius)' } : {}}
@@ -2353,7 +2365,7 @@ Form.SkeletonSmallForm = function ({ name, context, fields = [], maxItems = null
     };
 
     return (
-        <Form.Feedback message={ruleset.message} isFeedbackOnLeft={false}>
+        <Form.Feedback message={ruleset.isInvalid() ? ruleset.message : null} isFeedbackOnLeft={false}>
             <div
                 className={ruleset.isDisabled() ? "opacity-50 pe-none" : ""}
                 style={ruleset.isInvalid() ? { outline: '1px solid var(--bs-danger)', borderRadius: 'var(--bs-border-radius)' } : {}}

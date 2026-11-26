@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { SessionStream, OVERLAY_HIDDEN } from "../../engine/stream/shared/SessionStream.jsx";
+import { useVoiceChat } from "../../engine/stream/shared/hooks/use-voice-chat.js";
 import { useRetrogamingInput } from "../../engine/stream/retrogaming/hooks/use-retrogaming-input.js";
 import { useStreamexInput } from "../../engine/stream/streamex/hooks/use-streamex-input.js";
 import { useRemotePlayInput } from "../../engine/stream/remoteplay/hooks/use-remoteplay-input.js";
@@ -11,7 +12,7 @@ import { useAdaptiveQuality } from "../../engine/stream/shared/hooks/use-adaptiv
 import { useChildSessionWs, CHILD_BEAT_INTERVAL_MS } from "../../engine/stream/shared/hooks/use-child-session-ws.js";
 import { markActivity, takeActivityStamp } from "../../engine/stream/shared/activity-store.js";
 import { createSwitchesStore } from "../../engine/stream/shared/switches-store.js";
-import { requestCastSession, sendSessionIdToReceiver, endCastSession, getCurrentCastSession } from "../../engine/stream/onscreen/cast.js";
+import { castErrorKey, castSender } from "../../engine/stream/onscreen/cast.js";
 import { TouchpadOnlyContext, PAD_COLUMN_WIDTH, PadLookContext } from "../../engine/stream/onscreen/Controllers.jsx";
 import { standbyConsole, stopSession } from "../../engine/api/spawnSessions.js";
 import { setGameInputSuspended } from "../../engine/libs/gameInput.js";
@@ -25,15 +26,19 @@ import { requestFullscreen, exitFullscreen, isFullscreen, isMobileDevice, isTabl
 import { getStoredUsername, useConsoles } from "../../libs/sharedHost.js";
 import { PAD_LOOK } from "../../libs/padLook.jsx";
 import { useMenuHotkey } from "../../libs/play.js";
+import { menuGestureOf } from "../../engine/libs/gameInput.js";
 import { can } from "../../libs/capabilities.js";
+import { fetchCastSettings } from "../../libs/api.js";
 import { focusElement, suspendNavigation, useScreenInput } from "../../libs/input.js";
 import PlayLaunch from "./Launch.jsx";
 import { Bell, useSessionNotifications } from "./Bell.jsx";
 import PlayNotices from "./Notices.jsx";
 import { StatsPanel, StatsStrip, STATS_STRIP_HEIGHT } from "./Stats.jsx";
 import { PlayMenu, useQuitFlow } from "./Menu.jsx";
+import ShaderSpinner from "../../engine/stream/onscreen/ShaderSpinner.jsx";
 import Skeleton from "../../skeleton/skeleton.js";
 import { useButton } from "../../libs/ui.js";
+import { fact } from "../../libs/format.js";
 
 // LA PAGE DE JEU — sa coquille (StreamingShell de la webapp, chantier 52) : la vidéo, l'écran du
 // lancement, la manette à l'écran, le menu et la sortie, au style du launcher. Le MOTEUR est celui de
@@ -201,6 +206,9 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     // LA LISTE DES JOUEURS DU MENU (chantier 68) : les manettes de la console, son propriétaire, et depuis quand plus
     // personne ne joue (le décompte de son arrêt).
     const [roster, setRoster] = useState({ maxPlayers: 0, owner: "", idleSince: null });
+    // LA VOIX (chantier 71) : ce que la file en dit à son dernier état (`{ room, you }`) ; null avant le premier.
+    const [voiceState, setVoiceState] = useState(null);
+    const voiceResultRef = useRef(null);
     // UN JOUEUR PARTI RESTE 30 SECONDES « DÉCONNECTÉ » DANS LA LISTE (le porteur, 2026-11-19 : « c'est juste pour la
     // visuelle. En backend on ne change rien […] pour éviter de voir la disparition d'un joueur d'un seul coup ») — sa
     // place est déjà libre pour le child ; il revient, sa ligne redevient la sienne.
@@ -329,6 +337,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         setBroadcastPlayers(players);
         setBroadcastWatchers(message.watchers ?? []);
         setRoster({ maxPlayers, owner: message.owner || "", idleSince: message.idleSince || null });
+        setVoiceState({ room: message.voice || null, you: message.you?.voice || null });
         const pending = message.pendingHandover;
         setSlotRequests(pending && pending.to === user?.username ? [{ from: pending.from, expiresAt: Date.parse(pending.expiresAt) || Date.now() + 30000 }] : []);
 
@@ -355,8 +364,11 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
             setGameExited(Boolean(message.gameExited));
             setSessionEnded(true);
         }
-        // Les allées et venues, une fois chacune ; le premier état ne dit rien.
-        const presents = new Set([...(message.players ?? []).map((player) => player.username), ...(message.watchers ?? [])].filter(Boolean));
+        // Les allées et venues, une fois chacune ; le premier état ne dit rien. SEULEMENT CELLES DES JOUEURS (le porteur,
+        // 2026-11-26 : « quand une personne rejoint une partie comme watcher il ne faut pas mettre de notification ou même
+        // le son. Si c'est un watcher ça reste silencieux ») : un spectateur qui arrive ou part ne dit rien ; il ne compte
+        // qu'en prenant une manette.
+        const presents = new Set((message.players ?? []).map((player) => player.username).filter(Boolean));
         const before = presentsRef.current;
         presentsRef.current = presents;
 
@@ -364,7 +376,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
             for (const username of presents) {
                 if (!before.has(username) && username !== user?.username) {
                     const slot = players.find((player) => player.username === username)?.slot;
-                    notify({ title: t("play.notifications.joined"), subtitle: (nameOf) => (slot ? t("play.notifications.nameSlot", { name: nameOf(username), slot, max: maxPlayers }) : nameOf(username)) });
+                    notify({ title: t("play.notifications.joined"), subtitle: (nameOf) => (slot ? [nameOf(username), fact(t("facts.place"), t("play.players.place", { slot, max: maxPlayers }))] : nameOf(username)) });
                 }
             }
             for (const username of before) {
@@ -392,6 +404,12 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         });
     }, [context, t]);
 
+    // LA COMPILATION DES SHADERS (chantier 50) : la rafale en cours, poussée par la partie ; la roue en haut à gauche.
+    const [shaders, setShaders] = useState({ compiling: false, count: 0 });
+    const handleChildShaders = useCallback((message) => {
+        setShaders({ compiling: Boolean(message.compiling), count: Number(message.count) || 0 });
+    }, []);
+
     // LA RÉPONSE À MA DEMANDE, une notification : « Demande pour récupérer la manette 3/4 — François a refusé ».
     const settleOutgoing = useCallback((subtitle) => {
         const outgoing = outgoingRef.current;
@@ -401,6 +419,12 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     }, [notify, t]);
 
     const handleChildResult = useCallback((message) => {
+        // LA VOIX a son propre résultat (use-voice-chat.js) : jamais un refus de manette.
+        if (message.action?.startsWith("voice-")) {
+            voiceResultRef.current?.(message);
+
+            return;
+        }
         if (message.status === "received") {
             if (outgoingRef.current?.to === message.from) {
                 settleOutgoing((nameOf) => t("play.notifications.accepted", { name: nameOf(message.from) }));
@@ -445,6 +469,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         onState: handleChildState,
         onResult: handleChildResult,
         onAfk: handleChildAfk,
+        onShaders: handleChildShaders,
         onConnect: () => {
             setFacadeOpen(true);
             clearTimeout(authorityGoneRef.current);
@@ -479,6 +504,23 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
             };
         }
     }, [childSocket, user?.username, roster.maxPlayers, settleOutgoing, t]);
+
+    // LA VOIX DE LA PARTIE (chantier 71) : un compte qui joue ou regarde, jamais le spectateur sans compte (la file ne le
+    // connaît pas). Un geste refusé se dit en toast.
+    const voiceIntent = useCallback((action, target) => childSocket.intent(action, target), [childSocket]);
+    const voiceRefused = useCallback((reason) => {
+        const reasons = {
+            denied: "play.voice.refused.denied",
+            missing: "play.voice.refused.missing",
+            busy: "play.voice.refused.busy",
+            "too many open microphones": "play.voice.refused.full",
+            "nobody else is in the conversation": "play.voice.refused.alone",
+            "the conversation is not open to spectators": "play.voice.refused.closed",
+        };
+        context.toast.open(t(reasons[reason] || "play.voice.refused.other"), { variant: "warning", duration: 6000 });
+    }, [context, t]);
+    const voice = useVoiceChat({ enabled: !watchOnly && Boolean(viewerUsername), state: voiceState, intent: voiceIntent, screenRef, onRefused: voiceRefused });
+    voiceResultRef.current = voice.onResult;
 
     // « JE SUIS VENU JOUER » (?play=1) — une INTENTION, jamais un droit : un join ordinaire, que le
     // child valide comme n'importe quel autre. Elle attend la réponse du CHILD lui-même
@@ -563,7 +605,9 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         // `false` posé d'office faisait sortir l'effet du plein écran ci-dessous (exitFullscreen) dès le montage, et une
         // partie lancée depuis un launcher en plein écran (Réglages › Application) le quittait.
         isFullscreen: isFullscreen(),
-        isChromeCasting: Boolean(getCurrentCastSession()),
+        isChromeCasting: castSender(can("castLink")).casting(),
+        // L'IDENTIFIANT DU RÉCEPTEUR GOOGLE CAST (Réglages › Google Cast) : vide, le menu ne propose pas le cast.
+        castApplicationId: "",
         isResourceMonitoringVisible: false,
         isCompactStatsVisible: false,
         // LES FLUX DE LA PARTIE (chantier 58) : le choix de cet écran (« auto » ou un indice), puis ce que dit la
@@ -718,19 +762,46 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         return () => events.forEach((name) => document.removeEventListener(name, sync));
     }, [switchesStore]);
 
+    // L'identifiant du récepteur, lu une fois à l'ouverture de la partie, là où l'hôte sait caster (`castToTv`).
     useEffect(() => {
-        if (switches.isChromeCasting) {
-            if (getCurrentCastSession()) {
-                sendSessionIdToReceiver(session.id).catch(() => {});
-
-                return;
+        if (watchOnly || !can("castToTv")) {
+            return undefined;
+        }
+        let cancelled = false;
+        fetchCastSettings().then((answer) => {
+            if (!cancelled && answer.ok) {
+                switchesStore.setValues({ castApplicationId: answer.item?.application_id || "" });
             }
-            requestCastSession().then(() => sendSessionIdToReceiver(session.id)).catch((error) => {
-                context.toast.open(error.message || t("play.castFailed"), { variant: "error" });
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [switchesStore, watchOnly]);
+
+    // LE CAST : l'envoyeur que l'hôte déclare (`castLink` : celui de l'application Android, sinon le SDK de Chrome ;
+    // cast.js). Arrêté hors de la page (la notification du téléphone), l'interrupteur le suit.
+    useEffect(() => {
+        if (watchOnly || !can("castToTv")) {
+            return undefined;
+        }
+
+        return castSender(can("castLink")).watch((casting) => switchesStore.setValues({ isChromeCasting: casting }));
+    }, [switchesStore, watchOnly]);
+
+    useEffect(() => {
+        const sender = castSender(can("castLink"));
+
+        if (switches.isChromeCasting) {
+            sender.start(switches.castApplicationId, session.id).catch((error) => {
+                // Le sélecteur de TV refermé sans choix n'est pas une erreur.
+                if (!error.cancelled) {
+                    context.toast.open(t(castErrorKey(error)), { variant: "error" });
+                }
                 switchesStore.setValues({ isChromeCasting: false });
             });
-        } else if (getCurrentCastSession()) {
-            endCastSession();
+        } else if (sender.casting()) {
+            sender.stop();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [switches.isChromeCasting]);
@@ -819,6 +890,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         quitHandledRef.current = true;
 
         if (freezes && input.extraProps?.pause) {
+            freezingRef.current = true;
             await input.extraProps.pause();
         }
         if (ends) {
@@ -855,6 +927,26 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         setPanels([]);
     }, []);
     const openMenu = useCallback(() => setPanels((open) => (open.length ? open : ["menu"])), []);
+    // LA RÉTRO SE MET EN PAUSE LE MENU OUVERT (le porteur, 2026-11-26 : « Un appui et ça met la console en pause et ouvre le
+    // menu ») — la partie du propriétaire qui joue ; elle reprend le menu refermé, et en partant si le jeu continue. Partir
+    // « en pause » la laisse figée (`freezingRef`, quit).
+    const freezingRef = useRef(false);
+    const menuOpen = panels.length > 0;
+    const pausesWithMenu = (session.platform === "retrogaming" || session.platform === "device") && !isWatching && myRole === "owner";
+    const extraRef = useRef(input.extraProps);
+    extraRef.current = input.extraProps;
+    useEffect(() => {
+        if (!menuOpen || !pausesWithMenu || !extraRef.current?.pause) {
+            return undefined;
+        }
+        extraRef.current.pause();
+
+        return () => {
+            if (!freezingRef.current) {
+                extraRef.current?.resume?.();
+            }
+        };
+    }, [menuOpen, pausesWithMenu]);
     // QUITTER : la fenêtre de confirmation de Skeleton, le choix dans son corps (Menu.jsx, useQuitFlow) ; Quitter quitte.
     // D'autres jouent : un autre compte tient une manette, ou la mienne est prêtée.
     const me = session.me?.username || user?.username;
@@ -911,7 +1003,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     // du launcher n'ont rien à faire ici.
     useScreenInput({ back: () => {}, switchTab: () => {}, select: () => {}, start: () => {} });
 
-    const menuHold = useMenuHotkey(overlays === 0, openMenu);
+    const menuHold = useMenuHotkey(overlays === 0, openMenu, session.platform);
     const panelsRef = useRef(panels);
     panelsRef.current = panels;
 
@@ -956,6 +1048,13 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
             toggle: () => switchesStore.setValues({ isFastForwarding: !switches.isFastForwarding, ...(!switches.isFastForwarding ? { isRewinding: false } : {}) }),
         },
     ].filter(Boolean);
+    // LE MICRO À L'ÉCRAN, à côté (chantier 71 ; le porteur, 2026-11-23 : « comme les boutons rewind et fast forward, le
+    // micro doit être sur l'écran aussi ») : la même bascule que « Mon micro » du menu, pour qui peut parler.
+    const micButton = voice.you?.usable && voice.microphone ? {
+        key: "pw-mic", icon: voice.you.mic ? "bi-mic-fill" : "bi-mic-mute", label: t("play.voice.mic"), on: Boolean(voice.you.mic),
+        toggle: () => voice.toggleMic(!voice.you.mic),
+    } : null;
+    const leftButtons = [...timeTravel, micButton].filter(Boolean);
 
     // L'écran du lancement couvre la page jusqu'à l'image du JEU et la manette prête ; un spectateur
     // (pas de lancement) attend l'image seule — il n'aura jamais de manette.
@@ -966,7 +1065,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     useEffect(() => {
         if (hasPhysicalGamepad && drivesPad && !launchShown && !gamepadTipRef.current) {
             gamepadTipRef.current = true;
-            context.toast.open(t("play.gamepadTip"), { duration: 6000 });
+            context.toast.open(t(menuGestureOf(session.platform).holdMs > 0 ? "play.gamepadTipChord" : "play.gamepadTipHome"), { duration: 6000 });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [hasPhysicalGamepad, drivesPad, launchShown]);
@@ -986,6 +1085,9 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
                     // de rôle redémarrait la vidéo. Lu du jeton, au premier rendu.
                     hasInput={Boolean(viewerUsername)}
                     username={viewerUsername}
+                    // La voix : la page d'un compte la négocie ; « Entendre les autres » coupé, ses voix se taisent ici.
+                    voice={!watchOnly && Boolean(viewerUsername)}
+                    voicesMuted={!voice.hearing}
                     launch={launchId}
                     muted={!switches.isSoundEnabled}
                     onVideoSilent={setVideoSilent}
@@ -1051,6 +1153,16 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
                     }}>
                         <StatsStrip stats={statsResult} session={session} layout="landscape" />
                     </div>
+                )}
+
+                {/* LA ROUE DE COMPILATION DES SHADERS (chantier 50) : en haut à gauche, sous la vue discrète en paysage, à côté
+                    de la colonne de la manette à l'écran quand elle est là. */}
+                {shaders.compiling && shaders.count > 0 && (
+                    <ShaderSpinner count={shaders.count} style={{
+                        zIndex: 1001,
+                        top: `calc(max(8px, env(safe-area-inset-top)) + ${!isPortraitLayout && switches.isCompactStatsVisible && statsResult ? 28 : 0}px)`,
+                        left: !isPortraitLayout && isPadVisible ? `${PAD_COLUMN_WIDTH}px` : "max(8px, env(safe-area-inset-left))",
+                    }} />
                 )}
 
                 {/* LA SOURIS, pour une plateforme qui a un bureau derrière (streamex) : une surface par-dessus
@@ -1129,9 +1241,9 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
                     […] des boutons enfoncés, et quand ils sont activés on doit voir ce qui se passe sur l'écran ») : deux
                     bascules rondes (aria-pressed), pleines tant qu'elles agissent — elles ne s'estompent pas alors —, sinon
                     elles suivent le bouton du menu. Les pouvoirs du propriétaire qui joue, quand le cœur les a. */}
-                {timeTravel.length > 0 && (
+                {leftButtons.length > 0 && (
                     <div className="position-absolute d-flex gap-2" style={{ bottom: menuButtonStyle.bottom, left: "max(12px, env(safe-area-inset-left))", zIndex: 1003 }}>
-                        {timeTravel.map(({ key, icon, label, on, toggle }) => (
+                        {leftButtons.map(({ key, icon, label, on, toggle }) => (
                             <button key={key} type="button" className="play-round" data-nav data-key={key} aria-pressed={on} aria-label={label} title={label}
                                 style={{ opacity: on || menuButtonVisible ? 1 : MENU_IDLE_OPACITY }} onClick={toggle}>
                                 <i className={`bi ${icon}`}></i>
@@ -1204,6 +1316,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
                         onQuit={openQuit}
                         watchOnly={watchOnly}
                         hostName={hostName}
+                        voice={voice}
                     />
                 )}
         </div>

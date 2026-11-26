@@ -5,10 +5,8 @@ package config
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -65,14 +63,13 @@ type Config struct {
 	// Switch2Image — Lichii, l'émulateur de la Nintendo Switch 2 (#644).
 	Switch2Image string
 	PS3Image     string
-	XboxImage       string
-	PS4Image        string
-	PS5Image        string
-	WiiUImage       string
-	Xbox360Image    string
-	// Les ports PC (chantier 40) : une image par port.
-	PortsZelda64RecompImage string
-	KeyTestImage            string
+	XboxImage    string
+	PS4Image     string
+	PS5Image     string
+	WiiUImage    string
+	Xbox360Image string
+	// Les ports PC (chantiers 40, 72) : une image par port.
+	PortsAstroHybridImage string
 	// Retro sessions — the retrogaming image runs its own binary in
 	// standalone child mode (GAMEFLEX_CHILD_PORT), one container per session,
 	// with the sections it reads bind-mounted under StorageDir.
@@ -92,14 +89,6 @@ type Config struct {
 	CredentialURL string
 
 	PortRange string
-
-	MaxPlayers int
-
-	// ConsoleLimits caps concurrent running containers PER CONSOLE — each
-	// emulator's footprint differs (Eden is light, RPCS3 heavy), so the
-	// budget is a per-console map parsed from GAMEFLEX_CONSOLE_LIMITS
-	// ("switch:2,ps3:3,xbox:5").
-	ConsoleLimits map[string]int
 
 	// PublicHost is what play/watch URLs are built against — the host the
 	// browser can reach, not a container-internal address.
@@ -147,36 +136,14 @@ type Config struct {
 	// installation, pas seulement à la nôtre. Remplace GAMEFLEX_APP_DOWNLOAD.
 	Staging bool
 
-	// MirrorURL — LE MIROIR (chantier 29, le porteur, 2026-10-24) : un lien
-	// EXTERNE, sans rapport avec le projet, où l'administrateur télécharge
-	// lui-même des émulateurs, des firmwares, des correctifs et des
-	// paramètres, rangés comme son dossier (`cores/`, `bios/`, `patches/`,
-	// `params/`). Déclaré à la page par /api/v1/capabilities, qui le montre
-	// dans ces quatre écrans ; le serveur ne le lit jamais — ni liste, ni
-	// téléchargement. Vide : rien ne le propose.
-	MirrorURL string
-
 	// StackName — le nom que portent les conteneurs de partie de CETTE pile
 	// (étiquette gameflex.stack). Deux piles sur un même démon Docker — la
 	// pile de dev et une pile de release à côté, ou deux instances — n'adoptent,
 	// ne balaient et ne listent que les leurs. Voir internal/docker/stack.go.
 	StackName string
-
-	// GPU — l'adresse PCI du GPU que reçoivent les parties (GAMEFLEX_GPU,
-	// « 0000:c4:00.0 ») quand le serveur en a plusieurs ; vide, le premier
-	// dans l'ordre PCI. Voir sessionstatus.SessionGPU (chantier 39).
-	GPU string
 }
 
 func Load() (Config, error) {
-	maxPlayers, err := strconv.Atoi(getenv("GAMEFLEX_MAX_PLAYERS", "4"))
-	if err != nil {
-		return Config{}, fmt.Errorf("GAMEFLEX_MAX_PLAYERS: %w", err)
-	}
-	mirror, err := mirrorURL(getenv("GAMEFLEX_MIRROR_URL", ""))
-	if err != nil {
-		return Config{}, err
-	}
 	// L'ADRESSE DE CETTE MACHINE, SANS VALEUR PAR DÉFAUT (chantier 29, C1).
 	// Le défaut était l'adresse de la machine de développement : une
 	// installation qui oubliait la variable joignait ses parties chez nous, ou
@@ -187,39 +154,32 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		StorageHostDir:          getenv("GAMEFLEX_STORAGE_PATH", ""),
-		ProfilesHostDir:         getenv("GAMEFLEX_PROFILES_HOST_DIR", ""),
-		SwitchImage:             getenv("GAMEFLEX_SWITCH_IMAGE", "streamex-switch:latest"),
-		SwitchEdenImage:         getenv("GAMEFLEX_SWITCH_EDEN_IMAGE", "streamex-switch-eden:latest"),
-		Switch2Image:            getenv("GAMEFLEX_SWITCH2_IMAGE", "streamex-switch2:latest"),
-		PS3Image:                getenv("GAMEFLEX_PS3_IMAGE", "streamex-ps3:latest"),
-		XboxImage:               getenv("GAMEFLEX_XBOX_IMAGE", "streamex-xbox:latest"),
-		PS4Image:                getenv("GAMEFLEX_PS4_IMAGE", "streamex-ps4:latest"),
-		PS5Image:                getenv("GAMEFLEX_PS5_IMAGE", "streamex-ps5:latest"),
-		WiiUImage:               getenv("GAMEFLEX_WIIU_IMAGE", "streamex-wiiu:latest"),
-		Xbox360Image:            getenv("GAMEFLEX_XBOX360_IMAGE", "streamex-xbox360:latest"),
-		PortsZelda64RecompImage: getenv("GAMEFLEX_PORTS_ZELDA64RECOMP_IMAGE", "streamex-ports-zelda64recomp:latest"),
-		// Vide par défaut : keytest ne part pas dans une installation publique,
-		// et une console sans image configurée n'est pas installée (#136).
-		KeyTestImage:         getenv("GAMEFLEX_KEYTEST_IMAGE", ""),
-		StackName:            getenv("GAMEFLEX_STACK_NAME", "gameflex"),
-		GPU:                  getenv("GAMEFLEX_GPU", ""),
-		RetroImage:           getenv("GAMEFLEX_RETRO_IMAGE", "gameflex-retrogaming:latest"),
-		RemoteplayImage:      getenv("GAMEFLEX_REMOTEPLAY_IMAGE", "gameflex-remoteplay:latest"),
-		RemoteplayControlURL: getenv("GAMEFLEX_REMOTEPLAY_CONTROL_URL", "http://localhost:10205"),
-		CredentialURL:        getenv("GAMEFLEX_CREDENTIAL_URL", ""),
-		PortRange:            getenv("GAMEFLEX_PORT_RANGE", "9000-9100"),
-		MaxPlayers:           maxPlayers,
-		ConsoleLimits:        parseConsoleLimits(getenv("GAMEFLEX_CONSOLE_LIMITS", "switch:2,ps3:3,xbox:5,keytest:3")),
-		PublicHost:           publicHost,
-		JWTSecret:            getenv("GAMEFLEX_JWT_SECRET", ""),
-		InternalSecret:       os.Getenv("GAMEFLEX_INTERNAL_SECRET"),
-		GatewayURL:           os.Getenv("GAMEFLEX_GATEWAY_URL"),
-		GatewayControlURL:    os.Getenv("GAMEFLEX_GATEWAY_CONTROL_URL"),
-		EdgePort:             os.Getenv("GAMEFLEX_PORT"),
-		KernelURL:            getenv("GAMEFLEX_KERNEL_URL", "http://127.0.0.1:10201"),
-		Staging:              staging(os.Getenv("GAMEFLEX_STAGING")),
-		MirrorURL:            mirror,
+		StorageHostDir:        getenv("GAMEFLEX_STORAGE_PATH", ""),
+		ProfilesHostDir:       getenv("GAMEFLEX_PROFILES_HOST_DIR", ""),
+		SwitchImage:           getenv("GAMEFLEX_SWITCH_IMAGE", "streamex-switch:latest"),
+		SwitchEdenImage:       getenv("GAMEFLEX_SWITCH_EDEN_IMAGE", "streamex-switch-eden:latest"),
+		Switch2Image:          getenv("GAMEFLEX_SWITCH2_IMAGE", "streamex-switch2:latest"),
+		PS3Image:              getenv("GAMEFLEX_PS3_IMAGE", "streamex-ps3:latest"),
+		XboxImage:             getenv("GAMEFLEX_XBOX_IMAGE", "streamex-xbox:latest"),
+		PS4Image:              getenv("GAMEFLEX_PS4_IMAGE", "streamex-ps4:latest"),
+		PS5Image:              getenv("GAMEFLEX_PS5_IMAGE", "streamex-ps5:latest"),
+		WiiUImage:             getenv("GAMEFLEX_WIIU_IMAGE", "streamex-wiiu:latest"),
+		Xbox360Image:          getenv("GAMEFLEX_XBOX360_IMAGE", "streamex-xbox360:latest"),
+		PortsAstroHybridImage: getenv("GAMEFLEX_PORTS_ASTROHYBRID_IMAGE", "streamex-ports-astrohybrid:latest"),
+		StackName:             getenv("GAMEFLEX_STACK_NAME", "gameflex"),
+		RetroImage:            getenv("GAMEFLEX_RETRO_IMAGE", "gameflex-retrogaming:latest"),
+		RemoteplayImage:       getenv("GAMEFLEX_REMOTEPLAY_IMAGE", "gameflex-remoteplay:latest"),
+		RemoteplayControlURL:  getenv("GAMEFLEX_REMOTEPLAY_CONTROL_URL", "http://localhost:10205"),
+		CredentialURL:         getenv("GAMEFLEX_CREDENTIAL_URL", ""),
+		PortRange:             getenv("GAMEFLEX_PORT_RANGE", "9000-9100"),
+		PublicHost:            publicHost,
+		JWTSecret:             getenv("GAMEFLEX_JWT_SECRET", ""),
+		InternalSecret:        os.Getenv("GAMEFLEX_INTERNAL_SECRET"),
+		GatewayURL:            os.Getenv("GAMEFLEX_GATEWAY_URL"),
+		GatewayControlURL:     os.Getenv("GAMEFLEX_GATEWAY_CONTROL_URL"),
+		EdgePort:              os.Getenv("GAMEFLEX_PORT"),
+		KernelURL:             getenv("GAMEFLEX_KERNEL_URL", "http://127.0.0.1:10201"),
+		Staging:               staging(os.Getenv("GAMEFLEX_STAGING")),
 	}, nil
 }
 
@@ -232,21 +192,6 @@ func staging(raw string) bool {
 	}
 
 	return false
-}
-
-// mirrorURL — le miroir est une adresse http(s), ou rien : la page en fait un
-// lien, et une autre forme (`javascript:`, un chemin) n'a rien à y faire. Une
-// valeur fausse arrête le démarrage plutôt que de disparaître sans le dire.
-func mirrorURL(raw string) (string, error) {
-	if raw == "" {
-		return "", nil
-	}
-	parsed, err := url.Parse(raw)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-		return "", fmt.Errorf("GAMEFLEX_MIRROR_URL : une adresse http(s) attendue, pas %q", raw)
-	}
-
-	return raw, nil
 }
 
 // SavesHostDir — `saves/` du dossier, côté hôte.
@@ -264,22 +209,4 @@ func getenv(key, fallback string) string {
 		return value
 	}
 	return fallback
-}
-
-// parseConsoleLimits reads "console:max,console:max" — invalid entries are
-// skipped, an unset console simply stays unlimited.
-func parseConsoleLimits(raw string) map[string]int {
-	limits := make(map[string]int)
-	for _, entry := range strings.Split(raw, ",") {
-		console, maxText, found := strings.Cut(strings.TrimSpace(entry), ":")
-		if !found {
-			continue
-		}
-		maximum, err := strconv.Atoi(strings.TrimSpace(maxText))
-		if err != nil || maximum < 0 {
-			continue
-		}
-		limits[strings.TrimSpace(console)] = maximum
-	}
-	return limits
 }

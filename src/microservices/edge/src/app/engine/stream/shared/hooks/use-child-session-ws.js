@@ -30,7 +30,7 @@ function childBase(sessionId) {
     return `/api/v1/sessions/${encodeURIComponent(sessionId)}/child`;
 }
 
-export function useChildSessionWs({ sessionId, token, enabled, onState, onResult, onAfk, onConnect, onDisconnect }) {
+export function useChildSessionWs({ sessionId, token, enabled, onState, onResult, onAfk, onShaders, onConnect, onDisconnect }) {
     const socketIdRef = useRef(null);
     const socketRef = useRef(null);
     // The tab can learn its gateway viewer id BEFORE the socket opens — on
@@ -40,8 +40,8 @@ export function useChildSessionWs({ sessionId, token, enabled, onState, onResult
     const pendingViewerIdRef = useRef(null);
     // Callbacks live in a ref so an unstable inline identity from the caller
     // cannot reconnect the socket on every render.
-    const callbacksRef = useRef({ onState, onResult, onAfk, onConnect, onDisconnect });
-    callbacksRef.current = { onState, onResult, onAfk, onConnect, onDisconnect };
+    const callbacksRef = useRef({ onState, onResult, onAfk, onShaders, onConnect, onDisconnect });
+    callbacksRef.current = { onState, onResult, onAfk, onShaders, onConnect, onDisconnect };
 
     useEffect(() => {
         socketIdRef.current = null;
@@ -103,6 +103,12 @@ export function useChildSessionWs({ sessionId, token, enabled, onState, onResult
             // child qui exclut, à l'échéance, et lui seul.
             if (message.type === "afk") {
                 callbacksRef.current.onAfk?.(message);
+            }
+
+            // LA COMPILATION DES SHADERS (chantier 50) : l'émulateur compile (`compiling`, `count` déjà compilés dans
+            // la rafale) ou a fini ; la page dessine la roue (ShaderSpinner).
+            if (message.type === "shaders") {
+                callbacksRef.current.onShaders?.(message);
             }
         };
 

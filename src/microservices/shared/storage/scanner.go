@@ -130,13 +130,39 @@ func ScanConvention(source Source, base string) ([]Game, error) {
 	return found, nil
 }
 
+// TreeSize — le poids d'une arborescence d'une source ; un sous-dossier
+// illisible compte pour zéro. Un listage par dossier.
+func TreeSize(source Source, dir string) int64 {
+	entries, _ := source.List(dir)
+	var total int64
+	for _, entry := range entries {
+		if isHidden(entry.Name) {
+			continue
+		}
+		if entry.Dir {
+			total += TreeSize(source, joinPath(dir, entry.Name))
+		} else {
+			total += entry.Size
+		}
+	}
+
+	return total
+}
+
 // folderGame — un dossier sous une console, qui EST un jeu et porte son nom.
 //
 // Ce qui se lance est le fichier le plus haut de sa racine (un .m3u avant un
 // .cue, un .cue avant un .bin, voir layerOf) parmi ceux que la console
 // accepte ; sans aucun, le dossier lui-même — un invité de bureau sait ouvrir
-// un dossier (GlibcGuest). La taille est celle de sa racine : en descendre
-// les sous-dossiers coûterait un aller-retour chacun sur un partage.
+// un dossier (GlibcGuest).
+//
+// LA TAILLE EST CELLE DE TOUT LE DOSSIER (#808, 2026-11-23). Elle n'était que
+// celle de sa racine, pour épargner un aller-retour par sous-dossier sur un
+// partage : un jeu PS4 ou PS5 déballé range presque tout dans ses
+// sous-dossiers, et *Richman 11* sur un kDrive affichait 30,4 Mo pour 3,4 Go.
+// Le kDrive ne donne pas la taille d'un dossier (0) : il faut le parcourir —
+// quatorze listages, six secondes, pour celui-là. Le scan d'une ressource se
+// fait en fond.
 func folderGame(source Source, kind, consoleID, dir string) Game {
 	game := Game{
 		Console: consoleID,
@@ -159,7 +185,12 @@ func folderGame(source Source, kind, consoleID, dir string) Game {
 	}
 	launch := ""
 	for _, entry := range entries {
-		if entry.Dir || isHidden(entry.Name) {
+		if isHidden(entry.Name) {
+			continue
+		}
+		if entry.Dir {
+			game.Size += TreeSize(source, joinPath(dir, entry.Name))
+
 			continue
 		}
 		game.Files = append(game.Files, entry.Name)

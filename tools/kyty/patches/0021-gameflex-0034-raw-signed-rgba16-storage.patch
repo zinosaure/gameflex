@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:26 +0000
+Subject: [PATCH] gameflex 0034: raw signed rgba16 storage
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+une image de calcul en entiers signés 16 bits à quatre canaux
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0034.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/generate_version.cmake                                   | 5 +++++
+ src/graphics/shader/recompiler/ir/ShaderIR.h                 | 2 ++
+ .../shader/recompiler/ir/passes/ResourceMaterialization.cpp  | 5 ++++-
+ 3 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/src/generate_version.cmake b/src/generate_version.cmake
+index 6edcb15a..329ed782 100644
+--- a/src/generate_version.cmake
++++ b/src/generate_version.cmake
+@@ -56,4 +56,9 @@ if(GRAPHICS_SOURCE_DIR)
+ 		string(SHA256 KYTY_SHADER_STORE_STAMP "${store_digests}")
+ 	endif()
+ endif()
++# GameFlex: 0034 only translates what used to stop Kyty, so the records stored before it stay valid.
++# Any other change to these sources gives another stamp, and a new store.
++if(KYTY_SHADER_STORE_STAMP STREQUAL "bf9f6220764c26d849fdc7e2b13e9eea5492ca0bccb658855448164ac6d215be")
++	set(KYTY_SHADER_STORE_STAMP "1a2216d3d966cf7b1b6e8ec85cd3a0a1a0f2115d9453cbf36d9a6c909aa85b7d")
++endif()
+ configure_file("${INPUT_FILE}" "${OUTPUT_FILE}")
+diff --git a/src/graphics/shader/recompiler/ir/ShaderIR.h b/src/graphics/shader/recompiler/ir/ShaderIR.h
+index d2a89cf3..644afc7f 100644
+--- a/src/graphics/shader/recompiler/ir/ShaderIR.h
++++ b/src/graphics/shader/recompiler/ir/ShaderIR.h
+@@ -181,6 +181,8 @@ RawSignedStorageFormat(const ImageResource& image, Prospero::BufferFormat format
+ 		return Prospero::BufferFormat::k32UInt;
+ 	if (format == Prospero::BufferFormat::k16SInt && !image.read && !image.atomic)
+ 		return Prospero::BufferFormat::k16UInt;
++	if (format == Prospero::BufferFormat::k16_16_16_16SInt && !image.read && !image.atomic)
++		return Prospero::BufferFormat::k16_16_16_16UInt;
+ 	return Prospero::BufferFormat::kInvalid;
+ }
+ 
+diff --git a/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp b/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp
+index b3884139..3573185c 100644
+--- a/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp
++++ b/src/graphics/shader/recompiler/ir/passes/ResourceMaterialization.cpp
+@@ -1011,7 +1011,10 @@ static bool BuildResourceSpecialization(const ResourcePlan& program, ResourceSna
+ 		}
+ 		const auto raw_sint_format = RawSignedStorageFormat(base, format);
+ 		const bool raw_sint_storage = raw_sint_format != Prospero::BufferFormat::kInvalid;
+-		if (raw_sint_format == Prospero::BufferFormat::k16UInt) image.conversion_format = format;
++		if (raw_sint_format == Prospero::BufferFormat::k16UInt ||
++		    raw_sint_format == Prospero::BufferFormat::k16_16_16_16UInt) {
++			image.conversion_format = format;
++		}
+ 		// An unconverted storage view applies its swizzle only to stores, which drop the channels
+ 		// its format lacks, so a swizzle that only fills those is the identity. Indirect table
+ 		// candidates keep theirs: a table with filtered accesses requires equal swizzles.

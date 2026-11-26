@@ -23,7 +23,7 @@ func TestAStreamexSessionKeepsItsLibraryReference(t *testing.T) {
 	if got := launchReference("switch", "Crash Bandicoot", crash); got != reference {
 		t.Fatalf("lancé par son titre : %q, attendu %q", got, reference)
 	}
-	if got := launchReference(consoles.PortsID, "Majora's Mask", catalog.Game{RelPath: "n64/Majora's Mask.z64"}); got != "" {
+	if got := launchReference(consoles.PortsID, "Astro Bot", catalog.Game{RelPath: "ps5/Astro Bot"}); got != "" {
 		t.Fatalf("un port natif : %q", got)
 	}
 

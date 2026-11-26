@@ -1,0 +1,138 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 23:36:06 +0000
+Subject: [PATCH] gameflex 0068: a texture binding survives images registered
+ elsewhere
+
+The binding cache of gameflex 0066 was emptied by any image the texture
+cache registered or freed, anywhere: a game that creates a few images an
+image left it missing most of the time (the texture lookups kept 8 % of the
+command thread in Astro Bot, down from 12 %).
+
+The texture cache keeps a generation per 1 MiB block of guest memory,
+hashed, grown for the blocks under an image when it is registered or
+freed. A cached binding holds the sum over the blocks of the memory it
+describes; it stays right while that sum is unchanged, since no counter
+ever decreases.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ .../host_gpu/renderer/cache/textureCache.cpp  | 20 +++++++++++++++++--
+ .../host_gpu/renderer/cache/textureCache.h    | 11 +++++++---
+ .../renderer/pipeline/descriptors.cpp         | 10 ++++++----
+ src/graphics/host_gpu/renderer/render.h       |  4 ++--
+ 4 files changed, 34 insertions(+), 11 deletions(-)
+
+diff --git a/src/graphics/host_gpu/renderer/cache/textureCache.cpp b/src/graphics/host_gpu/renderer/cache/textureCache.cpp
+index d125790e..bc7a79f9 100644
+--- a/src/graphics/host_gpu/renderer/cache/textureCache.cpp
++++ b/src/graphics/host_gpu/renderer/cache/textureCache.cpp
+@@ -233,7 +233,23 @@ void TextureCache::RegisterImage(ImageId id) {
+ 	image.registered = true;
+ 	image.lru_id     = m_lru_cache.Insert(id, m_gc_tick);
+ 	m_total_used_memory += image.AccountedSize();
+-	m_generation++;
++	TouchGenerations(image.info.data.address, image.info.data.size);
++}
++
++void TextureCache::TouchGenerations(uint64_t address, uint64_t size) noexcept {
++	const uint64_t last = (address + size - 1) >> GenerationBlockBits;
++	for (uint64_t block = address >> GenerationBlockBits; block <= last; block++) {
++		m_block_generations[block & (GenerationBlocks - 1u)]++;
++	}
++}
++
++uint64_t TextureCache::RegionGeneration(uint64_t address, uint64_t size) const noexcept {
++	uint64_t       sum  = 0;
++	const uint64_t last = (address + size - 1) >> GenerationBlockBits;
++	for (uint64_t block = address >> GenerationBlockBits; block <= last; block++) {
++		sum += m_block_generations[block & (GenerationBlocks - 1u)];
++	}
++	return sum;
+ }
+ 
+ void TextureCache::UnregisterImage(ImageId id) {
+@@ -255,7 +271,7 @@ void TextureCache::UnregisterImage(ImageId id) {
+ 	m_lru_cache.Free(image.lru_id);
+ 	m_total_used_memory -= image.AccountedSize();
+ 	image.registered = false;
+-	m_generation++;
++	TouchGenerations(image.info.data.address, image.info.data.size);
+ }
+ 
+ void TextureCache::DeleteImage(ImageId id) {
+diff --git a/src/graphics/host_gpu/renderer/cache/textureCache.h b/src/graphics/host_gpu/renderer/cache/textureCache.h
+index 7a2b9d61..09afdfb7 100644
+--- a/src/graphics/host_gpu/renderer/cache/textureCache.h
++++ b/src/graphics/host_gpu/renderer/cache/textureCache.h
+@@ -58,8 +58,9 @@ public:
+ 	// description finds it again as long as the cache registers or frees nothing (Generation).
+ 	[[nodiscard]] ImageId       FindImage(ImageDesc& desc, bool exact_format = false,
+ 	                                      bool* exclusive = nullptr);
+-	// Grows whenever an image is registered or freed: what FindImage returns may change then, not before.
+-	[[nodiscard]] uint64_t      Generation() const noexcept { return m_generation; }
++	// Grows whenever an image over a block of that memory is registered or freed: what FindImage returns for a
++	// description over it may change then, not before. A sum over 1 MiB blocks (hashed): equal sums, no change.
++	[[nodiscard]] uint64_t      RegionGeneration(uint64_t address, uint64_t size) const noexcept;
+ 	// An image FindImage found before, bound again: what FindImage does once it holds the image.
+ 	void                        TouchFoundImage(ImageId id, const ImageDesc& desc,
+ 	                                            uint32_t metadata_base_layer);
+@@ -277,7 +278,11 @@ private:
+ 	BufferCache&                                      m_buffer_cache;
+ 	Common::SlotVector<Image>                         m_slot_images;
+ 	ImagePageTable                                    m_image_page_table;
+-	uint64_t                                          m_generation = 0;
++	static constexpr uint32_t                         GenerationBlockBits = 20;
++	static constexpr uint32_t                         GenerationBlocks    = 1u << 16u;
++	std::vector<uint32_t>                             m_block_generations =
++	    std::vector<uint32_t>(GenerationBlocks);
++	void                                              TouchGenerations(uint64_t address, uint64_t size) noexcept;
+ 	Common::LeastRecentlyUsedCache<ImageId, uint64_t> m_lru_cache;
+ 	std::unordered_set<ImageId>                       m_download_images;
+ 	std::mutex                                        m_write_back_mutex;
+diff --git a/src/graphics/host_gpu/renderer/pipeline/descriptors.cpp b/src/graphics/host_gpu/renderer/pipeline/descriptors.cpp
+index f90540dc..e7e8e45d 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/descriptors.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/descriptors.cpp
+@@ -510,12 +510,13 @@ TextureBinding RenderExecutor::ResolveTexture(const ShaderRecompiler::IR::ImageR
+ 			counter.unclamped = true;
+ 		}
+ 	}
+-	// Found before, for this descriptor and this shader resource, with nothing registered or freed since: the
+-	// same image. Heap descriptors depend on what is mapped: they are resolved every time.
++	// Found before, for this descriptor and this shader resource, with nothing registered or freed over that
++	// memory since: the same image. Heap descriptors depend on what is mapped: they are resolved every time.
+ 	const TextureBindingKey key {value.dwords, &resource};
+ 	if (!resource.heap) {
+ 		if (const auto found = m_texture_bindings.find(key); found != m_texture_bindings.end()) {
+-			if (found->second.generation == texture_cache.Generation()) {
++			const auto& data = found->second.desc.info.data;
++			if (found->second.generation == texture_cache.RegionGeneration(data.address, data.size)) {
+ 				const auto& cached = found->second;
+ 				texture_cache.TouchFoundImage(cached.found_id, cached.desc, cached.metadata_base_layer);
+ 				return {cached.image_id, nullptr, cached.desc};
+@@ -692,7 +693,8 @@ TextureBinding RenderExecutor::ResolveTexture(const ShaderRecompiler::IR::ImageR
+ 			m_texture_bindings.clear();
+ 		}
+ 		m_texture_bindings.insert_or_assign(
+-		    key, CachedTextureBinding {found_id, id, desc, metadata_base_layer, texture_cache.Generation()});
++		    key, CachedTextureBinding {found_id, id, desc, metadata_base_layer,
++		                               texture_cache.RegionGeneration(desc.info.data.address, desc.info.data.size)});
+ 	}
+ 	return {id, nullptr, std::move(desc)};
+ }
+diff --git a/src/graphics/host_gpu/renderer/render.h b/src/graphics/host_gpu/renderer/render.h
+index 7b89716c..0315be5c 100644
+--- a/src/graphics/host_gpu/renderer/render.h
++++ b/src/graphics/host_gpu/renderer/render.h
+@@ -221,8 +221,8 @@ private:
+ 	// The texture bound for a descriptor, found once. ResolveTexture decodes the descriptor, computes the
+ 	// image's layout and searches the cache by pages at every binding of every draw (12 % of the command
+ 	// thread in Astro Bot), for bindings that repeat image after image: the same descriptor, for the same
+-	// shader resource, binds the same image as long as the texture cache registered or freed nothing since
+-	// (its generation), when that image was alone over its memory.
++	// shader resource, binds the same image as long as the texture cache registered or freed nothing over
++	// the memory it describes since (the region's generation), when that image was alone over its memory.
+ 	struct TextureBindingKey {
+ 		std::array<uint32_t, 8>                     dwords;
+ 		const ShaderRecompiler::IR::ImageResource* resource;

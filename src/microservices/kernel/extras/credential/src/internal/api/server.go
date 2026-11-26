@@ -32,10 +32,12 @@ type Server struct {
 	// pairing — les modes découverte et les codes d'appairage (chantier 60,
 	// pairing.go), en mémoire.
 	pairing *pairing
+	// mfa — les connexions qui attendent leur code, et la clé des secrets (mfa.go, chantier 80).
+	mfa *mfaChallenges
 }
 
 func NewServer(config config.Config, db *sql.DB, registry *presence.Registry, pushClient *web_push.Client) *Server {
-	server := &Server{config: config, db: db, presence: registry, web_push: pushClient, mux: http.NewServeMux(), accounts: newAccountsHub(), logins: newLoginLimiter(), pairing: newPairing(systemClock{})}
+	server := &Server{config: config, db: db, presence: registry, web_push: pushClient, mux: http.NewServeMux(), accounts: newAccountsHub(), logins: newLoginLimiter(), pairing: newPairing(systemClock{}), mfa: newMfaChallenges()}
 	server.routes()
 	return server
 }
@@ -58,6 +60,16 @@ func (server *Server) routes() {
 	// répondait 405, sans un seul en-tête Access-Control.
 	server.mux.HandleFunc("OPTIONS /api/v1/auth/login", handleAuthPreflight)
 	server.mux.HandleFunc("POST /api/v1/auth/login", server.handleLogin)
+	// LA DOUBLE AUTHENTIFICATION (chantier 80, mfa.go) : le second temps de la connexion, puis les gestes du titulaire.
+	server.mux.HandleFunc("OPTIONS /api/v1/auth/login/mfa", handleAuthPreflight)
+	server.mux.HandleFunc("POST /api/v1/auth/login/mfa", server.handleLoginMfa)
+	server.mux.HandleFunc("GET /api/v1/auth/mfa", server.withUser(server.handleMfaState))
+	server.mux.HandleFunc("POST /api/v1/auth/mfa/setup", server.withUser(server.handleMfaSetup))
+	server.mux.HandleFunc("POST /api/v1/auth/mfa/enable", server.withUser(server.handleMfaEnable))
+	server.mux.HandleFunc("POST /api/v1/auth/mfa/disable", server.withUser(server.handleMfaDisable))
+	server.mux.HandleFunc("POST /api/v1/auth/mfa/recovery", server.withUser(server.handleMfaRecovery))
+	server.mux.HandleFunc("GET /api/v1/auth/mfa/policy", server.withUser(server.withAdmin(server.handleMfaPolicy)))
+	server.mux.HandleFunc("PUT /api/v1/auth/mfa/policy", server.withUser(server.withAdmin(server.handleMfaPolicy)))
 	server.mux.HandleFunc("OPTIONS /api/v1/auth/me", handleAuthPreflight)
 
 	// Le pré-vol de TOUT ce que la page de streaming demande à un hôte.
@@ -99,6 +111,7 @@ func (server *Server) routes() {
 	// qui a rejoint (chantier 55, member_links.go).
 	server.mux.HandleFunc("POST /api/v1/users/{id}/invitation", server.withUser(server.withAdmin(server.handleNewMemberLink)))
 	server.mux.HandleFunc("POST /api/v1/users/{id}/reset", server.withUser(server.withAdmin(server.handleResetMember)))
+	server.mux.HandleFunc("POST /api/v1/users/{id}/mfa/reset", server.withUser(server.withAdmin(server.handleMfaReset)))
 
 	// Profile data (history, mappings).
 	server.mux.HandleFunc("GET /api/v1/history", server.withUser(server.handleListHistory))
@@ -147,9 +160,9 @@ func (server *Server) routes() {
 	// lit dans son profil (pas dans /auth/me, ouverte aux autres origines). Le
 	// kernel l'échange contre une session, par le plan interne : jamais un
 	// navigateur.
-	server.mux.HandleFunc("PATCH /api/v1/users/{id}/token", server.withUser(server.withAdmin(server.handleUpdateAccountToken)))
-	server.mux.HandleFunc("POST /api/v1/users/{id}/token/regenerate", server.withUser(server.withAdmin(server.handleRegenerateAccountToken)))
 	server.mux.HandleFunc("GET /api/v1/auth/me/token", server.withUser(server.handleMyAccountToken))
+	server.mux.HandleFunc("PATCH /api/v1/auth/me/token", server.withUser(server.handleUpdateMyAccountToken))
+	server.mux.HandleFunc("POST /api/v1/auth/me/token/regenerate", server.withUser(server.handleRegenerateMyAccountToken))
 	// MES FAVORIS (favorites.go ; le porteur, 2026-11-16) : ceux du compte connecté, sur tous ses appareils.
 	server.mux.HandleFunc("GET /api/v1/auth/me/favorites", server.withUser(server.handleListFavorites))
 	server.mux.HandleFunc("POST /api/v1/auth/me/favorites", server.withUser(server.handleAddFavorite))
@@ -209,6 +222,9 @@ func (server *Server) routes() {
 	server.mux.HandleFunc("PUT /api/v1/metadata-services/{service}", server.withUser(server.withAdmin(server.handlePutMetadataService)))
 	server.mux.HandleFunc("DELETE /api/v1/metadata-services/{service}", server.withUser(server.withAdmin(server.handleDeleteMetadataService)))
 	server.mux.HandleFunc("GET /internal/metadata/services", server.handleInternalMetadataServices)
+	// GOOGLE CAST (cast.go) : l'identifiant du récepteur, lu par tout compte, réglé par un administrateur.
+	server.mux.HandleFunc("GET /api/v1/cast", server.withUser(server.handleGetCast))
+	server.mux.HandleFunc("PUT /api/v1/cast", server.withUser(server.withAdmin(server.handlePutCast)))
 	server.mux.HandleFunc("GET /internal/metadata/settings", server.handleInternalMetadataSettings)
 	// Le statut des consoles et des jeux (chantier 30, en base depuis le 2026-11-17 : game_status.go).
 	server.mux.HandleFunc("GET /internal/game-status", server.handleInternalGameStatuses)
@@ -296,6 +312,7 @@ var crossOriginAdminFamilies = []string{
 	"/api/v1/server-registry",
 	"/api/v1/console-switches",
 	"/api/v1/metadata-services",
+	"/api/v1/cast",
 }
 
 func handleAuthPreflight(w http.ResponseWriter, r *http.Request) {

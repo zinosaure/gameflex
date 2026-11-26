@@ -1,5 +1,6 @@
 {
   "window_name": "citron",
+  "shader_progress": "citron",
   "emulator_fps": {
     "accessible_name": "^Game: ([0-9.]+) FPS"
   },

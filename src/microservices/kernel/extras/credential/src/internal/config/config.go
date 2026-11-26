@@ -27,6 +27,12 @@ const HandlerPort = 8080
 // d'ouvrir : cmd/auth ne la touche pas et garde le chemin du conteneur.
 var DBPath = "/data/gameflex.db"
 
+// KeysDir — le dossier des clés du service (chantier 80) : `mfa.key`, qui scelle les secrets de la double
+// authentification. Un volume À PART de celui de la base (`keys/` du dossier du serveur, monté ici ; le porteur,
+// 2026-11-24 : « c'est une bonne idée pour les keys ») : une copie de la base seule ne livre pas les secrets. Une
+// variable, comme DBPath : le téléphone la pose avant d'ouvrir (embed, `keys/` à la racine de son stockage).
+var KeysDir = "/keys"
+
 type Config struct {
 	JWTSecret         string
 	InternalSecret    string
@@ -35,6 +41,9 @@ type Config struct {
 	VAPIDPrivateKey   string
 	VAPIDContactEmail string
 	CommitSHA         string
+	// Device — le service tourne dans l'application Android (embed), pas sur un serveur. La double authentification
+	// imposée à tout le serveur n'y existe pas (le porteur, 2026-11-24 : « ça doit être que sur le serveur »).
+	Device bool
 }
 
 func envOr(name, fallback string) string {

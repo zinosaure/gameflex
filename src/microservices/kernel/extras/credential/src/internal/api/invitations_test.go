@@ -124,7 +124,7 @@ func TestAccountInvitationGivesTheAccountToken(t *testing.T) {
 	}
 	federated := invitee
 	federated.Federated = true
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1w"}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, "2", `{"enabled":true,"duration":"1w"}`)
 	if code, _ := createInvitation(t, server, federated, `{"kind":"account"}`); code != http.StatusForbidden {
 		t.Fatalf("une session ouverte par jeton crée une invitation : %d", code)
 	}
@@ -133,12 +133,12 @@ func TestAccountInvitationGivesTheAccountToken(t *testing.T) {
 	if created.Label != "Marc" {
 		t.Fatalf("pour qui : %q", created.Label)
 	}
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":false}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, "2", `{"enabled":false}`)
 	if _, err := server.RedeemInvitation(created.Code, InvitationAccount, "", "a"); !errors.Is(err, ErrInvitationTokenOff) {
 		t.Fatalf("jeton éteint : %v", err)
 	}
 
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1d"}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, "2", `{"enabled":true,"duration":"1d"}`)
 	redeemed, err := server.RedeemInvitation(created.Code, InvitationAccount, "", "a")
 	if err != nil {
 		t.Fatal(err)

@@ -1,0 +1,162 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Tue, 17 Nov 2026 12:46:43 +0000
+Subject: [PATCH] gameflex 0099: the mouse is the touchpad, without the
+ touchpad mode
+
+GameFlex plays the PS5 touchpad through the mouse, as it does for shadPS4: its touchpad on the screen
+moves the pointer in the window, holds the left button while a finger is down and presses the right one
+for a click. Kyty read none of it: outside the touchpad mode (F6) both mouse buttons were dropped, and
+the mode cannot stay on in a stream: it draws a cursor over the game and keeps the overlay active, and
+an active overlay presents the last image again at every vblank the game leaves free.
+
+- The left button puts the mouse's finger where the pointer is in the window, F6 or not; the pointer
+  moves it while the button is held. F6 still draws its cursor, and nothing else changes.
+- The right button clicks the touchpad.
+- A contact is not a click any more: a host finger set PAD_BUTTON_TOUCH_PAD with its contact, so a
+  slide was also a press. The TouchPad keys (Backspace, Tab, the keymap's TouchPad) press it themselves.
+- A keymap that binds a mouse button still takes it; with the mouse on the right stick (F7), the left
+  button stays off the pad.
+
+One finger, the mouse's, on the player of the keyboard (--keyboard-player, the first by default).
+---
+ .../presentation/window/hostInput.cpp         | 79 ++++++++++++++-----
+ 1 file changed, 58 insertions(+), 21 deletions(-)
+
+diff --git a/src/graphics/presentation/window/hostInput.cpp b/src/graphics/presentation/window/hostInput.cpp
+index 6695f6c8..882b7134 100644
+--- a/src/graphics/presentation/window/hostInput.cpp
++++ b/src/graphics/presentation/window/hostInput.cpp
+@@ -372,12 +372,14 @@ void SetButton(uint32_t button, bool down, int id = Controller::HOST_INPUT_CONTR
+ 	}
+ }
+ 
++// A TouchPad key: a finger on one half of the pad that clicks it.
+ void SetTouchPad(float x, bool down) {
+ 	Controller::SetTouchPad(Controller::HOST_INPUT_CONTROLLER_ID, 0, down, x, 0.5f);
+ }
+ 
++// The mouse's finger: a contact only, the right button clicks (HostInputMouseButton).
+ void SetSwipeTouchPad(bool down, float x, float y) {
+-	Controller::SetTouchPad(Controller::HOST_INPUT_CONTROLLER_ID, 1, down, x, y);
++	Controller::SetTouchPad(Controller::HOST_INPUT_CONTROLLER_ID, 1, down, x, y, false);
+ }
+ 
+ // Moves the swipe finger across 60% of the pad without clicking it, then lifts it.
+@@ -398,26 +400,37 @@ int PollTouchPadSwipe(uint64_t now_ms) {
+ 	return -1;
+ }
+ 
+-void RecordMouseTouchPadPosition(float x, float y) {
++// The left button holds the mouse's finger down outside the touchpad mode (HostInputMouseTouchPad).
++bool g_pointer_finger = false;
++
++bool MouseButtonBound(uint8_t mouse_button) {
++	const auto& map = GetInputMap();
++	return map.Custom() && map.FindMouseButton(mouse_button) != INVALID_CONTROL;
++}
++
++// A pointer position in the window, from 0 to 1 on each side: where the finger sits on the pad.
++std::array<float, 2> WindowFraction(float x, float y) {
+ 	int width  = 0;
+ 	int height = 0;
+ 	if (g_mouse_window != nullptr) {
+ 		SDL_GetWindowSize(g_mouse_window, &width, &height);
+ 	}
+-	if (width > 0 && height > 0) {
+-		x = std::clamp(x / static_cast<float>(width), 0.0f, 1.0f);
+-		y = std::clamp(y / static_cast<float>(height), 0.0f, 1.0f);
+-	} else {
+-		x = 0.5f;
+-		y = 0.5f;
++	if (width <= 0 || height <= 0) {
++		return {0.5f, 0.5f};
+ 	}
++	return {std::clamp(x / static_cast<float>(width), 0.0f, 1.0f),
++	        std::clamp(y / static_cast<float>(height), 0.0f, 1.0f)};
++}
++
++void RecordMouseTouchPadPosition(float x, float y) {
++	const auto at = WindowFraction(x, y);
+ 
+ 	std::scoped_lock lock(g_touchpad_mutex);
+ 	if (!g_mouse_touchpad.enabled) {
+ 		return;
+ 	}
+-	g_mouse_touchpad.x              = x;
+-	g_mouse_touchpad.y              = y;
++	g_mouse_touchpad.x              = at[0];
++	g_mouse_touchpad.y              = at[1];
+ 	g_mouse_touchpad.position_valid = true;
+ 	g_mouse_touchpad.revision++;
+ }
+@@ -752,6 +765,10 @@ void HostInputShutdown() {
+ 		CenterMouseStick();
+ 		g_mouse = {};
+ 	}
++	if (g_pointer_finger) {
++		SetSwipeTouchPad(false, 0.5f, 0.5f);
++		g_pointer_finger = false;
++	}
+ 	g_mouse_window   = nullptr;
+ 	g_cursor_hide_at = 0;
+ 	if (Config::HideCursorEnabled()) {
+@@ -768,27 +785,47 @@ void HostInputKey(int key_code, bool down) {
+ 	}
+ }
+ 
++// THE MOUSE IS THE TOUCHPAD, mode or not: the left button puts a finger where the pointer is in the
++// window (HostInputMouseTouchPad), the right button clicks the pad. A keymap that binds a mouse
++// button takes it over. Before, outside the touchpad mode (F6), both buttons did nothing: a client
++// that plays through the mouse, like GameFlex's touchpad on the screen, never reached the game.
+ void HostInputMouseButton(uint8_t mouse_button, bool down) {
+-	const auto& map = GetInputMap();
+-	if (map.Custom() && mouse_button != 0) {
+-		SetControl(map.FindMouseButton(mouse_button), down);
++	if (MouseButtonBound(mouse_button)) {
++		SetControl(GetInputMap().FindMouseButton(mouse_button), down);
++		return;
++	}
++	if (mouse_button == SDL_BUTTON_RIGHT) {
++		SetButton(Controller::PAD_BUTTON_TOUCH_PAD, down);
+ 	}
+ }
+ 
++// The left button held at (x, y) in the window, or let go. The touchpad mode (F6) only adds a
++// cursor drawn over the game; without it nothing is drawn, so the overlay stays idle.
+ void HostInputMouseTouchPad(bool down, float x, float y) {
+ 	RecordMouseTouchPadPosition(x, y);
++	bool drawn = false;
+ 	{
+ 		std::scoped_lock lock(g_touchpad_mutex);
+-		if (!g_mouse_touchpad.enabled) {
+-			return;
++		drawn = g_mouse_touchpad.enabled;
++		if (drawn) {
++			if (down && !g_mouse_touchpad.drawing) {
++				g_mouse_touchpad.gesture++;
++			}
++			g_mouse_touchpad.drawing = down;
++			g_mouse_touchpad.revision++;
++			x = g_mouse_touchpad.x;
++			y = g_mouse_touchpad.y;
+ 		}
+-		if (down && !g_mouse_touchpad.drawing) {
+-			g_mouse_touchpad.gesture++;
++	}
++	if (!drawn) {
++		// The mouse moves the right stick (F7), or the keymap gives the button to a control.
++		if (g_mouse.enabled || MouseButtonBound(SDL_BUTTON_LEFT) || (!down && !g_pointer_finger)) {
++			return;
+ 		}
+-		g_mouse_touchpad.drawing = down;
+-		g_mouse_touchpad.revision++;
+-		x = g_mouse_touchpad.x;
+-		y = g_mouse_touchpad.y;
++		g_pointer_finger = down;
++		const auto at    = WindowFraction(x, y);
++		x                = at[0];
++		y                = at[1];
+ 	}
+ 	SetSwipeTouchPad(down, x, y);
+ }

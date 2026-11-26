@@ -1,0 +1,149 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 17:32:36 +0100
+Subject: [PATCH] gameflex 0100: a wave32 pixel or mesh shader runs in a
+ 32-wide host subgroup
+
+On AMD the default subgroup is 64 wide. A wave32 pixel or mesh program then shares a host subgroup
+with another wave: the recompiler reads a wave32 ballot from its first word, so lanes 32 to 63 take
+the bits of lanes 0 to 31, and ballots, lane reads and reductions mix two waves. Where the device
+lets the stage require a size (requiredSubgroupSizeStages; the Radeon 780M lists fragment and mesh),
+the pipeline requires the wave size, and the mesh's host_subgroup_size agrees. After Kyty U59
+(shaders.cpp, DeviceCompat::GraphicsSubgroupSize). GameFlex #655: Astro Bot's banner without text.
+---
+ src/graphics/host_gpu/graphicContext.h        | 30 +++++++++++++++++++
+ .../renderer/pipeline/pipelineCache.cpp       |  7 +++--
+ .../host_gpu/renderer/pipeline/shaders.cpp    | 20 +++++++++++--
+ .../presentation/window/vulkanWindow.cpp      |  7 ++++-
+ 4 files changed, 58 insertions(+), 6 deletions(-)
+
+diff --git a/src/graphics/host_gpu/graphicContext.h b/src/graphics/host_gpu/graphicContext.h
+index e171726e..fb621eed 100644
+--- a/src/graphics/host_gpu/graphicContext.h
++++ b/src/graphics/host_gpu/graphicContext.h
+@@ -33,6 +33,10 @@ struct GraphicContext {
+ 	// Its size once imported: the game's memory, counted in the heaps but not the caches' use.
+ 	uint64_t                           unified_memory_bytes                  = 0;
+ 	bool                               compute_subgroup_size_control_enabled = false;
++	// GameFlex: the subgroupSizeControl feature is on, and the stages that may require a size
++	// (requiredSubgroupSizeStages): GraphicsSubgroupSize.
++	bool                               subgroup_size_control_enabled         = false;
++	vk::ShaderStageFlags               subgroup_required_stages              = {};
+ 	bool                               shader_image_int64_atomics_enabled    = false;
+ 	bool                               attachment_feedback_loop_enabled      = false;
+ 	// GameFlex: one pixel in four is shaded in draws at least twice as tall as the window, where the
+@@ -112,6 +116,32 @@ struct GraphicContext {
+ 		return subgroup_size == 64u || compute_subgroup_size_control_enabled;
+ 	}
+ 
++	// GameFlex: the subgroup size a mesh or pixel stage must require so that one host subgroup holds
++	// one guest wave, or 0 to require nothing (after Kyty U59). On AMD the default is 64: a wave32
++	// pixel or mesh shader would otherwise share a subgroup with another wave, and its ballots, lane
++	// reads and reductions would mix the two (the recompiler reads a wave32 ballot from its first
++	// word). A device that can run wave64 requires the wave size where the default differs from it;
++	// one with several sizes but no 64 requires min(wave size, default); one with a single size
++	// (NVIDIA: 32) requires nothing.
++	[[nodiscard]] uint32_t GraphicsSubgroupSize(vk::ShaderStageFlagBits stage,
++	                                            uint32_t                wave_size) const noexcept {
++		if (!subgroup_size_control_enabled || !(subgroup_required_stages & stage)) {
++			return 0u;
++		}
++		if (compute_subgroup_size_control_enabled) {
++			return wave_size != subgroup_size && wave_size >= min_subgroup_size &&
++			               wave_size <= max_subgroup_size
++			           ? wave_size
++			           : 0u;
++		}
++		const uint32_t size = wave_size < subgroup_size ? wave_size : subgroup_size;
++		if (min_subgroup_size >= max_subgroup_size || size < min_subgroup_size ||
++		    size > max_subgroup_size) {
++			return 0u;
++		}
++		return size;
++	}
++
+ 	[[nodiscard]] vk::DeviceSize StorageMinAlignment() const {
+ 		const auto alignment = physical_device_properties.limits.minStorageBufferOffsetAlignment;
+ 		return alignment != 0 ? alignment : 1;
+diff --git a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
+index a4e3395b..6a98f7f1 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
+@@ -781,8 +781,11 @@ void PipelineCache::GetGraphicsPrograms(const CommandBuffer& command, DrawRender
+ 		mesh_active        = false;
+ 	}
+ 	if (mesh_active) {
+-		auto& mesh              = vertex_info[0].mesh;
+-		mesh.host_subgroup_size = m_graphics.subgroup_size;
++		auto& mesh = vertex_info[0].mesh;
++		// GameFlex: the pipeline requires the wave size where it can (CreatePipelineInternal).
++		const auto required =
++		    m_graphics.GraphicsSubgroupSize(vk::ShaderStageFlagBits::eMeshEXT, mesh.wave_size);
++		mesh.host_subgroup_size = required != 0 ? required : m_graphics.subgroup_size;
+ 		const auto& limits      = m_graphics.mesh_shader_properties;
+ 		const auto  logical_threads =
+ 		    mesh.threads_num[0] * mesh.threads_num[1] * mesh.threads_num[2];
+diff --git a/src/graphics/host_gpu/renderer/pipeline/shaders.cpp b/src/graphics/host_gpu/renderer/pipeline/shaders.cpp
+index 1ffc0989..d6964908 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/shaders.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/shaders.cpp
+@@ -242,11 +242,25 @@ void CreatePipelineInternal(GraphicContext& graphics, PipelineCache::Pipeline& p
+ 
+ 	vk::PipelineShaderStageCreateInfo shader_stages[4] {};
+ 	uint32_t                          shader_stage_count = 0;
++	// GameFlex: one guest wave per host subgroup where the device lets the stage require it (mesh
++	// and pixel shaders on AMD, whose default is 64): GraphicContext::GraphicsSubgroupSize. The
++	// mesh's host_subgroup_size (PipelineCache::GetGraphicsPrograms) agrees.
++	vk::PipelineShaderStageRequiredSubgroupSizeCreateInfo stage_subgroup_sizes[4] {};
+ 	for (const auto* stage: stages) {
+ 		if (stage != nullptr) {
+-			shader_stages[shader_stage_count++] = {.stage  = NativeShaderStage(stage->info.stage),
+-			                                       .module = stage->module,
+-			                                       .pName  = "main"};
++			const auto native_stage = NativeShaderStage(stage->info.stage);
++			auto&      info         = shader_stages[shader_stage_count];
++			info = {.stage = native_stage, .module = stage->module, .pName = "main"};
++			if (native_stage == vk::ShaderStageFlagBits::eMeshEXT ||
++			    native_stage == vk::ShaderStageFlagBits::eFragment) {
++				if (const auto required =
++				        graphics.GraphicsSubgroupSize(native_stage, stage->info.wave_size);
++				    required != 0) {
++					stage_subgroup_sizes[shader_stage_count].requiredSubgroupSize = required;
++					info.pNext = &stage_subgroup_sizes[shader_stage_count];
++				}
++			}
++			shader_stage_count++;
+ 		}
+ 	}
+ 	if (task_module) {
+diff --git a/src/graphics/presentation/window/vulkanWindow.cpp b/src/graphics/presentation/window/vulkanWindow.cpp
+index 4fa2886a..cc24476e 100644
+--- a/src/graphics/presentation/window/vulkanWindow.cpp
++++ b/src/graphics/presentation/window/vulkanWindow.cpp
+@@ -541,12 +541,17 @@ static vk::Device VulkanCreateDevice(GraphicContext&          graphics,
+ 	    supported13.subgroupSizeControl == VK_TRUE &&
+ 	    (subgroup_stages & vk::ShaderStageFlagBits::eCompute) &&
+ 	    subgroup_control.minSubgroupSize <= 64 && subgroup_control.maxSubgroupSize >= 64;
++	graphics.subgroup_size_control_enabled = supported13.subgroupSizeControl == VK_TRUE;
++	graphics.subgroup_required_stages      = subgroup_stages;
+ 
+ 	LOGF("Vulkan subgroup: default=%u min=%u max=%u stages=0x%08x size_control=%s wave64=%s\n",
+ 	     graphics.subgroup_size, graphics.min_subgroup_size, graphics.max_subgroup_size,
+ 	     static_cast<vk::ShaderStageFlags::MaskType>(subgroup_stages),
+ 	     graphics.compute_subgroup_size_control_enabled ? "true" : "false",
+ 	     graphics.SupportsComputeWave64() ? "true" : "false");
++	LOGF("Vulkan subgroup: a wave32 pixel shader requires %u, a wave32 mesh shader %u (0: nothing)\n",
++	     graphics.GraphicsSubgroupSize(vk::ShaderStageFlagBits::eFragment, 32u),
++	     graphics.GraphicsSubgroupSize(vk::ShaderStageFlagBits::eMeshEXT, 32u));
+ 	graphics.provoking_vertex_last_enabled    = provoking_vertex.provokingVertexLast;
+ 	graphics.attachment_feedback_loop_enabled = feedback_layout.attachmentFeedbackLoopLayout &&
+ 	                                            feedback_dynamic.attachmentFeedbackLoopDynamicState;
+@@ -645,7 +650,7 @@ static vk::Device VulkanCreateDevice(GraphicContext&          graphics,
+ 
+ 	auto features13                = WindowContext::RequiredVulkan13Features();
+ 	features13.robustImageAccess   = supported13.robustImageAccess;
+-	features13.subgroupSizeControl = graphics.compute_subgroup_size_control_enabled;
++	features13.subgroupSizeControl = graphics.subgroup_size_control_enabled;
+ 	if (fsr) {
+ 		device_features.shaderInt16            = supported2.features.shaderInt16;
+ 		features12.shaderFloat16               = supported12.shaderFloat16;

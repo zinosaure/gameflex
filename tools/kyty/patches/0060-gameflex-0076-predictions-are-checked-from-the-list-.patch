@@ -1,0 +1,140 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 10:18:58 +0000
+Subject: [PATCH] gameflex 0076: predictions are checked from the list of those
+ waiting
+
+---
+ .../host_gpu/renderer/cache/bufferCache.cpp   | 40 +++++++++++++------
+ .../host_gpu/renderer/cache/bufferCache.h     |  4 ++
+ 2 files changed, 31 insertions(+), 13 deletions(-)
+
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+index 9b66836b..8cdcd7d5 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.cpp
+@@ -1111,15 +1111,19 @@ constexpr uint64_t kSpeculationRangeBytes    = 256; // a counter, not a table th
+ 
+ void BufferCache::VerifySrtSpeculations() {
+ 	const auto done = m_scheduler.GetMasterSemaphore().KnownGpuTick();
+-	for (auto& [address, speculation]: m_srt_speculation) {
+-		if (speculation.verify_tick == 0 || speculation.verify_tick > done) {
+-			continue;
++	std::erase_if(m_srt_verifications, [&](uint64_t address) {
++		auto& speculation = m_srt_speculation[address];
++		if (speculation.verify_tick == 0) {
++			return true;
++		}
++		if (speculation.verify_tick > done) {
++			return false;
+ 		}
+ 		speculation.verify_tick = 0;
+ 		uint32_t landed = 0;
+ 		if (!LibKernel::Memory::TryReadBacking(address, &landed, sizeof(landed)) ||
+ 		    landed == speculation.used) {
+-			continue;
++			return true;
+ 		}
+ 		speculation.trusted       = false;
+ 		speculation.confirmations = 0;
+@@ -1131,7 +1135,8 @@ void BufferCache::VerifySrtSpeculations() {
+ 			            landed, address, speculation.used,
+ 			            speculation.revoked ? " from now on" : " until it holds still for longer");
+ 		}
+-	}
++		return true;
++	});
+ }
+ 
+ bool BufferCache::FinishPendingGpuWritesUnder(std::span<const uint64_t> addresses) {
+@@ -1140,7 +1145,7 @@ bool BufferCache::FinishPendingGpuWritesUnder(std::span<const uint64_t> addresse
+ 		return false;
+ 	}
+ 	m_pending_gpu_writes.Expire(m_scheduler.GetMasterSemaphore().KnownGpuTick());
+-	if (!m_srt_speculation.empty()) {
++	if (!m_srt_verifications.empty()) {
+ 		VerifySrtSpeculations();
+ 	}
+ 	if (m_pending_gpu_writes.Empty()) {
+@@ -1157,6 +1162,7 @@ bool BufferCache::FinishPendingGpuWritesUnder(std::span<const uint64_t> addresse
+ 			if (LibKernel::Memory::TryReadBacking(address, &used, sizeof(used))) {
+ 				if (speculation.verify_tick == 0) {
+ 					speculation.used = used;
++					m_srt_verifications.push_back(address);
+ 				}
+ 				speculation.verify_tick = std::max(speculation.verify_tick, range->tick);
+ 				continue;
+@@ -1193,20 +1199,24 @@ constexpr uint32_t kFlagConfirmations = 4;
+ 
+ void BufferCache::VerifyFlagSpeculations() {
+ 	const auto done = m_scheduler.GetMasterSemaphore().KnownGpuTick();
+-	for (auto& [address, flag]: m_flag_speculation) {
+-		if (flag.verify_tick == 0 || flag.verify_tick > done) {
+-			continue;
++	std::erase_if(m_flag_verifications, [&](uint64_t address) {
++		auto& flag = m_flag_speculation[address];
++		if (flag.verify_tick == 0) {
++			return true;
++		}
++		if (flag.verify_tick > done) {
++			return false;
+ 		}
+ 		const auto verify_tick = flag.verify_tick;
+ 		flag.verify_tick       = 0;
+ 		// A shader recorded later may write it again: nothing to say then.
+ 		if (const auto* range = m_pending_gpu_writes.Find(address); range != nullptr && range->tick > verify_tick) {
+-			continue;
++			return true;
+ 		}
+ 		uint64_t landed = 0;
+ 		if (!LibKernel::Memory::TryReadBacking(address, &landed, flag.size) ||
+ 		    TestWaitRegMemValue(landed, flag.ref, flag.mask, flag.func)) {
+-			continue;
++			return true;
+ 		}
+ 		flag.trusted = false;
+ 		flag.revoked = true;
+@@ -1216,7 +1226,8 @@ void BufferCache::VerifyFlagSpeculations() {
+ 			            "the wait wanted 0x%" PRIx64 "; this address waits again from now on\n",
+ 			            address, landed, flag.ref);
+ 		}
+-	}
++		return true;
++	});
+ }
+ 
+ bool BufferCache::TrustPendingGpuWrite(uint64_t vaddr, uint64_t size, uint32_t func, uint64_t ref, uint64_t mask) {
+@@ -1224,7 +1235,7 @@ bool BufferCache::TrustPendingGpuWrite(uint64_t vaddr, uint64_t size, uint32_t f
+ 		return false;
+ 	}
+ 	m_pending_gpu_writes.Expire(m_scheduler.GetMasterSemaphore().KnownGpuTick());
+-	if (!m_flag_speculation.empty()) {
++	if (!m_flag_verifications.empty()) {
+ 		VerifyFlagSpeculations();
+ 	}
+ 	const auto* range = m_pending_gpu_writes.Find(vaddr);
+@@ -1243,6 +1254,9 @@ bool BufferCache::TrustPendingGpuWrite(uint64_t vaddr, uint64_t size, uint32_t f
+ 	flag.size        = static_cast<uint32_t>(size);
+ 	flag.ref         = ref;
+ 	flag.mask        = mask;
++	if (flag.verify_tick == 0) {
++		m_flag_verifications.push_back(vaddr);
++	}
+ 	flag.verify_tick = std::max(flag.verify_tick, range->tick);
+ 	return true;
+ }
+diff --git a/src/graphics/host_gpu/renderer/cache/bufferCache.h b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+index 5e67ecaa..e7747254 100644
+--- a/src/graphics/host_gpu/renderer/cache/bufferCache.h
++++ b/src/graphics/host_gpu/renderer/cache/bufferCache.h
+@@ -244,6 +244,10 @@ private:
+ 	// The ranges bound for writing in command buffers the GPU has not finished.
+ 	PendingGpuWrites                                  m_pending_gpu_writes;
+ 	std::unordered_map<uint64_t, SrtSpeculation>      m_srt_speculation;
++	// The words and addresses whose prediction waits to be checked, with the GPU tick in their entry: the checks
++	// walk these, not every address ever seen (a ring of flags grows the maps for good).
++	std::vector<uint64_t>                             m_srt_verifications;
++	std::vector<uint64_t>                             m_flag_verifications;
+ 	struct FlagSpeculation {
+ 		uint32_t confirmations = 0;
+ 		bool     waiting       = false; // suspended on a pending shader write, value not found yet

@@ -339,3 +339,55 @@ func TestAGameThatStopsByItselfEndsTheSessionAndSaysWhy(t *testing.T) {
 		t.Fatal("la partie ne s'est pas terminée")
 	}
 }
+
+// LES DROITS DE VOIX PARTENT VERS LA PASSERELLE PAR VIEWER (chantier 71) : chaque onglet annonce son viewer sur son
+// socket, la file pousse ce que chacun peut envoyer et recevoir — un viewer qu'elle ne connaît pas n'a rien —, et
+// redit seulement ce qui change.
+func TestVoiceRightsReachTheGatewayPerViewer(t *testing.T) {
+	pushed := make(chan map[string]VoiceRights, 16)
+	host := NewHTTPHost(Config{
+		SessionID: "s1", PlatformID: "retrogaming", Owner: "gino", MaxPlayers: 2,
+		JWTPublicKey: intentKey(t), BeatTimeout: time.Hour, AFKAfter: time.Hour,
+		OnVoice: func(rights map[string]VoiceRights) { pushed <- rights },
+	})
+	mux := http.NewServeMux()
+	host.Routes(mux, "/v4")
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	waitFor := func(check func(map[string]VoiceRights) bool) map[string]VoiceRights {
+		t.Helper()
+		deadline := time.After(5 * time.Second)
+		for {
+			select {
+			case rights := <-pushed:
+				if check(rights) {
+					return rights
+				}
+			case <-deadline:
+				t.Fatal("les droits attendus ne sont pas arrivés")
+			}
+		}
+	}
+
+	gino := openTab(t, server, "gino")
+	gino.next("welcome")
+	dave := openTab(t, server, "dave")
+	dave.next("welcome")
+	_ = gino.conn.WriteJSON(map[string]string{"type": "viewer", "viewerId": "viewer_gino"})
+	_ = dave.conn.WriteJSON(map[string]string{"type": "viewer", "viewerId": "viewer_dave"})
+	dave.intent("join", "")
+	dave.next("result")
+
+	gino.intent("voice-mic", "on")
+	if result := gino.next("result"); result["status"] != "granted" {
+		t.Fatalf("micro du propriétaire : %+v", result)
+	}
+	rights := waitFor(func(rights map[string]VoiceRights) bool { return rights["viewer_gino"].Talk })
+	if rights["viewer_dave"] != (VoiceRights{Hear: true}) || len(rights) != 2 {
+		t.Fatalf("droits poussés : %v", rights)
+	}
+
+	gino.intent("voice-mic", "off")
+	waitFor(func(rights map[string]VoiceRights) bool { return !rights["viewer_gino"].Talk })
+}

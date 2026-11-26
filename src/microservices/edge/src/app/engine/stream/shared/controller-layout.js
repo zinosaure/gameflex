@@ -50,10 +50,14 @@ export function resolveControllerLayout({
 		};
 	}
 
+	// LA MANETTE QUE LE JEU LIT (`pad`, posé par le kernel quand ce n'est pas celle de la console) : un port
+	// déclare la sienne — Astro Bot, sur la console des ports, se joue à la DualSense.
 	if (session.platform === "streamex") {
+		const pad = session.pad || session.consoleId;
+
 		return {
-			Component: STREAMEX_CONSOLE_PADS[session.consoleId] || null,
-			label: STREAMEX_CONSOLE_PAD_LABELS[session.consoleId] || null,
+			Component: STREAMEX_CONSOLE_PADS[pad] || null,
+			label: STREAMEX_CONSOLE_PAD_LABELS[pad] || null,
 		};
 	}
 

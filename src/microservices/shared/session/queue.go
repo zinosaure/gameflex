@@ -524,7 +524,7 @@ func (session *Session) OpenTab(socketID, username string) {
 		}
 	}
 
-	session.Participants = append(session.Participants, Participant{SocketID: socketID, Username: username})
+	session.Participants = append(session.Participants, Participant{SocketID: socketID, Username: username, Hear: true})
 }
 
 // Beat records a liveness tick. hadInput carries the SECOND meaning: the

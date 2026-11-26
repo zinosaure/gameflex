@@ -37,6 +37,7 @@ any later version", and so on.
 - [3. Android app](#3-android-app)
 - [4. Runtime archives for the Android app](#4-runtime-archives-for-the-android-app)
 - [5. Streamex packages](#5-streamex-packages)
+- [6. AppImage for a Linux PC](#6-appimage-for-a-linux-pc)
 - [Copyleft components and their source code](#copyleft-components-and-their-source-code)
 - [Finding the licenses and sources yourself](#finding-the-licenses-and-sources-yourself)
 - [Notices reproduced as required](#notices-reproduced-as-required)
@@ -53,6 +54,7 @@ any later version", and so on.
 | `gameflex.apk` | AndroidX, Kotlin, ZXing (Apache-2.0), 35 Go modules, the web interface, the glibc dynamic loader (LGPL), `xkbcomp` (MIT) |
 | `glibc-x86_64.zip`, `glibc-aarch64.zip` | ~115 libraries from Debian forky (glibc, Mesa, LLVM, PulseAudio, X11…), DejaVu fonts, MIME database |
 | `xvfb-bundle-x86_64.zip`, `xvfb-bundle-aarch64.zip` | Xvfb and its libraries from the Termux package repository (X.Org, Mesa, LLVM, ICU, OpenSSL, GNU libiconv…) |
+| `GameFlex-x86_64.AppImage` | Electron 38.8.6 (Chromium, Node.js), a static FFmpeg 7.1.1 with x264 and Opus, the AppImage runtime, the Go modules of the app, the web interface |
 
 The Go standard library, linked into every GameFlex binary, is under the
 [BSD-3-Clause license of the Go project](https://go.dev/LICENSE). Toolchains found in the
@@ -558,12 +560,31 @@ published by the emulator's authors, in the version tested with GameFlex. Each p
 | `streamex-wiiu` | Cemu | MPL-2.0 | [cemu-project/Cemu](https://github.com/cemu-project/Cemu) |
 | `streamex-xbox` | xemu | GPL-2.0 | [xemu-project/xemu](https://github.com/xemu-project/xemu) |
 | `streamex-xbox360` | Xenia Canary | BSD-3-Clause | [xenia-canary/xenia-canary](https://github.com/xenia-canary/xenia-canary) |
-| `streamex-ports-zelda64recomp` | Zelda 64: Recompiled | GPL-3.0 | [Zelda64Recomp/Zelda64Recomp](https://github.com/Zelda64Recomp/Zelda64Recomp) |
 
 **Our builds** of shadPS4 and KytyPS5 are the official source at a pinned commit plus the patches
 in this repository (`tools/shadps4/patches/`, `tools/kyty/patches/`); their package's `component.json`
 names the repository, the commit and the patches. The emulators' source code is in their official
 repositories.
+
+## 6. AppImage for a Linux PC
+
+`GameFlex-x86_64.AppImage` (and `gameflex-desktop-x86_64.tar.gz`, its program and window alone) is
+assembled by `tools/appimage/` from pinned downloads, each checked against its SHA-256 there.
+
+| Part | Version | License | Source |
+|---|---|---|---|
+| `usr/bin/gameflex-desktop`, GameFlex's server for a PC (Go) | — | the GameFlex binary license; it links the Go modules of the app's Go code ([section 3](#go-code-libabilibgojniso)), without `golang.org/x/mobile` | — |
+| `usr/lib/gameflex/electron/`, the window: [Electron](https://github.com/electron/electron), unmodified release | 38.8.6 | MIT; Chromium, Node.js and their components under the licenses listed in `LICENSES.chromium.html` next to it | <https://github.com/electron/electron/releases/tag/v38.8.6> |
+| `usr/bin/ffmpeg`, the video and sound encoder: [FFmpeg](https://ffmpeg.org), static, `--enable-gpl` | 7.1.1 | GPL-2+ | <https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz> (unmodified; the configuration is in `usr/share/doc/ffmpeg/SOURCE.txt`) |
+| x264, linked into `ffmpeg` (Debian 12 `libx264-dev`) | the version in `SOURCE.txt` | GPL-2+ | Debian source package `x264` |
+| Opus, linked into `ffmpeg` (Debian 12 `libopus-dev`) | the version in `SOURCE.txt` | BSD-3-Clause | Debian source package `opus` |
+| The AppImage runtime ([type2-runtime](https://github.com/AppImage/type2-runtime)), at the head of the file | continuous build of 2026-11-24 | MIT; it links libfuse (LGPL-2.1+), squashfuse (BSD-2-Clause) and zstd (BSD-3-Clause) | <https://github.com/AppImage/type2-runtime> |
+| `usr/share/gameflex/web/`, the web interface | — | MIT + the npm packages of [`gameflex-edge`](#web-interface-gameflex-edge) | this repository |
+| `usr/bin/Xvfb`, the screen of the recent consoles' emulators (Debian 12 `xvfb`), and the X libraries in `usr/lib/gameflex/xvfb/` (pixman, libXfont2, libfontenc, libXau, libXdmcp, libunwind, libaudit, libcap-ng, libbsd, libmd) | the versions in `usr/share/doc/xvfb/SOURCE.txt` | MIT/X11; libunwind MIT; libaudit LGPL-2.1+; libcap-ng LGPL-2.1+; libbsd BSD-3-Clause and others; libmd BSD-3-Clause and others | Debian source packages `xorg-server` and the others named in `SOURCE.txt` |
+| `usr/lib/gameflex/pulse/`, the private sound server of the recent consoles' emulators (Debian 12 `pulseaudio`: the daemon, four modules, and the libraries it loads outside glibc) | the versions in `usr/share/doc/pulseaudio/SOURCE.txt` | LGPL-2.1+ (PulseAudio); its libraries under their own licenses (libsndfile, FLAC, Vorbis, Opus, speexdsp, soxr, orc, systemd, D-Bus, Kerberos, libgcrypt, TDB…) | Debian source package `pulseaudio` and those of its libraries, versions in the Debian 12 archive |
+
+GameFlex's licenses and these notices are in `usr/share/doc/gameflex/` inside the AppImage
+(`./GameFlex-x86_64.AppImage --appimage-extract` unpacks it).
 
 ## Copyleft components and their source code
 
@@ -580,6 +601,9 @@ binary form in the artifacts above:
 | PulseAudio, GTK, GLib, GStreamer, GnuTLS, AT-SPI2, libusb, other LGPL libraries | LGPL-2.1+ (and others as listed) | Docker images; `glibc-*.zip` | Debian source packages, versions above |
 | libstdc++, libgcc_s, libgomp | GPL-3+ WITH GCC-exception-3.1 | Docker images; `glibc-*.zip` | Debian source package `gcc-16` 16.2.0-3 (archives), `gcc-12` / `gcc-14` (images) |
 | shared-mime-info database | GPL-2+ | `glibc-*.zip` | Debian source package `shared-mime-info` 2.4-5+b3 |
+| FFmpeg 7.1.1 (static, `--enable-gpl`) and x264 | GPL-2+ | `GameFlex-x86_64.AppImage` | <https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz>; Debian source package `x264` of the version in `usr/share/doc/ffmpeg/SOURCE.txt` |
+| libfuse (in the AppImage runtime) | LGPL-2.1+ | `GameFlex-x86_64.AppImage` | <https://github.com/AppImage/type2-runtime> and <https://github.com/libfuse/libfuse> |
+| PulseAudio 16.1 and its LGPL libraries (libsndfile, libltdl, libaudit, libcap-ng, TDB, libgcrypt…) | LGPL-2.1+ | `GameFlex-x86_64.AppImage` (`usr/lib/gameflex/pulse/`, `usr/lib/gameflex/xvfb/`) | Debian 12 source packages `pulseaudio` and the others, versions in `usr/share/doc/pulseaudio/SOURCE.txt` and `usr/share/doc/xvfb/SOURCE.txt` |
 | GNU libiconv | LGPL-2.1+ | `xvfb-bundle-*.zip` | <https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.19.tar.gz> and the Termux recipe |
 
 Debian source packages are kept, for every version ever published, at

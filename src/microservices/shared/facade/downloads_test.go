@@ -250,7 +250,7 @@ func TestTheListIsWokenOnEachChange(t *testing.T) {
 	close(release)
 	lastStep(t, &downloads, id, "claude")
 	waitFor(t, wake, "la fin")
-	if len(downloads.List("claude")) != 0 {
-		t.Fatal("un téléchargement fini quitte la liste")
+	if list := downloads.List("claude"); len(list) != 1 || list[0].State != "done" || list[0].EndedAt == 0 {
+		t.Fatalf("un téléchargement fini reste dans la liste, fini et daté : %+v", list)
 	}
 }

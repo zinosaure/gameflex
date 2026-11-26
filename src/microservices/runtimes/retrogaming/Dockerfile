@@ -104,7 +104,7 @@ LABEL gameflex.prune=keep
 
 
 # ffmpeg: encodes libretro's raw video/audio output to H.264/Opus for
-# WebRTC (internal/retrogaming/encoder).
+# WebRTC (shared/ffmpegenc).
 # build-essential/pkg-config: CGo needs a C compiler at rebuild time too
 # (Air recompiles inside this same running container on file changes).
 # libegl1-mesa-dev/libgles2-mesa-dev/libgbm-dev: same reasoning as the dev

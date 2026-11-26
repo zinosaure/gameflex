@@ -19,16 +19,16 @@ func TestNormalizeLaunchSettingsKeepsTheLanguage(t *testing.T) {
 	}
 }
 
-// SANS CHOIX, 540p À 30, POUR TOUTES LES CONSOLES (le porteur, 2026-11-16 :
-// « La valeur par défaut ça toujours été 540p@30 pour tout le stream settings
-// de toutes les consoles »). Avant, la définition partait vide et la cadence à
+// SANS CHOIX, 720p À 60, POUR TOUTES LES CONSOLES (le porteur, 2026-11-23 :
+// « Tu peux mettre pour tous le stream settings par défaut : 720p@60 » ; 540p à
+// 30 depuis le 2026-11-16). Avant, la définition partait vide et la cadence à
 // zéro : le conteneur rétro gardait sa taille d'époque à 60 images, streamex
 // son 720p à 60. Un débit absent reste zéro (le repli de l'encodeur).
-func TestNormalizeLaunchSettingsDefaultsTo540pAt30(t *testing.T) {
+func TestNormalizeLaunchSettingsDefaultsTo720pAt60(t *testing.T) {
 	for _, sent := range []LaunchSettings{{}, {Resolution: "480p", FPS: 240}, {Resolution: "4k", FPS: 5}} {
 		got := normalizeLaunchSettings(sent)
-		if got.Resolution != "960x540" || got.FPS != 30 || got.Bitrate != 0 {
-			t.Errorf("normalizeLaunchSettings(%+v) = %+v ; attendu 960x540 à 30, débit 0", sent, got)
+		if got.Resolution != "1280x720" || got.FPS != 60 || got.Bitrate != 0 {
+			t.Errorf("normalizeLaunchSettings(%+v) = %+v ; attendu 1280x720 à 60, débit 0", sent, got)
 		}
 	}
 	// Un débit mesuré par la page (« Auto ») passe comme un débit choisi.

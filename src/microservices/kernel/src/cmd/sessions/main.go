@@ -48,6 +48,9 @@ func main() {
 	// route (api/log_settings.go). La sortie standard ne le suit pas.
 	slog.SetDefault(slog.New(logfile.ServiceHandler(os.Stdout, config.StorageDir, "kernel")))
 	logfile.Apply(api.LoadLogSettings(config.StorageDir))
+	// LA CONFIGURATION DU SERVEUR (Réglages › Configuration du serveur, chantier 81), changée ensuite au vol
+	// par sa route (api/server_config.go).
+	config.ApplyLive(api.LoadServerConfig(config.StorageDir))
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -104,12 +107,7 @@ func main() {
 	// Même disposition sur le disque que le rétro : l'identifiant de la
 	// console EST le nom du dossier sous roms/ (/gameflex/roms). Le registre porte déjà cette information — il n'y a
 	// donc rien à répéter, seulement à le lire.
-	sessionCatalogs := map[string]*catalog.Catalog{
-		// keytest n'est pas une console : pas de jeux sur le disque, un
-		// catalogue synthétique. Elle reste donc déclarée à la main.
-		// Banc d'essai interne, plus visible du joueur depuis le 2026-11-13.
-		"keytest": catalog.NewKeyTest(),
-	}
+	sessionCatalogs := map[string]*catalog.Catalog{}
 	for _, console := range consoles.List() {
 		if console.Method != consoles.MethodStreamex {
 			continue

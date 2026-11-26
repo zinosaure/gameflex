@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { peerHost } from "./federation.js";
+import { CONSOLE_ICON } from "../globals/icons.js";
 
 // ADMINISTRER UN SERVEUR FÉDÉRÉ DEPUIS LE SIEN (chantier 73) : les mêmes pages des Réglages, sous
 // `/settings/remote/<serveur>/…`, dont chaque appel part chez ce serveur (libs/api.js, `setRemoteTarget`) avec la session
@@ -31,7 +32,7 @@ export function toRemote(path, remote) {
 export const REMOTE_PAGES = [
     { key: "members", path: "members", icon: "bi-person-badge", tone: "green" },
     { key: "federation", path: "federation", icon: "bi-arrow-left-right", tone: "green" },
-    { key: "consoles", path: "consoles", icon: "bi-joystick", tone: "indigo" },
+    { key: "consoles", path: "consoles", icon: CONSOLE_ICON, tone: "indigo" },
     { key: "remotePlay", path: "remote-play", icon: "bi-playstation", tone: "sky" },
     { key: "logs", path: "logs", icon: "bi-journal-text", tone: "slate" },
     { key: "rescan", path: "rescan", icon: "bi-arrow-repeat", tone: "slate" },

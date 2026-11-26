@@ -5,29 +5,26 @@
 #                                afterwards: starts GameFlex
 #   ./launch.sh setup            answer the questions again (rewrites .env), then start
 #   ./launch.sh consoles ps3 switch
-#                                download recent consoles (ps3 ps4 ps5 switch switch2 wiiu xbox xbox360 ports)
+#                                download recent consoles (ps3 ps4 ps5 switch switch2 wiiu xbox xbox360)
 #   ./launch.sh wireguard        turn on the optional WireGuard VPN, to play away from home
 #                                without putting GameFlex on the Internet
-#   ./launch.sh federation       start gameflex-federation alone: it shares your library with
-#                                your devices and servers, and runs no game (a NAS, for one)
 #   ./launch.sh update           download the latest version, with its docker-compose.yml
 #                                (your disks kept) and launch.sh, then restart
 #   ./launch.sh stop             stop GameFlex (your library and settings stay)
 #   ./launch.sh status           show what is running
 #   ./launch.sh logs [service]   follow the log of a service: edge, kernel, credential, gateway,
-#                                remoteplay, federation or wireguard (the gameflex- prefix is optional)
+#                                remoteplay or wireguard (the gameflex- prefix is optional)
 #   ./launch.sh reset-password   set the administrator password back to the one in .env
 #                                (it only sets it at the first start; use this if you lost it)
 #
 # Every answer can also come from the environment, for an install without
 # questions: GAMEFLEX_LIBRARY, GAMEFLEX_PUBLIC_HOST, GAMEFLEX_ROOT_PASSWORD,
-# GAMEFLEX_FEDERATION_ROOT_USERNAME, GAMEFLEX_FEDERATION_ROOT_PASSWORD,
 # COMPOSE_PROFILES.
 set -euo pipefail
 cd "$(dirname "$0")"
 
 RAW=https://raw.githubusercontent.com/zinosaure/gameflex/main
-CONSOLES="ps3 ps4 ps5 switch switch2 wiiu xbox xbox360 ports"
+CONSOLES="ps3 ps4 ps5 switch switch2 wiiu xbox xbox360"
 # The optional services, turned on the same way as the consoles (COMPOSE_PROFILES).
 EXTRAS="wireguard"
 
@@ -72,7 +69,7 @@ files_url() {
 # carry_disks OLD NEW — prints NEW with the disks added to OLD: every
 # `<folder>:/mnt/<name>` line, with the comments just above it, goes after
 # the example line `# - /media/games:/mnt/games` of its own service
-# (gameflex-kernel, gameflex-federation). Fails when that service of NEW has no
+# (gameflex-kernel). Fails when that service of NEW has no
 # such line to put them after.
 carry_disks() {
     awk -v example='# - /media/games:/mnt/games' '
@@ -210,28 +207,8 @@ ask_password() {
     printf '%s\n' "$password"
 }
 
-# federation_user — the user name of gameflex-federation's account.
-federation_user() {
-    local user
-    user=$(get_setting GAMEFLEX_FEDERATION_ROOT_USERNAME)
-    printf '%s\n' "${user:-root}"
-}
-
-# federation_password — a .env written before gameflex-federation came gets
-# its password, so that Compose accepts it.
-federation_password() {
-    [ -n "$(get_setting GAMEFLEX_FEDERATION_ROOT_PASSWORD | tr -d "'")" ] && return 0
-    local password
-    password=$(ask_password "gameflex-federation" "$(federation_user)" "${GAMEFLEX_FEDERATION_ROOT_PASSWORD:-}")
-    # Between single quotes: Compose then reads it as is, whatever it holds.
-    set_setting GAMEFLEX_FEDERATION_ROOT_PASSWORD "'$password'"
-    unset GAMEFLEX_FEDERATION_ROOT_PASSWORD
-}
-
-# setup [federation] — the questions; with federation, only those
-# gameflex-federation needs alone.
+# setup — the questions.
 setup() {
-    local mode=${1:-}
     need_file docker-compose.yml
     need_file .env.example
     [ -f .env ] || cp .env.example .env
@@ -241,7 +218,7 @@ setup() {
     say "GameFlex setup. Press Enter to keep the value in brackets."
     say ""
 
-    local library address password profiles fuser
+    local library address password profiles
     library=${GAMEFLEX_LIBRARY:-$(ask "Library folder (your games and saves)" "$(pwd)/library")}
     case "$library" in
         /*) ;;
@@ -252,35 +229,21 @@ setup() {
     address=${GAMEFLEX_PUBLIC_HOST:-$(ask "Address of this computer on your network" "$(detect_address)")}
     [ -n "$address" ] || fail "no address: set GAMEFLEX_PUBLIC_HOST, such as 192.168.1.50"
 
-    if [ "$mode" = federation ]; then
-        # GameFlex itself does not start: its administrator can wait, made up.
-        password=${GAMEFLEX_ROOT_PASSWORD:-$(get_setting GAMEFLEX_ROOT_PASSWORD | tr -d "'")}
-        password=${password:-$(make_secret | cut -c1-20)}
-        profiles=${COMPOSE_PROFILES-$(get_setting COMPOSE_PROFILES | tr ',' ' ')}
-    else
-        password=$(ask_password "Administrator" "$(get_setting GAMEFLEX_ROOT_USERNAME | sed 's/^$/root/')" "${GAMEFLEX_ROOT_PASSWORD:-}")
-        profiles=${COMPOSE_PROFILES-$(ask "Recent consoles to download ($CONSOLES), separated by spaces" \
-            "$(get_setting COMPOSE_PROFILES | tr ',' ' ')")}
-    fi
+    password=$(ask_password "Administrator" "$(get_setting GAMEFLEX_ROOT_USERNAME | sed 's/^$/root/')" "${GAMEFLEX_ROOT_PASSWORD:-}")
+    profiles=${COMPOSE_PROFILES-$(ask "Recent consoles to download ($CONSOLES), separated by spaces" \
+        "$(get_setting COMPOSE_PROFILES | tr ',' ' ')")}
 
     set_setting GAMEFLEX_LIBRARY "$library"
     set_setting GAMEFLEX_PUBLIC_HOST "$address"
     # Between single quotes: Compose then reads it as is, whatever it holds.
     set_setting GAMEFLEX_ROOT_PASSWORD "'$password'"
-    fuser=${GAMEFLEX_FEDERATION_ROOT_USERNAME:-$(ask "gameflex-federation user name" "$(federation_user)")}
-    case "$fuser" in
-        "" | *[!A-Za-z0-9._-]*) fail "the gameflex-federation user name holds only letters, digits, '.', '_' and '-'" ;;
-    esac
-    set_setting GAMEFLEX_FEDERATION_ROOT_USERNAME "$fuser"
-    set_setting GAMEFLEX_FEDERATION_ROOT_PASSWORD ""
-    federation_password
     [ -n "$(get_setting GAMEFLEX_SECRET)" ] || set_setting GAMEFLEX_SECRET "$(make_secret)"
     # shellcheck disable=SC2086 # the answer is a list: split it on spaces.
     set_setting COMPOSE_PROFILES "$(profiles_list $profiles)"
 
     # From now on .env decides: Compose would otherwise prefer these variables,
     # as they came, over what was just written (a relative folder, for one).
-    unset GAMEFLEX_LIBRARY GAMEFLEX_PUBLIC_HOST GAMEFLEX_ROOT_PASSWORD GAMEFLEX_FEDERATION_ROOT_USERNAME COMPOSE_PROFILES
+    unset GAMEFLEX_LIBRARY GAMEFLEX_PUBLIC_HOST GAMEFLEX_ROOT_PASSWORD COMPOSE_PROFILES
 
     docker compose config --quiet || fail "the settings in .env are not valid"
     say ""
@@ -309,7 +272,6 @@ profiles_list() {
 start() {
     # Also when .env was written beforehand, by hand or by an agent.
     need_file docker-compose.yml
-    federation_password
     say "Downloading GameFlex (the first time takes a few minutes)…"
     docker compose pull
     docker compose up -d
@@ -346,22 +308,6 @@ case "${1:-}" in
         docker compose pull
         say "Consoles ready: $(get_setting COMPOSE_PROFILES)"
         ;;
-    federation)
-        check_requirements
-        [ -f .env ] && [ -n "$(get_setting GAMEFLEX_SECRET)" ] || setup federation
-        need_file docker-compose.yml
-        federation_password
-        docker compose pull gameflex-federation
-        docker compose up -d gameflex-federation
-        for _ in $(seq 1 30); do
-            curl -fs -o /dev/null "http://127.0.0.1:10206/" && break
-            sleep 2
-        done
-        say ""
-        say "gameflex-federation is running. Open http://$(get_setting GAMEFLEX_PUBLIC_HOST):10206 and sign in as $(federation_user)."
-        say "It shares $(get_setting GAMEFLEX_LIBRARY); more folders: one line each in docker-compose.yml."
-        say "The guide: docs/federation.md"
-        ;;
     wireguard)
         [ -f .env ] || fail "run ./launch.sh first"
         set_setting COMPOSE_PROFILES "$(profiles_list "$(get_setting COMPOSE_PROFILES)" wireguard)"
@@ -377,9 +323,9 @@ case "${1:-}" in
     update)
         [ -f .env ] || fail "run ./launch.sh first"
         update_files
-        federation_password
         docker compose pull
-        docker compose up -d
+        # --remove-orphans: a service the new version no longer has (gameflex-federation, now part of GameFlex) stops.
+        docker compose up -d --remove-orphans
         docker image prune -f >/dev/null
         say "GameFlex is up to date."
         ;;

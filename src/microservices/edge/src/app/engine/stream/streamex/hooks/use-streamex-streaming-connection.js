@@ -27,7 +27,7 @@ const PING_INTERVAL_MS = 1000;
 // streamex has no WebRTC of its own: it does not start without the gateway
 // (docs/WEBRTC_GATEWAY.md), so no "offer" ever arrives on this WebSocket.
 //
-// Unlike retro-gaming, the session/chain-window protocol below is NOT
+// Unlike retro-gaming, the session protocol below is NOT
 // split into a separate "extras" file — it rides the exact same WebSocket
 // as connection setup (the "session" message is the child's hello), so
 // splitting connection from protocol
@@ -53,9 +53,6 @@ export function useStreamexStreamingConnection({
 	const { wsRef, openManaged, closeManaged } = useManagedWebSocket();
 	const drivesPadRef = useRef(drivesPad);
 	drivesPadRef.current = drivesPad;
-	// Server-clock offset (ms), refreshed on every server ping — used to
-	// timestamp presses for the keytest console (see keytest/display.py).
-	const serverOffsetMsRef = useRef(0);
 
 	const [connectionError, setConnectionError] = useState(false);
 	const [rttMs, setRttMs] = useState(null);
@@ -168,20 +165,10 @@ export function useStreamexStreamingConnection({
 						case "session":
 							// The child's hello — no role, no pad: who drives
 							// what is the queue's answer (drivesPad).
-							// La fenêtre des appuis enchaînés du banc keytest
-							// (keytest/display.py, 50 ms par défaut) : 300 ms,
-							// posés à chaque connexion — le banc d'essai interne
-							// n'a plus d'interrupteur dans le menu depuis le
-							// 2026-11-13. Sans effet ailleurs : injectLine ne
-							// lit « cw, » que pour l'adaptateur keytest.
-							sendMessage("cw,300");
 							break;
 						case "ping":
 							// Server RTT probe — echoing keeps the server's rtt
-							// stat live, and message.t (server UnixMilli) yields
-							// the offset used to timestamp keytest presses on
-							// the server's own clock.
-							serverOffsetMsRef.current = message.t - performance.now();
+							// stat live.
 							sendJSON({ type: "pong", t: message.t });
 							break;
 						case "pong":
@@ -240,8 +227,8 @@ export function useStreamexStreamingConnection({
 	}, []);
 
 	// Sends one input token — the reference client's own wire format
-	// (`kd,<code>`/`ku,<code>`/`md,<button>`/`mr,<dx>,<dy>`/`ms,<delta>`,
-	// keytest's `cw,<ms>`), player-gated server-side too but checked here
+	// (`kd,<code>`/`ku,<code>`/`md,<button>`/`mr,<dx>,<dy>`/`ms,<delta>`),
+	// player-gated server-side too but checked here
 	// first so a spectator's pad never even tries. Phase 2: DataChannel via
 	// GatewayWebRTC when open, WS otherwise (mirrors sendButton/
 	// sendAnalog's own fallback in use-retrogaming-streaming-connection.js).
@@ -253,17 +240,8 @@ export function useStreamexStreamingConnection({
 	// lettre, et le nom tapé n'est plus le bon.
 	const sendMessage = useCallback(
 		(payload, { ordered = false } = {}) => {
-			// A KEY only leaves a tab that drives a pad; a SETTING (the
-			// keytest chain window, "cw,") always goes, the child decides.
-			if (!drivesPadRef.current && !payload.startsWith("cw,")) return;
-			// Keytest console: stamp presses/releases/pressure with the
-			// server clock so the display computes latency on ONE clock.
-			if (
-				session.consoleId === "keytest" &&
-				(payload.startsWith("kd,") || payload.startsWith("ku,") || payload.startsWith("ab,"))
-			) {
-				payload += `,${Math.round(performance.now() + serverOffsetMsRef.current)}`;
-			}
+			// A KEY only leaves a tab that drives a pad.
+			if (!drivesPadRef.current) return;
 			// DEUX CHEMINS, ET LE SECOND EST UN REPLI — pas une alternative
 			// qu'on abandonne au premier échec.
 			//

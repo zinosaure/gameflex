@@ -1,10 +1,17 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useFeedback } from "../../../bricks/useFeedback.jsx";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { useImage } from "../../../libs/images.js";
-import { toast } from "../../../shell/Shell.jsx";
 import { useQueryState } from "../../SettingsPage.jsx";
-import NavRow, { Listing, Note, PlaceholderRow, Thumb, useConfirm } from "../../../ui/Bricks.jsx";
+import { Listing } from "../../../bricks/Listing.jsx";
+import NavRow from "../../../bricks/NavRow.jsx";
+import { Note } from "../../../bricks/Note.jsx";
+import { PlaceholderRow } from "../../../bricks/PlaceholderRow.jsx";
+import { Thumb } from "../../../bricks/Thumb.jsx";
+import { useConfirm } from "../../../bricks/useConfirm.jsx";
+import { useDebounced } from "../../../libs/ui.js";
+import { fact } from "../../../libs/format.js";
 
 // CHOISIR UNE IMAGE (chantier 53, P9 ; le porteur, 2026-11-14, remarque d : « au lieu de mettre upload file pour
 // l'image, le mieux ce serait de mettre une search bar qui va taper sur les API metadata pour récupérer plus d'images et
@@ -45,16 +52,18 @@ export const imageKey = (image) => `${image.source}:${image.server || ""}:${imag
 
 // D'où vient une image proposée : le fournisseur, le serveur fédéré, ou les deux (un fournisseur qu'il partage).
 export const imageOrigin = (image, t) => (image.source === "server" ? image.serverName || t("images.services.server")
-    : [t(`images.services.${image.source}`), image.serverName].filter(Boolean).join(" · "));
+    : [t(`images.services.${image.source}`), image.serverName].filter(Boolean).join(", "));
 
 export function ImageSearch({ initial = "", search, confirmOf, onChoose, fit = "contain" }) {
     const { t } = useTranslation();
+    const feedback = useFeedback();
     const confirm = useConfirm();
     const [params] = useSearchParams();
     const [, update] = useQueryState({});
     const typed = useRef(params.has("q"));
     const [text, setText] = useState(() => params.get("q") ?? initial);
-    const [query, setQuery] = useState(text.trim());
+    // La recherche part un instant après la dernière lettre : chaque recherche interroge les fournisseurs.
+    const query = useDebounced(text.trim(), 500);
     const [answer, setAnswer] = useState(undefined);
     const [busy, setBusy] = useState(null);
     const service = (source) => t(`images.services.${source}`);
@@ -65,13 +74,6 @@ export function ImageSearch({ initial = "", search, confirmOf, onChoose, fit = "
             setText(initial);
         }
     }, [initial]);
-
-    // La recherche part un instant après la dernière lettre : chaque recherche interroge les fournisseurs.
-    useEffect(() => {
-        const timer = setTimeout(() => setQuery(text.trim()), 500);
-
-        return () => clearTimeout(timer);
-    }, [text]);
 
     useEffect(() => {
         if (!query) {
@@ -97,7 +99,7 @@ export function ImageSearch({ initial = "", search, confirmOf, onChoose, fit = "
             setBusy(null);
 
             if (!result.ok) {
-                toast(refusalOf(result, t));
+                feedback.failed(refusalOf(result, t));
             }
         },
     });
@@ -120,7 +122,7 @@ export function ImageSearch({ initial = "", search, confirmOf, onChoose, fit = "
                 placeholderRow={() => <PlaceholderRow lead="thumb" />}
                 render={(image, index) => (
                     <NavRow key={imageKey(image)} id={`is-${index}`} lead={<ResultThumb image={image} fit={fit} />} label={image.game || imageOrigin(image, t)}
-                        help={[imageOrigin(image, t), image.width && image.height ? `${image.width} × ${image.height}` : null].filter(Boolean).join(" · ")}
+                        help={[fact(t("game.origin"), imageOrigin(image, t)), fact(t("facts.dimensions"), image.width && image.height ? `${image.width} × ${image.height}` : null)]}
                         pending={busy === imageKey(image)} disabled={Boolean(busy) && busy !== imageKey(image)} opens="confirm" onOpen={() => choose(image)} />
                 )} />
             {answer?.failure && <Note>{answer.failure.errorMessage || t("settings.actionFailed")}</Note>}

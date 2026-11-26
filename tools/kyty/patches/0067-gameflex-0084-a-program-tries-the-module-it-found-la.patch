@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 14:05:14 +0000
+Subject: [PATCH] gameflex 0084: a program tries the module it found last first
+
+FindModule compared the specialization of a draw with every module of
+its program in turn, 1.2 % of the command thread in Astro Bot (perf,
+Celestial Garden). Consecutive draws of a program mostly want the same
+module: it is tried first. Modules are only ever added to a program, in
+a deque, so the pointer stays valid.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../renderer/pipeline/pipelineCache.cpp         | 17 +++++++++++++----
+ .../host_gpu/renderer/pipeline/pipelineCache.h  |  3 +++
+ 2 files changed, 16 insertions(+), 4 deletions(-)
+
+diff --git a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
+index 26f320db..a4e3395b 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.cpp
+@@ -223,17 +223,26 @@ ShaderModule* PipelineCache::Program::FindModule(const ShaderRecompiler::IR::Srt
+                                                  ShaderRecompiler::IR::PushData::Window push_data) {
+ 	EXIT_IF(!ShaderRecompiler::IR::MaterializeResources(resource_plan, runtime, resources,
+ 	                                                    specialization));
+-	for (auto& candidate: modules) {
++	const auto matches = [&](const ShaderModule& candidate) {
+ 		const auto& layout = candidate.info.bindings;
+ 		if (layout.push_data_start_dword !=
+ 		        push_data.StartFor(layout.ShaderDataDwords(), candidate.info.stage) ||
+ 		    candidate.specialization != specialization) {
+-			continue;
++			return false;
+ 		}
+ 		if constexpr (HasCalls) {
+-			if (!std::ranges::equal(candidate.function_code, FunctionCode())) continue;
++			if (!std::ranges::equal(candidate.function_code, FunctionCode())) return false;
++		}
++		return true;
++	};
++	if (last_module != nullptr && matches(*last_module)) {
++		return last_module;
++	}
++	for (auto& candidate: modules) {
++		if (&candidate != last_module && matches(candidate)) {
++			last_module = &candidate;
++			return &candidate;
+ 		}
+-		return &candidate;
+ 	}
+ 	return nullptr;
+ }
+diff --git a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.h b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.h
+index e9974935..50ef7908 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/pipelineCache.h
++++ b/src/graphics/host_gpu/renderer/pipeline/pipelineCache.h
+@@ -229,6 +229,9 @@ private:
+ 		ShaderRecompiler::IR::ResourceSpecialization specialization;
+ 		// A deque: a module compiled aside keeps its address while the program gains another.
+ 		std::deque<ShaderModule>                     modules;
++		// The module found last: consecutive draws of a program mostly want the same one, and comparing the
++		// specialization with every module in turn cost 1.2 % of the command thread in Astro Bot.
++		ShaderModule*                                last_module   = nullptr;
+ 		bool                                         skip_dispatch = false;
+ 
+ 		[[nodiscard]] std::span<const uint32_t> FunctionCode() const;

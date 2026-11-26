@@ -24,10 +24,6 @@ func TestEveryStreamexConsoleOfTheRegistryGetsAProfile(t *testing.T) {
 			t.Errorf("console streamex %q du registre sans profil", console.ID)
 		}
 	}
-	// keytest n'est pas une console du registre, mais son profil existe.
-	if !slices.Contains(written, "keytest") {
-		t.Error("keytest a perdu son profil")
-	}
 }
 
 func TestWriteAllWritesOneFilePerConsole(t *testing.T) {

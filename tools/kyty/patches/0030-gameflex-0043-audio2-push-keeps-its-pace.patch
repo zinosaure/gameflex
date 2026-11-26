@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:26 +0000
+Subject: [PATCH] gameflex 0043: audio2 push keeps its pace
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+la poussée d'AudioOut2 garde son rythme
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0043.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/libs/libAudio2.cpp | 17 ++++++++++-------
+ 1 file changed, 10 insertions(+), 7 deletions(-)
+
+diff --git a/src/libs/libAudio2.cpp b/src/libs/libAudio2.cpp
+index 44b9fedf..8578871e 100644
+--- a/src/libs/libAudio2.cpp
++++ b/src/libs/libAudio2.cpp
+@@ -350,16 +350,22 @@ static void audioout2_update_context_locked(AudioOut2ContextState* state) {
+ 		return;
+ 	}
+ 
+-	const auto now = audioout2_clock();
+-	if (state->last_update == 0 || state->queued == 0) {
++	const auto now   = audioout2_clock();
++	const auto grain = uint64_t {state->num_grains} * 125;
++	// GameFlex: a game pushing without pause keeps what its output clock is late by. Restarting
++	// the clock whenever the queue empties added each late wake-up to the period of a blocking
++	// push: a shade slower than real time, until SDL's queue ran dry and the sound cut (FF7
++	// Remake). A queue empty for more than a grain is a pause, not a late wake-up: the clock
++	// restarts, and grains pushed after it take their whole playing time.
++	const auto restart_after = grain;
++	if (state->last_update == 0 || (state->queued == 0 && now - state->last_update > restart_after)) {
+ 		state->last_update = now;
+ 		return;
+ 	}
+-	if (now <= state->last_update) {
++	if (state->queued == 0 || now <= state->last_update) {
+ 		return;
+ 	}
+ 
+-	const auto grain   = uint64_t {state->num_grains} * 125;
+ 	const auto drained = std::min<uint64_t>(state->queued, (now - state->last_update) / grain);
+ 	if (drained == 0) {
+ 		return;
+@@ -367,9 +373,6 @@ static void audioout2_update_context_locked(AudioOut2ContextState* state) {
+ 
+ 	state->queued -= static_cast<uint32_t>(drained);
+ 	state->last_update += drained * grain;
+-	if (state->queued == 0) {
+-		state->last_update = now;
+-	}
+ }
+ 
+ static AudioOut2PortStateEntry* audioout2_find_port_locked(AudioOut2PortHandle port) {

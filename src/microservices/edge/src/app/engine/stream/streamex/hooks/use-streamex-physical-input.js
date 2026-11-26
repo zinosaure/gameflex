@@ -113,7 +113,7 @@ export function useStreamexPhysicalInput({ enabled, order, profileButtons, sendI
                         return;
                     }
                     // Le Home du raccourci du menu (L2 tenu) n'est pas au jeu.
-                    const down = !suspended && !isMenuHome(gamepad, index)
+                    const down = !suspended && !isMenuHome(gamepad, index, "streamex")
                         && (button.pressed || (typeof button.value === "number" && button.value > 0.5));
                     if (down === !!padState.get(id)) {
                         return;

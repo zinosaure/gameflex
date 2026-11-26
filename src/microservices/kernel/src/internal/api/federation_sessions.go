@@ -52,15 +52,11 @@ func (server *Server) handleFederationSessions(w http.ResponseWriter, r *http.Re
 	})
 }
 
-// sessionsForFriends — les parties de ce serveur, dans la forme qu'un ami en reçoit. Le banc d'essai interne (keytest) n'en
-// est pas : ce n'est pas une partie.
+// sessionsForFriends — les parties de ce serveur, dans la forme qu'un ami en reçoit.
 func (server *Server) sessionsForFriends() []facade.PeerSession {
 	list := []facade.PeerSession{}
 
 	for _, session := range server.enrichSessions(server.pool.List(), facadeViewer{forceSpectate: true}) {
-		if session.ConsoleID == "keytest" {
-			continue
-		}
 		list = append(list, facade.PeerSession{
 			ID:          session.ID,
 			Platform:    session.Platform,

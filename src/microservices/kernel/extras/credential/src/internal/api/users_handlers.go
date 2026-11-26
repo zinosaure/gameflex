@@ -55,13 +55,11 @@ func (server *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var userID int64
-	var username, displayName string
-	var roleLevel, generation int
-	var hashedPassword string
+	var username, hashedPassword string
 	err := server.db.QueryRow(
-		`SELECT id, username, display_name, role_level, hashed_password, session_generation FROM users WHERE username = ?`,
+		`SELECT id, username, hashed_password FROM users WHERE username = ?`,
 		body.Username,
-	).Scan(&userID, &username, &displayName, &roleLevel, &hashedPassword, &generation)
+	).Scan(&userID, &username, &hashedPassword)
 
 	// UN REFUS LAISSE UNE TRACE, ET C'EST TOUT CE QU'IL LAISSE.
 	//
@@ -105,30 +103,8 @@ func (server *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := auth.CreateToken(server.config.JWTSecret, userID, username, roleLevel, generation)
-	if err != nil {
-		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
-		return
-	}
-
-	// Invite panel ordering source — most recent connection first. Elle est
-	// ÉCRASÉE à chaque connexion : elle dit « la dernière fois », jamais « les
-	// fois ». C'est pour ça que le journal ci-dessous existe à côté.
-	_, _ = server.db.Exec(
-		`UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?`,
-		userID,
-	)
-
-	server.logins.succeed(body.Username, address)
-	slog.Info("login granted",
-		"username", username, "role_level", roleLevel,
-		"from", address, "origin", r.Header.Get("Origin"))
-
-	respondItem(w, http.StatusOK, map[string]any{
-		"access_token": token,
-		"token_type":   "bearer",
-		"user":         server.fetchUserResponse(userID),
-	})
+	// LA SESSION, OU LE CODE D'ABORD (chantier 80, mfa.go).
+	server.finishSignIn(w, r, userID, username, "password")
 }
 
 func (server *Server) handleMe(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
@@ -340,7 +316,7 @@ func (server *Server) handleListUsers(w http.ResponseWriter, r *http.Request, pr
 	}
 	rows.Close()
 	for index := range users {
-		if token, err := server.accountToken(users[index].ID, true); err == nil {
+		if token, err := server.accountToken(users[index].ID, false); err == nil {
 			users[index].Token = &token
 		}
 		users[index].Invitation = server.memberLink(users[index].ID)
@@ -367,7 +343,7 @@ func (server *Server) handleFetchUser(w http.ResponseWriter, r *http.Request, pr
 		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 		return
 	}
-	if token, err := server.accountToken(user.ID, true); err == nil {
+	if token, err := server.accountToken(user.ID, false); err == nil {
 		user.Token = &token
 	}
 	user.Invitation = server.memberLink(user.ID)
@@ -380,6 +356,9 @@ func (server *Server) handleFetchUser(w http.ResponseWriter, r *http.Request, pr
 // kernel, #601). Le kernel les refusait déjà ; un compte au nom refusé ne
 // pouvait que se connecter.
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9._-]{3,32}$`)
+
+// newUsernameMax — la longueur d'un nom à la création d'un compte.
+const newUsernameMax = 20
 
 // assignableRole — les rangs qu'un administrateur donne : administrateur ou
 // joueur. Ni root, ni un rang inventé : un rang négatif comptait comme
@@ -423,8 +402,11 @@ func (server *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, p
 		}
 		grants = parsed
 	}
-	if !usernamePattern.MatchString(body.Username) {
-		respondErrorCode(w, http.StatusBadRequest, "username_invalid", "Username must be 3 to 32 letters, digits, dots, dashes or underscores.")
+	// UN NOUVEAU COMPTE : 20 caractères au plus (le porteur, 2026-11-25 : « pas d'espace, minimum 3 characters et max
+	// 20 », la règle de Réglages › Membres) ; les comptes d'avant, jusqu'à 32, se connectent et jouent toujours
+	// (usernamePattern, celui du kernel).
+	if !usernamePattern.MatchString(body.Username) || len(body.Username) > newUsernameMax {
+		respondErrorCode(w, http.StatusBadRequest, "username_invalid", "Username must be 3 to 20 letters, digits, dots, dashes or underscores.")
 		return
 	}
 	// Le compte et son lien, dans la même transaction : un compte n'existe
@@ -489,6 +471,8 @@ func (server *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request, p
 		DisplayName *string   `json:"display_name"`
 		RoleLevel   *int      `json:"role_level"`
 		Consoles    *[]string `json:"consoles"`
+		// MfaRequired — imposer la double authentification à ce membre (chantier 80).
+		MfaRequired *bool `json:"mfa_required"`
 	}
 	if !decodeBody(w, r, &body) {
 		return
@@ -517,6 +501,9 @@ func (server *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request, p
 	}
 	if body.RoleLevel != nil {
 		updates["role_level"] = *body.RoleLevel
+	}
+	if body.MfaRequired != nil {
+		updates["mfa_required"] = *body.MfaRequired
 	}
 	if err := server.applyUserUpdate(id, updates); err != nil {
 		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
@@ -586,6 +573,8 @@ func (server *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request, p
 		"favorites",
 		// Les serveurs fédérés qu'il a éteints (hidden_servers.go).
 		"hidden_servers",
+		// Sa double authentification (mfa.go).
+		"user_mfa",
 	}
 	// Chaque table et sa colonne d'auteur. LE FOURNISSEUR DE MÉTADONNÉES (chantier 49) note QUI a enregistré ses
 	// clés (`metadata_services.updated_by_id`) : il perd son auteur, jamais son réglage — il manquait ici, et
@@ -667,7 +656,7 @@ func (server *Server) fetchUserResponse(userID int64) userResponse {
 // remplace sa ligne sur place, et ne doit pas lui faire perdre son jeton.
 func (server *Server) memberResponse(userID int64) userResponse {
 	user := server.fetchUserResponse(userID)
-	if token, err := server.accountToken(userID, true); err == nil {
+	if token, err := server.accountToken(userID, false); err == nil {
 		user.Token = &token
 	}
 	user.Invitation = server.memberLink(userID)

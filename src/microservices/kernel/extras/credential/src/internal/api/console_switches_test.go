@@ -84,7 +84,7 @@ func TestAnAccessIsRestrictedLikeAMember(t *testing.T) {
 
 func TestTheFederatedSessionCarriesItsAccess(t *testing.T) {
 	server, db := tokenServer(t)
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, "2", `{"enabled":true,"duration":"1m"}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, "2", `{"enabled":true,"duration":"1m"}`)
 	var id int64
 	if err := db.QueryRow(`SELECT id FROM federation_tokens WHERE token_hash = ?`, hashToken(testAccess)).Scan(&id); err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestRemoteAdministrationIsGrantedPerAccess(t *testing.T) {
 	if err := db.QueryRow(`SELECT id FROM users WHERE username = 'admin'`).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
-	adminCall(server, server.handleUpdateAccountToken, http.MethodPatch, strconv.FormatInt(id, 10), `{"enabled":true,"duration":"1m"}`)
+	ownerCall(server, server.handleUpdateMyAccountToken, strconv.FormatInt(id, 10), `{"enabled":true,"duration":"1m"}`)
 	answer := sessionCall(server, tokenOf(t, db, id))
 	var body struct {
 		Item struct {

@@ -69,7 +69,7 @@ type RomEntry struct {
 	Identity string `json:"identity,omitempty"`
 	// ServerID désigne l'entrée du registre d'où il vient.
 	ServerID int64 `json:"serverId,omitempty"`
-	// Sources — pour un jeu d'un serveur fédéré qui l'a dans plusieurs sources (gameflex-federation, chantier 61) :
+	// Sources — pour un jeu qu'un serveur fédéré tient de ses ressources externes (`#808`) :
 	// ses sources, de la meilleure à la moins bonne ; la page en choisit une (`source`).
 	Sources []listing.Source `json:"sources,omitempty"`
 	// Here — un jeu d'un serveur fédéré qui est DÉJÀ ICI, par son identifiant
@@ -102,6 +102,9 @@ type RomEntry struct {
 	// Engine — le moteur du jeu (storage.GameEngine, chantier 36), absent
 	// s'il n'est pas reconnu.
 	Engine string `json:"engine,omitempty"`
+	// Cores — les émulateurs de la console qui acceptent ce jeu, quand ce ne sont pas tous : un jeu des ports PC n'a
+	// que son port (catalogEntry.Cores). Absent : tous ceux de la console.
+	Cores []string `json:"cores,omitempty"`
 
 	// Les disques et la série (chantier 49, pour le launcher), posés par la
 	// liste d'après les noms seulement (api/rom_groups.go). La règle et ses

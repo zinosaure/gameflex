@@ -394,19 +394,9 @@ func (server *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 	server.logins.succeed("join\x00"+address, address)
 
-	token, err := server.SessionToken(link.UserID)
-	if err != nil {
-		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
-		return
-	}
-	_, _ = server.db.Exec(`UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?`, link.UserID)
 	// Son compte attendait : la liste des kernels le dit rejoint.
 	server.accountsChanged()
 	slog.Info("invitation joined", "username", link.Username, "kind", link.Kind, "from", address)
-
-	respondItem(w, http.StatusOK, map[string]any{
-		"access_token": token,
-		"token_type":   "bearer",
-		"user":         server.fetchUserResponse(link.UserID),
-	})
+	// LA SESSION, OU LA DOUBLE AUTHENTIFICATION D'ABORD (chantier 80) : imposée, il l'active avant d'entrer.
+	server.finishSignIn(w, r, link.UserID, link.Username, "invitation")
 }

@@ -168,6 +168,16 @@ func (server *Server) facadeTopic(conn *facade.Conn, wanted facade.Subscription)
 			})
 		}, 0, ""
 
+	case wanted.Topic == "resources":
+		// LES RESSOURCES EXTERNES ET LEURS PARCOURS (`#808`, resources_api.go) : un administrateur seulement.
+		if !server.connAdmin(conn) {
+			return nil, http.StatusForbidden, "administrators only"
+		}
+
+		return func(ctx context.Context) {
+			server.followResources(ctx, conn)
+		}, 0, ""
+
 	case wanted.Topic == "pairing":
 		admin := server.connAdmin(conn)
 
@@ -447,15 +457,17 @@ func newLaunchID() string {
 // page qui revient après avoir été fermée.
 func (server *Server) facadeDownload(conn *facade.Conn, request facade.Request) {
 	var command struct {
-		Route   string          `json:"route"`
-		Server  string          `json:"server"`
-		Disk    string          `json:"disk"`
-		Section string          `json:"section"`
-		Body    json.RawMessage `json:"body"`
-		Total   int64           `json:"total"`
-		Label   string          `json:"label"`
-		Key     string          `json:"key"`
-		Source  string          `json:"source"`
+		Route  string `json:"route"`
+		Server string `json:"server"`
+		Disk   string `json:"disk"`
+		// Resource — une ressource externe (`#808`) : la route `resource`, un jeu importé dans la bibliothèque.
+		Resource string          `json:"resource"`
+		Section  string          `json:"section"`
+		Body     json.RawMessage `json:"body"`
+		Total    int64           `json:"total"`
+		Label    string          `json:"label"`
+		Key      string          `json:"key"`
+		Source   string          `json:"source"`
 	}
 	if json.Unmarshal(request.Data, &command) != nil || len(command.Body) == 0 {
 		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "invalid request body"))
@@ -493,6 +505,15 @@ func (server *Server) facadeDownload(conn *facade.Conn, request facade.Request) 
 		chiArgs["name"], chiArgs["section"] = command.Disk, command.Section
 		handler = adminOnly(server.refreshing(
 			func(r *http.Request) string { return chi.URLParam(r, "section") }, server.handleDiskStorageImport))
+	case "resource":
+		if command.Resource == "" || command.Section != listing.Roms {
+			conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "a resource and the roms section are required"))
+
+			return
+		}
+		path = "/api/v1/retrogaming/resources/" + command.Resource + "/storage/" + command.Section
+		chiArgs["id"], chiArgs["section"] = command.Resource, command.Section
+		handler = adminOnly(server.refreshing(sectionNamed(listing.Roms), server.handleResourceStorageImport))
 	case "official":
 		// LA SOURCE OFFICIELLE (chantier 63, P6) : un correctif depuis le paquet `streamex-patches` de l'index.
 		if command.Section != listing.Patches {
@@ -503,7 +524,7 @@ func (server *Server) facadeDownload(conn *facade.Conn, request facade.Request) 
 		path = "/api/v1/retrogaming/storage/official/patches"
 		handler = adminOnly(server.refreshing(sectionNamed(listing.Patches), server.handleOfficialPatchImport))
 	default:
-		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "route must be cores, server, disk or official"))
+		conn.Reply(request.ID, http.StatusBadRequest, facade.ErrorBody("bad_request", "route must be cores, server, disk, resource or official"))
 
 		return
 	}
@@ -546,7 +567,7 @@ func (server *Server) facadeDownload(conn *facade.Conn, request facade.Request) 
 // takesTheQueue — un jeu (la section `roms`, d'un serveur fédéré ou d'un disque)
 // attend son tour ; le reste part tout de suite.
 func takesTheQueue(route, section string) bool {
-	return section == listing.Roms && (route == "server" || route == "disk")
+	return section == listing.Roms && (route == "server" || route == "disk" || route == "resource")
 }
 
 // facadeDownloadCancel — `{type:"download.cancel", id, data:{downloadId}}` :

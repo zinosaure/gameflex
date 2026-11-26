@@ -31,6 +31,7 @@ import (
 	"gameflex/consoles"
 	"gameflex/kernel/internal/docker"
 	"gameflex/kernel/internal/retro_files"
+	"gameflex/resources"
 	"gameflex/storage/installs"
 	"gameflex/storage/saves"
 )
@@ -132,6 +133,12 @@ func (server *Server) handleRetroRoms(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	// `resource` — une ressource externe (`#808`, Réglages › Consoles › Jeux) : ses jeux, à importer ; administrateur.
+	if resource := r.URL.Query().Get("resource"); resource != "" {
+		server.serveResourceRoms(w, r, resource, consoleID, query)
+
+		return
+	}
 
 	// LE LISTING DE CE SERVEUR (chantier 15), plus le disque : ce que GameFlex
 	// a écrit y est déjà, ce qu'on a déposé à la main attend un parcours.
@@ -148,10 +155,15 @@ func (server *Server) handleRetroRoms(w http.ResponseWriter, r *http.Request) {
 		if files == nil {
 			files = []string{}
 		}
-		roms = append(roms, retro_files.RomEntry{
+		rom := retro_files.RomEntry{
 			Reference: item.ID, Title: item.Name, Files: files, SizeBytes: item.Size, Folder: item.Dir,
 			Status: statusView(consoleID, statuses, item.ID), Engine: item.Engine,
-		})
+		}
+		// Un jeu des ports PC ne se joue qu'avec son port (RomEntry.Cores).
+		if consoleID == consoles.PortsID {
+			rom.Cores = retro_files.CatalogCores(server.retroRomsRoot(), item.ID)
+		}
+		roms = append(roms, rom)
 	}
 	annotateRoms(consoleID, roms)
 
@@ -317,6 +329,16 @@ func (server *Server) handleRetroServeRom(w http.ResponseWriter, r *http.Request
 // dise. La console et la référence arrivent en argument parce qu'elles viennent
 // de l'URL dans un cas et du ticket dans l'autre.
 func (server *Server) serveRomFile(w http.ResponseWriter, r *http.Request, consoleID, ref string) {
+	// UN JEU D'UNE RESSOURCE EXTERNE (`res<id>:`, le Catalogue, `#808`) : servi depuis elle.
+	if _, _, ok := resources.ParseReference(ref); ok {
+		if catalog, id, inner, found := server.resourceGame(consoleID, ref); found &&
+			catalog.ServeGame(w, r, id, consoleID, inner, func(status int, code, message string) { writeErrorCode(w, status, code, message) }) {
+			return
+		}
+		writeErrorCode(w, http.StatusNotFound, "game_not_found", "rom not found")
+
+		return
+	}
 	// La bibliothèque, puis les disques internes (chantier 23) : un ami voit
 	// les deux comme une seule, et télécharge un jeu là où il est.
 	path, isDir, _, err := server.findRom(r.Context(), consoleID, ref)
@@ -699,7 +721,7 @@ func (server *Server) handleRetroSaveFileUpload(w http.ResponseWriter, r *http.R
 	if err := storage.KeepSaveTimestamp(path, saved); err != nil {
 		slog.Warn("save timestamp not kept", "path", path, "error", err)
 	}
-	if err := saves.RememberTitle(filepath.Join(root, owner), consoleID, reference, r.URL.Query().Get("title")); err != nil {
+	if err := saves.Remember(filepath.Join(root, owner), saves.Named{Console: consoleID, Save: reference, Game: saves.Announced(r.URL.Query(), reference)}); err != nil {
 		slog.Warn("save title not kept", "source", source, "error", err)
 	}
 
@@ -768,19 +790,49 @@ func (server *Server) handleRetroUserSaves(w http.ResponseWriter, r *http.Reques
 		writeErrorCode(w, http.StatusInternalServerError, "saves_failed", fmt.Sprintf("failed to list saves: %v", err))
 		return
 	}
-	// UNE COPIE VENUE D'AILLEURS porte parfois un jeu qu'ici n'a pas : son
-	// titre a voyagé avec l'envoi (saves.RememberTitle).
-	if source := r.URL.Query().Get("source"); source != "" {
-		tree := filepath.Join(root, owner)
-		for index, entry := range entries {
-			if entry.Title == entry.Reference {
-				if title := saves.Title(tree, entry.ConsoleID, entry.Reference); title != "" {
-					entries[index].Title = title
-				}
-			}
+	// LE NOM SE GARDE AVEC LA SAUVEGARDE (chantier 76) : ce que le catalogue
+	// nomme s'écrit dans `titles.json` du rangement, avec la référence et le
+	// chemin du jeu ; un jeu qu'ici n'a pas (parti de la bibliothèque, ou venu
+	// d'ailleurs avec une copie) y retrouve son nom.
+	tree := filepath.Join(root, owner)
+	known := saves.Known(tree)
+	named := []saves.Named{}
+	pathOf := retroPaths(append([]string{server.retroRomsRoot()}, diskRoots...))
+	for index, entry := range entries {
+		if entry.Title != entry.Reference {
+			named = append(named, saves.Named{Console: entry.ConsoleID, Save: entry.Reference,
+				Game: saves.KnownGame{Title: entry.Title, ID: entry.Reference, Path: pathOf(entry.ConsoleID, entry.Reference)}})
+		} else if game, found := known(entry.ConsoleID, entry.Reference); found {
+			entries[index].Title = game.Title
 		}
 	}
+	if err := saves.Remember(tree, named...); err != nil {
+		slog.Warn("save titles not kept", "error", err)
+	}
 	writeJSON(w, http.StatusOK, entries)
+}
+
+// retroPaths — le chemin d'un jeu du rétro depuis son dossier des jeux
+// (« nes/Metroid.nes »), dans la bibliothèque puis sur les disques : une
+// lecture du catalogue par console et par dossier.
+func retroPaths(roots []string) func(consoleID, reference string) string {
+	read := map[string][]map[string]string{}
+
+	return func(consoleID, reference string) string {
+		if _, done := read[consoleID]; !done {
+			for _, root := range roots {
+				paths, _ := retro_files.CatalogPaths(root, consoleID)
+				read[consoleID] = append(read[consoleID], paths)
+			}
+		}
+		for index, paths := range read[consoleID] {
+			if path, found := paths[reference]; found {
+				return relativeTo(roots[index], path)
+			}
+		}
+
+		return ""
+	}
 }
 
 // handleRetroDeleteSave — DELETE /api/v1/retrogaming/savestate
@@ -899,6 +951,14 @@ func (server *Server) retroRouter() http.Handler {
 		// de cette machine. Les lister est ouvert à tous (le sélecteur de la
 		// page des jeux) ; les relire est un geste d'administration.
 		guarded.Get("/disks", server.handleInternalDisks)
+		// Les ressources externes (`#808`, resources_api.go) : administrateur seulement.
+		guarded.Get("/resources", adminOnly(server.handleListResources))
+		guarded.Get("/resources/catalog", server.handleLentResources)
+		guarded.Post("/resources", adminOnly(server.handleAddResource))
+		guarded.Patch("/resources/{id}", adminOnly(server.handleUpdateResource))
+		guarded.Delete("/resources/{id}", adminOnly(server.handleRemoveResource))
+		guarded.Post("/resources/{id}/rescan", adminOnly(server.handleRescanResource))
+		guarded.Post("/resources/{id}/storage/{section}", adminOnly(server.handleResourceStorageImport))
 		guarded.Post("/disks/{name}/rescan", adminOnly(server.handleInternalDiskRescan))
 		// Ce qu'un disque apporte d'autre que des jeux (chantier 24) — ses
 		// cœurs, BIOS, paramètres et correctifs. L'importer dans le dossier
@@ -951,6 +1011,8 @@ func (server *Server) retroRouter() http.Handler {
 		// les requêtes, les journaux des parties.
 		guarded.Get("/storage/logs/settings", adminOnly(server.handleGetLogSettings))
 		guarded.Put("/storage/logs/settings", adminOnly(server.handlePutLogSettings))
+		guarded.Get("/storage/server-config", adminOnly(server.handleGetServerConfig))
+		guarded.Put("/storage/server-config", adminOnly(server.handlePutServerConfig))
 		// SIGNALER, ce n'est pas LIRE (#191). Les quatre routes ci-dessus sont
 		// réservées aux administrateurs parce qu'elles exposent les journaux de
 		// tout le monde ; celle-ci n'ajoute qu'une ligne sur ce qui vient

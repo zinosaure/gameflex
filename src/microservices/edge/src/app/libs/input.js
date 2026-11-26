@@ -30,12 +30,13 @@ import { padFamily, setInputKind } from "./glyphs.js";
 //   Y                     bouton nord (3) —       Y
 //                         Triangle
 //   parcourir l'en-tête   L2, R2 (6, 7)           Q, E — PageUp, PageDown
-//   (onglets, raccourcis,
+//   (onglets, raccourcis,   et la croix dans l'en-tête : gauche, droite
 //   réglages ; sans boucler)
 //   réglages (bascule)    Select (8)              M, Menu
 //   En direct (l'accueil) Start (9)               S
-//   le menu d'une partie  L2 + Home (6 + 16),     Échap
-//   (la page de jeu)      tenus 3 s (libs/play.js)
+//   le menu d'une partie  rétro : Home (16) ;      Échap
+//   (la page de jeu)      sinon L2 + R2 + Home
+//                         tenus 2 s (gameInput.js)
 //
 // Ce que font A, B, X et Y selon l'écran :
 //   - les consoles : A ouvre la bibliothèque, où que soit la lumière (leurs réglages
@@ -73,7 +74,7 @@ export function useScreenInput(handler) {
     }, []);
 }
 
-// La même chose hors d'un composant : la fenêtre de confirmation de Skeleton (Bricks.jsx, useConfirm), posée par le
+// La même chose hors d'un composant : la fenêtre de confirmation de Skeleton (bricks/, useConfirm), posée par le
 // code de Skeleton et non par React. Rend de quoi la retirer.
 export function pushScreenInput(handler) {
     const entry = { get: () => handler };
@@ -198,8 +199,8 @@ const scopeScroller = () => {
     return Array.from(scope.querySelectorAll("[data-scroller]")).find((element) => element.offsetParent !== null && element.scrollHeight > element.clientHeight + 1) || null;
 };
 
-// UN BOUTON DE L'EN-TÊTE ATTEINT PAR L2 / R2 (Shell.jsx) : il a la lumière, A l'ouvre ; B ou
-// une direction la rendent à l'écran (le point neutre).
+// UN BOUTON DE L'EN-TÊTE ATTEINT PAR L2 / R2 (Shell.jsx) : il a la lumière, A l'ouvre ; B la rend à l'écran (le point
+// neutre).
 let headerFocus = null;
 
 export const focusHeader = (element) => {
@@ -207,12 +208,11 @@ export const focusHeader = (element) => {
     focusElement(element);
 };
 
-// Quitter l'en-tête : le bouton atteint par L2 / R2, ou tout élément de l'en-tête qui a la lumière
-// (un clic, Tab) — une direction n'y circule jamais, elle rend la lumière à l'écran.
-const leaveHeader = (direction = false) => {
+// Quitter l'en-tête par B : le bouton atteint par L2 / R2.
+const leaveHeader = () => {
     const current = document.activeElement;
 
-    if ((headerFocus && current === headerFocus) || (direction && current?.closest?.("[data-nav-skip]"))) {
+    if (headerFocus && current === headerFocus) {
         current.blur();
         headerFocus = null;
 
@@ -223,18 +223,55 @@ const leaveHeader = (direction = false) => {
     return false;
 };
 
+// LA CROIX DANS L'EN-TÊTE (le porteur, 2026-11-26 : « il faut réactiver la dPad navigation de gauche et droite pour
+// permettre de naviguer sur le header. On garde le R2 et L2 mais on rajoute aussi la navigation par touches
+// directionnelles ») : gauche et droite passent d'un élément au suivant (l'accueil, les onglets, les raccourcis, les
+// réglages), sans boucler ; un onglet reçoit la lumière, A l'ouvre. Bas rend la lumière à l'écran ; on y entre par HAUT
+// depuis le haut de l'écran (`enterHeader`), ou par L2 / R2.
+const headerItems = () => Array.from(document.querySelectorAll(".topbar [data-nav]")).filter((element) => element.offsetParent !== null && !element.disabled);
+
+const enterHeader = () => {
+    const items = headerItems();
+    const target = items.find((element) => element.classList.contains("active") || element.getAttribute("aria-pressed") === "true") || items[0];
+
+    if (target) {
+        focusHeader(target);
+    }
+};
+
+const moveInHeader = (direction, current) => {
+    headerFocus = null;
+
+    if (direction === "down") {
+        current.blur();
+
+        return;
+    }
+    if (direction === "left" || direction === "right") {
+        const items = headerItems();
+        const next = items[items.indexOf(current) + (direction === "right" ? 1 : -1)];
+
+        if (next) {
+            focusHeader(next);
+        }
+    }
+};
+
 export function move(direction) {
     const current = document.activeElement;
 
-    if (leaveHeader(true)) {
+    if (current?.closest?.(".topbar")) {
+        moveInHeader(direction, current);
+
         return;
     }
+    headerFocus = null;
 
     if (top().direction?.(direction, current)) {
         return;
     }
 
-    // Au bout de ses options, la croix sort du sélecteur : vers le bouton qui lui est accolé (Bricks.jsx, IconAddon),
+    // Au bout de ses options, la croix sort du sélecteur : vers le bouton qui lui est accolé (bricks/, IconAddon),
     // ou la page suivante d'une liste — sinon ils resteraient hors d'atteinte.
     if (current?.tagName === "SELECT" && (direction === "left" || direction === "right") && current.closest("[data-nav-layer]")
         && cycleSelect(current, direction === "right" ? 1 : -1)) {
@@ -244,8 +281,8 @@ export function move(direction) {
     if (current?.type === "range" && (direction === "left" || direction === "right") && stepRange(current, direction === "right" ? 1 : -1)) {
         return;
     }
-    // L'EN-TÊTE N'EST JAMAIS UNE CIBLE DE LA CROIX (`data-nav-skip`, Shell.jsx) : seuls L2 / R2 y vont.
-    const candidates = navigable().filter((element) => !element.closest("[data-nav-skip]"));
+    // L'en-tête a sa propre navigation (moveInHeader) : l'algorithme de l'écran ne le vise pas.
+    const candidates = navigable().filter((element) => !element.closest(".topbar"));
 
     if (!candidates.includes(current)) {
         focusElement(top().fallback?.() || candidates[0]);
@@ -295,8 +332,11 @@ export function move(direction) {
     const scroller = horizontal ? null : current.closest("[data-scroller]") || scopeScroller();
 
     if (!options.length) {
-        if (!(scroller && scrollStep(scroller, sign))) {
-            top().edge?.(direction);
+        // Au haut de l'écran, HAUT entre dans l'en-tête — depuis une page (les Réglages en sont une couche), pas depuis
+        // un panneau ou une fenêtre posés par-dessus.
+        const layer = current.closest("[data-nav-layer]");
+        if (!(scroller && scrollStep(scroller, sign)) && direction === "up" && (!layer || layer.matches("main.screen"))) {
+            enterHeader();
         }
 
         return;
@@ -331,7 +371,7 @@ const activate = () => {
     }
 
     // Un bouton, un lien, un interrupteur ou une case (à cocher, d'option), le choix d'un fichier :
-    // comme au doigt. L'étiquette d'un choix segmenté (ChoiceRow, Bricks.jsx : la croix s'arrête sur elle, pas sur sa
+    // comme au doigt. L'étiquette d'un choix segmenté (ChoiceRow, bricks/ : la croix s'arrête sur elle, pas sur sa
     // case) aussi — son clic de A (`detail` 0) choisit sa case ; sans elle, A n'y faisait rien.
     if (current && current.matches("button, a, [role=button], input[type=checkbox], input[type=radio], input[type=file], label[data-nav]") && !current.disabled) {
         current.click();

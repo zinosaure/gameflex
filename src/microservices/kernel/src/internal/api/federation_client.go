@@ -377,7 +377,7 @@ func (server *Server) fetchRegisteredServers() ([]registeredServer, error) {
 	}
 	server.copies().Prune(peers)
 	// AU PREMIER RELEVÉ DU REGISTRE, chaque copie relue en fond : ce qui a changé chez un ami sans changer la date de
-	// son listing (une portée, un serveur qui ne lance rien — `catalogOnly`) se sait avant le premier affichage.
+	// son listing (une portée, une console coupée) se sait avant le premier affichage.
 	server.peerCopiesRefreshed.Do(func() {
 		go func() {
 			for _, peer := range peers {

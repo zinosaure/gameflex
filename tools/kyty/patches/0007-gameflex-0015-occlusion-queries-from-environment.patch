@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Sun, 8 Nov 2026 21:49:25 +0000
+Subject: [PATCH] gameflex 0015: occlusion queries from environment
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+les requêtes d'occlusion se demandent aussi par l'environnement
+
+Détail : tools/kyty/README.md du dépôt GameFlex, entrée 0015.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+---
+ src/main.cpp | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/main.cpp b/src/main.cpp
+index 8943d8a4..5f1751f0 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -9,6 +9,7 @@
+ #include <algorithm>
+ #include <charconv>
+ #include <cstdio>
++#include <cstdlib>
+ #include <filesystem>
+ #include <string_view>
+ #include <vector>
+@@ -231,6 +232,12 @@ static constexpr Flag FLAGS[] = {
+ static bool ParseArgs(int argc, char* argv[], RunOptions& options, bool& show_help) {
+ 	show_help = false;
+ 
++	// KYTY_OCCLUSION_QUERIES=1 (0 to disable) sets --occlusion-queries from the environment, for
++	// launchers that pass their settings as environment variables. The flag itself still works.
++	if (const char* occlusion = std::getenv("KYTY_OCCLUSION_QUERIES"); occlusion != nullptr) {
++		options.config.occlusion_queries_enabled = std::string_view(occlusion) != "0";
++	}
++
+ 	for (int i = 1; i < argc; i++) {
+ 		std::string arg = std::string(argv[i]);
+ 		std::string value;

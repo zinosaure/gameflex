@@ -1,18 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { connectedGamepads } from "../../../libs/keyMapping.js";
-import { MENU_CHORD } from "../../../libs/gameInput.js";
 
 // LE MENU D'UNE PARTIE, À LA MANETTE ET SANS BARRE (#408, #409 — le porteur,
-// 2026-10-19).
-
-// L2 + HOME (libs/gameInput.js, MENU_CHORD). C'était L3 + R3 jusqu'au
-// 2026-10-21, puis Select + Start, pour les manettes clipsées sans sticks
-// (#410) ; le porteur l'a changé le 2026-10-28 : Start tenu éteint plusieurs
-// manettes GameSir. Home n'est pas un geste de jeu tant que L2 est tenu (il
-// n'atteint plus le jeu) ; tenus TROIS SECONDES depuis le 2026-11-13 (le
-// porteur : « C'est Home + L2 pendant 3 secondes ») — la page de jeu du
-// launcher (chantier 52) suit la même règle.
-const MENU_HOLD_MS = 3000;
+// 2026-10-19). Le geste de la manette qui l'ouvre : libs/gameInput.js
+// (menuGestureOf), suivi par libs/play.js (useMenuHotkey).
 
 // LE BOUTON ROND D'UN ÉCRAN DE JEU — celui du menu, et la croix qui annule un
 // lancement (le porteur, 2026-10-29 : « un ✖️ dans un cercle (comme pour le
@@ -111,79 +101,6 @@ export function useSlideToOpen(onOpen) {
             onLostPointerCapture: release,
         },
     };
-}
-
-/**
- * L2 + HOME TENUS TROIS SECONDES OUVRENT LE MENU — le raccourci que le porteur a
- * choisi, pour la manette qui n'a pas de doigt pour toucher le bouton.
- *
- * Rend l'avancement (0 à 1) pour que la page le montre : sans rien voir, on
- * lâche avant la fin. Il faut relâcher pour réarmer : un menu
- * refermé les deux boutons encore enfoncés ne se rouvre pas aussitôt.
- *
- * Toutes les manettes branchées comptent — celle du joueur 2 aussi : le menu
- * est celui de l'appareil. Les manettes virtuelles du serveur n'en sont pas
- * (connectedGamepads les écarte).
- *
- * @param {boolean} enabled faux quand un panneau est déjà ouvert
- * @param {Function} onOpen ouvrir le menu
- * @returns {number} l'avancement de l'appui, de 0 à 1
- */
-export function useMenuHotkey(enabled, onOpen) {
-    const [progress, setProgress] = useState(0);
-    // Le rappel dans une référence : l'avancement re-rend la page à chaque
-    // pas, et un rappel neuf en dépendance relancerait la boucle — l'appui
-    // repartirait de zéro, et n'aboutirait jamais.
-    const onOpenRef = useRef(onOpen);
-    onOpenRef.current = onOpen;
-
-    useEffect(() => {
-        if (!enabled) {
-            setProgress(0);
-
-            return undefined;
-        }
-
-        let raf;
-        let since = null;
-        let armed = true;
-        let shown = 0;
-        const show = (value) => {
-            if (value !== shown) {
-                shown = value;
-                setProgress(value);
-            }
-        };
-        const tick = () => {
-            const held = connectedGamepads().some((pad) => pad
-                && MENU_CHORD.every((index) => pad.buttons?.[index]?.pressed));
-            const now = performance.now();
-
-            if (!held) {
-                since = null;
-                armed = true;
-                show(0);
-            } else if (armed) {
-                since ??= now;
-                // Par pas de 5 % : un rendu par image pour une barre qui n'a
-                // que vingt positions utiles.
-                const value = Math.min(1, Math.floor(((now - since) / MENU_HOLD_MS) * 20) / 20);
-                show(value);
-                if (value >= 1) {
-                    armed = false;
-                    since = null;
-                    show(0);
-                    onOpenRef.current();
-                }
-            }
-            raf = requestAnimationFrame(tick);
-        };
-        raf = requestAnimationFrame(tick);
-
-        return () => cancelAnimationFrame(raf);
-    }, [enabled]);
-
-    return progress;
 }
 
 // Trois secondes sans un geste, et le bouton du menu s'efface — à 10 %, jamais tout à fait (le porteur, 2026-11-17 :

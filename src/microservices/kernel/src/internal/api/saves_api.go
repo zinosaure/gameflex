@@ -8,7 +8,7 @@ package api
 //	GET    /api/v1/saves/streamex?source=        les jeux d'un rangement, console par console
 //	GET    /api/v1/saves/streamex/game?source=&console=&id=   l'archive d'un jeu
 //	POST   /api/v1/saves/streamex/game?source=&console=&id=   une archive, dans une copie
-//	DELETE /api/v1/saves/streamex/game?source=&console=&id=   un jeu, effacé d'une copie
+//	DELETE /api/v1/saves/streamex/game?source=&console=&id=   un jeu, effacé d'une copie ou du principal
 //	POST   /api/v1/saves/streamex/backup         des jeux du principal, copiés dans local
 //	POST   /api/v1/saves/streamex/restore        des jeux d'une copie, remis dans le principal
 //	POST   /api/v1/saves/states/backup           des emplacements du rétro, dans local
@@ -38,6 +38,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -105,16 +106,17 @@ func (server *Server) handleSaveSources(w http.ResponseWriter, r *http.Request) 
 
 // handleStreamexSaves — GET /api/v1/saves/streamex?source=. `consoles` : celles
 // dont les sauvegardes se copient (saves.Consoles — la Xbox 360 n'y est pas
-// encore). Chaque jeu porte le titre de son jeu d'ici quand on le trouve
-// (metadata.NameSaves).
+// encore). Chaque jeu porte le titre de son jeu d'ici quand on le trouve, sinon
+// celui que la copie a gardé (metadata.NameSaves, chantier 76).
 func (server *Server) handleStreamexSaves(w http.ResponseWriter, r *http.Request) {
 	root, owner, ok := server.saveTree(w, r)
 	if !ok {
 		return
 	}
+	tree := filepath.Join(root, owner)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"consoles": saves.Consoles(),
-		"games":    metadata.NameSaves(saves.Games(filepath.Join(root, owner)), server.saveLibrary(r.Context())),
+		"games":    metadata.NameSaves(tree, saves.Games(tree), server.saveLibrary(r.Context())),
 	})
 }
 
@@ -139,7 +141,7 @@ func (server *Server) saveLibrary(ctx context.Context) func(string) []metadata.L
 			paths, _ := retro_files.CatalogPaths(root, consoleID)
 			for _, rom := range roms {
 				if path, found := paths[rom.Reference]; found {
-					games = append(games, metadata.LibraryGame{Path: path, Reference: rom.Reference, Title: rom.Title, Disk: disk})
+					games = append(games, metadata.LibraryGame{Path: path, RelPath: relativeTo(root, path), Reference: rom.Reference, Title: rom.Title, Disk: disk})
 				}
 			}
 		}
@@ -150,6 +152,42 @@ func (server *Server) saveLibrary(ctx context.Context) func(string) []metadata.L
 
 		return games
 	}
+}
+
+// rememberLaunched — LE NOM DE LA SAUVEGARDE, RETENU DÈS LE LANCEMENT (chantier 76) : le jeu lancé tel que la liste des
+// sauvegardes le nommerait (saveLibrary : son titre, sa référence, son chemin), sous son identifiant de titre (GameKey)
+// — la règle de metadata.NameSaves, et celle du téléphone (rememberLaunched). Elle garde ainsi son nom même si le jeu
+// quitte la bibliothèque avant qu'une liste l'ait nommée. Le catalogue du lancement, lui, nomme un jeu par son fichier
+// (« FINAL FANTASY II [01006B7014156000][USA][v0] ») : vu à l'épreuve du 2026-11-23.
+func (server *Server) rememberLaunched(ctx context.Context, username, console, reference string) {
+	if reference == "" || !saves.Supported(console) {
+		return
+	}
+	tree, err := saves.Tree(server.retroSavesRoot(), username, "")
+	if err != nil {
+		return
+	}
+	for _, game := range server.saveLibrary(ctx)(console) {
+		if game.Reference != reference {
+			continue
+		}
+		if err := saves.Remember(tree, saves.Named{Console: console, Save: metadata.GameKey(game.Path, game.Reference),
+			Game: saves.KnownGame{Title: game.Title, ID: game.Reference, Path: game.RelPath}}); err != nil {
+			slog.Warn("save title not kept", "console", console, "error", err)
+		}
+
+		return
+	}
+}
+
+// relativeTo — un chemin de jeu depuis son dossier des jeux (« ps5/Astro Bot ») :
+// ce que garde `titles.json` (chantier 76), lisible d'une machine à l'autre.
+func relativeTo(root, path string) string {
+	if relative, err := filepath.Rel(root, path); err == nil && !strings.HasPrefix(relative, "..") {
+		return filepath.ToSlash(relative)
+	}
+
+	return ""
 }
 
 // streamexGame — la console et le jeu d'une requête, vérifiés. Faux : l'erreur
@@ -257,18 +295,20 @@ func (server *Server) handleStreamexSaveUpload(w http.ResponseWriter, r *http.Re
 
 		return
 	}
+	// LE NOM DU JEU VOYAGE AVEC LA SAUVEGARDE (chantier 76), comme pour le rétro.
+	if err := saves.Remember(tree, saves.Named{Console: console, Save: id, Game: saves.Announced(r.URL.Query(), "")}); err != nil {
+		slog.Warn("save title not kept", "source", source, "error", err)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "source": source})
 }
 
-// handleStreamexSaveDelete — DELETE /api/v1/saves/streamex/game : un jeu,
-// effacé d'une COPIE. Le principal ne s'efface pas d'ici : c'est la page
-// Stockage de l'administration qui le fait, compte par compte.
+// handleStreamexSaveDelete — DELETE /api/v1/saves/streamex/game : un jeu, effacé
+// d'une copie ou du principal (le porteur, 2026-11-23 : « rajouter dans la fiche
+// des sauvegardes la section danger pour pouvoir supprimer les sauvegardes » ; la
+// page Stockage de l'administration, qui effaçait le principal, est partie avec la
+// webapp). Le principal, pas pendant une partie de cette console : elle écrit dans
+// ce dossier — le même refus que la restauration.
 func (server *Server) handleStreamexSaveDelete(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Query().Get("source") == "" {
-		writeErrorCode(w, http.StatusBadRequest, "bad_request", "source is required: only a copy is deleted here")
-
-		return
-	}
 	root, owner, ok := server.saveTree(w, r)
 	if !ok {
 		return
@@ -276,6 +316,16 @@ func (server *Server) handleStreamexSaveDelete(w http.ResponseWriter, r *http.Re
 	console, id, ok := streamexGame(w, r)
 	if !ok {
 		return
+	}
+	if r.URL.Query().Get("source") == "" {
+		username := auth.Username(r.Context())
+		for _, session := range server.streamexSessions() {
+			if session.Owner == username && session.Console == console {
+				writeErrorCode(w, http.StatusConflict, "game_running", "a game of this console is running: stop it first")
+
+				return
+			}
+		}
 	}
 	if err := saves.Remove(filepath.Join(root, owner), console, id); err != nil {
 		writeErrorCode(w, http.StatusInternalServerError, "delete_failed", fmt.Sprintf("cannot delete: %v", err))

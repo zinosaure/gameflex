@@ -1,5 +1,6 @@
 {
   "window_name": "eden",
+  "shader_progress": "eden",
   "emulator_fps": {
     "accessible_name": "^Game: ([0-9.]+) FPS"
   },

@@ -23,7 +23,7 @@ func TestRomIDIsTheServersIdentity(t *testing.T) {
 	if RomID("nes", "Metroid.nes") == RomID("snes", "Metroid.nes") {
 		t.Error("la console fait partie de l'identité")
 	}
-	for _, other := range []string{"", "keytest", "srv3:4f9523a0-83b6-5141-a5a1-63a2d9b490e9", "appareil/nes/Metroid.nes",
+	for _, other := range []string{"", "banc", "srv3:4f9523a0-83b6-5141-a5a1-63a2d9b490e9", "appareil/nes/Metroid.nes",
 		"{4f9523a0-83b6-5141-a5a1-63a2d9b490e9}", "urn:uuid:4f9523a0-83b6-5141-a5a1-63a2d9b490e9"} {
 		if IsRomID(other) {
 			t.Errorf("IsRomID(%q) = vrai", other)

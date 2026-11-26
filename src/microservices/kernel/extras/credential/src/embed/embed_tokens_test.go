@@ -44,6 +44,33 @@ func TestTheDeviceJudgesAccountTokensLikeAServer(t *testing.T) {
 		t.Fatalf("création : %d %s", created.Code, created.Body.String())
 	}
 	waitChange("création")
+	// MARC ACTIVE SON JETON LUI-MÊME (le porteur, 2026-11-20 : « Le membre l'active lui-même ») : il rejoint d'abord, par
+	// le lien de sa création, pour avoir sa session.
+	var member struct {
+		Item struct {
+			Invitation struct {
+				Code string `json:"code"`
+			} `json:"invitation"`
+		} `json:"item"`
+	}
+	_ = json.Unmarshal(created.Body.Bytes(), &member)
+	joined := call(t, service, http.MethodPost, "/api/v1/auth/join", "", map[string]string{"code": member.Item.Invitation.Code, "password": "Gameflex#2026"})
+	var own struct {
+		Item struct {
+			AccessToken string `json:"access_token"`
+		} `json:"item"`
+	}
+	if err := json.Unmarshal(joined.Body.Bytes(), &own); err != nil || own.Item.AccessToken == "" {
+		t.Fatalf("marc rejoint : %d %s", joined.Code, joined.Body.String())
+	}
+	marc := own.Item.AccessToken
+	for drained := false; !drained; {
+		select {
+		case <-changed:
+		case <-time.After(200 * time.Millisecond):
+			drained = true
+		}
+	}
 	var token string
 	if err := service.DB.QueryRow(`SELECT t.token FROM account_tokens t JOIN users u ON u.id = t.user_id WHERE u.username = 'marc'`).Scan(&token); err != nil {
 		t.Fatal(err)
@@ -67,7 +94,7 @@ func TestTheDeviceJudgesAccountTokensLikeAServer(t *testing.T) {
 	if _, _, err := service.OpenFederatedSession(token, caller); !errors.Is(err, ErrTokenRefused) {
 		t.Fatalf("un jeton désactivé : %v, attendu ErrTokenRefused", err)
 	}
-	enabled := call(t, service, http.MethodPatch, "/api/v1/users/2/token", root, map[string]any{"enabled": true, "duration": "1w"})
+	enabled := call(t, service, http.MethodPatch, "/api/v1/auth/me/token", marc, map[string]any{"enabled": true, "duration": "1w"})
 	if enabled.Code != http.StatusOK {
 		t.Fatalf("activation : %d %s", enabled.Code, enabled.Body.String())
 	}

@@ -24,11 +24,26 @@ func TestEachPortIsACoreOfThePortsConsole(t *testing.T) {
 		if !stored[port.From] {
 			t.Errorf("le port %q lit %q, qui n'a pas de dossier", port.Core, port.From)
 		}
-		if len(port.ROMs) == 0 {
-			t.Errorf("le port %q n'accepte aucune ROM", port.Core)
+		if len(port.Titles) == 0 {
+			t.Errorf("le port %q n'accepte aucun jeu", port.Core)
 		}
 	}
 	if stored[PortsID] {
 		t.Errorf("%q a un dossier à elle : ses jeux doivent vivre chez les consoles qu'elle lit", PortsID)
+	}
+}
+
+// LA MANETTE D'UN PORT (chantier 72) : celle qu'il déclare — Astro Bot se joue à la DualSense —, sinon celle de la
+// console ; une autre console garde la sienne.
+func TestAPortPlaysWithThePadItDeclares(t *testing.T) {
+	cases := []struct{ console, core, want string }{
+		{PortsID, "AstroHybrid (streamex)", "ps5"},
+		{PortsID, "", PortsID},
+		{"switch", "Eden (streamex)", "switch"},
+	}
+	for _, c := range cases {
+		if got := PadOf(c.console, c.core); got != c.want {
+			t.Errorf("PadOf(%q, %q) = %q, want %q", c.console, c.core, got, c.want)
+		}
 	}
 }

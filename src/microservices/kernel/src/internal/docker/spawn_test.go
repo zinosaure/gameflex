@@ -235,18 +235,3 @@ func TestAnAdoptedSessionKeepsItsPort(t *testing.T) {
 		t.Fatal("le port d'une session adoptée arrêtée est resté hors du pool")
 	}
 }
-
-// UNE PARTIE A AU MOINS UNE MANETTE PAR PLACE (#443) : la Switch offre huit
-// places, le plafond du conteneur est de quatre — sans quoi les joueurs 5 à 8
-// tenaient une place sans manette.
-func TestPadsCoverTheSeats(t *testing.T) {
-	for _, c := range []struct{ ceiling, seats, want int }{
-		{4, 8, 8}, // Switch
-		{4, 2, 4}, // Wii U : le conteneur peut en porter plus
-		{4, 0, 4}, // console inconnue du registre
-	} {
-		if got := padsFor(c.ceiling, c.seats); got != c.want {
-			t.Errorf("padsFor(%d, %d) = %d, want %d", c.ceiling, c.seats, got, c.want)
-		}
-	}
-}

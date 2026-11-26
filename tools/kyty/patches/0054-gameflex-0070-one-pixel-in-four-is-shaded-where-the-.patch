@@ -1,0 +1,231 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Gino D." <25200363+zinosaure@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 05:44:27 +0000
+Subject: [PATCH] gameflex 0070: one pixel in four is shaded where the image is
+ twice its window
+
+--coarse-shading (KYTY_COARSE_SHADING=1) turns on VK_KHR_fragment_shading_rate and shades one
+pixel in four (2x2) in draws whose viewport is at least twice the height of Kyty's window. The
+window is the size the image is shown at, so those pixels were shaded four times for each one
+shown; smaller draws stay exact. Without the option the extension is not enabled and pipelines
+keep their dynamic states.
+
+Astro Bot, Sky Garden, unified memory (Radeon 780M): scene at 1920x1080, 7.00 -> 7.55 images/s;
+no visible difference in a 540p stream. With the game patched to a 960x540 scene the threshold
+is not reached and nothing changes (8.61 -> 8.63).
+---
+ src/common/emulatorConfig.cpp                  |  4 ++++
+ src/common/emulatorConfig.h                    |  2 ++
+ src/graphics/host_gpu/graphicContext.h         |  3 +++
+ .../host_gpu/renderer/dynamicState.cpp         | 17 +++++++++++++++++
+ src/graphics/host_gpu/renderer/dynamicState.h  |  2 ++
+ .../host_gpu/renderer/pipeline/shaders.cpp     |  3 +++
+ .../presentation/window/vulkanWindow.cpp       | 18 ++++++++++++++++--
+ src/main.cpp                                   |  7 +++++++
+ 8 files changed, 54 insertions(+), 2 deletions(-)
+
+diff --git a/src/common/emulatorConfig.cpp b/src/common/emulatorConfig.cpp
+index 9505f30a..ce40be18 100644
+--- a/src/common/emulatorConfig.cpp
++++ b/src/common/emulatorConfig.cpp
+@@ -253,6 +253,10 @@ bool LodStatsEnabled() {
+ 	return g_config->lod_stats_enabled;
+ }
+ 
++bool CoarseShadingEnabled() {
++	return g_config->coarse_shading_enabled;
++}
++
+ bool TrophyEnabled() {
+ 	return g_config->trophy_enabled;
+ }
+diff --git a/src/common/emulatorConfig.h b/src/common/emulatorConfig.h
+index 1d1c4a0c..60d2a8fb 100644
+--- a/src/common/emulatorConfig.h
++++ b/src/common/emulatorConfig.h
+@@ -102,6 +102,7 @@ struct ConfigOptions {
+ 	bool                   relaxed_shader_float        = false;
+ 	bool                   native_rt                   = false;
+ 	bool                   lod_stats_enabled           = false;
++	bool                   coarse_shading_enabled      = false;
+ 	bool                   trophy_enabled              = true;
+ 	uint32_t               trophy_duration_seconds     = 6;
+ 	bool                   perf_overlay_enabled            = false;
+@@ -183,6 +184,7 @@ bool OcclusionQueriesEnabled();
+ bool RelaxedShaderFloatEnabled();
+ bool NativeRtEnabled();
+ bool LodStatsEnabled();
++bool CoarseShadingEnabled();
+ bool TrophyEnabled();
+ uint32_t GetTrophyDurationSeconds();
+ bool PlayGoHackEnabled();
+diff --git a/src/graphics/host_gpu/graphicContext.h b/src/graphics/host_gpu/graphicContext.h
+index 5efcdc57..47b7b2e7 100644
+--- a/src/graphics/host_gpu/graphicContext.h
++++ b/src/graphics/host_gpu/graphicContext.h
+@@ -35,6 +35,9 @@ struct GraphicContext {
+ 	bool                               compute_subgroup_size_control_enabled = false;
+ 	bool                               shader_image_int64_atomics_enabled    = false;
+ 	bool                               attachment_feedback_loop_enabled      = false;
++	// GameFlex: one pixel in four is shaded in draws at least twice as tall as the window, where the
++	// presentation scales the image down anyway (VK_KHR_fragment_shading_rate, --coarse-shading).
++	bool                               coarse_shading_enabled                = false;
+ 	bool                               provoking_vertex_last_enabled         = false;
+ 	bool                               maintenance8_enabled                  = false;
+ 	bool                               robust_buffer_access_enabled          = false;
+diff --git a/src/graphics/host_gpu/renderer/dynamicState.cpp b/src/graphics/host_gpu/renderer/dynamicState.cpp
+index b38b1f2d..e44f6e6b 100644
+--- a/src/graphics/host_gpu/renderer/dynamicState.cpp
++++ b/src/graphics/host_gpu/renderer/dynamicState.cpp
+@@ -2,9 +2,26 @@
+ 
+ #include "graphics/host_gpu/graphicContext.h"
+ 
++#include <cmath>
++
+ namespace Libs::Graphics {
+ 
+ void DynamicState::Commit(const GraphicContext& graphics, vk::CommandBuffer cmdbuf) {
++	if (graphics.coarse_shading_enabled) {
++		// The window is the size the image is shown at: a draw at least twice as tall gives four
++		// shaded pixels for each one shown, so it shades one in four. Smaller draws stay exact.
++		const bool coarse = num_viewports != 0 && graphics.screen_height != 0 &&
++		                    std::abs(viewports[0].height) >= 2.0f * static_cast<float>(graphics.screen_height);
++		if (dirty_state.shading_rate || coarse != coarse_shading) {
++			dirty_state.shading_rate = false;
++			coarse_shading           = coarse;
++			const vk::Extent2D                         size(coarse ? 2 : 1, coarse ? 2 : 1);
++			const vk::FragmentShadingRateCombinerOpKHR combiners[2] = {
++			    vk::FragmentShadingRateCombinerOpKHR::eKeep,
++			    vk::FragmentShadingRateCombinerOpKHR::eKeep};
++			cmdbuf.setFragmentShadingRateKHR(&size, combiners);
++		}
++	}
+ 	if (dirty_state.viewports) {
+ 		dirty_state.viewports = false;
+ 		cmdbuf.setViewportWithCount(num_viewports, viewports.data());
+diff --git a/src/graphics/host_gpu/renderer/dynamicState.h b/src/graphics/host_gpu/renderer/dynamicState.h
+index 97aa594e..0b328c4c 100644
+--- a/src/graphics/host_gpu/renderer/dynamicState.h
++++ b/src/graphics/host_gpu/renderer/dynamicState.h
+@@ -57,11 +57,13 @@ struct DynamicState {
+ 		bool blend_constants       : 1;
+ 		bool line_width            : 1;
+ 		bool feedback_loop_aspects : 1;
++		bool shading_rate          : 1;
+ 	} dirty_state {};
+ 
+ 	std::array<vk::Viewport, 16> viewports {};
+ 	std::array<vk::Rect2D, 16>   scissors {};
+ 	uint32_t                   num_viewports {};
++	bool                       coarse_shading {};
+ 	uint32_t                   num_scissors {};
+ 
+ 	bool          depth_test_enabled {};
+diff --git a/src/graphics/host_gpu/renderer/pipeline/shaders.cpp b/src/graphics/host_gpu/renderer/pipeline/shaders.cpp
+index c8d845d7..c3b3de93 100644
+--- a/src/graphics/host_gpu/renderer/pipeline/shaders.cpp
++++ b/src/graphics/host_gpu/renderer/pipeline/shaders.cpp
+@@ -397,6 +397,9 @@ void CreatePipelineInternal(GraphicContext& graphics, PipelineCache::Pipeline& p
+ 	if (graphics.attachment_feedback_loop_enabled) {
+ 		dynamic_states.push_back(vk::DynamicState::eAttachmentFeedbackLoopEnableEXT);
+ 	}
++	if (graphics.coarse_shading_enabled) {
++		dynamic_states.push_back(vk::DynamicState::eFragmentShadingRateKHR);
++	}
+ 
+ 	vk::PipelineDynamicStateCreateInfo dynamic_state {};
+ 	dynamic_state.dynamicStateCount = static_cast<uint32_t>(dynamic_states.size());
+diff --git a/src/graphics/presentation/window/vulkanWindow.cpp b/src/graphics/presentation/window/vulkanWindow.cpp
+index ee1eeffa..7cdd5652 100644
+--- a/src/graphics/presentation/window/vulkanWindow.cpp
++++ b/src/graphics/presentation/window/vulkanWindow.cpp
+@@ -404,12 +404,13 @@ static vk::Device VulkanCreateDevice(GraphicContext&          graphics,
+ 	                   vk::PhysicalDeviceAccelerationStructureFeaturesKHR,
+ 	                   vk::PhysicalDeviceRayQueryFeaturesKHR,
+ 	                   vk::PhysicalDeviceCooperativeMatrixFeaturesKHR,
+-	                   vk::PhysicalDeviceShaderFloat8FeaturesEXT>
++	                   vk::PhysicalDeviceShaderFloat8FeaturesEXT,
++	                   vk::PhysicalDeviceFragmentShadingRateFeaturesKHR>
+ 	    supported;
+ 	auto& [supported2, supported12, supported13, robustness2, workgroup_layout, mesh,
+ 	       feedback_layout, feedback_dynamic, provoking_vertex, maintenance8, shader_clock,
+ 	       image_atomic_int64, conditional_rendering, barycentric, compute_derivatives,
+-	       acceleration_structure, ray_query, cooperative_matrix, float8] = supported;
++	       acceleration_structure, ray_query, cooperative_matrix, float8, shading_rate] = supported;
+ 	graphics.memory_budget_ext_enabled = add(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+ 	graphics.buffer_marker_enabled     = add(VK_AMD_BUFFER_MARKER_EXTENSION_NAME);
+ 	add(VK_EXT_DEPTH_RANGE_UNRESTRICTED_EXTENSION_NAME);
+@@ -471,6 +472,11 @@ static vk::Device VulkanCreateDevice(GraphicContext&          graphics,
+ 	if (!fsr || !add(VK_EXT_SHADER_FLOAT8_EXTENSION_NAME)) {
+ 		supported.unlink<vk::PhysicalDeviceShaderFloat8FeaturesEXT>();
+ 	}
++	// Coarse shading takes the extension only when it is asked for: the dynamic state it adds to
++	// every graphics pipeline would otherwise cost something for nothing.
++	if (!Config::CoarseShadingEnabled() || !add(VK_KHR_FRAGMENT_SHADING_RATE_EXTENSION_NAME)) {
++		supported.unlink<vk::PhysicalDeviceFragmentShadingRateFeaturesKHR>();
++	}
+ 	if (Libs::LibKernel::Memory::UnifiedMemoryFd() >= 0 &&
+ 	    HasExtension(available_extensions, VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME) &&
+ 	    HasExtension(available_extensions, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME)) {
+@@ -563,6 +569,10 @@ static vk::Device VulkanCreateDevice(GraphicContext&          graphics,
+ 		    std::lround(graphics.physical_device_properties.limits.timestampPeriod * 1000.0f));
+ 	}
+ 	graphics.conditional_rendering_enabled = conditional_rendering.conditionalRendering;
++	graphics.coarse_shading_enabled =
++	    Config::CoarseShadingEnabled() && shading_rate.pipelineFragmentShadingRate;
++	LOGF("Vulkan coarse shading (2x2 in draws twice the window height): %s\n",
++	     graphics.coarse_shading_enabled ? "true" : "false");
+ 	LOGF("Vulkan maintenance8 support: %s\n",
+ 	     graphics.maintenance8_enabled ? "true" : "false");
+ 	LOGF("Vulkan depth feedback support: %s\n",
+@@ -673,6 +683,7 @@ static vk::Device VulkanCreateDevice(GraphicContext&          graphics,
+ 	    shader_clock, conditional_rendering, compute_derivatives,
+ 	    vk::PhysicalDeviceAccelerationStructureFeaturesKHR {.accelerationStructure = VK_TRUE},
+ 	    vk::PhysicalDeviceRayQueryFeaturesKHR {.rayQuery = VK_TRUE}, cooperative_matrix, float8,
++	    vk::PhysicalDeviceFragmentShadingRateFeaturesKHR {.pipelineFragmentShadingRate = VK_TRUE},
+ 	    // The renderer only uses the Vulkan 1.3 core dynamic states, but RADV (Mesa 26.3) creates
+ 	    // its PS epilog cache only when this EXT feature is enabled and crashes in vkCmdDraw when
+ 	    // a depth- or stencil-writing fragment shader needs an epilog.
+@@ -710,6 +721,9 @@ static vk::Device VulkanCreateDevice(GraphicContext&          graphics,
+ 	if (!compute_derivatives.computeDerivativeGroupQuads) {
+ 		create.unlink<vk::PhysicalDeviceComputeShaderDerivativesFeaturesKHR>();
+ 	}
++	if (!graphics.coarse_shading_enabled) {
++		create.unlink<vk::PhysicalDeviceFragmentShadingRateFeaturesKHR>();
++	}
+ 	if (!extended_dynamic_state) {
+ 		create.unlink<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+ 	}
+diff --git a/src/main.cpp b/src/main.cpp
+index b2d6a7eb..eb4a1ff8 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -76,6 +76,8 @@ static void PrintUsage() {
+ 	::printf("  --relaxed-shader-float               Native GPU float ops in shaders; faster, can be inaccurate.\n");
+ 	::printf("  --native-rt                          Use native RT on the GPU.\n");
+ 	::printf("  --lod-stats                          Report bound textures in mip statistics.\n");
++	::printf("  --coarse-shading                     Shade one pixel in four in draws at least twice as tall\n"
++	         "                                       as the window. Default: off.\n");
+ 	::printf("  --shader-log-direction <value>       Silent, Console, or File.\n");
+ 	::printf("  --shader-log-folder <path>           Shader log output folder.\n");
+ 	::printf("  --command-buffer-dump                Enable command buffer dumps.\n");
+@@ -212,6 +214,7 @@ static constexpr Flag FLAGS[] = {
+     {"--relaxed-shader-float", &ConfigOptions::relaxed_shader_float},
+     {"--native-rt", &ConfigOptions::native_rt},
+     {"--lod-stats", &ConfigOptions::lod_stats_enabled},
++    {"--coarse-shading", &ConfigOptions::coarse_shading_enabled},
+     {"--command-buffer-dump", &ConfigOptions::command_buffer_dump_enabled},
+     {"--graphics-debug-dump", &ConfigOptions::graphics_debug_dump_enabled},
+     {"--profile", &ConfigOptions::profiler_enabled},
+@@ -237,6 +240,10 @@ static bool ParseArgs(int argc, char* argv[], RunOptions& options, bool& show_he
+ 	if (const char* occlusion = std::getenv("KYTY_OCCLUSION_QUERIES"); occlusion != nullptr) {
+ 		options.config.occlusion_queries_enabled = std::string_view(occlusion) != "0";
+ 	}
++	// KYTY_COARSE_SHADING=1 (0 to disable) sets --coarse-shading the same way.
++	if (const char* coarse = std::getenv("KYTY_COARSE_SHADING"); coarse != nullptr) {
++		options.config.coarse_shading_enabled = std::string_view(coarse) != "0";
++	}
+ 	// KYTY_SHADER_CACHE=1 (0 to disable) sets --shader-cache the same way.
+ 	if (const char* shader_cache = std::getenv("KYTY_SHADER_CACHE"); shader_cache != nullptr) {
+ 		options.config.shader_cache_enabled = std::string_view(shader_cache) != "0";

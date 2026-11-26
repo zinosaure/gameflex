@@ -29,7 +29,7 @@ set -euo pipefail
 
 UPSTREAM=https://github.com/KytyPS5/KytyPS5.git
 # Le commit officiel sur lequel les patchs s'appliquent (celui de KYTY_RELEASE) ; à avancer avec eux (README.md).
-BASE=91c5820c0cecb8ca024d691ca8750be811370591
+BASE=a0b083c85293d55a48b4f8774285415c29d78c8b
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)

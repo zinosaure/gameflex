@@ -129,6 +129,14 @@ d'une image en cache, et shadPS4 s'arrêtait sur « Texel buffer aliases image s
 appartiennent à la même image : elle est réécrite en entier, à sa propre adresse, tant que la zone mémoire du tampon la
 contient (sinon rien n'est recopié, avec un avertissement). Avec 0016 et 0017, le match d'*FC 27* se joue.
 
+**0019 — la cadence du jeu dans le titre** (chantier 79, `vk_presenter.cpp`,
+[rapport](../../docs/reports/2026-11-24-fc27-capture-du-flux/README.md)). Le titre de la fenêtre se termine par
+« | FPS: 24.6 », comptée sur les images que le jeu présente et écrite une fois par seconde, sur le fil principal de SDL
+(`SDL_RunOnMainThread`) : streamex la lit comme celle de Kyty (`sessionstatus.TitleFPS`), et le panneau de
+performances a enfin la cadence de l'émulateur pour la PS4. Une borne de l'avance sur le GPU (`GAMEFLEX_FRAMES_AHEAD`)
+a été essayée le même jour sur *FC 27*, puis retirée : la capture attendait toujours 140 à 380 ms, la durée d'une seule
+image du jeu à 3–11 images/s, pas une file d'images.
+
 ## Les fichiers
 
 | Fichier | Rôle |

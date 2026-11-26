@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -152,30 +153,136 @@ func Sources(savesRoot, username string) ([]string, error) {
 	return names, nil
 }
 
-// LES TITRES DU RÉTRO, DANS UNE COPIE. Un emplacement se nomme par la
-// référence du jeu (un UUID), et c'est le catalogue d'ici qui en donne le
-// titre. Une copie venue d'ailleurs peut porter un jeu qu'ici n'a pas : son
-// titre voyage avec l'envoi, et la copie le garde.
+// LE JEU D'UNE SAUVEGARDE, GARDÉ AVEC ELLE (chantier 76). Une sauvegarde se
+// nomme par un identifiant : la référence du jeu pour le rétro (un UUID), son
+// identifiant de titre pour une console récente (PPSA14325, CUSA07010). C'est
+// la bibliothèque d'ici qui en donne le titre ; quand le jeu la quittait, ou
+// qu'une copie venait d'un serveur qui ne l'a pas, il se perdait. Chaque
+// rangement garde donc `titles.json` à sa racine, hors des dossiers que lisent
+// les émulateurs et que parcourt le listage : pour chaque sauvegarde, le
+// titre de son jeu, sa référence et son chemin (le porteur, 2026-11-23 : « Le
+// titre, l'identifiant et si possible le pathname »).
 const titlesFile = "titles.json"
 
 var titlesMu sync.Mutex
 
-// RememberTitle — le titre d'un jeu du rétro dans cette copie.
-func RememberTitle(tree, consoleID, reference, title string) error {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return nil
-	}
+// KnownGame — ce que `titles.json` garde du jeu d'une sauvegarde : son titre,
+// sa référence dans la bibliothèque, et son chemin depuis le dossier des jeux
+// de la bibliothèque ou de son disque (« ps5/Astro Bot »).
+type KnownGame struct {
+	Title string `json:"title"`
+	ID    string `json:"id,omitempty"`
+	Path  string `json:"path,omitempty"`
+}
+
+// Named — une sauvegarde (sa console, son identifiant) et son jeu.
+type Named struct {
+	Console string
+	Save    string
+	Game    KnownGame
+}
+
+// Remember — ces sauvegardes et leur jeu, dans `titles.json` du rangement :
+// une seule écriture, rien sans titre, rien quand tout y est déjà.
+func Remember(tree string, named ...Named) error {
 	titlesMu.Lock()
 	defer titlesMu.Unlock()
 
-	titles := readTitles(tree)
-	key := titleKey(consoleID, reference)
-	if titles[key] == title {
+	games, changed := readTitles(tree)
+	for _, entry := range named {
+		entry.Game.Title = strings.TrimSpace(entry.Game.Title)
+		key := titleKey(entry.Console, entry.Save)
+		if entry.Game.Title == "" || games[key] == entry.Game {
+			continue
+		}
+		games[key], changed = entry.Game, true
+	}
+	if !changed {
 		return nil
 	}
-	titles[key] = title
-	raw, err := json.MarshalIndent(titles, "", "  ")
+
+	return writeTitles(tree, games)
+}
+
+// Known — le jeu gardé pour chaque sauvegarde de ce rangement, le fichier lu
+// une fois pour toute une liste.
+func Known(tree string) func(console, save string) (KnownGame, bool) {
+	titlesMu.Lock()
+	games, legacy := readTitles(tree)
+	if legacy {
+		_ = writeTitles(tree, games)
+	}
+	titlesMu.Unlock()
+
+	return func(console, save string) (KnownGame, bool) {
+		game, found := games[titleKey(console, save)]
+
+		return game, found
+	}
+}
+
+// Announced — le jeu qu'un envoi annonce avec une sauvegarde (`title`,
+// `gameId`, `path` : ce que la liste de l'expéditeur en disait), pour la copie
+// qui la reçoit. `reference` : l'identifiant que porte déjà la sauvegarde (le
+// rétro), sinon `gameId`.
+func Announced(query url.Values, reference string) KnownGame {
+	if reference == "" {
+		reference = query.Get("gameId")
+	}
+
+	return KnownGame{Title: query.Get("title"), ID: reference, Path: query.Get("path")}
+}
+
+// carryKnown — le jeu d'une sauvegarde suit sa copie d'un rangement à l'autre
+// (un backup, une restauration), sous l'identifiant qu'elle prend là-bas.
+func carryKnown(fromTree, toTree, console, save, toSave string) error {
+	game, found := Known(fromTree)(console, save)
+	if !found {
+		return nil
+	}
+
+	return Remember(toTree, Named{Console: console, Save: toSave, Game: game})
+}
+
+// titleKey — l'identifiant tel que le nom du fichier le porte
+// (storage.SafeSaveName) : une liste relit l'identifiant dans le nom, pas
+// celui que l'envoi a reçu.
+func titleKey(console, save string) string {
+	return console + "/" + storage.SafeSaveName(save)
+}
+
+// readTitles — `titles.json` d'un rangement. LES ENTRÉES D'AVANT LE CHANTIER
+// 76, un titre seul, se relisent en jeu sans référence ni chemin, et `legacy`
+// demande de réécrire le fichier : une seule fois, puis il est au format du
+// jeu (le porteur, 2026-11-23, sans rétro compatibilité au-delà).
+func readTitles(tree string) (games map[string]KnownGame, legacy bool) {
+	games = map[string]KnownGame{}
+	raw, err := os.ReadFile(filepath.Join(tree, titlesFile))
+	if err != nil {
+		return games, false
+	}
+	entries := map[string]json.RawMessage{}
+	if json.Unmarshal(raw, &entries) != nil {
+		return games, false
+	}
+	for key, value := range entries {
+		var game KnownGame
+		if json.Unmarshal(value, &game) == nil {
+			games[key] = game
+
+			continue
+		}
+		var title string
+		if json.Unmarshal(value, &title) == nil && strings.TrimSpace(title) != "" {
+			games[key], legacy = KnownGame{Title: strings.TrimSpace(title)}, true
+		}
+	}
+
+	return games, legacy
+}
+
+func writeTitles(tree string, games map[string]KnownGame) error {
+	raw, err := json.MarshalIndent(games, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -184,30 +291,6 @@ func RememberTitle(tree, consoleID, reference, title string) error {
 	}
 
 	return writeAtomically(filepath.Join(tree, titlesFile), raw)
-}
-
-// Title — le titre gardé pour ce jeu, vide sans lui.
-func Title(tree, consoleID, reference string) string {
-	titlesMu.Lock()
-	defer titlesMu.Unlock()
-
-	return readTitles(tree)[titleKey(consoleID, reference)]
-}
-
-// titleKey — la référence telle que le nom du fichier la porte
-// (storage.SafeSaveName) : une liste relit la référence dans le nom, pas celle
-// que l'envoi a reçue.
-func titleKey(consoleID, reference string) string {
-	return consoleID + "/" + storage.SafeSaveName(reference)
-}
-
-func readTitles(tree string) map[string]string {
-	titles := map[string]string{}
-	if raw, err := os.ReadFile(filepath.Join(tree, titlesFile)); err == nil {
-		_ = json.Unmarshal(raw, &titles)
-	}
-
-	return titles
 }
 
 func writeAtomically(path string, raw []byte) error {

@@ -64,8 +64,9 @@ func Valid(status string) bool {
 }
 
 // MaxNote — une note est une précision (« plante au chapitre 2 »), pas un
-// rapport : elle voyage avec le listing chez chaque ami.
-const MaxNote = 500
+// rapport : elle voyage avec le listing chez chaque ami. 1500 caractères au
+// plus (le porteur, 2026-11-25).
+const MaxNote = 1500
 
 // Report — UN SIGNALEMENT : ce qu'un administrateur a constaté.
 type Report struct {
