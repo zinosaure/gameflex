@@ -149,11 +149,12 @@ export function useChildSessionWs({ sessionId, token, enabled, onState, onResult
     // intent — ONE request to the child, on this tab's own socket. False when
     // the socket has not said hello yet: there is nobody to ask, and the
     // caller decides whether to try again once the state lands.
-    const intent = useCallback((action, target = null) => {
+    // `extra` — la manette de cet appareil que vise l'intention (`pad`) et le siège demandé (`slot`), chantier 84.
+    const intent = useCallback((action, target = null, extra = {}) => {
         if (!socketIdRef.current) {
             return false;
         }
-        send(target ? { type: "intent", action, target } : { type: "intent", action });
+        send({ type: "intent", action, ...(target ? { target } : {}), ...extra });
 
         return true;
     }, [send]);

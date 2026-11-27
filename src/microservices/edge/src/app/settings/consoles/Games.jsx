@@ -45,11 +45,13 @@ import NavRow from "../../bricks/NavRow.jsx";
 import { Section } from "../../bricks/Section.jsx";
 import { listResources, listRoms } from "../../libs/api.js";
 import { useData } from "../../libs/data.jsx";
-import { counted, fact, formatSize } from "../../libs/format.js";
+import { counted, fact, serverName, serverNamed } from "../../libs/format.js";
 import { useGameMetadata } from "../../libs/metadata.js";
 import SettingsPage, { NotFound, useQueryState, useSettingsNavigation } from "../SettingsPage.jsx";
 
-export const consolePath = (consoleId) => `/settings/consoles/${encodeURIComponent(consoleId)}`;
+import { consolePath } from "../Consoles.jsx";
+
+export { consolePath };
 export const gamesPath = (consoleId) => `${consolePath(consoleId)}/games`;
 export const sourcePath = (consoleId, slug) => `${gamesPath(consoleId)}/${encodeURIComponent(slug)}`;
 // Une page d'un jeu : la sienne (`game`), ou une des siennes (`patch`, `appearance`, `image`, `infos`, `match`, `forget`).
@@ -109,8 +111,7 @@ export const refusalOf = (answer, t) => (answer.status === 403 ? t("consoles.sou
 // POURQUOI LA FICHE D'UN JEU FÉDÉRÉ NE SE LIT PAS (le relais du kernel, chantier 57) : notre jeton refusé (403), le
 // serveur muet (502, ou rien), ou un serveur qui ne prête pas cette fiche (404 : une version qui n'a pas encore les
 // fiches, ou un jeu qu'il n'a plus).
-export const sheetRefusalOf = (status, server, t) => (status === 403 ? t("gameAdmin.sheetDenied", { server })
-    : status === 404 ? t("gameAdmin.sheetNotLent", { server }) : t("gameAdmin.sheetUnreachable", { server }));
+export { sheetRefusalOf } from "../../libs/format.js";
 
 // LES JEUX D'UNE CONSOLE CHEZ UNE SOURCE — la même lecture pour la liste et pour une page d'un jeu ouverte par un lien
 // direct (rechargée, elle n'a plus le jeu que la liste lui avait passé) : `{games}`, ou `{failure}` (la réponse).
@@ -118,7 +119,6 @@ export const readGames = (consoleId, source, query = "") => listRoms(consoleId, 
     .then((answer) => (answer.ok ? { games: answer.data || [] } : { games: null, failure: answer }));
 
 // Le nom d'un serveur fédéré.
-export const serverName = (server, id, t) => server?.hostname || server?.link || t("consoles.serverNamed", { id });
 
 // LE NOM D'UNE SOURCE. Ce qu'elle est (la bibliothèque, un disque, un serveur fédéré) se lit sur la ligne qui l'ouvre :
 // l'en-tête d'une page n'a pas de sous-titre (PageHeader).
@@ -144,7 +144,7 @@ export function useSourceNames(slug) {
         return { name: (resources || []).find((resource) => String(resource.id) === source.id)?.name || "…" };
     }
 
-    return { name: serverName((servers || []).find((server) => String(server.id) === source.id), source.id, t) };
+    return { name: serverName(servers, source.id, t) };
 }
 
 // LES NIVEAUX AU-DESSUS D'UNE PAGE DES JEUX, nommés (SettingsPage, `levels`) : la console, « Jeux », la source, le jeu —
@@ -248,7 +248,7 @@ export default function ConsoleGames() {
     const sources = useListSearch([
         { kind: "here", name: t("consoles.sourceHere"), type: t("gameAdmin.library") },
         ...(disks || []).map((disk) => ({ kind: "disk", disk, name: disk.name, type: t("gameAdmin.diskKind") })),
-        ...(servers || []).map((server) => ({ kind: "server", server, name: serverName(server, server.id, t), type: t("gameAdmin.serverKind") })),
+        ...(servers || []).map((server) => ({ kind: "server", server, name: serverNamed(server, server.id, t), type: t("gameAdmin.serverKind") })),
         ...(resources || []).map((resource) => ({ kind: "resource", resource, name: resource.name, type: t(`fedService.kinds.${resource.kind}.label`) })),
     ], (source) => `${source.name} ${source.type}`);
 
@@ -303,7 +303,7 @@ export default function ConsoleGames() {
 // 10, sa case à côté pour taper une autre valeur ; le porteur, 2026-11-14 : « sur Webapp c'était une skeletonRange où
 // on pouvait choisir la taille qu'on veut en mb »). À côté, PROPOSÉ ET PAS IMPOSÉ : « Les plus lourds d'abord » (`?sort=size`), éteint par
 // défaut — l'ordre reste celui de la source.
-export const MEGABYTE = 1024 * 1024;
+export { MEGABYTE } from "../../libs/format.js";
 
 // Les niveaux au-dessus d'une page sous les images d'un jeu : ceux du jeu, puis « Images ».
 export const useAppearanceLevels = (consoleId, slug, title) => {

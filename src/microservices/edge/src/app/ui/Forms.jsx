@@ -33,6 +33,10 @@ export const helpOrReason = (context, name, help = null) => {
     return rule && rule.state === Ruleset.IS_DISABLED && rule.message ? rule.message : help;
 };
 
+// L'ERREUR D'UN CHAMP, MONTRÉE UNE FOIS QU'ON Y A ÉCRIT (un champ vide n'est pas faux, il manque) : `problems`, le texte
+// de l'erreur de chaque champ ; la règle de Skeleton qui la montre, pour `formContext`.
+export const shownProblem = (problems) => (name) => (data) => (data[name] && problems[name] ? Ruleset.isInvalid(problems[name]) : null);
+
 export const formContext = (values, setValues, rulesets = {}) => ({
     values,
     setValues: (patch) => setValues((previous) => ({ ...previous, ...patch })),

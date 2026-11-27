@@ -41,6 +41,8 @@ import { ProjectPage } from "../settings/Gameflex.jsx";
 import { ApplicationPage } from "../settings/Application.jsx";
 import Gamepads from "../settings/Gamepads.jsx";
 import { LayoutPage as GamepadLayout } from "../settings/gamepads/layout/Controller.jsx";
+import ConnectedPads from "../settings/gamepads/Connected.jsx";
+import ConnectedPad from "../settings/gamepads/connected/Pad.jsx";
 import { InvitePage } from "../settings/Invite.jsx";
 import Catalog from "../settings/catalog/Games.jsx";
 import CatalogGame from "../settings/catalog/games/Game.jsx";
@@ -52,6 +54,7 @@ import FederationNewPairing from "../settings/federation/NewPairing.jsx";
 import FederationNewToken from "../settings/federation/NewToken.jsx";
 import FederationPending from "../settings/federation/Pending.jsx";
 import FederationServer from "../settings/federation/servers/Server.jsx";
+import FederationRelayed from "../settings/federation/servers/Relayed.jsx";
 import FederationServers from "../settings/federation/Servers.jsx";
 import FederationToken from "../settings/federation/tokens/Token.jsx";
 import FederationTokenConsoles from "../settings/federation/tokens/Consoles.jsx";
@@ -139,6 +142,8 @@ export const SETTINGS_ROUTES = [
     { entry: "application", path: "application", page: ApplicationPage },
     { entry: "gamepads", path: "gamepads", page: Gamepads },
     { entry: "gamepads", path: "gamepads/layout/:controller", page: GamepadLayout },
+    { entry: "gamepads", path: "gamepads/connected", page: ConnectedPads },
+    { entry: "gamepads", path: "gamepads/connected/:key", page: ConnectedPad },
     { entry: "invite", path: "invite", page: InvitePage },
     { entry: "remotePlay", path: "remote-play", page: RemotePlay },
     { entry: "remotePlay", path: "remote-play/new", page: RemotePlayNew },
@@ -195,6 +200,7 @@ export const SETTINGS_ROUTES = [
     { entry: "federation", path: "federation/add", page: FederationAdd },
     { entry: "federation", path: "federation/servers", page: FederationServers },
     { entry: "federation", path: "federation/servers/:serverId", page: FederationServer },
+    { entry: "federation", path: "federation/servers/:serverId/relayed", page: FederationRelayed },
     { entry: "federation", path: "federation/invitations/:invitationId", page: FederationInvitation },
     { entry: "federation", path: "federation/tokens/:tokenId", page: FederationToken },
     { entry: "federation", path: "federation/tokens/:tokenId/consoles", page: FederationTokenConsoles },

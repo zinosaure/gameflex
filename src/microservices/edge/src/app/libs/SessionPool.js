@@ -1,5 +1,6 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { getStoredToken, useAuth } from "./sharedHost.js";
+import { isOwnSession } from "./data.jsx";
 import { useNames } from "./displayNames.js";
 import { getPublicSession } from "../engine/api/spawnSessions.js";
 import { homeOrigin, streamAuthToken } from "./serverBase.js";
@@ -224,12 +225,8 @@ export function nameIn(session, username) {
     return session?.me?.username || username || "";
 }
 
-// isOwnSession(session, username) — cette partie est-elle la mienne ?
-export function isOwnSession(session, username) {
-    const name = nameIn(session, username);
-
-    return !!name && session?.owner === name;
-}
+// isOwnSession(session, username) — cette partie est-elle la mienne ? Celle de libs/data.jsx, une seule définition.
+export { isOwnSession };
 
 // How long to wait for a sessionId to show up before concluding it genuinely
 // does not exist. A session created an instant ago (Games.jsx/RemotePlay.jsx's

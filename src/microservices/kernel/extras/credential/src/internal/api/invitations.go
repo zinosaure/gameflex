@@ -98,15 +98,22 @@ func invitationClock() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
+// accessRights — les droits à distance qu'une invitation ou un code d'appairage portent jusqu'à l'accès qu'ils font
+// naître : l'administration (chantier 73) et le relais (chantier 83).
+type accessRights struct {
+	RemoteAdmin  bool
+	RelayAllowed bool
+}
+
 // insertInvitation — une ligne, et le code qui ne sortira qu'une fois.
-func (server *Server) insertInvitation(kind, label, scopes string, remoteAdmin bool, userID any, by int64) (invitationResponse, error) {
+func (server *Server) insertInvitation(kind, label, scopes string, rights accessRights, userID any, by int64) (invitationResponse, error) {
 	server.purgeInvitations()
 	code := config.RandomToken(invitationCodeBytes)
 	expiresAt := time.Now().Add(invitationLifetime).UTC().Format(time.RFC3339)
 	result, err := server.db.Exec(
-		`INSERT INTO invitations (kind, code_hash, label, scopes, remote_admin, user_id, expires_at, created_at, created_by_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		kind, hashToken(code), label, scopes, remoteAdmin, userID, expiresAt, now(), by,
+		`INSERT INTO invitations (kind, code_hash, label, scopes, remote_admin, relay_allowed, user_id, expires_at, created_at, created_by_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		kind, hashToken(code), label, scopes, rights.RemoteAdmin, rights.RelayAllowed, userID, expiresAt, now(), by,
 	)
 	if err != nil {
 		return invitationResponse{}, err
@@ -123,16 +130,18 @@ func (server *Server) insertInvitation(kind, label, scopes string, remoteAdmin b
 // un administrateur l'a activé — la règle du jeton ne change pas.
 func (server *Server) handleCreateInvitation(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	var body struct {
-		Kind        string   `json:"kind"`
-		Label       string   `json:"label"`
-		Scopes      []string `json:"scopes"`
-		RemoteAdmin bool     `json:"remote_admin"`
+		Kind         string   `json:"kind"`
+		Label        string   `json:"label"`
+		Scopes       []string `json:"scopes"`
+		RemoteAdmin  bool     `json:"remote_admin"`
+		RelayAllowed bool     `json:"relay_allowed"`
 	}
 	if !decodeBody(w, r, &body) {
 		return
 	}
-	// L'ADMINISTRATION À DISTANCE (chantier 73) ne s'accorde jamais depuis une session venue d'ailleurs.
-	if body.RemoteAdmin && refuseFederated(w, principal) {
+	// L'ADMINISTRATION À DISTANCE (chantier 73) et le relais (chantier 83) ne s'accordent jamais depuis une session venue
+	// d'ailleurs.
+	if (body.RemoteAdmin || body.RelayAllowed) && refuseFederated(w, principal) {
 		return
 	}
 
@@ -156,7 +165,7 @@ func (server *Server) handleCreateInvitation(w http.ResponseWriter, r *http.Requ
 			}})
 			return
 		}
-		created, err := server.insertInvitation(InvitationFederation, label, scopes, body.RemoteAdmin, nil, principal.ID)
+		created, err := server.insertInvitation(InvitationFederation, label, scopes, accessRights{RemoteAdmin: body.RemoteAdmin, RelayAllowed: body.RelayAllowed}, nil, principal.ID)
 		if err != nil {
 			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
@@ -180,7 +189,7 @@ func (server *Server) handleCreateInvitation(w http.ResponseWriter, r *http.Requ
 		if label == "" {
 			label = principal.Username
 		}
-		created, err := server.insertInvitation(InvitationAccount, label, "", false, principal.ID, principal.ID)
+		created, err := server.insertInvitation(InvitationAccount, label, "", accessRights{}, principal.ID, principal.ID)
 		if err != nil {
 			respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
 			return
@@ -318,12 +327,12 @@ func (server *Server) RedeemInvitation(code, kind, from, address string) (Redeem
 		id                                   int64
 		storedKind, label, scopes, expiresAt string
 		userID, createdBy                    sql.NullInt64
-		remoteAdmin                          bool
+		rights                               accessRights
 	)
 	err := server.db.QueryRow(
-		`SELECT id, kind, label, scopes, remote_admin, user_id, expires_at, created_by_id FROM invitations WHERE code_hash = ? AND pairing = 0`,
+		`SELECT id, kind, label, scopes, remote_admin, relay_allowed, user_id, expires_at, created_by_id FROM invitations WHERE code_hash = ? AND pairing = 0`,
 		hashToken(code),
-	).Scan(&id, &storedKind, &label, &scopes, &remoteAdmin, &userID, &expiresAt, &createdBy)
+	).Scan(&id, &storedKind, &label, &scopes, &rights.RemoteAdmin, &rights.RelayAllowed, &userID, &expiresAt, &createdBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return refuse(ErrInvitationRefused)
 	}
@@ -362,13 +371,13 @@ func (server *Server) RedeemInvitation(code, kind, from, address string) (Redeem
 	}
 	server.logins.succeed(limiterKey, address)
 
-	return server.deliverInvitation(kind, label, scopes, remoteAdmin, createdBy, account, accountToken, address)
+	return server.deliverInvitation(kind, label, scopes, rights, createdBy, account, accountToken, address)
 }
 
 // deliverInvitation — ce qu'une invitation consommée rend : le jeton du compte,
 // ou un jeton de catalogue né maintenant, sous le nom et les portées choisis à
 // sa création. Commun au lien et au code d'appairage.
-func (server *Server) deliverInvitation(kind, label, scopes string, remoteAdmin bool, createdBy sql.NullInt64, account TokenAccount, accountToken, address string) (Redeemed, error) {
+func (server *Server) deliverInvitation(kind, label, scopes string, rights accessRights, createdBy sql.NullInt64, account TokenAccount, accountToken, address string) (Redeemed, error) {
 	if kind == InvitationAccount {
 		slog.Info("invitation redeemed", "kind", kind, "account", account.Username, "from", address)
 
@@ -377,9 +386,9 @@ func (server *Server) deliverInvitation(kind, label, scopes string, remoteAdmin 
 
 	secret := config.RandomToken(32)
 	if _, err := server.db.Exec(
-		`INSERT INTO federation_tokens (label, scopes, remote_admin, token_hash, prefix, created_at, created_by_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		label, scopes, remoteAdmin, hashToken(secret), secret[:tokenPrefixLength], now(), createdBy,
+		`INSERT INTO federation_tokens (label, scopes, remote_admin, relay_allowed, token_hash, prefix, created_at, created_by_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		label, scopes, rights.RemoteAdmin, rights.RelayAllowed, hashToken(secret), secret[:tokenPrefixLength], now(), createdBy,
 	); err != nil {
 		return Redeemed{}, fmt.Errorf("create the catalogue token: %w", err)
 	}

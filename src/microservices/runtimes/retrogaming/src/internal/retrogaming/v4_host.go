@@ -96,13 +96,15 @@ func startV4Host(sessionID string) {
 		sessionID, os.Getenv("GAMEFLEX_SESSION_OWNER"), consoleID, consoles.MaxPlayers(consoleID))
 }
 
-// v4Borrower — à qui le propriétaire prête sa manette, "" sinon (#274).
-func v4Borrower() string {
+// v4ControllerName — le compte dont les mains tiennent ce siège (1 = port 0), l'emprunteur pendant un prêt ; "" sans
+// file ou sans personne (chantier 84 : un appareil tient parfois plusieurs sièges).
+func v4ControllerName(slot int) string {
 	if v4 == nil {
 		return ""
 	}
+	username, _ := v4.Host.ControllerNameOf(slot)
 
-	return v4.Host.Borrower()
+	return username
 }
 
 // v4Players — combien de personnes tiennent une place, selon la file ; -1
@@ -126,12 +128,12 @@ func registerV4Routes(mux *http.ServeMux) {
 // owner's, so a zero sentinel would hand every watcher the player-1 pad — the
 // zero value of an int is the wrong sentinel exactly where it is most
 // tempting.
-func v4PortForViewer(viewerID string) (port int, managed bool) {
+func v4PortForViewer(viewerID string, pad int) (port int, managed bool) {
 	if v4 == nil {
 		return -1, false
 	}
 
-	slot, managed := v4.PortForViewer(viewerID)
+	slot, managed := v4.PortForViewer(viewerID, pad)
 	if !managed {
 		return -1, false
 	}

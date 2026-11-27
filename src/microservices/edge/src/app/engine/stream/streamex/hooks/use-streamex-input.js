@@ -48,7 +48,7 @@ const TYPING_STEP_MS = 40;
 export function useStreamexInput({ screenRef, session, t, options = {} }) {
 	// drivesPad — the child's answer to "do my keys reach a pad?". It differs
 	// from !isWatching during a loan only (#274).
-	const { isWatching = false, drivesPad = !isWatching } = options;
+	const { isWatching = false, drivesPad = !isWatching, onPadPress = null } = options;
 	const { token } = useAuth();
 	const [profileButtons, setProfileButtons] = useState([]);
 	// The page says when to connect (onConnect): once this tab's gateway
@@ -177,6 +177,7 @@ export function useStreamexInput({ screenRef, session, t, options = {} }) {
 		order: CONSOLE_GAMEPAD_ORDER[session.pad || session.consoleId],
 		profileButtons,
 		sendInput,
+		onPadPress,
 	});
 
 	// onConnect OPENS THE SOCKET, as on the other platforms. It used to be a

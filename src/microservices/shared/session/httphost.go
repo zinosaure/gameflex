@@ -21,6 +21,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -176,7 +177,9 @@ func NewHTTPHost(config Config) *HTTPHost {
 // owner's pad, the owner's own reach nothing until they take it back (see
 // Session.ControlledSlot). Read under the host's lock — this runs for every
 // keystroke, concurrently with whatever the queue is doing.
-func (httpHost *HTTPHost) PortForViewer(viewerID string) (slot int, managed bool) {
+//
+// `pad` — la manette de l'appareil qui a envoyé cet appui (chantier 84, SplitPad) : chacune pilote son propre siège.
+func (httpHost *HTTPHost) PortForViewer(viewerID string, pad int) (slot int, managed bool) {
 	value, ok := httpHost.viewers.Load(viewerID)
 	if !ok {
 		return 0, false
@@ -185,7 +188,32 @@ func (httpHost *HTTPHost) PortForViewer(viewerID string) (slot int, managed bool
 	// Known to us: managed, whatever the answer. Holding nothing means
 	// watching — refused, never handed to a legacy mapping that would let a
 	// watcher play.
-	return httpHost.Host.ControlledSlot(value.(string)), true
+	return httpHost.Host.ControlledSlot(value.(string), pad), true
+}
+
+// SplitPad — LA MANETTE D'UN APPUI (chantier 84). Un appareil qui a plusieurs manettes préfixe les appuis de la
+// deuxième et des suivantes par `#<n>|` ; un appui sans préfixe est celui de la manette 1 (le clavier, la manette à
+// l'écran, une seule manette branchée). La passerelle transporte l'appui sans le lire : le préfixe arrive tel quel au
+// conteneur de la partie, qui le retire avant de le donner à l'émulateur.
+func SplitPad(data []byte) (pad int, rest []byte) {
+	if len(data) < 3 || data[0] != '#' {
+		return 1, data
+	}
+	for index := 1; index < len(data) && index <= 4; index++ {
+		if data[index] == '|' {
+			number, err := strconv.Atoi(string(data[1:index]))
+			if err != nil || number < 1 {
+				return 1, data
+			}
+
+			return number, data[index+1:]
+		}
+		if data[index] < '0' || data[index] > '9' {
+			return 1, data
+		}
+	}
+
+	return 1, data
 }
 
 // pushVoice — les droits de voix par viewer de la passerelle, poussés quand ils changent (chantier 71). Un viewer que
@@ -252,10 +280,12 @@ func (httpHost *HTTPHost) sendShadersTo(socketID string) {
 //
 // Pendant un prêt, c'est l'emprunteur : la vibration va aux mains qui tiennent
 // la manette, pas à la place.
-func (httpHost *HTTPHost) ViewerForSlot(slot int) string {
-	socketID := httpHost.Host.ControllerOf(slot)
+//
+// `pad` — la manette de ce viewer qui tient le siège (chantier 84) : la vibration lui est adressée.
+func (httpHost *HTTPHost) ViewerForSlot(slot int) (viewer string, pad int) {
+	socketID, pad := httpHost.Host.ControllerOf(slot)
 	if socketID == "" {
-		return ""
+		return "", 0
 	}
 
 	viewerID := ""
@@ -268,7 +298,7 @@ func (httpHost *HTTPHost) ViewerForSlot(slot int) string {
 		return false
 	})
 
-	return viewerID
+	return viewerID, pad
 }
 
 // Routes registers the two endpoints on a mux, under the given prefix.
@@ -510,6 +540,9 @@ func (httpHost *HTTPHost) serveSocket(w http.ResponseWriter, r *http.Request) {
 			ViewerID string `json:"viewerId"`
 			Action   string `json:"action"`
 			Target   string `json:"target"`
+			// La manette visée et le siège demandé (chantier 84).
+			Pad  int `json:"pad"`
+			Slot int `json:"slot"`
 		}
 		if err := conn.ReadJSON(&message); err != nil {
 			return
@@ -538,6 +571,8 @@ func (httpHost *HTTPHost) serveSocket(w http.ResponseWriter, r *http.Request) {
 				Username: username,
 				SocketID: socketID,
 				Target:   message.Target,
+				Pad:      message.Pad,
+				Slot:     message.Slot,
 			})
 		}
 	}

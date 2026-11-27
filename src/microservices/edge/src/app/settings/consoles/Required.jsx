@@ -152,7 +152,6 @@ export function RequiredPage({ section }) {
     const [rows, setRows] = useState(undefined);
     const [defaults, setDefaults] = useState(null);
     const [epoch, setEpoch] = useState(0);
-    const streamex = entry?.method === "streamex";
     const item = rows === undefined ? undefined : (rows || []).find((row) => row.name === name) || null;
     // Retour à sa liste (sa page à elle, chantier 81) : les BIOS, les émulateurs mobiles, ou ceux de ce serveur.
     const parent = `${consolePath(consoleId)}/${section === "bios" ? "bios" : item?.package === "phone" ? "mobile-cores" : "cores"}`;

@@ -8,10 +8,11 @@ import { can, capabilities } from "../../libs/capabilities.js";
 import { canInvite, shareOrigin, streamAuthToken, streamHostOrigin } from "../../libs/serverBase.js";
 import { copyTextToClipboard, canShareLink, qrImage, shareLink } from "../../libs/share-link.js";
 import { readToken } from "../../libs/api.js";
-import { fact, formatDuration } from "../../libs/format.js";
+import { dateTime, fact, formatDuration } from "../../libs/format.js";
 import { authHeaders, useConsoles } from "../../libs/sharedHost.js";
 import { focusElement } from "../../libs/input.js";
 import { setHapticFeedback, setInvisibleSticks, setRumbleEnabled, useGamepadPreferences } from "../../engine/libs/gamepadPreferences.js";
+import { useDevicePads } from "../../engine/libs/gamepadPresence.js";
 import { DEFAULT_PAD_OPACITY, setPadOpacity, usePadOpacity } from "../../engine/stream/onscreen/padOpacity.js";
 import i18n from "../../i18n.js";
 import SidePanel from "../../shell/SidePanel.jsx";
@@ -21,6 +22,7 @@ import { Avatar } from "../../bricks/Avatar.jsx";
 import { ChoiceRow } from "../../bricks/ChoiceRow.jsx";
 import { CopyField } from "../../bricks/CopyField.jsx";
 import { DangerSection } from "../../bricks/DangerSection.jsx";
+import { EmptyRow } from "../../bricks/EmptyRow.jsx";
 import { EmptyState } from "../../bricks/EmptyState.jsx";
 import { InfoRow } from "../../bricks/InfoRow.jsx";
 import { RecentNotices, RequestRow } from "../../bricks/RecentNotices.jsx";
@@ -41,7 +43,7 @@ import { TextRow } from "../../bricks/TextRow.jsx";
 import { useConfirm } from "../../bricks/useConfirm.jsx";
 
 // Le sens de chaque groupe du menu : ce qui se règle (modifier), qui joue (info), inviter (ajouter), sortir (danger).
-const GROUP_SENSES = { game: "play", sound: "modify", picture: "modify", pad: "modify", players: "info", together: "add", leave: "danger" };
+const GROUP_SENSES = { game: "play", sound: "modify", picture: "modify", pad: "modify", players: "info", pads: "modify", together: "add", leave: "danger" };
 
 // LE MENU D'UNE PARTIE (#408, #409 ; chantier 52, P3) — un panneau du launcher, la moitié de l'écran en
 // paysage, tout l'écran en portrait, en direction C (validée par le porteur le 2026-11-13, les modèles de
@@ -78,7 +80,7 @@ const GROUP_SENSES = { game: "play", sound: "modify", picture: "modify", pad: "m
 // Les sous-panneaux, par leur nom dans la pile de la page (PlayShell.jsx : `panels`).
 const SUBPANELS = ["states", "disk", "cheats", "invite", "keyboard", "video", "link", "qr"];
 
-export function PlayMenu({ session, user, input, isWatching, switchesStore, sessionSend, players, roster, departed, notifications, loan, context, panels, openPanel, closePanel, closeMenu, onQuit, watchOnly = false, hostName = "", voice = null }) {
+export function PlayMenu({ session, user, input, isWatching, switchesStore, sessionSend, players, roster, departed, notifications, loan, context, panels, openPanel, closePanel, closeMenu, onQuit, watchOnly = false, hostName = "", voice = null, seats = { pads: [], waiting: [] } }) {
     const { t } = useTranslation();
     const switches = useSyncExternalStore(switchesStore.subscribe, switchesStore.getSnapshot);
     // Les réglages de la manette de CET APPAREIL : leur seule source, celle de Réglages › Manettes (#758).
@@ -156,8 +158,9 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
         closeMenu();
     };
     const then = (gesture) => (...values) => act(() => gesture(...values));
-    const askForPad = (username) => {
-        sessionSend({ type: "requestslot", to: username });
+    // Le siège demandé (chantier 84) : un joueur peut en tenir plusieurs, un par manette.
+    const askForPad = (username, slot = null) => {
+        sessionSend({ type: "requestslot", to: username, slot });
         context.toast.open(t("play.handover.sent"));
     };
     const copyLink = async () => {
@@ -266,7 +269,27 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
     // depuis quand), un joueur parti (« déconnecté », 30 s, PlayShell.jsx), le propriétaire absent (sa place l'attend ; le
     // décompte de l'arrêt quand plus personne ne joue), ou une place libre. UN COMPTE QUI NE JOUE PAS la demande : une
     // place tenue, la manette de ce joueur ; une place libre, rejoindre la partie — après confirmation.
-    const canAsk = !watchOnly && isWatching && !loan.canReturn;
+    // DEMANDER UNE MANETTE : qui regarde, ou qui a une manette en attente (chantier 84 : la demande va à cette manette).
+    const canAsk = !watchOnly && (isWatching || seats.waiting.length > 0) && !loan.canReturn;
+    // LES MANETTES CONNECTÉES À CET APPAREIL (chantier 84 ; le porteur, 2026-11-26 : « une nouvelle section dans le menu
+    // "Manettes connectées" qui va lister les manettes et quand on clique sur une manette ça demande si on veut rendre la
+    // place […] à condition que la manette connectée soit aussi attribuée à un slot. Cette liste devient active que si
+    // manettes connectées > 1 ») : chacune, son numéro et ce qu'elle tient — sa place, en attente, sans place, désactivée.
+    // Aucune n'est prioritaire : la manette 1 peut rendre la sienne et laisser la 2 en jeu.
+    const connectedPads = useDevicePads();
+    const padRows = connectedPads.length === 0 ? [<EmptyRow key="none" icon="bi-controller" text={t("play.pads.none")} />] : connectedPads.map((entry) => {
+        const seat = entry.number ? seats.pads.find((one) => one.pad === entry.number)?.slotId : null;
+        const state = !entry.enabled ? t("play.pads.off") : seat ? t("play.players.place", { slot: seat, max: padsMax || "?" })
+            : seats.waiting.includes(entry.number) ? t("play.pads.waiting") : t("play.pads.free");
+        const label = entry.number ? t("play.pads.pad", { number: entry.number }) : entry.name;
+
+        return (
+            <NavRow key={entry.key} id={`pm-pad-${entry.number || entry.key}`} icon="bi-controller" label={label} help={[entry.name, fact(t("facts.state"), state)]}
+                opens="confirm" disabled={connectedPads.length < 2 || !seat}
+                onOpen={() => ask({ title: t("play.pads.releaseTitle", { label }), message: t("play.pads.releaseMessage"), confirm: t("play.pads.release"),
+                    onConfirm: () => act(() => sessionSend({ type: "releaseslot", pad: entry.number })) })} />
+        );
+    });
     const playerRows = !watchOnly ? playersRows({ players, roster, departed, consoleMax: consoleMaxPlayers, now, self, t, nameOf, canAsk, freeSlots, ask, askForPad, join: () => act(() => sessionSend({ type: "requestslot" })) }) : [];
     // À PLUSIEURS : ce qui concerne d'autres personnes — la manette qui passe de main en main, puis le partage.
     const together = [
@@ -361,6 +384,7 @@ export function PlayMenu({ session, user, input, isWatching, switchesStore, sess
                 {group("picture", t("play.menu.picture"), picture, turnFailed && <OrientationFailed turnsTheApp={turnsTheApp} />)}
                 {group("pad", t("play.menu.controller"), pad)}
                 {group("players", t("play.players.title"), playerRows)}
+                {!watchOnly && group("pads", t("play.pads.title"), padRows)}
                 {group("together", t("play.menu.together"), together)}
                 {/* SORTIR : les deux gestes qui mettent fin à ce qu'on fait, à part, en bas — loin des réglages qu'on
                     touche en jouant. Remettre à zéro se confirme. */}
@@ -429,7 +453,7 @@ function SaveStates({ session, saves, context, onClose, onDone }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const when = (info) => (info?.exists && info.timestamp ? new Date(info.timestamp).toLocaleString(i18n.language) : t("play.states.empty"));
+    const when = (info) => (info?.exists && info.timestamp ? dateTime(info.timestamp, i18n.language) : t("play.states.empty"));
     const nameOf = (slot) => slotName(slot, t);
     const save = (slot) => {
         onDone();
@@ -693,7 +717,10 @@ function playersRows({ players, roster, departed, consoleMax, now, self, t, name
         const held = players.find((player) => player.slot === slot);
         const gone = !held && departed.find((entry) => entry.slot === slot);
         const owned = !held && !gone && slot === 1 && ownerAway;
-        const name = held ? nameOf(held.username) : gone ? nameOf(gone.username) : owned ? nameOf(roster.owner) : t("play.players.nobody");
+        // UN JOUEUR À PLUSIEURS MANETTES (chantier 84) : « Gino (Pad 2) ».
+        const several = held && players.filter((player) => player.username === held.username).length > 1;
+        const name = held ? (several ? t("play.pads.named", { name: nameOf(held.username), pad: held.pad }) : nameOf(held.username))
+            : gone ? nameOf(gone.username) : owned ? nameOf(roster.owner) : t("play.players.nobody");
         const place = t("play.players.place", { slot, max });
         const seat = fact(t("facts.place"), place);
         const help = held ? [seat, fact(t("facts.state"), t("play.players.connected")), fact(t("play.info.duration"), formatDuration(held.joinedAt, now))]
@@ -701,13 +728,12 @@ function playersRows({ players, roster, departed, consoleMax, now, self, t, name
                 : owned ? [seat, fact(t("facts.state"), t("play.players.disconnected")), idleEnd ? fact(t("facts.comeBack"), formatDuration(now, idleEnd)) : null]
                     : [seat, fact(t("facts.state"), t("play.players.free"))];
         const icon = held ? "bi-person-fill" : gone || owned ? "bi-person-dash" : "bi-controller";
-        const tone = held ? "green" : "slate";
         const askable = canAsk && held && held.username !== self && !held.lentTo;
         const joinable = canAsk && !held && !gone && !owned && freeSlots > 0;
 
         if (askable) {
             rows.push(<NavRow key={slot} id={`pm-player-${slot}`} icon={icon} label={name} help={help} opens="confirm"
-                onOpen={() => ask({ title: t("play.players.askTitle"), message: t("play.players.askMessage", { name }), confirm: t("play.players.ask"), onConfirm: () => askForPad(held.username) })} />);
+                onOpen={() => ask({ title: t("play.players.askTitle"), message: t("play.players.askMessage", { name }), confirm: t("play.players.ask"), onConfirm: () => askForPad(held.username, slot) })} />);
         } else if (joinable) {
             // Une place libre : « > » (le porteur, 2026-11-19 : « "?" quand c'est déjà pris par un joueur, et ">" quand
             // c'est un free slot ») ; elle se confirme quand même.

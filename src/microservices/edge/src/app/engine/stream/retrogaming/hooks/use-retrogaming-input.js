@@ -6,6 +6,7 @@ import { useRetroPhysicalGamepadInput } from "./use-retrogaming-physical-gamepad
 import { useRetroKeyboardInput } from "./use-retrogaming-keyboard-input.js";
 import { useRetrogamingStreamingConnection } from "./use-retrogaming-streaming-connection.js";
 import { triggerRumble } from "../../../libs/rumble.js";
+import { gamepadOfSeat } from "../../../libs/gamepadPresence.js";
 import { CONTROLLER_PRESETS } from "../../../controllers/presets.js";
 import { useSessionStats } from "../../shared/hooks/use-session-stats.js";
 import { markActivity } from "../../shared/activity-store.js";
@@ -59,6 +60,8 @@ export function useRetrogamingInput({ screenRef, session, context, t, options = 
 		// passer : il n'en décide rien, et l'écran qui les montre est le même
 		// que celui des étapes du kernel.
 		onProgress = null,
+		// Un appui d'une manette de l'appareil (chantier 84) : la page lui demande un siège s'il lui en faut un.
+		onPadPress = null,
 	} = options;
 	// This page is player-only now — watching (spectating) went to
 	// gameflex/Watch.jsx, which handles all 3 platforms' spectate flows.
@@ -170,8 +173,9 @@ export function useRetrogamingInput({ screenRef, session, context, t, options = 
 		t,
 		toast,
 		onProgress,
-		onRumble: (weak, strong) =>
-			triggerRumble(null, weak, strong, {
+		// LA MANETTE QUI TIENT CE SIÈGE vibre (chantier 84) ; sans elle (le clavier, la manette à l'écran), comme avant.
+		onRumble: (weak, strong, port = 0) =>
+			triggerRumble(gamepadOfSeat(port + 1), weak, strong, {
 				virtualControllerRumble: CONTROLLER_PRESETS[RETRO_CONTROLLER_PRESET_MAP[session.consoleId]]?.rumble === true,
 			}),
 	});
@@ -182,18 +186,18 @@ export function useRetrogamingInput({ screenRef, session, context, t, options = 
 	// gamepad poller — which all route through sendButton/sendAnalog —
 	// stay untouched.
 	const sendButtonWithActivity = useCallback(
-		(index, value) => {
+		(index, value, pad = 1) => {
 			// Only the tab holding the priority drives the pad (C2-P4d).
 			// Presses only. A RELEASE always goes through, even from a tab
 			markActivity();
-			sendButton(index, value);
+			sendButton(index, value, pad);
 		},
 		[sendButton],
 	);
 	const sendAnalogWithActivity = useCallback(
-		(index, x, y) => {
+		(index, x, y, pad = 1) => {
 			markActivity();
-			sendAnalog(index, x, y);
+			sendAnalog(index, x, y, pad);
 		},
 		[sendAnalog],
 	);
@@ -216,7 +220,7 @@ export function useRetrogamingInput({ screenRef, session, context, t, options = 
 		}
 	}, [isWatching, connect, connectRole, session.id, user?.username, context, t]);
 
-	useRetroPhysicalGamepadInput(isConnected, sendButtonWithActivity, sendAnalogWithActivity, session.consoleId, token);
+	useRetroPhysicalGamepadInput(isConnected, sendButtonWithActivity, sendAnalogWithActivity, session.consoleId, token, onPadPress);
 	useRetroKeyboardInput(isConnected, sendButtonWithActivity, session.consoleId, token);
 
 	// N64's C-buttons have no digital RetroPad bit in mupen64plus_next's

@@ -7,32 +7,11 @@ import { AUTO_MAP_CONTROLLERS, defaultMappingForController } from "../engine/con
 // que la webapp ouvre. Les correspondances par défaut (« Auto ») sont celles du moteur, lues dans
 // son propre fichier (engine/controllers/default-mapping.js).
 
-// L'IDENTIFIANT DU CLAVIER de cet appareil (keyMapping.js de la webapp, « device-level, NOT per-user ») : un
-// navigateur n'en donne aucun, il se crée une fois, gardé dans CE navigateur. Les retours tactiles, les vibrations et
-// le stick flottant ne sont plus ici : une seule source, engine/libs/gamepadPreferences.js (#758).
-const KEYBOARD_KEY = "gameflex_keyboard_device_id";
-
-export function keyboardDeviceId() {
-    try {
-        let id = localStorage.getItem(KEYBOARD_KEY);
-
-        if (!id) {
-            id = `keyboard-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
-            localStorage.setItem(KEYBOARD_KEY, id);
-        }
-
-        return id;
-    } catch {
-        return "keyboard-transient";
-    }
-}
-
-// Une manette sans identifiant (certains navigateurs) : son numéro.
-export const gamepadDeviceId = (pad) => pad?.id || `pad-${pad?.index ?? 0}`;
-
-// Les manettes branchées — sans la manette virtuelle qu'une partie streamex crée dans la page.
-export const connectedGamepads = () => (navigator.getGamepads ? [...navigator.getGamepads()] : [])
-    .filter((pad) => pad && !String(pad.id || "").toLowerCase().startsWith("streamex pad"));
+// L'IDENTIFIANT DU CLAVIER, celui d'une manette, les manettes branchées : ceux du moteur (engine/libs/keyMapping.js),
+// une seule définition — les Réglages et une partie reconnaissent un appareil de la même façon, sinon une correspondance
+// enregistrée ici ne serait jamais relue là. Les retours tactiles, les vibrations et les sticks : une seule source,
+// engine/libs/gamepadPreferences.js (#758).
+export { connectedGamepads, gamepadDeviceId, getKeyboardDeviceId as keyboardDeviceId } from "../engine/libs/keyMapping.js";
 
 export async function loadKeyMapping(deviceId, controllerName) {
     const answer = await credential(`/key-mapping?${new URLSearchParams({ physical_device_id: deviceId, controller_name: controllerName })}`);

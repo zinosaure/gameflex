@@ -150,15 +150,17 @@ func hashToken(token string) string {
 // handleCreateFederationToken — POST /api/v1/federation/tokens {label}.
 func (server *Server) handleCreateFederationToken(w http.ResponseWriter, r *http.Request, principal auth.Principal) {
 	var body struct {
-		Label       string   `json:"label"`
-		Scopes      []string `json:"scopes"`
-		RemoteAdmin bool     `json:"remote_admin"`
+		Label        string   `json:"label"`
+		Scopes       []string `json:"scopes"`
+		RemoteAdmin  bool     `json:"remote_admin"`
+		RelayAllowed bool     `json:"relay_allowed"`
 	}
 	if !decodeBody(w, r, &body) {
 		return
 	}
-	// L'ADMINISTRATION À DISTANCE (chantier 73) ne s'accorde jamais depuis une session venue d'ailleurs.
-	if body.RemoteAdmin && refuseFederated(w, principal) {
+	// L'ADMINISTRATION À DISTANCE (chantier 73) et le relais (chantier 83) ne s'accordent jamais depuis une session venue
+	// d'ailleurs.
+	if (body.RemoteAdmin || body.RelayAllowed) && refuseFederated(w, principal) {
 		return
 	}
 
@@ -187,9 +189,9 @@ func (server *Server) handleCreateFederationToken(w http.ResponseWriter, r *http
 
 	secret := config.RandomToken(32)
 	result, err := server.db.Exec(
-		`INSERT INTO federation_tokens (label, scopes, remote_admin, token_hash, prefix, created_at, created_by_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		label, scopes, body.RemoteAdmin, hashToken(secret), secret[:tokenPrefixLength], now(), principal.ID,
+		`INSERT INTO federation_tokens (label, scopes, remote_admin, relay_allowed, token_hash, prefix, created_at, created_by_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		label, scopes, body.RemoteAdmin, body.RelayAllowed, hashToken(secret), secret[:tokenPrefixLength], now(), principal.ID,
 	)
 	if err != nil {
 		respondErrorCode(w, http.StatusInternalServerError, "server_failed", "Internal server error.")
@@ -203,8 +205,9 @@ func (server *Server) handleCreateFederationToken(w http.ResponseWriter, r *http
 		ID:          id,
 		Label:       label,
 		Scopes:      scopes,
-		RemoteAdmin: body.RemoteAdmin,
-		Consoles:    []string{consoles.GrantAll},
+		RemoteAdmin:  body.RemoteAdmin,
+		RelayAllowed: body.RelayAllowed,
+		Consoles:     []string{consoles.GrantAll},
 		Prefix:      secret[:tokenPrefixLength],
 		// La seule et unique fois où il sort d'ici.
 		Token: secret,

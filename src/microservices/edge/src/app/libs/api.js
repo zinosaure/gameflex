@@ -378,7 +378,8 @@ export const rescanServer = (id) => kernel(`/servers/${encodeURIComponent(id)}/r
 export const listCatalogTokens = () => credential("/catalog-tokens");
 // `remoteAdmin` : l'administration à distance par cet accès, choisie dès sa création (chantier 73) ; elle suit aussi
 // l'invitation et le code d'appairage jusqu'à l'accès qu'ils font naître.
-export const createCatalogToken = (label, scopes, remoteAdmin = false) => credential("/catalog-tokens", jsonBody("POST", { label, scopes, remote_admin: remoteAdmin }));
+export const createCatalogToken = (label, scopes, remoteAdmin = false, relayAllowed = false) => credential("/catalog-tokens",
+    jsonBody("POST", { label, scopes, remote_admin: remoteAdmin, relay_allowed: relayAllowed }));
 export const updateCatalogTokenScopes = (id, scopes) => credential(`/catalog-tokens/${id}`, jsonBody("PATCH", { scopes }));
 // Les consoles d'un accès délivré (chantier 66) : ce que les comptes venus par lui peuvent lancer, comme ceux d'un membre.
 export const updateCatalogTokenConsoles = (id, consoles) => credential(`/catalog-tokens/${id}`, jsonBody("PATCH", { consoles }));
@@ -391,15 +392,15 @@ export const updateCatalogTokenRelayed = (id, servers) => credential(`/catalog-t
 // Les consoles coupées pour tout le serveur (chantier 66) : couper ou rallumer une console.
 export const setConsoleSwitch = (id, enabled) => credential(`/console-switches/${encodeURIComponent(id)}`, jsonBody("PUT", { enabled }));
 export const revokeCatalogToken = (id) => credential(`/catalog-tokens/${id}`, { method: "DELETE" });
-export const createInvitation = ({ kind, label = "", scopes = [], remoteAdmin = false }) => credential("/token-invitations",
-    jsonBody("POST", kind === "account" ? { kind } : { kind, label, scopes, remote_admin: remoteAdmin }));
+export const createInvitation = ({ kind, label = "", scopes = [], remoteAdmin = false, relayAllowed = false }) => credential("/token-invitations",
+    jsonBody("POST", kind === "account" ? { kind } : { kind, label, scopes, remote_admin: remoteAdmin, relay_allowed: relayAllowed }));
 export const listInvitations = () => credential("/token-invitations");
 // LE CODE D'APPAIRAGE (chantier 60) : ouvrir ou prolonger un mode découverte (`server`, `account`), le fermer ; créer un
 // code (rendu cette fois-là seulement), l'annuler. Son état revient par le sujet `pairing` (screens/access/Pairing.jsx).
 export const openPairing = (scope) => credential(`/token-invitations/pairing/${scope}/open`, { method: "POST" });
 export const closePairing = (scope) => credential(`/token-invitations/pairing/${scope}/close`, { method: "POST" });
-export const createPairingCode = ({ kind, label = "", scopes = [], remoteAdmin = false }) => credential("/token-invitations/pairing/codes",
-    jsonBody("POST", kind === "account" ? { kind } : { kind, label, scopes, remote_admin: remoteAdmin }));
+export const createPairingCode = ({ kind, label = "", scopes = [], remoteAdmin = false, relayAllowed = false }) => credential("/token-invitations/pairing/codes",
+    jsonBody("POST", kind === "account" ? { kind } : { kind, label, scopes, remote_admin: remoteAdmin, relay_allowed: relayAllowed }));
 export const cancelPairingCode = (id) => credential(`/token-invitations/pairing/codes/${id}`, { method: "DELETE" });
 export const revokeInvitation = (id) => credential(`/token-invitations/${id}`, { method: "DELETE" });
 

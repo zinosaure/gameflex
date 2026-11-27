@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
-import { connectedGamepads, positionalButtonIndex } from "../../../libs/keyMapping.js";
+import { positionalButtonIndex } from "../../../libs/keyMapping.js";
 import { isGameInputSuspended, onGameInputSuspension, isMenuHome } from "../../../libs/gameInput.js";
+import { devicePads, withPad } from "../../../libs/gamepadPresence.js";
 
 // Reading a physical controller must NOT depend on drawing one.
 //
@@ -22,7 +23,12 @@ import { isGameInputSuspended, onGameInputSuspension, isMenuHome } from "../../.
 
 const GAMEPAD_POLL_MS = 50;
 
-export function useStreamexPhysicalInput({ enabled, order, profileButtons, sendInput }) {
+// CHAQUE MANETTE À PART (chantier 84) : les manettes activées de l'appareil, chacune avec son état et son numéro, porté
+// par ses appuis (`withPad`) ; chaque appui se signale (`onPadPress(numéro)`) — au premier d'une manette sans siège,
+// la page lui en demande un. Le clavier est la manette 1.
+export function useStreamexPhysicalInput({ enabled, order, profileButtons, sendInput, onPadPress = null }) {
+    const onPadPressRef = useRef(onPadPress);
+    onPadPressRef.current = onPadPress;
     const pressedRef = useRef(new Set());
 
     // Keyboard pass-through — physical keys are relayed verbatim (kd/ku by
@@ -84,25 +90,26 @@ export function useStreamexPhysicalInput({ enabled, order, profileButtons, sendI
             return undefined;
         }
 
+        // L'état de chaque manette, par son numéro : ce qu'elle tient, où sont ses sticks.
         const padState = new Map();
         const stickLast = new Map();
-        const sendStick = (which, axisX, axisY) => {
+        const sendStick = (number, which, axisX, axisY) => {
             const x = Math.round((axisX || 0) * 1000);
             const y = Math.round((axisY || 0) * 1000);
             const key = `${x},${y}`;
-            if (stickLast.get(which) === key) {
+            if (stickLast.get(`${number}:${which}`) === key) {
                 return;
             }
-            stickLast.set(which, key);
-            sendInput(`st,${which},${x},${y}`);
+            stickLast.set(`${number}:${which}`, key);
+            sendInput(withPad(number, `st,${which},${x},${y}`));
         };
 
         const timer = setInterval(() => {
             // LE MENU OUVERT, LA MANETTE EST LUE COMME LÂCHÉE (#408) : les
             // boutons tenus repartent relâchés, les sticks au centre.
             const suspended = isGameInputSuspended();
-            for (const gamepad of connectedGamepads()) {
-                if (!gamepad || !gamepad.connected) {
+            for (const { gamepad, number } of devicePads()) {
+                if (!number) {
                     continue;
                 }
                 gamepad.buttons.forEach((button, index) => {
@@ -115,19 +122,23 @@ export function useStreamexPhysicalInput({ enabled, order, profileButtons, sendI
                     // Le Home du raccourci du menu (L2 tenu) n'est pas au jeu.
                     const down = !suspended && !isMenuHome(gamepad, index, "streamex")
                         && (button.pressed || (typeof button.value === "number" && button.value > 0.5));
-                    if (down === !!padState.get(id)) {
+                    if (down === !!padState.get(`${number}:${id}`)) {
                         return;
                     }
-                    padState.set(id, down);
+                    padState.set(`${number}:${id}`, down);
+                    // Chaque appui se dit : la page sait si cette manette a déjà un siège ou l'attend.
+                    if (down) {
+                        onPadPressRef.current?.(number);
+                    }
                     const buttonProfile = profileButtons.find((entry) => entry.id === id);
                     if (buttonProfile) {
-                        sendInput(down ? `kd,${buttonProfile.key}` : `ku,${buttonProfile.key}`);
+                        sendInput(withPad(number, down ? `kd,${buttonProfile.key}` : `ku,${buttonProfile.key}`));
                     }
                 });
                 if (gamepad.axes && gamepad.axes.length >= 2) {
-                    sendStick("l", suspended ? 0 : gamepad.axes[0], suspended ? 0 : gamepad.axes[1]);
+                    sendStick(number, "l", suspended ? 0 : gamepad.axes[0], suspended ? 0 : gamepad.axes[1]);
                     if (gamepad.axes.length >= 4) {
-                        sendStick("r", suspended ? 0 : gamepad.axes[2], suspended ? 0 : gamepad.axes[3]);
+                        sendStick(number, "r", suspended ? 0 : gamepad.axes[2], suspended ? 0 : gamepad.axes[3]);
                     }
                 }
             }
@@ -135,10 +146,13 @@ export function useStreamexPhysicalInput({ enabled, order, profileButtons, sendI
 
         return () => {
             clearInterval(timer);
-            // Center both sticks so the emulator does not keep a deflection
-            // held after the pad stops being read.
-            sendInput("st,l,0,0");
-            sendInput("st,r,0,0");
+            // Center the sticks of every pad read, so the emulator does not
+            // keep a deflection held after the pads stop being read.
+            const numbers = new Set([1, ...[...stickLast.keys()].map((key) => Number(key.split(":")[0]))]);
+            for (const number of numbers) {
+                sendInput(withPad(number, "st,l,0,0"));
+                sendInput(withPad(number, "st,r,0,0"));
+            }
         };
     }, [enabled, order, profileButtons, sendInput]);
 }

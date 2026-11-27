@@ -26,7 +26,7 @@ import { SwitchRow } from "../bricks/SwitchRow.jsx";
 import { atUsername, isAdministrator } from "../globals/accounts.js";
 import { fetchMfaPolicy, listUsers, setMfaPolicy } from "../libs/api.js";
 import { useAuth, useData } from "../libs/data.jsx";
-import { dateTime } from "../libs/format.js";
+import { dateTime, day } from "../libs/format.js";
 import { toast } from "../shell/Shell.jsx";
 import SettingsPage, { NotFound, useQueryState, useSettingsNavigation } from "./SettingsPage.jsx";
 import { pill } from "../bricks/Pill.jsx";
@@ -41,7 +41,7 @@ export const MEMBERS = "/settings/members";
 // Le guide des membres, en bas de chacune de leurs pages : créer un compte, et le garder sûr.
 export const MEMBERS_GUIDES = [["install", "6-sign-in"], ["remoteAccess", "keep-it-safe"]];
 
-export const day = (iso, language) => (iso ? new Date(iso).toLocaleDateString(language === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium" }) : "—");
+export { day };
 
 // LE MOT DE PASSE D'UN MEMBRE, CE QU'IL EN EST (chantier 55) : l'aide de sa ligne « Mot de passe », la même sur les deux
 // pages — un nouveau membre le choisira par son lien ; un membre l'a choisi tel jour, ou l'attend, avec son lien (jusqu'à
@@ -139,7 +139,6 @@ export function useMember(memberId) {
 // Ce qu'une page d'un membre montre tant qu'il se lit (un mot seul, sans titre : rien encore n'en mérite un), ou
 // quand il n'existe plus.
 export function MemberPending({ member, title, parent }) {
-    const { t } = useTranslation();
 
     return (
         <SettingsPage title={title} parent={parent} guides={MEMBERS_GUIDES}>

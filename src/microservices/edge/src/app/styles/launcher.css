@@ -476,11 +476,11 @@ body { overflow: hidden; }
    à sa droite. */
 .gf-row-switch:has(> .gf-row-label) .gf-row-switch-line { align-items: flex-start; }
 .gf-row-switch:has(> .gf-row-label) .gf-row-switch-line > .gf-row-help { padding-top: .1rem; }
-/* Les pastilles d'une ligne (Pill) : sur leur ligne, sous le titre. */
-.gf-row-pills { display: flex; flex-wrap: wrap; gap: .35rem; margin: .2rem 0; }
-.gf-row .gf-pill { font-size: .75rem; }
-/* Une valeur longue (un chemin, une adresse) passe à la ligne DANS sa pastille, sans pousser la ligne. */
-.gf-row .gf-pill { white-space: normal; text-align: left; overflow-wrap: anywhere; }
+/* Les valeurs d'une ligne (Pill), sous le titre : en texte coloré, l'une après l'autre, jointes par « • » ; une valeur
+   longue (un chemin, une adresse) passe à la ligne comme une phrase. */
+.gf-row-pills { display: block; margin: .2rem 0; }
+.gf-pill { font-size: .85rem; font-weight: 600; overflow-wrap: anywhere; }
+.gf-pill + .gf-pill::before { content: "•"; margin: 0 .4rem; color: var(--bs-secondary-color); font-weight: 400; }
 /* La fine barre d'un téléchargement sous le texte de sa ligne (NavRow, `progress`) : la `progress` de Bootstrap, 4 px. */
 .gf-progress { height: 4px; margin-top: .375rem; }
 .gf-row.danger .gf-row-label { color: #ff7b7b; }

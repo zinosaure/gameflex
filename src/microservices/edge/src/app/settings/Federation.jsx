@@ -44,6 +44,7 @@ import { useLocation } from "react-router-dom";
 import { DangerSection } from "../bricks/DangerSection.jsx";
 import { GuideSection } from "../bricks/GuideSection.jsx";
 import { InfoRow } from "../bricks/InfoRow.jsx";
+import { Listing } from "../bricks/Listing.jsx";
 import { Loading } from "../bricks/Loading.jsx";
 import NavRow from "../bricks/NavRow.jsx";
 import { Rows } from "../bricks/Rows.jsx";
@@ -51,14 +52,14 @@ import { SaveSection } from "../bricks/SaveSection.jsx";
 import { Section } from "../bricks/Section.jsx";
 import { SwitchRow } from "../bricks/SwitchRow.jsx";
 import { TextRow } from "../bricks/TextRow.jsx";
-import { listCatalogTokens, listInvitations, listServerRegistry } from "../libs/api.js";
+import { fetchServer, listCatalogTokens, listInvitations, listServerRegistry } from "../libs/api.js";
 import { can, useData } from "../libs/data.jsx";
-import { counted, fact } from "../libs/format.js";
+import { counted, dateTime, fact } from "../libs/format.js";
 import { useRemoteAdmin } from "../libs/remoteAdmin.js";
 import { DiscoveryModeSection, usePairing } from "../screens/access/Pairing.jsx";
 import SettingsPage, { NotFound, useSettingsNavigation } from "./SettingsPage.jsx";
 import { FEDERATION_GUIDES } from "./profile/Federation.jsx";
-import { CONSOLE_ICON } from "../globals/icons.js";
+import { CONSOLE_ICON, RELAY_ICON } from "../globals/icons.js";
 
 // Les chemins des pages de la fédération.
 export const FEDERATION = "/settings/federation";
@@ -74,7 +75,8 @@ export function useLevels() {
     return { [ACCESSES]: t("fed.accessesTitle"), [PENDING]: t("fed.pendingTitle"), [JOINED]: t("fed.joinedTitle") };
 }
 
-export const dateTime = (iso, language) => (iso ? new Date(iso).toLocaleString(language === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "");
+// La date et l'heure, celles de toute la page (libs/format.js).
+export { dateTime };
 
 // Ce que le listing d'un serveur dit de lui : sa date, sa version, sa machine, ses consoles.
 export function describeListing(listing, t, language) {
@@ -142,7 +144,6 @@ export function usePassed(name, id, load) {
 
 // Une page de détail qui attend son objet, ou ne le trouve plus.
 export function Waiting({ item, title, parent }) {
-    const { t } = useTranslation();
     const levels = useLevels();
 
     return (
@@ -170,21 +171,89 @@ export function AccessName({ form }) {
     return <TextRow id="label" context={form} label={t("fed.forWho")} help={t("fed.forWhoHelp")} props={{ placeholder: t("fed.forWhoPlaceholder"), "data-key": "fd-label" }} />;
 }
 
-// LES DROITS À DISTANCE D'UN ACCÈS NEUF (le porteur, 2026-11-20 : « pareil, avec une section pour le "Remote rights" ») —
-// les mêmes lignes que sur la page de l'accès (IssuedTokenSections) : les fournisseurs de métadonnées, et l'administration
-// à distance (chantier 73), coupées par défaut. Jamais depuis une page distante : le service des comptes la refuse.
-export function RemoteRightsRows({ values, setValues }) {
+// LA FICHE D'UN ACCÈS, ÉCRITE UNE FOIS (le porteur, 2026-11-26 : « Tu n'as pas fait une fiche commune et un formulaire
+// commun […] Le but de la refonte était justement d'éviter de modifier plusieurs endroits juste pour une modification ») :
+// ce qu'un accès ouvre, les mêmes lignes, dans le même ordre, avec les mêmes valeurs, vu des deux bouts — `side`
+// "issued" (un accès délivré ici : ce qu'il ouvre chez nous) ou "received" (un serveur rejoint : ce que son accès nous
+// ouvre) ; seuls les textes d'aide changent de point de vue (`fed.grant.<ligne>.<side>`). Une information de plus
+// s'ajoute ICI, et les deux pages l'ont.
+// `grants` : `{scopes: [...], consoles, relayAllowed, relayed: [noms]}` ; `onConsoles` : la ligne des consoles ouvre leur
+// page (l'accès délivré, chantier 66). Les jeux et leurs métadonnées vont ensemble, par `catalog` (le porteur,
+// 2026-11-16 : « La métadonnée vient toujours du serveur ») ; le relais, chantier 83.
+export function AccessGrantRows({ side, grants, onConsoles = null, onRelayed = null }) {
     const { t } = useTranslation();
-    const remote = useRemoteAdmin();
+    const yesNo = (row, icon, allowed) => (
+        <InfoRow key={row} icon={icon} label={grantLabel(t, row, side)} help={grantHelp(t, row, side)} value={t(allowed ? "fed.allowed" : "fed.notAllowed")}
+            pill={allowed ? "success" : "danger"} />
+    );
+    const scopes = grants.scopes || [];
+    const consoles = consolesSummary(grants.consoles, t);
+    const relayed = grants.relayed || [];
 
     return (
         <>
-            <SwitchRow id="fd-providers" label={t("fed.providersLabel")} texts="allowed" help={t("fed.providersHelp")} checked={values.providers}
-                onChange={(providers) => setValues((previous) => ({ ...previous, providers }))} />
-            {!remote && <SwitchRow id="fd-remote-admin" label={t("remoteAdmin.title")} texts="allowed" help={t("remoteAdmin.switchHelp")} checked={values.remoteAdmin}
-                onChange={(remoteAdmin) => setValues((previous) => ({ ...previous, remoteAdmin }))} />}
+            {yesNo("catalog", "bi-collection", scopes.includes("catalog"))}
+            {yesNo("metadata", "bi-card-text", scopes.includes("catalog"))}
+            {onConsoles
+                ? <NavRow id="fd-grant-consoles" icon={CONSOLE_ICON} label={grantLabel(t, "consoles", side)} help={grantHelp(t, "consoles", side)} value={consoles} onOpen={onConsoles} />
+                : <InfoRow icon={CONSOLE_ICON} label={grantLabel(t, "consoles", side)} help={grantHelp(t, "consoles", side)} value={consoles} />}
+            {yesNo("providers", REMOTE_RIGHTS.providers, scopes.includes(PROVIDERS))}
+            {yesNo("remoteAdmin", REMOTE_RIGHTS.remoteAdmin, Boolean(grants.remoteAdmin))}
+            {yesNo("relayAllowed", REMOTE_RIGHTS.relayAllowed, Boolean(grants.relayAllowed))}
+            {/* LEUR NOMBRE, PAS LEURS NOMS (le porteur, 2026-11-26 : « serveurs relayés doit être un listing car on peut en avoir
+                un nombre infini ») : la ligne ouvre leur liste, sur sa route (un seul listing par route) — `onRelayed` ; sur
+                un accès délivré, son formulaire les liste. */}
+            {onRelayed
+                ? <NavRow id="fd-grant-relayed" icon={RELAY_ICON} label={grantLabel(t, "relayed", side)} help={grantHelp(t, "relayed", side)}
+                    value={relayed.length ? counted(t, "servers", relayed.length) : t("fed.relayedNone")} onOpen={onRelayed} />
+                : <InfoRow icon={RELAY_ICON} label={grantLabel(t, "relayed", side)} help={grantHelp(t, "relayed", side)}
+                    value={relayed.length ? counted(t, "servers", relayed.length) : t("fed.relayedNone")} />}
         </>
     );
+}
+
+// LES SERVEURS QU'UN SERVEUR REJOINT NOUS RELAIE (chantier 83) : leur identifiant de pair virtuel porte le sien
+// (remote.RelayID, -(via × 10⁶ + id)). `[{id, name}]`.
+export const relayedThrough = (servers, viaId) => (servers || []).filter((entry) => entry.relayedBy && Math.floor(-entry.id / 1e6) === Number(viaId))
+    .map((entry) => ({ id: entry.id, name: entry.hostname || entry.link }));
+
+// LES SERVEURS RELAYÉS, EN LISTE (le porteur, 2026-11-26 : « on peut en avoir un nombre infini ») : cherchés, une page à la
+// fois au-delà de dix (Listing). `servers` : `[{id, name}]`. Ceux qu'un serveur rejoint nous relaie, sur leur route
+// (settings/federation/servers/Relayed.jsx) ; sur la page d'un accès délivré, son formulaire les liste déjà.
+export function RelayedServersSection({ side, servers }) {
+    const { t } = useTranslation();
+    const [search, setSearch] = useState("");
+    const needle = search.trim().toLowerCase();
+    const shown = servers.filter((server) => !needle || server.name.toLowerCase().includes(needle));
+
+    return (
+        <Section title={grantLabel(t, "relayed", side)} help={grantHelp(t, "relayed", side)} sense="info">
+            <Listing items={shown} overall={servers.length} search={search} onSearch={setSearch} placeholder={t("fed.searchServer")} searchKey="fd-relayed-search"
+                empty={t("fed.relayedNone")}
+                render={(server) => <InfoRow key={server.id} icon={RELAY_ICON} label={server.name} />} />
+        </Section>
+    );
+}
+
+// LES TEXTES D'UNE LIGNE DE LA FICHE, une seule source pour la fiche ET le formulaire : `fed.grant.<ligne>.label`, puis
+// `.labelIssued` / `.labelReceived` quand le libellé change de point de vue (le relais), et l'aide `.issued` / `.received`.
+const grantLabel = (t, row, side) => t(`fed.grant.${row}.label${side === "issued" ? "Issued" : "Received"}`, { defaultValue: t(`fed.grant.${row}.label`) });
+const grantHelp = (t, row, side) => t(`fed.grant.${row}.${side}`);
+// Les droits à distance, et leur icône : les lignes que le formulaire règle, dans l'ordre de la fiche.
+const REMOTE_RIGHTS = { providers: "bi-images", remoteAdmin: "bi-person-gear", relayAllowed: RELAY_ICON };
+
+// LE FORMULAIRE DES DROITS À DISTANCE, ÉCRIT UNE FOIS : à la création d'un accès (jeton, invitation, code d'appairage) et
+// sur sa page (le bouton de sa section) — les mêmes libellés et les mêmes aides que la fiche (`grantLabel`, `grantHelp`,
+// côté "issued"). Coupés par défaut. L'administration et le relais jamais depuis une page distante : le service des
+// comptes les refuse. `set(patch)` ; `only` : les lignes que la page sait enregistrer (toutes par défaut).
+export function RemoteRightsRows({ values, set, only = Object.keys(REMOTE_RIGHTS) }) {
+    const { t } = useTranslation();
+    const remote = useRemoteAdmin();
+
+    return Object.keys(REMOTE_RIGHTS).filter((row) => only.includes(row) && (row === "providers" || !remote)).map((row) => (
+        <SwitchRow key={row} id={`fd-right-${row}`} label={grantLabel(t, row, "issued")} texts="allowed" help={grantHelp(t, row, "issued")} checked={values[row]}
+            onChange={(on) => set({ [row]: on })} />
+    ));
 }
 
 // LES JETONS ÉMIS ICI, et les invitations en attente : une ligne chacun, qui ouvre sa page.
@@ -200,13 +269,24 @@ export function IssuedTokenSections({ token, onScopes = null, onConsoles = null,
     const { t, i18n } = useTranslation();
     const feedback = useFeedback();
     const remote = useRemoteAdmin();
-    const { servers } = useData();
+    const { servers, refreshServers } = useData();
     // LE RELAIS (chantier 83) : les serveurs fédérés directs, que cet accès peut relayer — un ami qui nous relaie un
     // serveur ne se relaie pas plus loin.
     const direct = (servers || []).filter((server) => !server.relayedBy);
     const [current, setCurrent] = useState(null);
     const shown = current || token;
+    const relayedNames = direct.filter((server) => (shown.relayed_servers || []).includes(server.id)).map((server) => server.hostname || server.link);
     const shared = { providers: scopesOf(shown).includes(PROVIDERS) };
+
+    // CE QUE CHAQUE SERVEUR PERMET, RELU À L'OUVERTURE (chantier 83) : « Peut me relayer » se règle chez lui, et notre copie
+    // de son listing ne le sait qu'à sa prochaine lecture. Une fois, à l'ouverture de la page — jamais en boucle.
+    useEffect(() => {
+        if (!onRelayed || remote) {
+            return;
+        }
+        Promise.all(direct.map((server) => fetchServer(server.id))).then(() => refreshServers());
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [token.id]);
 
     // LES DROITS À DISTANCE, PAR LE BOUTON DE LEUR SECTION (le porteur, 2026-11-25 : « Faudra rajouter des boutons pour
     // tous les formulaires qui n'en ont pas ») : ce qui a changé part — les fournisseurs (ses portées), l'administration à
@@ -247,62 +327,29 @@ export function IssuedTokenSections({ token, onScopes = null, onConsoles = null,
 
         return { ok: true };
     };
-    const rows = [["catalog", "bi-collection", t("fed.scope.catalog")], ["catalog", "bi-card-text", t("fed.scopeMetadata")],
-        [PROVIDERS, "bi-images", t("fed.scopeProviders")]];
-
     return (
         <>
+            {/* LA FICHE COMMUNE (AccessGrantRows), qui suit les interrupteurs plus bas dès qu'ils basculent (`shown`), puis sa
+                dernière utilisation. */}
             <Section title={t("details")} help={t("fed.tokenDetailsHelp")} sense="info">
                 <Rows>
-                    {/* CE QU'IL OUVRE, UNE LIGNE PAR PORTÉE (le porteur, 2026-11-16 : « change la ligne "ce qu'il ouvre" pour le
-                        faire passer en 3 lignes : jeux, console et métadonnées. Comme valeur ce serait : autorisé ou pas
-                        autorisé ») : elles suivent les interrupteurs plus bas dès qu'ils basculent (`shown`). Les jeux et leurs
-                        métadonnées vont toujours ensemble, par `catalog` (« La métadonnée vient toujours du serveur. C'est
-                        toujours autorisé comme les jeux. C'est l'utilisation des fournisseurs metadata du serveur qui doit être
-                        autorisée ») : seuls les consoles et les fournisseurs se règlent. */}
-                    {rows.map(([scope, icon, label]) => {
-                        const allowed = scopesOf(shown).includes(scope);
-
-                        return <InfoRow key={`${scope}-${icon}`} icon={icon} label={label} value={t(allowed ? "fed.allowed" : "fed.notAllowed")} pill={allowed ? "success" : "danger"} />;
-                    })}
-                    {/* Le libellé dit déjà « Dernière utilisation » : la valeur n'est que la date (chantier 59, P1 : le libellé et la valeur
-                        disaient la même chose) ; la ligne de la liste garde sa phrase entière (`lastUseOf`). */}
+                    <AccessGrantRows side="issued" onConsoles={onConsoles}
+                        grants={{ scopes: scopesOf(shown), consoles: shown.consoles, remoteAdmin: shown.remote_admin, relayAllowed: shown.relay_allowed, relayed: relayedNames }} />
+                    {/* Le libellé dit déjà « Dernière utilisation » : la valeur n'est que la date (chantier 59, P1). */}
                     <InfoRow icon="bi-clock-history" label={t("fed.lastUseLabel")}
                         value={shown.last_used_at ? dateTime(shown.last_used_at, i18n.language) : t("members.tokenNever")} />
                 </Rows>
             </Section>
-            {/* SES CONSOLES (chantier 66) : la même page que celle d'un membre, une ligne qui l'ouvre et dit ce qu'il laisse lancer. */}
-            {onConsoles && (
-                <Section title={t("fed.consolesSection")} help={t("fed.consolesSectionHelp")} sense="modify">
-                    <Rows>
-                        <NavRow id={`fd-consoles-${shown.id}`} icon={CONSOLE_ICON} label={t("members.consolesTitle")} help={t("fed.consolesRowHelp")}
-                            value={consolesSummary(shown.consoles, t)} onOpen={onConsoles} />
-                    </Rows>
-                </Section>
-            )}
             {/* LES DROITS À DISTANCE (le porteur, 2026-11-20) : les fournisseurs de métadonnées, et l'administration de ce
                 serveur depuis celui qui tient l'accès (chantier 73) — accordée ACCÈS PAR ACCÈS, coupée par défaut : « je ne
                 veux pas que ma smart TV puisse avoir la possibilité de faire du remote admin ». Jamais changée depuis une
                 page distante : le service des comptes la refuse à une session venue d'ailleurs. */}
-            {(onScopes || (onRemoteAdmin && !remote)) && (
+            {(onScopes || ((onRemoteAdmin || onRelayAllowed) && !remote)) && (
                 <SaveSection id={`fd-rights-${shown.id}`} title={t("fed.remoteRights")} help={t("fed.remoteRightsHelp")}
                     saved={{ providers: shared.providers, remoteAdmin: Boolean(shown.remote_admin), relayAllowed: Boolean(shown.relay_allowed) }} onSave={saveRights}>
                     {(values, set) => (
-                        <>
-                            {onScopes && (
-                                <SwitchRow id={`fd-prov-${shown.id}`} label={t("fed.providersLabel")} texts="allowed" help={t("fed.providersHelp")} checked={values.providers}
-                                    onChange={(providers) => set({ providers })} />
-                            )}
-                            {onRemoteAdmin && !remote && (
-                                <SwitchRow id={`fd-admin-${shown.id}`} label={t("remoteAdmin.title")} texts="allowed" help={t("remoteAdmin.switchHelp")} checked={values.remoteAdmin}
-                                    onChange={(remoteAdmin) => set({ remoteAdmin })} />
-                            )}
-                            {/* PEUT ME RELAYER (chantier 83 ; le porteur : « des deux côtés ») : coupé par défaut. */}
-                            {onRelayAllowed && !remote && (
-                                <SwitchRow id={`fd-relay-${shown.id}`} label={t("fed.relayAllowedLabel")} texts="allowed" help={t("fed.relayAllowedHelp")} checked={values.relayAllowed}
-                                    onChange={(relayAllowed) => set({ relayAllowed })} />
-                            )}
-                        </>
+                        <RemoteRightsRows values={values} set={set}
+                            only={[onScopes && "providers", onRemoteAdmin && "remoteAdmin", onRelayAllowed && "relayAllowed"].filter(Boolean)} />
                     )}
                 </SaveSection>
             )}
@@ -310,7 +357,7 @@ export function IssuedTokenSections({ token, onScopes = null, onConsoles = null,
                 d'un coup ») : un interrupteur par serveur fédéré direct ; grisé quand ce serveur ne nous permet pas de le
                 relayer (« Peut me relayer », sur l'accès qu'il nous a donné). */}
             {onRelayed && !remote && (
-                <SaveSection id={`fd-relayed-${shown.id}`} title={t("fed.relayedTitle")} help={t("fed.relayedHelp")}
+                <SaveSection id={`fd-relayed-${shown.id}`} title={t("fed.grant.relayed.label")} help={t("fed.grant.relayed.issued")}
                     saved={{ relayed: (shown.relayed_servers || []).map(String) }}
                     onSave={async (values) => {
                         const ids = values.relayed.map(Number);

@@ -16,7 +16,7 @@ import { playStationService } from "../../engine/stream/remoteplay/service/plays
 import { useData } from "../../libs/data.jsx";
 import { fact } from "../../libs/format.js";
 import { toast } from "../../shell/Shell.jsx";
-import { Form, FormButton, formContext, Ruleset } from "../../ui/Forms.jsx";
+import { Form, FormButton, formContext, shownProblem as shownProblemOf } from "../../ui/Forms.jsx";
 import SettingsPage, { useSettingsNavigation } from "../SettingsPage.jsx";
 import { HOST_TYPES, PSN_ACCOUNT_ID_URL, restoreLight, ROOT } from "../RemotePlay.jsx";
 
@@ -47,7 +47,7 @@ export default function NewDevice() {
         identifier: values.identifier ? "" : t("form.required"),
         pin: !values.pin ? t("form.required") : /^\d{1,8}$/.test(String(values.pin)) ? "" : t("remoteplay.register.pinInvalid"),
     };
-    const shownProblem = (name) => (data) => (data[name] && problems[name] ? Ruleset.isInvalid(problems[name]) : null);
+    const shownProblem = shownProblemOf(problems);
     const form = formContext(values, setValues, { ip: shownProblem("ip"), name: shownProblem("name"), identifier: shownProblem("identifier"), pin: shownProblem("pin") });
     const invalid = Object.values(problems).some(Boolean);
     // Rien de tapé, rien de changé (CODE_CONVENTIONS.md, `isReplaced`) ; le type choisi seul ne suffit pas à enregistrer.

@@ -28,6 +28,7 @@ import { IconAddon } from "../bricks/IconAddon.jsx";
 import { InfoRow } from "../bricks/InfoRow.jsx";
 import { InvisibleSticksRow } from "../bricks/InvisibleSticksRow.jsx";
 import NavRow from "../bricks/NavRow.jsx";
+import { Pill } from "../bricks/Pill.jsx";
 import { Rows } from "../bricks/Rows.jsx";
 import { SaveSection } from "../bricks/SaveSection.jsx";
 import { Section } from "../bricks/Section.jsx";
@@ -36,31 +37,13 @@ import { SwitchRow } from "../bricks/SwitchRow.jsx";
 import { CONTROLLER_PRESETS } from "../engine/controllers/presets.js";
 import { setHapticFeedback, setInvisibleSticks, setRumbleEnabled, useGamepadPreferences } from "../engine/libs/gamepadPreferences.js";
 import { focusElement, suspendPads } from "../libs/input.js";
-import { applyAutoMapping, captureGamepadChord, captureKeyboardChord, connectedGamepads, deleteKeyMapping, gamepadDeviceId, keyboardDeviceId, loadKeyMapping, remapKey } from "../libs/keyMapping.js";
+import { applyAutoMapping, captureGamepadChord, captureKeyboardChord, deleteKeyMapping, gamepadDeviceId, keyboardDeviceId, loadKeyMapping, remapKey } from "../libs/keyMapping.js";
 import { toast } from "../shell/Shell.jsx";
 import SettingsPage, { useSearchParam, useSettingsNavigation } from "./SettingsPage.jsx";
+import { useDevicePads } from "../engine/libs/gamepadPresence.js";
+import { counted } from "../libs/format.js";
 
 export const DEFAULT_CONTROLLER = "dualshock";
-
-// Les manettes branchées, suivies (branchement, débranchement).
-export function useConnectedPads() {
-    const [pads, setPads] = useState(connectedGamepads);
-
-    useEffect(() => {
-        const update = () => setPads(connectedGamepads());
-        window.addEventListener("gamepadconnected", update);
-        window.addEventListener("gamepaddisconnected", update);
-        const timer = setInterval(update, 1500);
-
-        return () => {
-            window.removeEventListener("gamepadconnected", update);
-            window.removeEventListener("gamepaddisconnected", update);
-            clearInterval(timer);
-        };
-    }, []);
-
-    return pads;
-}
 
 // Une ligne : le bouton virtuel, et l'entrée qui le déclenche — A l'écoute, et la ligne touchée de nouveau
 // l'abandonne (pas de bouton dans une ligne) ; l'écoute s'abandonne aussi seule, sans accord, au bout de 8 s.
@@ -95,12 +78,12 @@ export function CaptureRow({ name, input, device, listening, onListen, onCapture
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [listening, device?.id]);
 
-    // L'entrée en pastille (ou l'accord qu'on écoute) ; aucune : un tiret.
+    // L'entrée en valeur colorée (ou l'accord qu'on écoute) ; aucune : un tiret.
     const shown = listening ? (chord ? chord.replace(/\+/g, " + ") : t("gamepads.listening")) : input;
 
     return (
         <NavRow id={`gp-${name}`} icon="bi-record-circle" label={name.replace(/_/g, " ")} disabled={!device}
-            value={shown ? <span className="badge rounded-pill gf-pill text-bg-primary">{shown}</span> : "—"} opens="action" onOpen={listening ? onCancel : onListen} />
+            value={shown ? <Pill>{shown}</Pill> : "—"} opens="action" onOpen={listening ? onCancel : onListen} />
     );
 }
 
@@ -109,10 +92,12 @@ export default function Gamepads() {
     const { t } = useTranslation();
     const feedback = useFeedback();
     const { open } = useSettingsNavigation();
-    const pads = useConnectedPads();
+    // LES MANETTES BRANCHÉES : la seule détection de l'application (gamepadPresence.js, chantier 84).
+    const pads = useDevicePads().map((entry) => entry.gamepad);
     const [controllerParam, setControllerParam] = useSearchParam("controller", DEFAULT_CONTROLLER);
     const controllerName = CONTROLLER_PRESETS[controllerParam] ? controllerParam : DEFAULT_CONTROLLER;
-    const [deviceId, setDeviceId] = useState(null);
+    // L'appareil dont on règle les touches, dans l'adresse (`?device=`) : la page d'une manette connectée y mène.
+    const [deviceId, setDeviceId] = useSearchParam("device", "");
     const [mapping, setMapping] = useState({});
     const [listening, setListening] = useState(null);
     const [auto, setAuto] = useState(false);
@@ -201,6 +186,13 @@ export default function Gamepads() {
                     </>
                 )}
             </SaveSection>
+            {/* LES MANETTES CONNECTÉES (chantier 84) : leur activation et leur numéro, sur leur page. */}
+            <Section title={t("gamepads.connected.title")} help={t("gamepads.connected.help")} sense="modify">
+                <Rows>
+                    <NavRow id="gp-connected" icon="bi-controller" label={t("gamepads.connected.title")} help={t("gamepads.connected.rowHelp")}
+                        value={counted(t, "controllers", pads.length)} onOpen={() => open("/settings/gamepads/connected", "gp-connected")} />
+                </Rows>
+            </Section>
             <Section title={t("gamepads.layoutTitle")} sense="modify">
                 <Rows>
                     <NavRow id="gp-layout" icon="bi-arrows-move" label={t("gamepads.editLayout")} help={t("gamepads.editLayoutHelp")}

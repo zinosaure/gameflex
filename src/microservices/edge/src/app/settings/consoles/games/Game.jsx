@@ -148,7 +148,7 @@ function LocalGame({ consoleId, slug, source, game }) {
 
                             return;
                         }
-                        toast(t("consoles.removing", { name: game.title }));
+                        feedback.success(t("consoles.removing", { name: game.title }));
                         back(sourcePath(consoleId, slug));
                         followDownload(answer.data.downloadId).then((done) => {
                             feedback.result(done.ok, t("consoles.removed", { name: game.title }), done.errorMessage || t("consoles.removeFailed"));

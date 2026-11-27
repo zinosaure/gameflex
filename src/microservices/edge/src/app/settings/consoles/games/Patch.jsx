@@ -18,7 +18,8 @@ import { downloadOutcome, runDownload, useDownloads } from "../../../libs/downlo
 import { fact, formatMegabytes } from "../../../libs/format.js";
 import { toast } from "../../../shell/Shell.jsx";
 import SettingsPage, { NotFound, useSettingsNavigation } from "../../SettingsPage.jsx";
-import { gamePagePath, gameSourceOf, isLocal, serverName, useAddressedGame, useGameTitle, useLevels } from "../Games.jsx";
+import { gamePagePath, gameSourceOf, isLocal, useAddressedGame, useGameTitle, useLevels } from "../Games.jsx";
+import { serverNamed } from "../../../libs/format.js";
 
 // « LE RÉCUPÉRER » pour un correctif absent (le modèle 26) : chaque disque interne, puis chaque serveur fédéré, comme le
 // serveur les rend (storage_patches_api.go) — grisés quand ils ne l'ont pas, avec leur raison. Toucher une source ouvre
@@ -30,7 +31,7 @@ function PatchSources({ consoleId, view, gameTitle, running }) {
     // LA SOURCE OFFICIELLE (chantier 63, P6) : le paquet des correctifs de l'index des paquets streamex.
     const keyOf = (source) => (source.source === "official" ? "official" : source.source === "disk" ? `disk:${source.disk}` : `server:${source.serverId}`);
     const labelOf = (source) => (source.source === "official" ? t("consoles.sourceStreamex")
-        : source.source === "disk" ? source.disk : serverName({ hostname: source.name }, source.serverId, t));
+        : source.source === "disk" ? source.disk : serverNamed({ hostname: source.name }, source.serverId, t));
     // Les sources, nombreuses quand les serveurs fédérés le sont : un listing qui se cherche.
     const found = useListSearch(view.sources, labelOf);
     // La raison d'un serveur qui ne répond pas comme il faut est le message de son refus (remote.Refusal) : notre jeton

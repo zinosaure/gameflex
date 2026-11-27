@@ -289,6 +289,16 @@ CREATE TABLE IF NOT EXISTS hidden_servers (
     PRIMARY KEY (user_id, server_id)
 );
 
+-- LES SERVEURS RELAYÉS ÉTEINTS (chantier 83) : un serveur qu'un ami nous relaie n'est pas au registre ; il se range
+-- sous le serveur qui le relaie (via_id), et part avec lui. La page le nomme -(via_id × 10⁶ + relayed_id).
+CREATE TABLE IF NOT EXISTS hidden_relayed_servers (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    via_id     INTEGER NOT NULL REFERENCES federation_servers(id) ON DELETE CASCADE,
+    relayed_id INTEGER NOT NULL,
+    created_at DATETIME,
+    PRIMARY KEY (user_id, via_id, relayed_id)
+);
+
 -- LE STATUT DES CONSOLES ET DES JEUX (chantier 30 ; le porteur, 2026-11-17 : « je vois que les statuts des jeux et
 -- consoles sont pas dans la base de données mais dans un fichier json. Il faut que ça soit dans la base de données »).
 -- Ils vivaient dans status/<console>.json (un fichier par console), abandonnés : on part de zéro. Le statut d'une console réglée d'un geste (vide : son défaut,
@@ -406,8 +416,14 @@ func Open() (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
-	// …et voyage avec l'invitation ou le code d'appairage jusqu'à l'accès qu'ils font naître.
+	// …et voyage avec l'invitation ou le code d'appairage jusqu'à l'accès qu'ils font naître — « Peut me relayer » aussi
+	// (chantier 83 ; le porteur, 2026-11-26 : « Quand je crée une nouvelle connexion dans Fédération ça ne me propose pas
+	// le relais »).
 	if err := ensureColumn(db, "invitations", "remote_admin", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := ensureColumn(db, "invitations", "relay_allowed", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		db.Close()
 		return nil, err
 	}

@@ -59,3 +59,6 @@ export function makeCanDrawButton(profileButtons, mapping, analogNames = []) {
 	return (name) =>
 		analog.has(name) || resolveProfileButton(profileButtons, mapping, name) !== null;
 }
+
+// LA DÉVIATION D'UN STICK À L'ÉCRAN, en millièmes bornés (-1000…1000) : ce que les quatre manettes streamex envoient (`st,`).
+export const stickAxis = (value) => Math.max(-1000, Math.min(1000, Math.round(value * 1000)));

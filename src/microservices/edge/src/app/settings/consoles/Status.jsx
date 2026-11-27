@@ -11,7 +11,7 @@ import { SubmitRow } from "../../bricks/SubmitRow.jsx";
 import { useFeedback } from "../../bricks/useFeedback.jsx";
 import { fetchConsoleStatus, setConsoleStatus } from "../../libs/api.js";
 import { useData } from "../../libs/data.jsx";
-import { GAME_STATUSES, STATUS_VARIANT } from "../../libs/format.js";
+import { dateTime, GAME_STATUSES, STATUS_VARIANT } from "../../libs/format.js";
 import { Form, FormButton } from "../../ui/Forms.jsx";
 import SettingsPage, { NotFound } from "../SettingsPage.jsx";
 import { consolePath, useEmulated } from "../Consoles.jsx";
@@ -45,7 +45,7 @@ export default function ConsoleStatus() {
     const current = answer?.ok ? answer.data || {} : null;
     const effective = current ? current.status || current.default || "untested" : "untested";
     const chosen = draft ?? effective;
-    const dated = (at) => (at ? new Date(at).toLocaleString(i18n.language === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "");
+    const dated = (at) => dateTime(at, i18n.language, "");
     const badge = (status) => <span className={`badge rounded-pill text-bg-${STATUS_VARIANT[status] || "secondary"}`}>{t(`status.${status}`)}</span>;
 
     const save = async () => {

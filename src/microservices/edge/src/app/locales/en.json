@@ -843,7 +843,8 @@
         },
         "tokenForgetConfirm": "Forget your token for {{server}}? You will have to paste it again to play there.",
         "methodHelp": "What {{server}} gave you for your account.",
-        "methodLabel": "Sign in with"
+        "methodLabel": "Sign in with",
+        "signedIn": "You are signed in to {{server}}."
     },
     "logs": {
         "lastLines": "Last 100 lines",
@@ -955,7 +956,22 @@
         "deviceHelp": "The controller or keyboard to set up.",
         "layoutTitle": "Layout",
         "resetHelp": "This controller's buttons go back to the defaults.",
-        "noDeviceValue": "None"
+        "noDeviceValue": "None",
+        "connected": {
+            "title": "Connected controllers",
+            "help": "The controllers plugged into this device: their order, and those that play.",
+            "rowHelp": "Enable them, number them, set their buttons.",
+            "padTitle": "This controller",
+            "padHelp": "Enabled controllers take the places of a game in the order of their numbers.",
+            "enabled": "Controller enabled",
+            "enabledHelp": "Disabled, it never takes a place in a game.",
+            "number": "Number",
+            "numberHelp": "Its rank among the enabled controllers: Pad 1 takes the first place.",
+            "mappingTitle": "Its buttons",
+            "mappingHelp": "What each of its buttons does.",
+            "mapping": "Button mapping",
+            "mappingRowHelp": "Set its buttons for each virtual controller."
+        }
     },
     "members": {
         "password": "Password",
@@ -1175,8 +1191,6 @@
         "shareToken": "Classic token",
         "shareQr": "QR code",
         "remoteRights": "Remote rights",
-        "providersLabel": "Remote metadata providers",
-        "providersHelp": "This server also searches for images and sheets with your IGDB and SteamGridDB accounts, without seeing your keys. Its searches count against your quota.",
         "serversSearch": "Search a server…",
         "serversEmpty": "No joined server.",
         "listedAt": "read on {{at}}",
@@ -1254,8 +1268,6 @@
         "gigabytes": "{{gb}} GB",
         "grantsTitle": "Shared with you",
         "grantsHelp": "What this server shares with yours.",
-        "catalogHelp": "See and download its games, BIOS files and emulators.",
-        "providersGrantHelp": "Search for images and sheets with its provider accounts.",
         "connectionTitle": "Sharing",
         "connectionHelp": "Share games, consoles and metadata between your devices, with friends and with other GameFlex servers around the world.",
         "connectionHelpJoinOnly": "Play the games and consoles shared by friends and by other GameFlex servers around the world.",
@@ -1268,18 +1280,12 @@
         "newAccess": "Create a new access",
         "newAccessHelp": "Invite a friend to see your games.",
         "pendingHelp": "Invitations not used yet.",
-        "scopeProviders": "Metadata providers",
-        "metadataHelp": "Its games' sheets and images.",
-        "scopeMetadata": "Metadata",
         "allowed": "Allowed",
         "notAllowed": "Not allowed",
         "consolesAll": "All",
         "consolesNone": "None",
         "consolesSome": "Some",
-        "consolesSection": "Consoles",
-        "consolesRowHelp": "What accounts coming through this access can launch.",
         "consolesPageHelp": "Accounts coming through this access only launch these consoles, on top of their own rights.",
-        "consolesGrantHelp": "What our access to this server lets us launch.",
         "accessMoreHelp": "Give a new access to another server.",
         "serversMoreHelp": "Join another GameFlex server.",
         "invitationDetailHelp": "For whom, what it opens, and until when.",
@@ -1289,13 +1295,47 @@
         "remoteRightsHelp": "What the other server can set here, remotely.",
         "machineHelp": "This server's machine.",
         "tokenDetailsHelp": "Who it is delivered to, and what it opens.",
-        "consolesSectionHelp": "The consoles this server can launch on yours.",
         "relayedBy": "Relayed by {{name}}",
-        "relayAllowedLabel": "May relay me to its devices",
-        "relayAllowedHelp": "This server may show my games to the devices it gives an access to.",
-        "relayedTitle": "Relayed servers",
-        "relayedHelp": "The federated servers whose games this access also sees.",
-        "relayNotAllowed": "This server does not allow being relayed."
+        "relayNotAllowed": "This server does not allow being relayed.",
+        "relayedNone": "None",
+        "grant": {
+            "catalog": {
+                "issued": "See and download your games, your BIOS, your emulators.",
+                "received": "See and download its games, its BIOS, its emulators.",
+                "label": "Games"
+            },
+            "metadata": {
+                "issued": "The sheets and images of your games.",
+                "received": "The sheets and images of its games.",
+                "label": "Metadata"
+            },
+            "consoles": {
+                "issued": "What the accounts coming through this access can launch.",
+                "received": "What our access to this server can launch.",
+                "label": "Console access"
+            },
+            "providers": {
+                "issued": "This server also looks for images and sheets with your IGDB and SteamGridDB accounts, without seeing your keys. Its searches count in your quota.",
+                "received": "Look for images and sheets with its provider accounts.",
+                "label": "Metadata providers"
+            },
+            "relayed": {
+                "issued": "The federated servers whose games this access also sees.",
+                "received": "The federated servers whose games it also shows you.",
+                "label": "Relayed servers"
+            },
+            "relayAllowed": {
+                "issued": "This server may show your games to the devices it gives an access to.",
+                "received": "Your devices may see its games through your server.",
+                "labelIssued": "May relay me to its devices",
+                "labelReceived": "Relay to your devices"
+            },
+            "remoteAdmin": {
+                "label": "Remote administration",
+                "issued": "One of your administrators using this access also manages this server from theirs. Off, they only play.",
+                "received": "Manage its settings from here, with your administrator account over there."
+            }
+        }
     },
     "invitations": {
         "create": "Create the invitation",
@@ -2094,12 +2134,25 @@
             "pad": "This device's controller.",
             "players": "Who holds each of the console's controllers.",
             "together": "Bring someone into the game.",
-            "leave": "What ends the game, or resets it."
+            "leave": "What ends the game, or resets it.",
+            "pads": "The controllers of this device, and the place of each."
         },
         "castUnavailable": "This browser can't send the picture to a TV: open this page in Google Chrome.",
         "castNoReceiver": "No Google Cast receiver is set on this server.",
         "gamepadTipHome": "Game menu: Home. On a keyboard: Esc.",
-        "gamepadTipChord": "Game menu: hold L2 + R2 + Home for two seconds. On a keyboard: Esc."
+        "gamepadTipChord": "Game menu: hold L2 + R2 + Home for two seconds. On a keyboard: Esc.",
+        "pads": {
+            "title": "Connected controllers",
+            "pad": "Pad {{number}}",
+            "named": "{{name}} (Pad {{pad}})",
+            "none": "No controller plugged into this device.",
+            "off": "Disabled",
+            "waiting": "Waiting",
+            "free": "No place",
+            "releaseTitle": "{{label}}: give up its place?",
+            "releaseMessage": "Its place goes to the next waiting controller, or stays free.",
+            "release": "Give up its place"
+        }
     },
     "form": {
         "noDate": "No day chosen",
@@ -2170,7 +2223,9 @@
         "disks_one": "{{count}} disk",
         "disks_other": "{{count}} disks",
         "resources_one": "{{count}} resource",
-        "resources_other": "{{count}} resources"
+        "resources_other": "{{count}} resources",
+        "controllers_one": "{{count}} controller",
+        "controllers_other": "{{count}} controllers"
     },
     "downloads": {
         "cancel": "Cancel",
@@ -2814,7 +2869,6 @@
     },
     "remoteAdmin": {
         "title": "Remote administration",
-        "switchHelp": "One of your administrators using this access also manages this server from theirs. Off, they can only play.",
         "notAdmin": "Your account does not administer this server from here. On that server, an administrator must allow remote administration in the access given to your server.",
         "unreachable": "This server opens no session for you: paste your account token from there first.",
         "section": "Shared with you as an admin",
@@ -3019,7 +3073,9 @@
         "disksMoreHelp": "Add a folder of games of this PC.",
         "diskDetailsHelp": "Its folder, whether it is there, and its free space.",
         "thisAppHelp": "The version installed on this PC.",
-        "updateSectionHelp": "Look for a newer version, and install it."
+        "updateSectionHelp": "Look for a newer version, and install it.",
+        "diskRemoved": "The disk {{name}} is removed.",
+        "joinRemoved": "This server is removed."
     },
     "switches": {
         "on": "On",

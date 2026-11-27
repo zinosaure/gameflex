@@ -11,13 +11,13 @@ import { Note } from "../../bricks/Note.jsx";
 import { Rows } from "../../bricks/Rows.jsx";
 import { Section } from "../../bricks/Section.jsx";
 import { TextRow } from "../../bricks/TextRow.jsx";
+import { dateTime } from "../../libs/format.js";
 
 // LES INVITATIONS (shared/Invitation.jsx de la webapp, chantier 33) : un lien, ou son QR, que
 // l'autre serveur échange contre un jeton — le jeton, lui, ne voyage jamais. Valable 12 heures,
 // une seule fois. En direction C (bricks/) : l'invitation créée et « Mon QR » sont chacun UN groupe
 // (Section), son titre compris — la page qui les montre les pose tels quels, sans groupe autour.
 
-const dateTime = (iso, language) => (iso ? new Date(iso).toLocaleString(language === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "");
 
 // L'adresse publique de ce serveur : celle que l'hôte déclare (la LAN du téléphone), sinon celle de la page.
 export const useShareOrigin = () => {
@@ -108,7 +108,7 @@ export function InvitationReveal({ link, expiresAt, title, onDone, canShare = tr
                         : <span className="spinner-border" role="status"></span>}
                 </div>
                 {/* Sa validité, en ligne atténuée sous le code — plus une alerte (le porteur, 2026-11-16). */}
-                <Note>{t(validity || "invitations.validUntil", { at: dateTime(expiresAt, i18n.language) })}</Note>
+                <Note>{t(validity || "invitations.validUntil", { at: dateTime(expiresAt, i18n.language, "") })}</Note>
             </Section>
             <Section title={t("invitations.linkTitle")} sense="modify">
                 <Rows>

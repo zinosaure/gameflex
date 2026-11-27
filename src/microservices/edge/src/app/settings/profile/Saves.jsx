@@ -70,7 +70,7 @@ import { gameScreenPath } from "../../libs/tabs.js";
 import { FederatedRefusal, FederatedTokenForm } from "../../screens/access/FederatedAccount.jsx";
 import { slotName, StateThumbnail } from "../../screens/library/GameSettings.jsx";
 import { toast } from "../../shell/Shell.jsx";
-import { Form, FormButton } from "../../ui/Forms.jsx";
+import { FormButton } from "../../ui/Forms.jsx";
 import SettingsPage, { NotFound, PROFILE, useQueryState, useSettingsNavigation } from "../SettingsPage.jsx";
 import { CONSOLE_ICON } from "../../globals/icons.js";
 
@@ -280,7 +280,6 @@ export function usePlace() {
 // UN SERVEUR FÉDÉRÉ SANS SESSION : on l'attend (la liste des serveurs ou la session se lisent encore), ou on
 // colle son jeton, ou on dit pourquoi il refuse ; avec sa session, ce qu'on y voit.
 export function PeerGate({ place, children }) {
-    const { t } = useTranslation();
     const { peer, federation } = place;
 
     if (!peer || federation.loading) {
@@ -638,7 +637,7 @@ export function SaveList({ where, base }) {
     const pathOf = (item) => `${base}/console/${encodeURIComponent(item.consoleId)}`;
 
     return (
-        <Listing items={filtered} loading={loading} search={read("q")} onSearch={(q) => update({ q, page: 1 })} placeholder={t("saves.search")}
+        <Listing items={filtered} overall={items.length} loading={loading} search={read("q")} onSearch={(q) => update({ q, page: 1 })} placeholder={t("saves.search")}
             page={Number(read("page")) || 1} onPage={(page) => update({ page })} found={t("saves.found", { count: filtered.length })} empty={t("saves.empty")}
             filterCount={hiddenKinds.length}
             filters={[switchGroup({
@@ -833,7 +832,7 @@ export function SaveConsoleGames({ consoleId, where, games }) {
     const shown = (games || []).filter((game) => (!needle || `${streamexName(game, t)} ${game.id}`.toLowerCase().includes(needle)) && !hidden.includes(sourceOf(game)));
 
     return (
-        <Listing items={shown} loading={games === null || notes === null} search={read("q")} onSearch={(q) => update({ q, gamesPage: null })} placeholder={t("saves.search")} searchKey="sx-search"
+        <Listing items={shown} overall={(games || []).length} loading={games === null || notes === null} search={read("q")} onSearch={(q) => update({ q, gamesPage: null })} placeholder={t("saves.search")} searchKey="sx-search"
             found={t("saves.found", { count: shown.length })} empty={t("saves.empty")} page={read("gamesPage")} onPage={(page) => update({ gamesPage: page })}
             filterCount={hidden.length} filters={[switchGroup({
                 key: "sources", title: t("library.sourcesTitle"), id: "sx-src", choices: sources, hidden,

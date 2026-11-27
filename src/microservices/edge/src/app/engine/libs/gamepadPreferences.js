@@ -46,11 +46,20 @@ const RUMBLE_STRENGTH_KEY = "gameflex_rumble_strength";
 // flottant et ce qui passe en option ce serait le fait de les afficher ou pas »).
 const INVISIBLE_STICKS_KEY = "gameflex_invisible_sticks";
 
+// LES MANETTES DE CET APPAREIL (chantier 84 ; le porteur, 2026-11-26 : « une nouvelle page qui liste les manettes
+// connectées pour après faire l'activation ou désactivation, le mapping et aussi changer l'index ») : l'ordre des manettes
+// (leurs clés, gamepadPresence.js), qui fixe leurs numéros — Pad 1, Pad 2… — et celles désactivées, qui ne prennent
+// jamais de siège. De cet appareil, comme le reste de ce module.
+const PAD_ORDER_KEY = "gameflex_pad_order";
+const PADS_OFF_KEY = "gameflex_pads_off";
+
 let preferences = {
     hapticFeedback: readStoredBool(HAPTIC_KEY, true),
     rumble: readStoredBool(RUMBLE_KEY, true),
     rumbleStrength: readStoredRatio(RUMBLE_STRENGTH_KEY, 1),
     invisibleSticks: readStoredBool(INVISIBLE_STICKS_KEY, false),
+    padOrder: readStoredList(PAD_ORDER_KEY),
+    padsOff: readStoredList(PADS_OFF_KEY),
 };
 const listeners = new Set();
 
@@ -82,6 +91,25 @@ function readStoredRatio(key, fallback) {
         return Math.min(1, Math.max(0, value));
     } catch {
         return fallback;
+    }
+}
+
+// readStoredList — une liste de chaînes, vide quand rien ne se lit.
+function readStoredList(key) {
+    try {
+        const value = JSON.parse(window.localStorage.getItem(key) || "[]");
+
+        return Array.isArray(value) ? value.filter((entry) => typeof entry === "string") : [];
+    } catch {
+        return [];
+    }
+}
+
+function storeList(key, list) {
+    try {
+        window.localStorage.setItem(key, JSON.stringify(list));
+    } catch {
+        /* storage unavailable — the in-memory value still works */
     }
 }
 
@@ -124,6 +152,22 @@ export function setInvisibleSticks(enabled) {
     store(INVISIBLE_STICKS_KEY, enabled);
     update({ ...preferences, invisibleSticks: !!enabled });
 }
+
+// UNE MANETTE ACTIVÉE OU NON (chantier 84) : désactivée, elle ne prend jamais de siège et n'envoie rien.
+export function setPadEnabled(key, enabled) {
+    const padsOff = enabled ? preferences.padsOff.filter((one) => one !== key) : [...new Set([...preferences.padsOff, key])];
+    storeList(PADS_OFF_KEY, padsOff);
+    update({ ...preferences, padsOff });
+}
+
+// L'ORDRE DES MANETTES (chantier 84) : `keys`, les manettes connues dans l'ordre voulu ; leurs numéros en découlent.
+export function setPadOrder(keys) {
+    storeList(PAD_ORDER_KEY, keys);
+    update({ ...preferences, padOrder: [...keys] });
+}
+
+export const getPadPreferences = () => ({ padOrder: preferences.padOrder, padsOff: preferences.padsOff });
+export const onPadPreferences = (listener) => subscribe(listener);
 
 // LES PRÉFÉRENCES, SUIVIES : le menu d'une partie, Réglages › Manettes et la manette à l'écran se redessinent
 // quand l'un des deux endroits en change une — les sticks invisibles s'appliquent à la partie en cours, sans rechargement.

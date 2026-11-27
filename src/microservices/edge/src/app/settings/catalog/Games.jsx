@@ -53,11 +53,11 @@ import { Section } from "../../bricks/Section.jsx";
 import { SwitchRow } from "../../bricks/SwitchRow.jsx";
 import { hiddenOf, toggleHidden } from "../../globals/filters.js";
 import { downloadTicket, listLentResources, listRoms, listStreamexSaves, listUserStates, metadataArchiveTicket, metadataArchiveUrl, romSource, ticketDownloadUrl } from "../../libs/api.js";
-import { fromResource, useData } from "../../libs/data.jsx";
+import { fold, fromResource, useData } from "../../libs/data.jsx";
 import { browserDownload } from "../../libs/downloads.js";
 import { favoriteKey, isFavorite, setFavorite, useFavorites } from "../../libs/favorites.js";
 import { useFederationSession } from "../../libs/federation.js";
-import { fact, formatSize, originOf, serverName, statusOf } from "../../libs/format.js";
+import { fact, formatSize, MEGABYTE, originOf, serverName, sheetRefusalOf, statusOf } from "../../libs/format.js";
 import { gameMetadataStatus, sourcesOf, useGameMetadata } from "../../libs/metadata.js";
 import { useDebounced } from "../../libs/ui.js";
 import { splitTitle } from "../../libs/visuals.js";
@@ -71,11 +71,12 @@ import { originView } from "../../bricks/Origin.jsx";
 export const CATALOG = "/settings/catalog/games";
 export const gamePath = (consoleId, reference) => `${CATALOG}/game?${new URLSearchParams({ console: consoleId, ref: reference })}`;
 
-export const MEGABYTE = 1024 * 1024;
+// LA CONSOLE D'UN JEU DU CATALOGUE : une console émulée (jamais une console Remote Play), ou null.
+export const catalogConsole = (consoles, consoleId) => (consoles || []).find((entry) => entry.id === consoleId && entry.method !== "remoteplay") || null;
 export const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 // La recherche par le nom, celle de la bibliothèque (matchesQuery, data.jsx) : sans accents ni casse — le titre plié
 // une fois par jeu, pas à chaque lettre tapée sur des dizaines de milliers de jeux.
-export const fold = (text) => String(text || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+export { fold };
 
 // LA RÉFÉRENCE D'UN JEU D'UN SERVEUR FÉDÉRÉ, `srv<id>:<sa référence>` (remoteReference, au kernel) : son serveur ; et
 // sa référence chez lui, celle de ses sauvegardes là-bas.
@@ -324,7 +325,7 @@ export default function Catalog() {
     return (
         <SettingsPage title={t("settings.items.catalogGames.label")} parent="/settings">
             <Section title={t("library.gamesTitle")} sense="info">
-                <Listing items={shown} loading={!games.length && pending} search={search} onSearch={(q) => update({ q, page: null })} placeholder={t("games.search")} searchKey="cg-search"
+                <Listing items={shown} overall={games.length} loading={!games.length && pending} search={search} onSearch={(q) => update({ q, page: null })} placeholder={t("games.search")} searchKey="cg-search"
                     page={read("page")} onPage={(page) => update({ page })}
                     found={t(pending ? "catalog.foundReading" : "catalog.found", { count: shown.length })}
                     empty={t(games.length ? "catalog.noneMatching" : "catalog.none")}
@@ -356,8 +357,6 @@ export default function Catalog() {
 
 // POURQUOI LA FICHE D'UN JEU FÉDÉRÉ NE SE LIT PAS (le relais du kernel, chantier 57) : notre jeton refusé (403), le
 // serveur muet (502, ou rien), ou un serveur qui ne la prête pas (404) — les mots de la page d'un jeu fédéré des Réglages.
-export const sheetRefusalOf = (status, server, t) => (status === 403 ? t("gameAdmin.sheetDenied", { server })
-    : status === 404 ? t("gameAdmin.sheetNotLent", { server }) : t("gameAdmin.sheetUnreachable", { server }));
 
 // POURQUOI UN TÉLÉCHARGEMENT NE PART PAS : « pas encore sur cet appareil », un jeu sans métadonnées (`no_metadata`,
 // déjà dit dans la langue de la page : kernelErrors), le refus du serveur fédéré du jeu, sinon l'échec.

@@ -5,7 +5,6 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { Loading } from "../../../bricks/Loading.jsx";
 import { Section } from "../../../bricks/Section.jsx";
 import { searchConsoleBackgrounds, setConsoleBackground } from "../../../libs/api.js";
-import { toast } from "../../../shell/Shell.jsx";
 import SettingsPage, { NotFound, useSettingsNavigation } from "../../SettingsPage.jsx";
 import { ImageSearch } from "../../server/consoles/ImageSearch.jsx";
 import { appearancePath, forgetSlots, SlotPreview, useAppearanceLevels, useBackgroundSlots } from "../../Consoles.jsx";
@@ -41,12 +40,12 @@ export default function SlotSearch() {
                                 message: t("appearance.chosenConfirm", { game: image.game, source: t(`images.services.${image.source}`) }),
                                 confirmLabel: t("appearance.replaceAction"),
                             })}
+                            success={() => t("appearance.slotSet", { slot })}
                             onChoose={async (image) => {
                                 const answer = await setConsoleBackground(consoleId, slot, image);
 
                                 if (answer.ok) {
                                     forgetSlots(consoleId);
-                                    toast(t("appearance.slotSet", { slot }));
                                     back(parent);
                                 }
 

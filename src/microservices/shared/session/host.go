@@ -270,20 +270,36 @@ func (host *Host) VoiceRights() map[string]VoiceRights {
 
 // ControlledSlot — which pad this tab's keys drive, read under the lock (see
 // Session.ControlledSlot).
-func (host *Host) ControlledSlot(socketID string) int {
+func (host *Host) ControlledSlot(socketID string, pad int) int {
 	host.mu.Lock()
 	defer host.mu.Unlock()
 
-	return host.session.ControlledSlot(socketID)
+	return host.session.ControlledSlot(socketID, pad)
 }
 
 // ControllerOf — the tab whose keys drive this pad, read under the lock (see
 // Session.ControllerOf).
-func (host *Host) ControllerOf(slot int) string {
+func (host *Host) ControllerOf(slot int) (socketID string, pad int) {
 	host.mu.Lock()
 	defer host.mu.Unlock()
 
 	return host.session.ControllerOf(slot)
+}
+
+// ControllerNameOf — le COMPTE dont les mains tiennent ce siège, et sa manette (chantier 84) : le relais rétro du
+// téléphone adresse ses vibrations par compte, pas par socket.
+func (host *Host) ControllerNameOf(slot int) (username string, pad int) {
+	host.mu.Lock()
+	defer host.mu.Unlock()
+
+	socketID, pad := host.session.ControllerOf(slot)
+	for _, participant := range host.session.Participants {
+		if participant.SocketID == socketID {
+			return participant.Username, pad
+		}
+	}
+
+	return "", 0
 }
 
 // Refuse answers a command that is NOT pushed — the kernel said its recipient
@@ -334,7 +350,13 @@ func (host *Host) Sweep(now time.Time, beatTimeout, afkAfter, afkGrace time.Dura
 	reasons := []ClosedPlayer{}
 	warnings := []AFKWarning{}
 
+	// UN APPAREIL À LA FOIS (chantier 84) : ses sièges partagent le même battement et la même question.
+	swept := map[string]bool{}
 	for _, player := range host.session.Players {
+		if swept[player.SocketID] {
+			continue
+		}
+		swept[player.SocketID] = true
 		switch {
 		case now.Sub(player.LastBeatAt) > beatTimeout:
 			closing = append(closing, player.SocketID)
@@ -447,7 +469,10 @@ func (host *Host) stateMessages() []addressed {
 		players = append(players, map[string]any{
 			"slotId":   player.SlotID,
 			"username": player.Username,
-			"isOwner":  host.session.IsOwner(player.Username),
+			// La manette de son appareil (chantier 84) : la page écrit « Gino (Pad 2) » quand le compte en tient
+			// plusieurs.
+			"pad":     player.Pad,
+			"isOwner": host.session.IsOwner(player.Username),
 			// Who drives this pad while it is lent — "" when its holder does.
 			"lentTo": player.LentTo,
 			// Since when they hold this pad: the menu's list of players shows
@@ -511,7 +536,10 @@ func (host *Host) stateMessages() []addressed {
 			// nothing, the borrower — a "playable viewer" — holds no place and
 			// drives the owner's pad. The page enables its controller on this,
 			// never on isPlaying.
-			"controls": host.session.ControlledSlot(participant.SocketID),
+			"controls": host.session.ControlledSlot(participant.SocketID, 1),
+			// LES MANETTES DE CET APPAREIL (chantier 84) : le siège que pilote chacune, et celles qui attendent.
+			"pads":    host.session.padsOf(participant.SocketID),
+			"waiting": host.session.WaitingPads(participant.SocketID),
 			// THE TWO ENDS OF A LOAN, said by the child rather than worked out
 			// by the page: the owner may take their pad back, the borrower —
 			// from the tab that borrowed it — may give it back.
@@ -524,7 +552,7 @@ func (host *Host) stateMessages() []addressed {
 			"voice": host.session.voiceOf(participant),
 		}
 		if playing {
-			you["slotId"] = host.session.PlayerOf(participant.Username).SlotID
+			you["slotId"] = host.session.SeatOf(participant.Username)
 		}
 		message["you"] = you
 
@@ -606,8 +634,8 @@ func (host *Host) padsThatChangedHands() []int {
 
 	current := make(map[int]string, host.session.MaxPlayers)
 	for slot := 1; slot <= host.session.MaxPlayers; slot++ {
-		if socketID := host.session.ControllerOf(slot); socketID != "" {
-			current[slot] = socketID
+		if socketID, pad := host.session.ControllerOf(slot); socketID != "" {
+			current[slot] = fmt.Sprintf("%s#%d", socketID, pad)
 		}
 	}
 
@@ -646,6 +674,7 @@ func (host *Host) Claim(owner string, maxPlayers int, now time.Time) {
 		host.session.MaxPlayers = maxPlayers
 	}
 	host.session.Players = nil
+	host.session.Waiting = nil
 	host.session.PendingHandover = nil
 	host.session.Terminated = false
 	host.session.TerminatedBy = ""

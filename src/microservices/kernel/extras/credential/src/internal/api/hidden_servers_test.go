@@ -101,7 +101,23 @@ func TestHiddenServersFollowTheAccount(t *testing.T) {
 		t.Fatalf("après l'avoir rallumé : %v", got)
 	}
 
-	// UN SERVEUR RETIRÉ DU REGISTRE EMPORTE SES LIGNES.
+	// UN SERVEUR RELAYÉ (chantier 83) : -(relais × 10⁶ + id), éteint et rallumé comme un autre ; un relais inconnu, refusé.
+	relayedPath := "/api/v1/auth/me/hidden-servers/" + strconv.FormatInt(-(serverID*1_000_000+7), 10)
+	if answer := call(http.MethodPut, relayedPath, marc); answer.Code != http.StatusNoContent {
+		t.Fatalf("éteindre un serveur relayé = %d %s", answer.Code, answer.Body.String())
+	}
+	if got := hidden(marc); len(got) != 1 || got[0] != -(serverID*1_000_000+7) {
+		t.Fatalf("les serveurs éteints de marc, un relayé : %v", got)
+	}
+	if answer := call(http.MethodPut, "/api/v1/auth/me/hidden-servers/-999000007", marc); answer.Code != http.StatusNotFound {
+		t.Fatalf("un relais inconnu = %d, attendu 404", answer.Code)
+	}
+	if answer := call(http.MethodDelete, relayedPath, marc); answer.Code != http.StatusNoContent || len(hidden(marc)) != 0 {
+		t.Fatalf("rallumer un serveur relayé = %d, reste %v", answer.Code, hidden(marc))
+	}
+	call(http.MethodPut, relayedPath, marc)
+
+	// UN SERVEUR RETIRÉ DU REGISTRE EMPORTE SES LIGNES (celles des serveurs qu'il relayait aussi).
 	call(http.MethodPut, path, marc)
 	if _, err := db.Exec(`DELETE FROM federation_servers WHERE id = ?`, serverID); err != nil {
 		t.Fatal(err)

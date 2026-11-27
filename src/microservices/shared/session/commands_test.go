@@ -104,7 +104,7 @@ func TestHandoverRequestThenGrant(t *testing.T) {
 	if outcomes[0].Err != nil || outcomes[0].Slot != 1 {
 		t.Fatalf("grant = (%d, %v), want (1, nil)", outcomes[0].Slot, outcomes[0].Err)
 	}
-	if session.ControlledSlot("sock-X") != 1 {
+	if session.ControlledSlot("sock-X", 1) != 1 {
 		t.Fatal("the requester must drive the pad immediately — nothing to claim")
 	}
 	// The pad is LENT: the owner stays the owner, and keeps their place

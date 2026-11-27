@@ -11,7 +11,7 @@ import { setFavorite, useFavorites } from "../../../libs/favorites.js";
 import { useGameMetadata } from "../../../libs/metadata.js";
 import { splitTitle } from "../../../libs/visuals.js";
 import { toast } from "../../../shell/Shell.jsx";
-import { GameSheet } from "../../catalog/Games.jsx";
+import { catalogConsole, GameSheet } from "../../catalog/Games.jsx";
 import SettingsPage, { NotFound, useSettingsNavigation } from "../../SettingsPage.jsx";
 import { EmptyRow } from "../../../bricks/EmptyRow.jsx";
 import { GameFacts } from "../../../bricks/GameFacts.jsx";
@@ -76,7 +76,7 @@ export default function FavoriteGame() {
     const item = listed || (kept.current?.consoleId === consoleId && kept.current.reference === reference ? kept.current : null);
     const items = useMemo(() => (item ? [item] : []), [item]);
     const stateOf = useFavoriteGames(items);
-    const console = (consoles || []).find((entry) => entry.id === consoleId && entry.method !== "remoteplay") || null;
+    const console = catalogConsole(consoles, consoleId);
     const given = location.state?.game?.consoleId === consoleId && location.state.game.reference === reference ? location.state.game : null;
     const state = (item ? stateOf(item) : undefined) ?? (given && console ? { console, game: given } : undefined);
     const metadata = useGameMetadata(state?.game ? consoleId : null, reference, romSource(state?.game));

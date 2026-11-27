@@ -192,6 +192,22 @@ time. A spectator without an account has no voice. The browser only gives a micr
 page: `https://…` or the Android app; on `http://<address>`, **My microphone** stays greyed out, but
 you still hear the others. The Android app asks for the microphone once, when it starts.
 
+### Several controllers on one device
+
+Every controller plugged into the same device plays, each on its own place: the players in front of one TV share one
+device. The menu's **Players** section names them **Alex (Pad 1)**, **Alex (Pad 2)**…
+
+- **Places go in order.** When you start or join a game, Pad 1 takes the first free place; another controller takes the
+  next one at its first press. When no place is left, the controller waits and takes the next place that frees up.
+- **Ask for a place** for a waiting controller as for anyone: touch a player in **Players**. The place goes to your
+  first waiting controller.
+- **Connected controllers**, in the game menu, lists this device's controllers and the place of each. Touch one that
+  holds a place to give it up: the others keep playing. With a single controller, the list is greyed out.
+- **Settings › Gamepads › Connected controllers** sets each controller: **Controller enabled** (a disabled controller
+  never takes a place), its **Number**, which sets the order of the places, and its buttons.
+
+The keyboard and the on-screen controller are Pad 1. Remote Play carries one controller only.
+
 **Away from the controller:** after 29 minutes without a press, GameFlex asks whether you are still
 there; without an answer (**I'm here**), the player loses the controller one minute later. A game
 nobody plays stops after five minutes.

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-27
+
+### Added
+
+- **Several controllers on one device**: every controller plugged into the same device takes its own place,
+  **Alex (Pad 1)**, **Alex (Pad 2)**…, in order; a controller without a place waits for the next one. The game menu's
+  **Connected controllers** gives one's place up; **Settings › Gamepads › Connected controllers** enables them, numbers
+  them and sets their buttons. Not for Remote Play.
+
+### Changed
+
+- **Federation**: an access's sheet reads the same on both ends (what it opens, remote administration, the relay, the
+  relayed servers as a list), and **May relay me to its devices** can be set when creating an access.
+- **Settings › Consoles** shows every console by default; a list keeps its search when its filters shorten it.
+- **Signing in to a federated server** with a token says it worked.
+- **Lists** write each item's details as coloured text, joined by « • », instead of badges: green when active, red when
+  off or empty.
+
+### Fixed
+
+- A relayed server can be hidden in **Settings › Application**.
+- On the phone, the second player of a retro game feels the rumble.
+
 ## [0.19.0] - 2026-11-26
 
 ### Added

@@ -51,11 +51,10 @@ export default function JoinedServer() {
                 confirmLabel={t("desktop.remove")} onConfirm={async () => {
                     const answer = await call("/join", "DELETE", { origin: server.origin });
 
+                    feedback.result(answer.ok, t("desktop.joinRemoved"), t("settings.actionFailed"));
                     if (answer.ok) {
                         setState(answer);
                         navigate("/desktop/join");
-                    } else {
-                        feedback.failed(t("settings.actionFailed"));
                     }
                 }} />
         </DesktopPage>

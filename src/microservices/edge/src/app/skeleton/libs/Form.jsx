@@ -1915,7 +1915,6 @@ Form.File = function ({ name, context, maxFiles = 1, maxFileSize = null, accept 
         return context.files[name] || [];
     }, [context.files[name]]);
     const [previews, setPreviews] = useState([]);
-    const [selectedFiles, setSelectedFiles] = useState(files);
     const processFiles = (selectedFiles) => {
         const validFiles = [];
 
@@ -2053,8 +2052,6 @@ Form.File = function ({ name, context, maxFiles = 1, maxFileSize = null, accept 
                                                     context.setFiles({ ...context.files, [name]: newFiles });
                                                     context.setValues({ ...context.values, [name]: newFiles.map(file => ({ name: file.name, pValue: 0 })) });
                                                 }
-
-                                                setSelectedFiles(newFiles);
                                             }}
                                         >
                                             <i className="bi bi-trash"></i>

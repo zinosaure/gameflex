@@ -55,10 +55,15 @@ const (
 // retro_relay.go had on 2026-08-23: a self-declared username granted full
 // control of anybody's session.
 type Command struct {
-	Kind       CommandKind
-	Username   string
-	SocketID   string
-	Target     string // hand-over: the holder being asked, or the person being given the pad
+	Kind     CommandKind
+	Username string
+	SocketID string
+	Target   string // hand-over: the holder being asked, or the person being given the pad
+	// Pad — la manette de cet appareil que vise la commande (chantier 84) : celle qui rejoint, qui rend sa place, ou
+	// qui recevra le siège demandé. 0 : la première manette sans siège de cet appareil, sinon la 1.
+	Pad int
+	// Slot — le siège demandé à son détenteur (chantier 84) : un compte peut en tenir plusieurs. 0 : son premier.
+	Slot       int
 	EnqueuedAt time.Time
 	// ByAdmin — un arrêt demandé par un administrateur (Live now, 2026-10-25) :
 	// il passe la règle du propriétaire. Posé par le kernel seul, sur la route
@@ -87,8 +92,12 @@ type Outcome struct {
 type HandoverRequest struct {
 	From       string // who asks
 	FromSocket string // and from which tab — the slot lands on THIS socket
-	To         string // the holder being asked
-	AskedAt    time.Time
+	// FromPad — and on which of its pads (chantier 84): the first one waiting, else the one it named.
+	FromPad int
+	To      string // the holder being asked
+	// Slot — the seat asked for: the holder may hold several (chantier 84).
+	Slot    int
+	AskedAt time.Time
 }
 
 // Queue holds commands until they are drained, in order.
@@ -157,10 +166,15 @@ func (session *Session) apply(command Command, now time.Time) Outcome {
 
 	switch command.Kind {
 	case CmdJoin:
-		slot, err := session.Join(command.Username, command.SocketID, now)
+		slot, err := session.JoinPad(command.Username, command.SocketID, command.Pad, now)
 		outcome.Slot, outcome.Err = slot, err
 
 	case CmdLeave:
+		// UNE MANETTE NOMMÉE REND SA PLACE (chantier 84) ; sans manette, le compte quitte la partie.
+		if command.Pad > 0 {
+			outcome.Err = session.LeavePad(command.Username, command.SocketID, command.Pad, now)
+			break
+		}
 		outcome.Err = session.Leave(command.Username, now)
 
 	case CmdTakeover:
@@ -256,10 +270,18 @@ func (session *Session) requestHandover(command Command, now time.Time) error {
 		return ErrPadLent
 	}
 
+	// LE SIÈGE DEMANDÉ ET LA MANETTE QUI LE RECEVRA (chantier 84) : celui que la page a nommé, sinon le premier du
+	// détenteur ; la manette nommée, sinon la première en attente de cet appareil.
+	slot := command.Slot
+	if session.holderOfUser(command.Target, slot) == nil {
+		slot = session.SeatOf(command.Target)
+	}
 	session.PendingHandover = &HandoverRequest{
 		From:       command.Username,
 		FromSocket: command.SocketID,
+		FromPad:    session.padFor(command.SocketID, command.Pad),
 		To:         command.Target,
+		Slot:       slot,
 		AskedAt:    now,
 	}
 
@@ -317,7 +339,7 @@ func (session *Session) answerHandover(command Command, now time.Time, outcome O
 		return outcome
 	}
 
-	slot, err := session.Handover(request.To, request.From, request.FromSocket, now)
+	slot, err := session.HandoverSeat(request.To, request.Slot, request.From, request.FromSocket, request.FromPad, now)
 	outcome.Slot, outcome.Err = slot, err
 	if err == nil {
 		outcome.Granted = request

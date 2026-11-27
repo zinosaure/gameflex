@@ -7,6 +7,7 @@ import { GuideSection } from "../bricks/GuideSection.jsx";
 import NavRow from "../bricks/NavRow.jsx";
 import { Rows } from "../bricks/Rows.jsx";
 import { Section } from "../bricks/Section.jsx";
+import { dateTime } from "../libs/format.js";
 
 // LES PAGES D'ADMINISTRATION PORTÉES DE LA WEBAPP (profile/settings/admin) : le même
 // comportement et les mêmes routes d'API, à la manière du launcher — une page des réglages
@@ -16,7 +17,6 @@ import { Section } from "../bricks/Section.jsx";
 // fenêtre de Skeleton, comme dans la webapp ; un geste qui n'appartient à aucun groupe est une ligne de « Plus »
 // (le porteur, 2026-11-13 : « Les boutons orphelins […] ne doivent pas être des boutons mais des liens »).
 
-const dateTime = (iso, language) => (iso ? new Date(iso).toLocaleString(language === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "");
 
 // TOUT RESCANNER (40 des modèles) : le listing de cette machine, sa date en aide, et le geste qui le refait — une
 // ligne de son groupe, pas un bouton ; son tourniquet à la place de la valeur le temps du travail.
@@ -45,7 +45,7 @@ export function RescanPage() {
     return (
         <SettingsPage title={t("settings.items.rescan.label")}>
             <Section title={t("settings.listingTitle")}
-                help={updatedAt === undefined ? t("settings.loading") : updatedAt ? t("settings.listingFrom", { at: dateTime(updatedAt, i18n.language) }) : t("settings.listingNever")} sense="info">
+                help={updatedAt === undefined ? t("settings.loading") : updatedAt ? t("settings.listingFrom", { at: dateTime(updatedAt, i18n.language, "") }) : t("settings.listingNever")} sense="info">
                 <Rows>
                     <NavRow id="sc-rescan" icon="bi-arrow-repeat" label={t("settings.rescanAll")} help={t("settings.rescanAllHelp")} pending={pending} opens="action"
                         onOpen={rescan} />

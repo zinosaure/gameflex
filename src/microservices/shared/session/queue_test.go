@@ -205,7 +205,7 @@ func TestHandoverIsAtomicAndTheOwnerLends(t *testing.T) {
 	if !session.IsPlaying("gino", "sock-G") || session.PlayerOf("gixi") != nil {
 		t.Fatalf("players = %+v — the owner keeps the place, the borrower takes none", session.Players)
 	}
-	if session.ControlledSlot("sock-X") != 1 {
+	if session.ControlledSlot("sock-X", 1) != 1 {
 		t.Fatal("the borrower must drive the pad immediately, with nothing to claim")
 	}
 }
@@ -452,3 +452,14 @@ func TestWatchersAreThePeopleWithoutAPad(t *testing.T) {
 		t.Fatalf("one person, listed once, players and anonymous excluded: %v", watchers)
 	}
 }
+
+// Helpers for the two-value answers of chantier 84 (socket and pad, viewer and pad).
+func firstOf(socketID string, _ int) string { return socketID }
+
+func controllerSocket(session *Session, slot int) string {
+	socketID, _ := session.ControllerOf(slot)
+
+	return socketID
+}
+
+func viewerOnly(viewer string, _ int) string { return viewer }

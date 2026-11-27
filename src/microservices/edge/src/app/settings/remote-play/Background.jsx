@@ -61,12 +61,12 @@ function BackgroundView({ device }) {
                         message: t("appearance.chosenConfirm", { game: image.game, source: t(`images.services.${image.source}`) }),
                         confirmLabel: t("appearance.replaceAction"),
                     })}
+                    success={() => t("rp.backgroundSet")}
                     onChoose={async (image) => {
                         const answer = await setConsoleBackground(consoleId, 1, image);
 
                         if (answer.ok) {
                             forgetRemoteBackground(consoleId);
-                            feedback.success(t("rp.backgroundSet"));
                             back(parent);
                         }
 

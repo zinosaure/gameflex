@@ -1,6 +1,6 @@
 import React from "react";
 import { helpLines, isFact, roomAfter, SUBTITLES } from "../globals/subtitles.jsx";
-import { FactLine, linesOf } from "../globals/subtitles.jsx";
+import { linesOf } from "../globals/subtitles.jsx";
 import { useInListing } from "../globals/listing.js";
 import { useInSettings } from "../globals/backoffice.js";
 import { isStateTone, Pill } from "./Pill.jsx";

@@ -17,13 +17,13 @@ func TestViewerForSlotIsTheInverseOfPortForViewer(t *testing.T) {
 
 	// PERSONNE NE TIENT LE SIÈGE : il n'y a rien à adresser, et rendre un
 	// viewer au hasard ferait vibrer un spectateur.
-	if viewer := host.ViewerForSlot(1); viewer != "" {
+	if viewer := viewerOnly(host.ViewerForSlot(1)); viewer != "" {
 		t.Fatalf("ViewerForSlot sur un siège libre = %q, attendu vide", viewer)
 	}
 
 	// Un viewer connu, mais qui ne joue pas : toujours rien.
 	host.viewers.Store("viewer_regarde", "socket_regarde")
-	if viewer := host.ViewerForSlot(1); viewer != "" {
+	if viewer := viewerOnly(host.ViewerForSlot(1)); viewer != "" {
 		t.Fatalf("ViewerForSlot avec un simple spectateur = %q, attendu vide", viewer)
 	}
 
@@ -34,7 +34,7 @@ func TestViewerForSlotIsTheInverseOfPortForViewer(t *testing.T) {
 		t.Fatalf("Join: %v", err)
 	}
 	host.viewers.Store("viewer_joue", "socket_joue")
-	if viewer := host.ViewerForSlot(1); viewer != "viewer_joue" {
+	if viewer := viewerOnly(host.ViewerForSlot(1)); viewer != "viewer_joue" {
 		t.Fatalf("ViewerForSlot = %q, attendu \"viewer_joue\"", viewer)
 	}
 }

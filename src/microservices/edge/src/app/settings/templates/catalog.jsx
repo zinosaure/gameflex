@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { fact } from "../../libs/format.js";
 import { AccountName } from "../../bricks/AccountName.jsx";
 import { AddressRow } from "../../bricks/AddressRow.jsx";
-import { AdminMark } from "../../bricks/AdminMark.jsx";
 import { Avatar } from "../../bricks/Avatar.jsx";
 import { BlockRow } from "../../bricks/BlockRow.jsx";
 import { Chip } from "../../bricks/Chip.jsx";
@@ -456,6 +455,9 @@ export const PAGES = [
     ["/settings/application", "Application", "T05", "à vérifier"],
     ["/settings/gamepads", "Manettes", "T05", "à vérifier"],
     ["/settings/gamepads/layout/:controller", "Disposition d'une manette", "T05", "à revoir", "Un éditeur à part, hors gabarit."],
+    ["/settings/gamepads/connected", "Manettes connectées", "T02", "à vérifier"],
+    ["/settings/federation/servers/:serverId/relayed", "Serveurs relayés d'un serveur rejoint", "T02", "à vérifier"],
+    ["/settings/gamepads/connected/:key", "Une manette connectée", "T03", "à vérifier"],
     ["/settings/invite", "Inviter", "T03", "à vérifier"],
     ["/settings/catalog/games", "Catalogue", "T02", "conforme"],
     ["/settings/catalog/games/game", "Jeu du Catalogue", "T03", "conforme"],

@@ -143,7 +143,6 @@ export function OwnToken({ member, onChanged, more = null }) {
 export default function Token() {
     const { t } = useTranslation();
     const page = usePageText("token");
-    const origin = useShareOrigin();
     const { user } = useAuth();
     const { open } = useSettingsNavigation();
     const [answer, setAnswer] = useState(undefined);

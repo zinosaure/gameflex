@@ -11,9 +11,68 @@ import "time"
 // socket of an entry that holds only one. No role to interpret, no election,
 // no "which tab is driving": the question answers itself.
 func (session *Session) IsPlaying(username, socketID string) bool {
-	player := session.PlayerOf(username)
+	for _, player := range session.Players {
+		if player.Username == username && player.SocketID == socketID {
+			return true
+		}
+	}
 
-	return player != nil && player.SocketID == socketID
+	return false
+}
+
+// normalPad — une manette se numérote à partir de 1 ; 0 (rien de dit) est la première.
+func normalPad(pad int) int {
+	if pad < 1 {
+		return 1
+	}
+
+	return pad
+}
+
+// entryOf — le siège que tient cette manette de cet appareil, nil sans siège.
+func (session *Session) entryOf(socketID string, pad int) *Player {
+	for index := range session.Players {
+		if session.Players[index].SocketID == socketID && session.Players[index].Pad == pad {
+			return &session.Players[index]
+		}
+	}
+
+	return nil
+}
+
+// seatsOn — combien de sièges cet appareil tient.
+func (session *Session) seatsOn(socketID string) int {
+	count := 0
+	for _, player := range session.Players {
+		if player.SocketID == socketID {
+			count++
+		}
+	}
+
+	return count
+}
+
+// playsElsewhere — ce compte tient un siège depuis un AUTRE appareil : un second onglet du même compte regarde.
+func (session *Session) playsElsewhere(username, socketID string) bool {
+	for _, player := range session.Players {
+		if player.Username == username && player.SocketID != socketID {
+			return true
+		}
+	}
+
+	return false
+}
+
+// SeatOf — le siège qu'un compte tient, le plus petit quand il en tient plusieurs (chantier 84) ; 0 sans siège.
+func (session *Session) SeatOf(username string) int {
+	seat := 0
+	for _, player := range session.Players {
+		if player.Username == username && (seat == 0 || player.SlotID < seat) {
+			seat = player.SlotID
+		}
+	}
+
+	return seat
 }
 
 // PlayerOf returns the queue entry for a username, nil when absent.
@@ -170,30 +229,66 @@ func (session *Session) freeSlot(username string) int {
 // already hold one (invariant 1), when the queue is full for them (invariants
 // 2 and 3), or when the socket is not an open tab (invariant 6).
 func (session *Session) Join(username, socketID string, now time.Time) (int, error) {
+	return session.JoinPad(username, socketID, 1, now)
+}
+
+// JoinPad — une manette de cet appareil prend le plus petit siège libre (chantier 84). Refusée quand elle en tient
+// déjà un, ou que ce compte joue depuis un autre appareil. Sans siège libre : quand l'appareil en tient déjà un, elle
+// attend le prochain (ErrWaiting) ; sinon, comme avant, ErrNoSlot.
+func (session *Session) JoinPad(username, socketID string, pad int, now time.Time) (int, error) {
+	pad = normalPad(pad)
 	if username == "" {
 		return 0, ErrEmptyUsername
 	}
 	if !session.hasParticipant(socketID) {
 		return 0, ErrSocketClosed
 	}
-	if session.PlayerOf(username) != nil {
+	if session.entryOf(socketID, pad) != nil || session.playsElsewhere(username, socketID) {
 		return 0, ErrAlreadyPlaying
 	}
-	if len(session.Players) >= session.capacityFor(username) {
-		return 0, ErrNoSlot
-	}
 
-	slot := session.freeSlot(username)
+	slot := 0
+	if len(session.Players) < session.capacityFor(username) {
+		slot = session.freeSlot(username)
+	}
 	if slot == 0 {
+		if session.seatsOn(socketID) > 0 {
+			session.addWaiter(username, socketID, pad, now)
+
+			return 0, ErrWaiting
+		}
+
 		return 0, ErrNoSlot
 	}
 
 	// A "playable viewer" who takes a place of their own stops borrowing:
 	// one person, one pad.
 	session.stopBorrowing(username)
-	session.appendPlayer(username, socketID, slot, now)
+	session.appendPlayer(username, socketID, slot, pad, now)
+	session.dropWaiter(socketID, pad)
 
 	return slot, nil
+}
+
+// LeavePad — RENDRE SA PLACE, une manette à la fois (chantier 84 ; le porteur : « J'ai aussi le droit de céder la
+// manette 1 pour que la manette 2 reste en jeu »). Le siège rendu va à la première manette en attente.
+func (session *Session) LeavePad(username, socketID string, pad int, now time.Time) error {
+	pad = normalPad(pad)
+	entry := session.entryOf(socketID, pad)
+	if entry == nil || entry.Username != username {
+		if session.isWaiting(socketID, pad) {
+			session.dropWaiter(socketID, pad)
+
+			return nil
+		}
+
+		return ErrNotPlaying
+	}
+	session.removeEntry(socketID, pad)
+	session.seatWaiting(now)
+	session.touchIdle(now)
+
+	return nil
 }
 
 // Takeover moves an existing entry to ANOTHER socket of the same user — the
@@ -218,12 +313,17 @@ func (session *Session) Takeover(username, socketID string, now time.Time) (int,
 	slot := player.SlotID
 	// The loan belongs to the PLACE: the owner moving to another tab is still
 	// the owner who lent, and the borrower is still driving.
-	lentTo, lentToSocket := player.LentTo, player.LentToSocket
+	lentTo, lentToSocket, lentToPad := player.LentTo, player.LentToSocket, player.LentToPad
+	// LES AUTRES MANETTES DE L'ANCIEN APPAREIL PARTENT AVEC LUI (chantier 84) : la place qui change d'appareil est la
+	// première ; elle arrive sur la manette 1 du nouveau.
+	oldSocket := player.SocketID
 	session.removePlayer(username)
-	session.appendPlayer(username, socketID, slot, now)
-	if moved := session.PlayerOf(username); moved != nil {
-		moved.LentTo, moved.LentToSocket = lentTo, lentToSocket
+	session.dropWaitersOf(oldSocket)
+	session.appendPlayer(username, socketID, slot, 1, now)
+	if moved := session.entryOf(socketID, 1); moved != nil {
+		moved.LentTo, moved.LentToSocket, moved.LentToPad = lentTo, lentToSocket, lentToPad
 	}
+	session.seatWaiting(now)
 
 	return slot, nil
 }
@@ -245,11 +345,18 @@ func (session *Session) Takeover(username, socketID string, now time.Time) (int,
 // holder who takes their time to answer creates no window either — they keep
 // their slot until this runs.
 func (session *Session) Handover(from, to, toSocketID string, now time.Time) (int, error) {
+	return session.HandoverSeat(from, 0, to, toSocketID, 0, now)
+}
+
+// HandoverSeat — Handover, siège et manette nommés (chantier 84) : `seat` est le siège de `from` qui passe (0 : son
+// premier), `toPad` la manette de `to` qui le reçoit (0 : sa première manette en attente, sinon la 1). Le demandeur
+// garde ses autres sièges sur cet appareil ; ceux d'un autre appareil tombent (un compte joue depuis un appareil).
+func (session *Session) HandoverSeat(from string, seat int, to, toSocketID string, toPad int, now time.Time) (int, error) {
 	if to == "" {
 		return 0, ErrEmptyUsername
 	}
 
-	holder := session.PlayerOf(from)
+	holder := session.holderOfUser(from, seat)
 	if holder == nil {
 		return 0, ErrNotPlaying
 	}
@@ -259,20 +366,50 @@ func (session *Session) Handover(from, to, toSocketID string, now time.Time) (in
 	if !session.hasParticipant(toSocketID) {
 		return 0, ErrSocketClosed
 	}
+	toPad = session.padFor(toSocketID, toPad)
 	if session.IsOwner(from) {
-		return session.lend(holder, to, toSocketID, now)
+		return session.lend(holder, to, toSocketID, toPad, now)
 	}
 
 	slot := holder.SlotID
-	// The requester may already be playing on another slot — they move, they
-	// do not end up with two entries (invariant 1). A borrower who is given a
-	// place stops borrowing: one person, one pad.
+	// A borrower who is given a place stops borrowing: one person, one pad.
+	// The requester's pad may already hold a seat — it MOVES, it does not end
+	// up holding two (one pad, one seat).
 	session.stopBorrowing(to)
-	session.removePlayer(to)
-	session.removePlayer(from)
-	session.appendPlayer(to, toSocketID, slot, now)
+	session.removeEntry(holder.SocketID, holder.Pad)
+	session.removeEntry(toSocketID, toPad)
+	session.removeElsewhere(to, toSocketID)
+	session.appendPlayer(to, toSocketID, slot, toPad, now)
+	session.dropWaiter(toSocketID, toPad)
 
 	return slot, nil
+}
+
+// holderOfUser — le siège `seat` de ce compte, ou son plus petit quand seat vaut 0 ; nil sans siège.
+func (session *Session) holderOfUser(username string, seat int) *Player {
+	if seat == 0 {
+		seat = session.SeatOf(username)
+	}
+	holder := session.holderOf(seat)
+	if holder == nil || holder.Username != username {
+		return nil
+	}
+
+	return holder
+}
+
+// padFor — la manette qui recevra un siège : celle nommée, sinon la première en attente de cet appareil, sinon la 1.
+func (session *Session) padFor(socketID string, pad int) int {
+	if pad > 0 {
+		return pad
+	}
+	for _, waiter := range session.Waiting {
+		if waiter.SocketID == socketID {
+			return waiter.Pad
+		}
+	}
+
+	return 1
 }
 
 // lend — the owner's half of Handover.
@@ -281,11 +418,13 @@ func (session *Session) Handover(from, to, toSocketID string, now time.Time) (in
 // drive a pad, never somebody who already holds one — one person, one pad. And
 // the pad is lent once at a time: a second loan would be taking it from the
 // first borrower behind the owner's back.
-func (session *Session) lend(owner *Player, to, toSocketID string, now time.Time) (int, error) {
+func (session *Session) lend(owner *Player, to, toSocketID string, toPad int, now time.Time) (int, error) {
 	if owner.LentTo != "" {
 		return 0, ErrPadLent
 	}
-	if session.PlayerOf(to) != nil {
+	// La manette qui emprunte ne tient pas de siège (chantier 84 : les autres manettes de son appareil, si) ; un compte
+	// qui joue depuis un autre appareil n'emprunte pas.
+	if session.entryOf(toSocketID, toPad) != nil || session.playsElsewhere(to, toSocketID) {
 		return 0, ErrAlreadyPlaying
 	}
 	if !session.participantIs(toSocketID, to) {
@@ -294,6 +433,7 @@ func (session *Session) lend(owner *Player, to, toSocketID string, now time.Time
 
 	owner.LentTo = to
 	owner.LentToSocket = toSocketID
+	owner.LentToPad = toPad
 	// A loan IS activity: somebody new just took the pad. Starting the AFK
 	// clock at zero is what stops a borrower from being asked "still there?"
 	// seconds after picking it up.
@@ -332,7 +472,7 @@ func (session *Session) loan() *Player {
 // place of their own. One person, one pad.
 func (session *Session) stopBorrowing(username string) {
 	if loan := session.loan(); loan != nil && loan.LentTo == username {
-		loan.LentTo, loan.LentToSocket = "", ""
+		loan.LentTo, loan.LentToSocket, loan.LentToPad = "", "", 0
 	}
 }
 
@@ -353,23 +493,24 @@ func (session *Session) holderOf(slot int) *Player {
 // answer: the borrower's tab drives the owner's pad, and the owner's own keys
 // drive nothing until they take it back. A seat and the pad its keys reach
 // are the same thing everywhere else.
-func (session *Session) ControlledSlot(socketID string) int {
+func (session *Session) ControlledSlot(socketID string, pad int) int {
 	if socketID == "" {
 		return 0
 	}
+	pad = normalPad(pad)
 
 	for _, player := range session.Players {
 		if player.LentTo != "" {
-			if player.LentToSocket == socketID {
+			if player.LentToSocket == socketID && player.LentToPad == pad {
 				return player.SlotID
 			}
-			if player.SocketID == socketID {
+			if player.SocketID == socketID && player.Pad == pad {
 				return 0
 			}
 
 			continue
 		}
-		if player.SocketID == socketID {
+		if player.SocketID == socketID && player.Pad == pad {
 			return player.SlotID
 		}
 	}
@@ -379,16 +520,16 @@ func (session *Session) ControlledSlot(socketID string) int {
 
 // ControllerOf — the tab whose keys drive this pad, "" when none: the inverse
 // of ControlledSlot. Force feedback goes there, to the hands on the pad.
-func (session *Session) ControllerOf(slot int) string {
+func (session *Session) ControllerOf(slot int) (socketID string, pad int) {
 	holder := session.holderOf(slot)
 	if holder == nil {
-		return ""
+		return "", 0
 	}
 	if holder.LentTo != "" {
-		return holder.LentToSocket
+		return holder.LentToSocket, holder.LentToPad
 	}
 
-	return holder.SocketID
+	return holder.SocketID, holder.Pad
 }
 
 // Reclaim — THE OWNER TAKES THEIR PAD BACK ("take controller back"): when they
@@ -410,7 +551,7 @@ func (session *Session) Reclaim(owner, socketID string, now time.Time) (int, err
 		return 0, ErrNotLent
 	}
 
-	loan.LentTo, loan.LentToSocket = "", ""
+	loan.LentTo, loan.LentToSocket, loan.LentToPad = "", "", 0
 	loan.SocketID = socketID
 	// Taking the pad back is a gesture: the AFK clock restarts from it.
 	loan.LastBeatAt = now
@@ -428,7 +569,7 @@ func (session *Session) GiveBack(borrower, socketID string, now time.Time) (int,
 		return 0, ErrNotBorrower
 	}
 
-	loan.LentTo, loan.LentToSocket = "", ""
+	loan.LentTo, loan.LentToSocket, loan.LentToPad = "", "", 0
 	loan.LastInputAt = now
 	loan.AFKWarnedAt = time.Time{}
 
@@ -479,6 +620,8 @@ func (session *Session) Leave(username string, now time.Time) error {
 		return ErrNotPlaying
 	}
 	session.removePlayer(username)
+	session.dropWaitersOfUser(username)
+	session.seatWaiting(now)
 	session.touchIdle(now)
 
 	return nil
@@ -495,22 +638,27 @@ func (session *Session) DropSocket(socketID string, now time.Time) (string, bool
 	// THE BORROWER LEFT: the pad comes back to its owner by itself — the place
 	// never left them, there is nothing else to settle.
 	if loan := session.loan(); loan != nil && loan.LentToSocket == socketID {
-		loan.LentTo, loan.LentToSocket = "", ""
+		loan.LentTo, loan.LentToSocket, loan.LentToPad = "", "", 0
 	}
+	// TOUTES LES MANETTES DE L'APPAREIL PARTENT AVEC LUI (chantier 84), celles qui attendaient comprises.
+	session.dropWaitersOf(socketID)
 
-	for index := range session.Players {
-		if session.Players[index].SocketID != socketID {
-			continue
+	username := ""
+	for _, player := range session.Players {
+		if player.SocketID == socketID {
+			username = player.Username
+
+			break
 		}
-
-		username := session.Players[index].Username
-		session.removePlayer(username)
-		session.touchIdle(now)
-
-		return username, true
 	}
+	if username == "" {
+		return "", false
+	}
+	session.removeSocketEntries(socketID)
+	session.seatWaiting(now)
+	session.touchIdle(now)
 
-	return "", false
+	return username, true
 }
 
 // OpenTab registers an open tab. Watching is all it grants: opening a session
@@ -537,6 +685,7 @@ func (session *Session) Beat(socketID string, hadInput bool, now time.Time) bool
 		return false
 	}
 
+	found := false
 	for index := range session.Players {
 		player := &session.Players[index]
 
@@ -550,22 +699,24 @@ func (session *Session) Beat(socketID string, hadInput bool, now time.Time) bool
 			if hadInput {
 				player.LastInputAt = now
 			}
+			found = true
 
-			return true
+			continue
 		}
 		if player.SocketID != socketID {
 			continue
 		}
 
+		// UN BATTEMENT VAUT POUR TOUS LES SIÈGES DE L'APPAREIL (chantier 84) : c'est le même onglet, et un geste sur
+		// l'une de ses manettes prouve que quelqu'un est là.
 		player.LastBeatAt = now
 		if hadInput && (player.LentTo == "" || !player.AFKWarnedAt.IsZero()) {
 			player.LastInputAt = now
 		}
-
-		return true
+		found = true
 	}
 
-	return false
+	return found
 }
 
 // MarkAFKWarned note qu'on a demandé « toujours là ? » à ce joueur.
@@ -573,8 +724,6 @@ func (session *Session) MarkAFKWarned(socketID string, now time.Time) {
 	for index := range session.Players {
 		if session.Players[index].SocketID == socketID {
 			session.Players[index].AFKWarnedAt = now
-
-			return
 		}
 	}
 }
@@ -590,19 +739,18 @@ func (session *Session) ClearAFKWarning(socketID string) {
 	for index := range session.Players {
 		if session.Players[index].SocketID == socketID {
 			session.Players[index].AFKWarnedAt = time.Time{}
-
-			return
 		}
 	}
 }
 
 // --- internals -----------------------------------------------------------
 
-func (session *Session) appendPlayer(username, socketID string, slot int, now time.Time) {
+func (session *Session) appendPlayer(username, socketID string, slot, pad int, now time.Time) {
 	session.Players = append(session.Players, Player{
 		SlotID:   slot,
 		Username: username,
 		SocketID: socketID,
+		Pad:      normalPad(pad),
 		JoinedAt: now,
 		// A join IS activity: somebody just acted deliberately. Starting the
 		// AFK clock at zero here is what stops a tab that had been watching
@@ -623,6 +771,130 @@ func (session *Session) removePlayer(username string) {
 	}
 
 	session.Players = kept
+}
+
+// removeEntry — le siège de cette manette de cet appareil.
+func (session *Session) removeEntry(socketID string, pad int) {
+	kept := session.Players[:0]
+	for _, player := range session.Players {
+		if player.SocketID != socketID || player.Pad != pad {
+			kept = append(kept, player)
+		}
+	}
+	session.Players = kept
+}
+
+// removeSocketEntries — tous les sièges de cet appareil.
+func (session *Session) removeSocketEntries(socketID string) {
+	kept := session.Players[:0]
+	for _, player := range session.Players {
+		if player.SocketID != socketID {
+			kept = append(kept, player)
+		}
+	}
+	session.Players = kept
+}
+
+// removeElsewhere — les sièges de ce compte sur un AUTRE appareil que celui-ci.
+func (session *Session) removeElsewhere(username, socketID string) {
+	kept := session.Players[:0]
+	for _, player := range session.Players {
+		if player.Username != username || player.SocketID == socketID {
+			kept = append(kept, player)
+		}
+	}
+	session.Players = kept
+}
+
+// LA LISTE D'ATTENTE (chantier 84).
+
+func (session *Session) isWaiting(socketID string, pad int) bool {
+	for _, waiter := range session.Waiting {
+		if waiter.SocketID == socketID && waiter.Pad == pad {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (session *Session) addWaiter(username, socketID string, pad int, now time.Time) {
+	if session.isWaiting(socketID, pad) {
+		return
+	}
+	session.Waiting = append(session.Waiting, Waiter{Username: username, SocketID: socketID, Pad: pad, Since: now})
+}
+
+func (session *Session) keepWaiters(keep func(Waiter) bool) {
+	kept := session.Waiting[:0]
+	for _, waiter := range session.Waiting {
+		if keep(waiter) {
+			kept = append(kept, waiter)
+		}
+	}
+	session.Waiting = kept
+}
+
+func (session *Session) dropWaiter(socketID string, pad int) {
+	session.keepWaiters(func(waiter Waiter) bool { return waiter.SocketID != socketID || waiter.Pad != pad })
+}
+
+func (session *Session) dropWaitersOf(socketID string) {
+	session.keepWaiters(func(waiter Waiter) bool { return waiter.SocketID != socketID })
+}
+
+func (session *Session) dropWaitersOfUser(username string) {
+	session.keepWaiters(func(waiter Waiter) bool { return waiter.Username != username })
+}
+
+// seatWaiting — LES SIÈGES LIBÉRÉS VONT AUX MANETTES EN ATTENTE, dans l'ordre de la liste, toujours le plus petit
+// siège libre (le porteur : « à chaque fois on va donner en ordre croissant les places »). Une manette dont l'appareil
+// est parti, ou qui ne tient plus aucun siège de l'appareil, quitte la liste.
+func (session *Session) seatWaiting(now time.Time) {
+	for _, waiter := range append([]Waiter(nil), session.Waiting...) {
+		if !session.hasParticipant(waiter.SocketID) || session.seatsOn(waiter.SocketID) == 0 {
+			session.dropWaiter(waiter.SocketID, waiter.Pad)
+
+			continue
+		}
+		if len(session.Players) >= session.capacityFor(waiter.Username) {
+			continue
+		}
+		slot := session.freeSlot(waiter.Username)
+		if slot == 0 {
+			continue
+		}
+		session.appendPlayer(waiter.Username, waiter.SocketID, slot, waiter.Pad, now)
+		session.dropWaiter(waiter.SocketID, waiter.Pad)
+	}
+}
+
+// padsOf — les manettes de cet appareil qui pilotent un siège, et lequel (chantier 84) : la sienne, ou celle qu'un
+// propriétaire lui prête. Une manette dont le siège est prêté ne pilote rien.
+func (session *Session) padsOf(socketID string) []map[string]int {
+	pads := []map[string]int{}
+	for _, player := range session.Players {
+		switch {
+		case player.LentTo != "" && player.LentToSocket == socketID:
+			pads = append(pads, map[string]int{"pad": player.LentToPad, "slotId": player.SlotID})
+		case player.LentTo == "" && player.SocketID == socketID:
+			pads = append(pads, map[string]int{"pad": player.Pad, "slotId": player.SlotID})
+		}
+	}
+
+	return pads
+}
+
+// WaitingPads — les manettes de cet appareil en attente, dans l'ordre.
+func (session *Session) WaitingPads(socketID string) []int {
+	pads := []int{}
+	for _, waiter := range session.Waiting {
+		if waiter.SocketID == socketID {
+			pads = append(pads, waiter.Pad)
+		}
+	}
+
+	return pads
 }
 
 func (session *Session) removeParticipant(socketID string) {

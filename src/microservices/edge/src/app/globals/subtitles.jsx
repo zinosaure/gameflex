@@ -1,6 +1,5 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { fact } from "../libs/format.js";
 
 // UN SOUS-TITRE, UNE INFORMATION PAR LIGNE (le porteur, 2026-11-23 : « remplacer tous les sous-titres qui utilisent le
 // · comme séparateur pour les mettre sur plusieurs lignes ») : `help` est un texte, ou une liste dont chaque élément non

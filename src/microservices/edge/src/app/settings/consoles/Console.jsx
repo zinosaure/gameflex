@@ -9,10 +9,9 @@ import { Rows } from "../../bricks/Rows.jsx";
 import { SaveSection } from "../../bricks/SaveSection.jsx";
 import { Section } from "../../bricks/Section.jsx";
 import { SwitchRow } from "../../bricks/SwitchRow.jsx";
-import { consoleDefaults, listEmulatorParams, setConsoleSwitch } from "../../libs/api.js";
+import { listEmulatorParams, setConsoleSwitch } from "../../libs/api.js";
 import { useData } from "../../libs/data.jsx";
 import { counted } from "../../libs/format.js";
-import { toast } from "../../shell/Shell.jsx";
 import SettingsPage, { NotFound, useSettingsNavigation } from "../SettingsPage.jsx";
 import { consolePath, loadSection, paramsLabel, paramsPath, useEmulated } from "../Consoles.jsx";
 
@@ -38,7 +37,6 @@ export default function Console() {
     };
     const [cores, setCores] = useState(undefined);
     const [bios, setBios] = useState(undefined);
-    const [inUse, setInUse] = useState(null);
     const [params, setParams] = useState([]);
     // DEUX LISTES D'ÉMULATEURS (le porteur, 2026-11-25 : « scinder en 2 sections les émulateurs : "Emulators" et "Mobile
     // emulators". Puis par rapport à la capacité, tu grises la section qui ne matche pas ») : ceux de ce serveur (et les
@@ -58,7 +56,6 @@ export default function Console() {
         setBios(undefined);
         loadSection("cores", consoleId).then(keep(setCores));
         loadSection("bios", consoleId).then(keep(setBios));
-        consoleDefaults(consoleId).then((answer) => keep(setInUse)(answer.ok ? answer.data?.inUse || {} : {}));
         listEmulatorParams().then((answer) => keep(setParams)(answer.ok ? (answer.data?.emulators || []).filter((emulator) => emulator.consoleId === consoleId).sort((a, b) => String(a.system).localeCompare(String(b.system))) : []));
 
         return () => {

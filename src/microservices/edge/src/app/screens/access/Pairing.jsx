@@ -13,7 +13,7 @@ import { Rows } from "../../bricks/Rows.jsx";
 import { Section } from "../../bricks/Section.jsx";
 import { SwitchRow } from "../../bricks/SwitchRow.jsx";
 import { SaveSection } from "../../bricks/SaveSection.jsx";
-import { fact } from "../../libs/format.js";
+import { fact, timeOf } from "../../libs/format.js";
 
 // LE CODE D'APPAIRAGE (chantier 60 ; le porteur, 2026-11-17 : « Comme ça à côté de la création du token on a "code
 // appairage" et dans rejoins un serveur et s'authentifier on aura entrér le code d'appairage ») : six chiffres, affichés
@@ -26,7 +26,6 @@ import { fact } from "../../libs/format.js";
 // horloge : il ne décide de rien. Les serveurs du réseau local arrivent par le sujet `discovery`, auquel la page ne
 // s'abonne que le temps où elle les montre ; « Chercher de nouveau » est un geste.
 
-const timeOf = (iso, language) => (iso ? new Date(iso).toLocaleTimeString(language === "fr" ? "fr-FR" : "en-GB", { hour: "2-digit", minute: "2-digit" }) : "");
 
 // Les six chiffres en deux groupes : « 482 913 ».
 export const groupedCode = (code) => `${String(code).slice(0, 3)} ${String(code).slice(3)}`;

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { loadGamepadMapping, subscribeGamepadMapping } from "../../../libs/gamepadMapping.js";
-import { connectedGamepads, getCachedKeyMapping, loadKeyMapping, subscribeKeyMapping, resolveVirtualButton, gamepadDeviceId, positionalButtonIndex } from "../../../libs/keyMapping.js";
+import { getCachedKeyMapping, loadKeyMapping, subscribeKeyMapping, resolveVirtualButton, gamepadDeviceId, positionalButtonIndex } from "../../../libs/keyMapping.js";
+import { devicePads } from "../../../libs/gamepadPresence.js";
 import { isGameInputSuspended, isMenuHome } from "../../../libs/gameInput.js";
 import {
     RETRO_BUTTON_INDEX,
@@ -79,19 +80,17 @@ export function resolveBitIndex(physicalInput, keyMapping, oldMapping, oldNameTo
 
 // Button INDEX -> libretro bit index comes from KeyMapping-first-then-
 // libs/gamepadMapping.js (see resolveBitIndex above) instead of a fixed
-// table — both read fresh into a ref on mount/change rather than on every
-// tick, since this loop already runs 60x/sec and a mapping change is rare.
-// gamepadIndex — null (default, Streaming.jsx's own single-player use) picks
-// whichever gamepad slot is found first, exactly as before; console mode
-// (gameflex/shared, one hook instance per physical gamepad hub slot) passes
-// an explicit index instead so each instance drives ONLY its own assigned
-// pad, never accidentally reading someone else's. Exported for that reuse —
-// otherwise identical/private to this file for the normal Streaming flow.
-export function useRetroPhysicalGamepadInput(enabled, sendButton, sendAnalog, consoleId, token, gamepadIndex = null) {
+// table — read fresh into a ref on mount/change rather than on every tick,
+// since this loop already runs 60x/sec and a mapping change is rare.
+//
+// CHAQUE MANETTE DE L'APPAREIL À PART (chantier 84) : les manettes activées (gamepadPresence.js, devicePads), chacune
+// avec sa correspondance de touches (son identifiant), ses boutons tenus et ses sticks, et son numéro sur chaque appui
+// (`sendButton(bit, valeur, numéro)`). Chaque appui se signale (`onPadPress(numéro)`) : au premier d'une manette sans
+// siège, la page lui en demande un.
+export function useRetroPhysicalGamepadInput(enabled, sendButton, sendAnalog, consoleId, token, onPadPress = null) {
     const mappingRef = useRef(loadGamepadMapping(consoleId));
-    const keyMappingRef = useRef({});
-    const padIdRef = useRef(null);
-    const unsubscribeKeyMappingRef = useRef(null);
+    const onPadPressRef = useRef(onPadPress);
+    onPadPressRef.current = onPadPress;
     const controllerName = RETRO_CONTROLLER_PRESET_MAP[consoleId] || "default";
 
     useEffect(() => {
@@ -102,46 +101,47 @@ export function useRetroPhysicalGamepadInput(enabled, sendButton, sendAnalog, co
     useEffect(() => {
         if (!enabled) return;
         let raf;
-        const pressed = {};
-        let stickX = 0, stickY = 0;
-        let rightX = 0, rightY = 0;
+        // Par manette (son numéro) : ses bits tenus, ses sticks.
+        const states = new Map();
+        // Par appareil (son identifiant) : sa correspondance de touches, suivie en direct (éditée dans un autre onglet).
+        const keyMappings = new Map();
+        const unsubscribers = [];
+        const keyMappingOf = (deviceId) => {
+            if (!keyMappings.has(deviceId)) {
+                keyMappings.set(deviceId, getCachedKeyMapping(deviceId, controllerName));
+                loadKeyMapping(token, deviceId, controllerName).then((m) => { keyMappings.set(deviceId, m); });
+                unsubscribers.push(subscribeKeyMapping(deviceId, controllerName, (m) => { keyMappings.set(deviceId, m); }));
+            }
+
+            return keyMappings.get(deviceId) || {};
+        };
 
         const tick = () => {
-            const pads = connectedGamepads();
-            const pad = gamepadIndex === null ? Array.from(pads).find(Boolean) : pads[gamepadIndex];
-            if (pad) {
-                // A real pad swap (or the first pad found at all) — re-load
-                // this pad's own KeyMapping for the session's virtual
-                // controller and re-subscribe to live changes (e.g. edited
-                // in profile/GamepadParameters.jsx in another tab).
-                if (gamepadDeviceId(pad) !== padIdRef.current) {
-                    padIdRef.current = gamepadDeviceId(pad);
-                    unsubscribeKeyMappingRef.current?.();
-                    keyMappingRef.current = getCachedKeyMapping(padIdRef.current, controllerName);
-                    loadKeyMapping(token, padIdRef.current, controllerName).then((m) => { keyMappingRef.current = m; });
-                    unsubscribeKeyMappingRef.current = subscribeKeyMapping(padIdRef.current, controllerName, (m) => { keyMappingRef.current = m; });
-                }
+            // LE MENU OUVERT, LA MANETTE EST LUE COMME LÂCHÉE (#408) : la
+            // différence avec ce qui était envoyé relâche alors tout, puis
+            // plus rien ne part, jusqu'à la fermeture du menu. Le Home du
+            // raccourci du menu (L2 tenu) n'est pas au jeu non plus.
+            const suspended = isGameInputSuspended();
+            for (const { gamepad: pad, number } of devicePads()) {
+                if (!number) continue;
+                const state = states.get(number) || { pressed: {}, stick: [0, 0], right: [0, 0] };
+                states.set(number, state);
+                const keyMapping = keyMappingOf(gamepadDeviceId(pad));
                 // Held indices (strings) → desired bits, with chord support:
                 // a chord entry ("12+15" → DPAD_UP_RIGHT) fires only while
                 // EVERY key of the chord is held and suppresses those keys'
                 // individual bindings — same semantics as the keyboard hook.
-                //
-                // LE MENU OUVERT, LA MANETTE EST LUE COMME LÂCHÉE (#408) : la
-                // différence avec ce qui était envoyé relâche alors tout, puis
-                // plus rien ne part, jusqu'à la fermeture du menu. Le Home du
-                // raccourci du menu (L2 tenu) n'est pas au jeu non plus.
-                const suspended = isGameInputSuspended();
                 const held = new Set();
                 pad.buttons.forEach((button, index) => {
                     if (button.pressed && !suspended && !isMenuHome(pad, index, "retrogaming")) held.add(String(index));
                 });
                 const desired = new Set();
                 const chordCovered = new Set();
-                for (const input of Object.keys(keyMappingRef.current)) {
+                for (const input of Object.keys(keyMapping)) {
                     if (!input.includes("+")) continue;
                     const codes = input.split("+");
                     if (!codes.every((code) => held.has(code))) continue;
-                    for (const bit of resolveVirtualBits(keyMappingRef.current[input])) {
+                    for (const bit of resolveVirtualBits(keyMapping[input])) {
                         desired.add(bit);
                     }
                     for (const code of codes) chordCovered.add(code);
@@ -149,58 +149,42 @@ export function useRetroPhysicalGamepadInput(enabled, sendButton, sendAnalog, co
                 for (const code of held) {
                     if (chordCovered.has(code)) continue;
                     const bitIndex = resolveBitIndex(
-                        code, keyMappingRef.current, mappingRef.current, RETRO_PHYSICAL_BUTTON_INDEX,
+                        code, keyMapping, mappingRef.current, RETRO_PHYSICAL_BUTTON_INDEX,
                         String(positionalButtonIndex(pad.id, Number(code))),
                     );
                     if (bitIndex !== undefined) desired.add(bitIndex);
                 }
                 for (const bit of desired) {
-                    if (!pressed[bit]) {
-                        pressed[bit] = true;
-                        sendButton(bit, 1);
+                    if (!state.pressed[bit]) {
+                        state.pressed[bit] = true;
+                        sendButton(bit, 1, number);
+                        onPadPressRef.current?.(number);
                     }
                 }
-                for (const bit of Object.keys(pressed)) {
+                for (const bit of Object.keys(state.pressed)) {
                     const index = Number(bit);
                     if (!desired.has(index)) {
-                        delete pressed[index];
-                        sendButton(index, 0);
+                        delete state.pressed[index];
+                        sendButton(index, 0, number);
                     }
                 }
                 // Left stick (axes[0]/[1] in the standard mapping) — axis 0
-                // = RETRO_DEVICE_INDEX_ANALOG_LEFT, same as VirtualJoystick
-                // (see its own doc + handleAnalogMove above): a single
-                // physical analog input (PSP's nub, N64's stick, ...) maps
-                // to LEFT by libretro convention, matching what those cores
-                // actually read. Cores that never poll RETRO_DEVICE_ANALOG
-                // at all just ignore this either way, so this is harmless
-                // for consoles with no analog input. Not remapped by
-                // KeyMapping (see its own LEFT_STICK/RIGHT_STICK exclusion
-                // doc) — stays on this fixed axis convention.
+                // = RETRO_DEVICE_INDEX_ANALOG_LEFT, same as VirtualJoystick:
+                // a single physical analog input (PSP's nub, N64's stick, ...)
+                // maps to LEFT by libretro convention. Not remapped by
+                // KeyMapping — stays on this fixed axis convention.
                 const x = suspended ? 0 : pad.axes[0] || 0, y = suspended ? 0 : pad.axes[1] || 0;
-                if (Math.abs(x - stickX) > 0.02 || Math.abs(y - stickY) > 0.02) {
-                    stickX = x;
-                    stickY = y;
-                    sendAnalog(0, x, y);
+                if (Math.abs(x - state.stick[0]) > 0.02 || Math.abs(y - state.stick[1]) > 0.02) {
+                    state.stick = [x, y];
+                    sendAnalog(0, x, y, number);
                 }
-
-                // LE STICK DROIT AUSSI (axes[2]/[3] → RETRO_DEVICE_INDEX_
-                // ANALOG_RIGHT), qui n'était pas lu du tout.
-                //
-                // Ce n'est pas un manque cosmétique. Sur N64, les boutons C
-                // n'ont AUCUN bit numérique : les cores les lisent comme une
-                // déviation du stick droit — c'est déjà ce que fait le pad
-                // tactile (voir sendN64CState). Avec une manette physique,
-                // les quatre C étaient donc muets, et « le B ne marche pas,
-                // et d'autres aussi » (signalé le 2026-09-03).
-                //
-                // Et ça vaut au-delà : une DualShock sur PS1/PS2 n'avait pas
-                // son second stick non plus.
+                // LE STICK DROIT AUSSI (axes[2]/[3] → RETRO_DEVICE_INDEX_ANALOG_RIGHT) : sur N64, les boutons C n'ont
+                // aucun bit numérique, les cores les lisent comme une déviation du stick droit (signalé le 2026-09-03) ;
+                // une DualShock sur PS1/PS2 a aussi son second stick.
                 const rx = suspended ? 0 : pad.axes[2] || 0, ry = suspended ? 0 : pad.axes[3] || 0;
-                if (Math.abs(rx - rightX) > 0.02 || Math.abs(ry - rightY) > 0.02) {
-                    rightX = rx;
-                    rightY = ry;
-                    sendAnalog(1, rx, ry);
+                if (Math.abs(rx - state.right[0]) > 0.02 || Math.abs(ry - state.right[1]) > 0.02) {
+                    state.right = [rx, ry];
+                    sendAnalog(1, rx, ry, number);
                 }
             }
             raf = requestAnimationFrame(tick);
@@ -208,9 +192,7 @@ export function useRetroPhysicalGamepadInput(enabled, sendButton, sendAnalog, co
         raf = requestAnimationFrame(tick);
         return () => {
             cancelAnimationFrame(raf);
-            unsubscribeKeyMappingRef.current?.();
-            unsubscribeKeyMappingRef.current = null;
-            padIdRef.current = null;
+            unsubscribers.forEach((unsubscribe) => unsubscribe?.());
         };
-    }, [enabled, sendButton, sendAnalog, controllerName, token, gamepadIndex]);
+    }, [enabled, sendButton, sendAnalog, controllerName, token]);
 }

@@ -13,7 +13,7 @@
 // button/input means.
 
 import React from "react";
-import { resolveProfileButton, makeCanDrawButton } from "./profile-buttons.js";
+import { resolveProfileButton, makeCanDrawButton, stickAxis } from "./profile-buttons.js";
 import { logThrottled } from "../../../../libs/log-store.js";
 import { DualShock3 } from "../../../controllers/Controllers.jsx";
 
@@ -97,8 +97,7 @@ export default function PlayStation3Pad({
 	const handleAnalogMove = (name, x, y) => {
 		const which = STICK_WHICH[name];
 		if (!which || !enabled) return;
-		const clamp = (value) => Math.max(-1000, Math.min(1000, Math.round(value * 1000)));
-		sendInput(`st,${which},${clamp(x)},${clamp(y)}`);
+		sendInput(`st,${which},${stickAxis(x)},${stickAxis(y)}`);
 	};
 
 	// Ne pas dessiner un bouton qui n'a nulle part où aller — voir

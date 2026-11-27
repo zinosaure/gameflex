@@ -29,6 +29,7 @@ import (
 	"gameflex/libretro"
 	"gameflex/libretro/biosdir"
 	"gameflex/libretro/engine"
+	sharedsession "gameflex/session"
 	"image"
 	"image/png"
 	"io"
@@ -1585,17 +1586,16 @@ func (s *emulationSession) onAudio(chunk []int16) {
 // onRumble — les deux moteurs d'une manette, déjà combinés par le moteur
 // (Config.OnRumble), envoyés à la connexion qui tient ce port.
 func (s *emulationSession) onRumble(port int, weak, strong uint16) {
-	rumble := streamMessage{Type: "rumble", RumbleWeak: weak, RumbleStrong: strong}
-	// PENDANT UN PRÊT, la vibration va aux mains qui tiennent la manette :
-	// l'emprunteur, sur sa propre connexion de spectateur — pas le
-	// propriétaire, qui regarde (#274).
-	if port == 0 {
-		if borrower := v4Borrower(); borrower != "" {
-			sent := s.sendToUsername(borrower, rumble)
-			log.Printf("[retrogaming-stream] rumble: port=0 lent to %q weak=%d strong=%d sent=%v", borrower, weak, strong, sent)
+	// LE PORT VOYAGE AVEC LA VIBRATION (chantier 84) : un appareil qui tient plusieurs sièges fait vibrer la manette
+	// de celui-ci, et pas une autre.
+	rumble := streamMessage{Type: "rumble", RumbleWeak: weak, RumbleStrong: strong, Port: port}
+	// AUX MAINS QUI TIENNENT CE SIÈGE, par leur compte : l'emprunteur pendant un prêt (#274), et l'appareil qui tient
+	// ce siège parmi d'autres (chantier 84), que les cibles par port ne connaissent pas.
+	if holder := v4ControllerName(port + 1); holder != "" {
+		sent := s.sendToUsername(holder, rumble)
+		log.Printf("[retrogaming-stream] rumble: port=%d to %q weak=%d strong=%d sent=%v", port, holder, weak, strong, sent)
 
-			return
-		}
+		return
 	}
 
 	sent := s.sendToPort(uint32(port), rumble)
@@ -1944,7 +1944,9 @@ func (s *emulationSession) handleGatewayInput(viewerID string, data []byte) {
 	// and that unannounced viewer drove pad 1 through the fallback below
 	// (found 2026-10-08). With a v4 host, a viewer the queue never heard of
 	// is refused — the page always announces its viewer on its v4 socket.
-	if port, managed := v4PortForViewer(viewerID); managed || v4 != nil {
+	// LA MANETTE DE L'APPAREIL (chantier 84) : le préfixe `#<n>|` de l'appui, retiré avant l'émulateur.
+	pad, data := sharedsession.SplitPad(data)
+	if port, managed := v4PortForViewer(viewerID, pad); managed || v4 != nil {
 		if port < 0 {
 			return
 		}

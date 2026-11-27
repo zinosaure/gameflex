@@ -20,7 +20,6 @@ import { fact } from "../../../libs/format.js";
 import { toast } from "../../../shell/Shell.jsx";
 import { fieldContext, Form, FormButton, Ruleset } from "../../../ui/Forms.jsx";
 import SettingsPage, { NotFound } from "../../SettingsPage.jsx";
-import { ImageSearch } from "../../server/consoles/ImageSearch.jsx";
 import { consolePath, paramsLabel } from "../../Consoles.jsx";
 import { reasonOf } from "../Required.jsx";
 

@@ -16,14 +16,13 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { GuideSection } from "../bricks/GuideSection.jsx";
 import { Listing } from "../bricks/Listing.jsx";
 import NavRow from "../bricks/NavRow.jsx";
 import { Rows } from "../bricks/Rows.jsx";
 import { Section } from "../bricks/Section.jsx";
 import { listDisks, readToken } from "../libs/api.js";
 import { useData } from "../libs/data.jsx";
-import { counted, fact } from "../libs/format.js";
+import { counted, dateTime, fact } from "../libs/format.js";
 import { kernelReachable, kernelTarget, useKernelChannel, useKernelTopic } from "../libs/kernelChannel.js";
 import { toast } from "../shell/Shell.jsx";
 import SettingsPage, { useQueryState, useSettingsNavigation } from "./SettingsPage.jsx";
@@ -33,13 +32,11 @@ import { hostGuide } from "../libs/capabilities.js";
 // LES DISQUES INTERNES : une ligne par disque, qui ouvre sa page ; une page à la fois (`?disksPage=`).
 export function Disks() {
     const { t } = useTranslation();
-    const { capabilities } = useData();
     const { open } = useSettingsNavigation();
     const [read, update] = useQueryState({ page: "1", q: "" });
     const disks = useDisks();
     const needle = (read("q") || "").trim().toLowerCase();
-    const device = capabilities.internalDisks === "device";
-    const text = (key, values) => t(`resources.disks.${key}${device ? "Device" : ""}`, values);
+    const text = useDiskText();
 
     return (
         <Section title={t("resources.internalTitle")} help={text("intro")} sense="modify">
@@ -70,7 +67,8 @@ export function useExternalResources() {
 }
 
 export const KIND_OF = Object.fromEntries(KINDS.map((entry) => [entry.kind, entry]));
-export const when = (value, language) => (value && !value.startsWith("0001") ? new Date(value).toLocaleString(language) : "");
+// Une date du serveur, sans l'instant zéro de Go (« 0001-01-01 ») : une valeur jamais posée.
+export const when = (value, language) => (value && !value.startsWith("0001") ? dateTime(value, language, "") : "");
 
 // L'état d'une ressource en une phrase : en cours de lecture, injoignable, pas encore lue, ou ses jeux.
 export const stateText = (t, language, state) => {
@@ -176,20 +174,29 @@ export function useDisks() {
 // UN SEUL LISTING PAR ROUTE (le porteur, 2026-11-25 : « mettre en liens pour ensuite aller sur la route des listings. Ça
 // évitera d'avoir 2 listings sur une seule page ») : les disques (resources/Disks.jsx) et les ressources externes
 // (resources/External.jsx), une ligne chacun, leur nombre en pastille.
-export default function Resources() {
+// LES TEXTES DES DISQUES, ceux d'un serveur ou ceux d'un téléphone (`internalDisks: "device"`) : une fois, pour la liste et
+// la page d'un disque.
+export function useDiskText() {
     const { t } = useTranslation();
     const { capabilities } = useData();
+    const device = capabilities.internalDisks === "device";
+
+    return (key, values) => t(`resources.disks.${key}${device ? "Device" : ""}`, values);
+}
+
+export default function Resources() {
+    const { t } = useTranslation();
+    const diskText = useDiskText();
     const { open } = useSettingsNavigation();
     const disks = useDisks();
     const external = useExternalResources();
-    const device = capabilities.internalDisks === "device";
 
     return (
         <SettingsPage title={t("settings.items.resources.label")} guides={[hostGuide("disks", ["storage", "more-disks-of-games"])]}>
             <Section title={t("resources.storageTitle")} help={t("resources.storageHelp")} sense="modify">
                 <Rows>
                     <NavRow id="rs-disks" icon="bi-device-hdd" label={t("resources.internalTitle")} value={disks ? counted(t, "disks", disks.length) : null}
-                        help={t(`resources.disks.intro${device ? "Device" : ""}`)} onOpen={() => open("/settings/resources/disks", "rs-disks")} />
+                        help={diskText("intro")} onOpen={() => open("/settings/resources/disks", "rs-disks")} />
                     <NavRow id="rs-external" icon="bi-hdd-network" label={t("resources.external.title")} value={external ? counted(t, "resources", external.length) : null}
                         help={t("resources.external.intro")} onOpen={() => open("/settings/resources/external", "rs-external")} />
                 </Rows>

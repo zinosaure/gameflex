@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { consoleDefaults, fetchServer, listBios, listCores, listStreamexSaves, listUserStates, readToken, romSource, saveRAMOf, stateThumbnailPath } from "../../libs/api.js";
-import { counted, fact, formatSize, originOf, STATUS_VARIANT, statusOf } from "../../libs/format.js";
+import { counted, dateTime, fact, formatSize, STATUS_VARIANT, statusOf } from "../../libs/format.js";
 import { discName } from "../../libs/games.js";
 import { sourcesOf } from "../../libs/metadata.js";
 import { splitTitle } from "../../libs/visuals.js";
@@ -344,7 +344,6 @@ export function StateThumbnail({ consoleId, reference, slot, source = "", host =
     );
 }
 
-const dateTime = (iso, language) => (iso ? new Date(iso).toLocaleString(language === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "");
 
 // « INFORMATIONS ET RÉGLAGES » — l'engrenage.
 // LE COMPTE CHEZ LE SERVEUR FÉDÉRÉ D'UN JEU (chantier 20) : on y joue sous son compte de là-bas. Il SE GÈRE DANS RÉGLAGES ›
@@ -543,15 +542,15 @@ export function GearPanel({ console, game, rom, metadata, facts, playable, state
                     {console.method === "retrogaming" ? (
                         states.length === 0 && !sram?.exists ? <EmptyState icon="bi-sd-card" text={t("gear.noSaves")} /> : (
                             <Rows>
-                                {sram?.exists && <InfoRow icon="bi-sd-card" label={t("gear.sramLabel")} value={dateTime(sram.timestamp, i18n.language)} />}
+                                {sram?.exists && <InfoRow icon="bi-sd-card" label={t("gear.sramLabel")} value={dateTime(sram.timestamp, i18n.language, "")} />}
                                 {states.map((state) => (
                                     <InfoRow key={state.slot} lead={<StateThumbnail consoleId={console.id} reference={rom.reference} slot={state.slot} />}
-                                        label={slotName(state.slot, t)} value={dateTime(state.timestamp, i18n.language)} />
+                                        label={slotName(state.slot, t)} value={dateTime(state.timestamp, i18n.language, "")} />
                                 ))}
                             </Rows>
                         )
                     ) : streamexSave
-                        ? <Rows><InfoRow icon="bi-sd-card" label={t("gear.streamexSaveLabel")} value={dateTime(streamexSave.updatedAt, i18n.language)} /></Rows>
+                        ? <Rows><InfoRow icon="bi-sd-card" label={t("gear.streamexSaveLabel")} value={dateTime(streamexSave.updatedAt, i18n.language, "")} /></Rows>
                         : <EmptyState icon="bi-sd-card" text={t("gear.noSaves")} />}
                 </Section>
 
@@ -628,7 +627,7 @@ export function ContinuePanel({ console, rom, states, onChoose, onClose }) {
                 <NavRow id="cs-start" label={t("continue.start")} help={t("continue.startHelp")} opens="action" onOpen={() => onChoose(null)}
                     lead={<span className="thumb ratio ratio-4x3 rounded overflow-hidden bg-body-secondary flex-shrink-0"><span className="d-flex align-items-center justify-content-center"><i className="bi bi-play-fill"></i></span></span>} />
                 {states.map((state) => (
-                    <NavRow key={state.slot} id={`cs-${state.slot}`} label={slotName(state.slot, t)} help={fact(t("facts.date"), dateTime(state.timestamp, i18n.language))} opens="action" onOpen={() => onChoose(state.slot)}
+                    <NavRow key={state.slot} id={`cs-${state.slot}`} label={slotName(state.slot, t)} help={fact(t("facts.date"), dateTime(state.timestamp, i18n.language, ""))} opens="action" onOpen={() => onChoose(state.slot)}
                         lead={<StateThumbnail consoleId={console.id} reference={rom.reference} slot={state.slot} />} />
                 ))}
             </Rows>

@@ -8,10 +8,10 @@ import NavRow from "../../../bricks/NavRow.jsx";
 import { Rows } from "../../../bricks/Rows.jsx";
 import { Section } from "../../../bricks/Section.jsx";
 import { listDisks, rescanDisk } from "../../../libs/api.js";
-import { useData } from "../../../libs/data.jsx";
 import { toast } from "../../../shell/Shell.jsx";
 import SettingsPage, { NotFound, useSettingsNavigation } from "../../SettingsPage.jsx";
 import { ConsoleList } from "../../Consoles.jsx";
+import { useDiskText } from "../../Resources.jsx";
 
 // UN DISQUE INTERNE : présent ou non, ses jeux par console, et le relire (une ligne de « Plus », grisée avec sa raison
 // quand le disque est absent). Le disque : celui que la liste a passé, sinon relu (un lien direct, un rechargement).
@@ -19,13 +19,11 @@ export default function Disk() {
     const { t } = useTranslation();
     const { name } = useParams();
     const location = useLocation();
-    const { capabilities } = useData();
     const { open } = useSettingsNavigation();
     const passed = location.state?.disk;
     const [disk, setDisk] = useState(() => (passed && passed.name === name ? passed : undefined));
     const [pending, setPending] = useState(false);
-    const device = capabilities.internalDisks === "device";
-    const text = (key, values) => t(`resources.disks.${key}${device ? "Device" : ""}`, values);
+    const text = useDiskText();
 
     const load = () => listDisks().then((answer) => {
         const found = (answer.ok ? answer.data || [] : []).find((entry) => entry.name === name);

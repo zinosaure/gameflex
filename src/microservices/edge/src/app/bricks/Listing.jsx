@@ -64,7 +64,7 @@ export function useListSearch(items, textOf) {
 // sont posés (`filterCount`) : un bouton enfoncé ne change pas de couleur (libs/ui.js). Ils s'appliquent à mesure, et chaque page les garde dans son adresse. À la manette, la lumière entre dans le panneau sur
 // son premier filtre, B le referme et la rend au bouton ; au doigt, son fond le referme. Le panneau n'est pas une page :
 // un filtre posé sur la liste.
-export function Listing({ items, render, loading = false, search = "", onSearch = null, placeholder = "", found = null, empty = null, noMatch = undefined, filters = null, filterCount = 0, head = null, pageSize = 10, page = null, onPage = null, total = null, placeholderRow = null, searchKey = "sc-search" }) {
+export function Listing({ items, render, loading = false, search = "", onSearch = null, placeholder = "", found = null, empty = null, noMatch = undefined, filters = null, filterCount = 0, head = null, pageSize = 10, page = null, onPage = null, total = null, placeholderRow = null, searchKey = "sc-search", overall = null }) {
     const { t } = useTranslation();
     const [ownPage, setOwnPage] = useState(1);
     const pager = useRef(null);
@@ -83,8 +83,10 @@ export function Listing({ items, render, loading = false, search = "", onSearch 
     // LA RECHERCHE ET LES FILTRES, SEULEMENT AU-DELÀ D'UNE PAGE (le porteur, 2026-11-25 : « afficher la barre de recherche
     // que quand il y a plus d'une page en pagination […] ça dépend avant tout du nombre d'éléments venant du backend » ;
     // le bouton des filtres « suit la règle ») — et tant qu'une recherche est tapée ou un filtre posé : ce qu'ils ont
-    // réduit à une page ne les retire pas sous la main.
-    const searching = Boolean(onSearch || groups.length) && ((served ? total : items.length) > pageSize || searched !== "" || filterCount > 0);
+    // réduit à une page ne les retire pas sous la main. LE TOTAL AVANT LES FILTRES (`overall`) en décide (le porteur,
+    // 2026-11-26 : « Si un listing a un total de plus de 10 et que le filtre affiche 5, le search bar doit quand même
+    // rester ») : un filtre posé par défaut ne la retire pas non plus.
+    const searching = Boolean(onSearch || groups.length) && ((overall ?? (served ? total : items.length)) > pageSize || searched !== "" || filterCount > 0);
     const first = "mt-0";
     const blank = !loading && !rows.length && !items.length;
     const blankText = !searched ? empty : noMatch === undefined ? t("settings.noMatch", { search: searched }) : noMatch;

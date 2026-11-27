@@ -26,7 +26,7 @@ export default function NewToken() {
     const levels = useLevels();
     const origin = useShareOrigin();
     const { back } = useSettingsNavigation();
-    const [values, setValues] = useState({ label: "", providers: false, remoteAdmin: false, share: "qr" });
+    const [values, setValues] = useState({ label: "", providers: false, remoteAdmin: false, relayAllowed: false, share: "qr" });
     const [pending, setPending] = useState(false);
     const [created, setCreated] = useState(null);
     const [invited, setInvited] = useState(null);
@@ -37,7 +37,7 @@ export default function NewToken() {
 
     const invite = async () => {
         setPending(true);
-        const answer = await createInvitation({ kind: "federation", label, scopes: scopes(), remoteAdmin: values.remoteAdmin });
+        const answer = await createInvitation({ kind: "federation", label, scopes: scopes(), remoteAdmin: values.remoteAdmin, relayAllowed: values.relayAllowed });
         setPending(false);
 
         if (!answer.ok || !answer.item) {
@@ -50,7 +50,7 @@ export default function NewToken() {
 
     const create = async () => {
         setPending(true);
-        const answer = await createCatalogToken(label, scopes(), values.remoteAdmin);
+        const answer = await createCatalogToken(label, scopes(), values.remoteAdmin, values.relayAllowed);
         setPending(false);
 
         if (!answer.ok || !answer.item) {
@@ -100,7 +100,7 @@ export default function NewToken() {
                     </Section>
                     <Section title={t("fed.remoteRights")} help={t("fed.remoteRightsHelp")} sense="modify">
                         <Rows>
-                            <RemoteRightsRows values={values} setValues={setValues} />
+                            <RemoteRightsRows values={values} set={(patch) => setValues((previous) => ({ ...previous, ...patch }))} />
                             <SubmitRow>
                                 <FormButton id="fd-create" label={t(values.share === "token" ? "fed.createToken" : "invitations.create")} isReplaced={Boolean(label)} pending={pending} />
                             </SubmitRow>

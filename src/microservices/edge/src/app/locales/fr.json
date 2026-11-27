@@ -843,7 +843,8 @@
         },
         "tokenForgetConfirm": "Oublier votre jeton de {{server}} ? Il faudra le coller de nouveau pour y jouer.",
         "methodHelp": "Ce que {{server}} vous a donné pour votre compte.",
-        "methodLabel": "S'authentifier par"
+        "methodLabel": "S'authentifier par",
+        "signedIn": "Vous êtes connecté à {{server}}."
     },
     "logs": {
         "lastLines": "Les 100 dernières lignes",
@@ -955,7 +956,22 @@
         "deviceHelp": "La manette ou le clavier à régler.",
         "layoutTitle": "Disposition",
         "resetHelp": "Les touches de cette manette reviennent à celles par défaut.",
-        "noDeviceValue": "Aucune"
+        "noDeviceValue": "Aucune",
+        "connected": {
+            "title": "Manettes connectées",
+            "help": "Les manettes branchées sur cet appareil : leur ordre, et celles qui jouent.",
+            "rowHelp": "Les activer, les numéroter, régler leurs touches.",
+            "padTitle": "Cette manette",
+            "padHelp": "Les manettes activées prennent les places d'une partie dans l'ordre de leurs numéros.",
+            "enabled": "Manette activée",
+            "enabledHelp": "Désactivée, elle ne prend jamais de place dans une partie.",
+            "number": "Numéro",
+            "numberHelp": "Son rang parmi les manettes activées : Pad 1 prend la première place.",
+            "mappingTitle": "Ses touches",
+            "mappingHelp": "Ce que fait chacun de ses boutons.",
+            "mapping": "Correspondance des touches",
+            "mappingRowHelp": "Régler ses boutons pour chaque manette virtuelle."
+        }
     },
     "members": {
         "password": "Mot de passe",
@@ -1175,8 +1191,6 @@
         "shareToken": "Jeton classique",
         "shareQr": "QR code",
         "remoteRights": "Droits à distance",
-        "providersLabel": "Fournisseurs de métadonnées à distance",
-        "providersHelp": "Ce serveur cherche aussi des images et des fiches avec vos comptes IGDB et SteamGridDB, sans voir vos clés. Ses recherches comptent dans votre quota.",
         "serversSearch": "Rechercher un serveur…",
         "serversEmpty": "Aucun serveur rejoint.",
         "listedAt": "lu le {{at}}",
@@ -1254,8 +1268,6 @@
         "gigabytes": "{{gb}} Go",
         "grantsTitle": "Partagé avec vous",
         "grantsHelp": "Ce que ce serveur partage avec le vôtre.",
-        "catalogHelp": "Voir et télécharger ses jeux, ses BIOS, ses émulateurs.",
-        "providersGrantHelp": "Chercher des images et des fiches avec ses comptes de fournisseurs.",
         "connectionTitle": "Partage",
         "connectionHelp": "Permet le partage des jeux, des consoles et des métadonnées entre vos appareils, avec vos amis et d'autres serveurs GameFlex du monde entier.",
         "connectionHelpJoinOnly": "Permet de jouer aux jeux et aux consoles que partagent vos amis et d'autres serveurs GameFlex du monde entier.",
@@ -1268,18 +1280,12 @@
         "newAccess": "Créer un nouvel accès",
         "newAccessHelp": "Inviter un ami à voir vos jeux.",
         "pendingHelp": "Les invitations pas encore utilisées.",
-        "scopeProviders": "Fournisseurs de métadonnées",
-        "metadataHelp": "Les fiches et les images de ses jeux.",
-        "scopeMetadata": "Métadonnées",
         "allowed": "Autorisé",
         "notAllowed": "Pas autorisé",
         "consolesAll": "Toutes",
         "consolesNone": "Aucune",
         "consolesSome": "Certaines",
-        "consolesSection": "Consoles",
-        "consolesRowHelp": "Ce que les comptes venus par cet accès peuvent lancer.",
         "consolesPageHelp": "Les comptes venus par cet accès ne lancent que ces consoles, en plus de leurs propres droits.",
-        "consolesGrantHelp": "Ce que notre accès à ce serveur permet de lancer.",
         "accessMoreHelp": "Donner un nouvel accès à un autre serveur.",
         "serversMoreHelp": "Rejoindre un autre serveur GameFlex.",
         "invitationDetailHelp": "Pour qui, ce qu'elle ouvre, et jusqu'à quand.",
@@ -1289,13 +1295,47 @@
         "remoteRightsHelp": "Ce que l'autre serveur peut régler ici, à distance.",
         "machineHelp": "La machine de ce serveur.",
         "tokenDetailsHelp": "À qui il est délivré, et ce qu'il ouvre.",
-        "consolesSectionHelp": "Les consoles que ce serveur peut lancer chez vous.",
         "relayedBy": "Relayé par {{name}}",
-        "relayAllowedLabel": "Peut me relayer à ses appareils",
-        "relayAllowedHelp": "Ce serveur peut montrer mes jeux aux appareils à qui il donne un accès.",
-        "relayedTitle": "Serveurs relayés",
-        "relayedHelp": "Les serveurs fédérés dont cet accès voit aussi les jeux.",
-        "relayNotAllowed": "Ce serveur ne permet pas d'être relayé."
+        "relayNotAllowed": "Ce serveur ne permet pas d'être relayé.",
+        "relayedNone": "Aucun",
+        "grant": {
+            "catalog": {
+                "issued": "Voir et télécharger vos jeux, vos BIOS, vos émulateurs.",
+                "received": "Voir et télécharger ses jeux, ses BIOS, ses émulateurs.",
+                "label": "Jeux"
+            },
+            "metadata": {
+                "issued": "Les fiches et les images de vos jeux.",
+                "received": "Les fiches et les images de ses jeux.",
+                "label": "Métadonnées"
+            },
+            "consoles": {
+                "issued": "Ce que les comptes venus par cet accès peuvent lancer.",
+                "received": "Ce que notre accès à ce serveur permet de lancer.",
+                "label": "Accès aux consoles"
+            },
+            "providers": {
+                "issued": "Ce serveur cherche aussi des images et des fiches avec vos comptes IGDB et SteamGridDB, sans voir vos clés. Ses recherches comptent dans votre quota.",
+                "received": "Chercher des images et des fiches avec ses comptes de fournisseurs.",
+                "label": "Fournisseurs de métadonnées"
+            },
+            "relayed": {
+                "issued": "Les serveurs fédérés dont cet accès voit aussi les jeux.",
+                "received": "Les serveurs fédérés dont il vous montre aussi les jeux.",
+                "label": "Serveurs relayés"
+            },
+            "relayAllowed": {
+                "issued": "Ce serveur peut montrer vos jeux aux appareils à qui il donne un accès.",
+                "received": "Vos appareils peuvent voir ses jeux par votre serveur.",
+                "labelIssued": "Peut me relayer à ses appareils",
+                "labelReceived": "Relayer à vos appareils"
+            },
+            "remoteAdmin": {
+                "label": "Administration à distance",
+                "issued": "Un de vos administrateurs qui utilise cet accès gère aussi ce serveur depuis le sien. Coupé, il ne fait que jouer.",
+                "received": "Gérer ses réglages d'ici, avec votre compte administrateur de là-bas."
+            }
+        }
     },
     "invitations": {
         "create": "Créer l'invitation",
@@ -2094,12 +2134,25 @@
             "pad": "La manette de cet appareil.",
             "players": "Qui tient chaque manette de la console.",
             "together": "Faire venir quelqu'un dans la partie.",
-            "leave": "Ce qui met fin à la partie, ou la remet à zéro."
+            "leave": "Ce qui met fin à la partie, ou la remet à zéro.",
+            "pads": "Les manettes de cet appareil, et la place de chacune."
         },
         "castUnavailable": "Ce navigateur ne sait pas envoyer l'image vers un téléviseur : ouvrez cette page dans Google Chrome.",
         "castNoReceiver": "Aucun récepteur Google Cast n'est réglé sur ce serveur.",
         "gamepadTipHome": "Menu de la partie : Home. Au clavier : Échap.",
-        "gamepadTipChord": "Menu de la partie : tenez L2 + R2 + Home deux secondes. Au clavier : Échap."
+        "gamepadTipChord": "Menu de la partie : tenez L2 + R2 + Home deux secondes. Au clavier : Échap.",
+        "pads": {
+            "title": "Manettes connectées",
+            "pad": "Pad {{number}}",
+            "named": "{{name}} (Pad {{pad}})",
+            "none": "Aucune manette branchée sur cet appareil.",
+            "off": "Désactivée",
+            "waiting": "En attente",
+            "free": "Sans place",
+            "releaseTitle": "{{label}} : rendre sa place ?",
+            "releaseMessage": "Sa place va à la prochaine manette en attente, ou reste libre.",
+            "release": "Rendre sa place"
+        }
     },
     "form": {
         "noDate": "Aucun jour choisi",
@@ -2170,7 +2223,9 @@
         "disks_one": "{{count}} disque",
         "disks_other": "{{count}} disques",
         "resources_one": "{{count}} ressource",
-        "resources_other": "{{count}} ressources"
+        "resources_other": "{{count}} ressources",
+        "controllers_one": "{{count}} manette",
+        "controllers_other": "{{count}} manettes"
     },
     "downloads": {
         "cancel": "Annuler",
@@ -2814,7 +2869,6 @@
     },
     "remoteAdmin": {
         "title": "Administration à distance",
-        "switchHelp": "Un de vos administrateurs qui utilise cet accès gère aussi ce serveur depuis le sien. Coupé, il ne fait que jouer.",
         "notAdmin": "Votre compte n'administre pas ce serveur depuis ici. Sur ce serveur, un administrateur doit autoriser l'administration à distance dans l'accès délivré à votre serveur.",
         "unreachable": "Ce serveur ne vous ouvre pas de session : collez d'abord votre jeton de compte de chez lui.",
         "section": "Partagé avec vous en tant qu'administrateur",
@@ -3019,7 +3073,9 @@
         "disksMoreHelp": "Ajouter un dossier de jeux de ce PC.",
         "diskDetailsHelp": "Son dossier, sa présence et sa place libre.",
         "thisAppHelp": "La version installée sur ce PC.",
-        "updateSectionHelp": "Chercher une version plus récente, et l'installer."
+        "updateSectionHelp": "Chercher une version plus récente, et l'installer.",
+        "diskRemoved": "Le disque {{name}} est retiré.",
+        "joinRemoved": "Ce serveur est retiré."
     },
     "switches": {
         "on": "Oui",

@@ -1,6 +1,6 @@
 // Route : /settings/federation/servers/<id> — un serveur rejoint.
 import { useFeedback } from "../../../bricks/useFeedback.jsx";
-import React from "react";
+import React, { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { DangerSection } from "../../../bricks/DangerSection.jsx";
@@ -9,14 +9,13 @@ import { InfoRow } from "../../../bricks/InfoRow.jsx";
 import NavRow from "../../../bricks/NavRow.jsx";
 import { Rows } from "../../../bricks/Rows.jsx";
 import { Section } from "../../../bricks/Section.jsx";
-import { removeServerRegistry } from "../../../libs/api.js";
+import { fetchServer, removeServerRegistry } from "../../../libs/api.js";
 import { useData } from "../../../libs/data.jsx";
 import { openExternal } from "../../../libs/links.js";
 import { REMOTE_PAGES, remoteRoot, useAdminThere, useRemoteAdmin } from "../../../libs/remoteAdmin.js";
 import SettingsPage, { useSettingsNavigation } from "../../SettingsPage.jsx";
 import { FEDERATION_GUIDES } from "../../profile/Federation.jsx";
-import { consolesSummary, dateTime, JOINED, loadServers, useLevels, usePassed, Waiting } from "../../Federation.jsx";
-import { CONSOLE_ICON } from "../../../globals/icons.js";
+import { AccessGrantRows, dateTime, JOINED, relayedThrough, loadServers, useLevels, usePassed, Waiting } from "../../Federation.jsx";
 
 // UN SERVEUR FÉDÉRÉ, EN SECTIONS D'INFORMATIONS COMME L'ENGRENAGE D'UN JEU (le porteur, 2026-11-16, 2.8 : « Le listing des
 // informations du serveur fédéré en section comme les fiches des jeux ») : ce que la copie de son listing dit de lui —
@@ -28,13 +27,20 @@ export default function Server() {
     const { t, i18n } = useTranslation();
     const feedback = useFeedback();
     const { serverId } = useParams();
-    const { refreshServers } = useData();
+    const { refreshServers, servers } = useData();
     const { back, open } = useSettingsNavigation();
     const levels = useLevels();
     const server = usePassed("server", serverId, () => loadServers(refreshServers, t, i18n.language));
     const remote = useRemoteAdmin();
     const adminThereNow = useAdminThere(remote ? null : server);
     const adminHere = !remote && adminThereNow;
+
+    // CE QUE SON ACCÈS NOUS OUVRE, RELU À L'OUVERTURE (chantier 83) : il le règle chez lui, et notre copie de son listing ne
+    // le sait qu'à sa prochaine lecture. Une fois — jamais en boucle.
+    useEffect(() => {
+        fetchServer(serverId).then(() => refreshServers());
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [serverId]);
 
     if (!server) {
         return <Waiting item={server} title={t("fed.joinedTitle")} parent={JOINED} />;
@@ -44,8 +50,7 @@ export default function Server() {
     const scopes = facts.scopes || [];
     const gigabytes = (bytes) => (bytes ? t("fed.gigabytes", { gb: Math.round(bytes / 2 ** 30) }) : null);
     const lent = Object.values(facts.consoles || {}).reduce((total, count) => total + count, 0);
-    // Les mêmes mots que la page d'un accès délivré (« Autorisé », « Pas autorisé ») : une portée, deux pages.
-    const opened = (scope) => t(scopes.includes(scope) ? "fed.allowed" : "fed.notAllowed");
+    const relayedToUs = relayedThrough(servers, server.id);
 
     return (
         <SettingsPage title={server.label} parent={JOINED} levels={levels}>
@@ -75,16 +80,10 @@ export default function Server() {
             )}
             {server.facts && (
                 <Section title={t("fed.grantsTitle")} help={t("fed.grantsHelp")} sense="modify">
+                    {/* LA FICHE COMMUNE (AccessGrantRows), du point de vue de celui qui reçoit l'accès. */}
                     <Rows>
-                        <InfoRow icon="bi-disc" label={t("fed.scope.catalog")} help={t("fed.catalogHelp")} value={opened("catalog")} />
-                        {/* LES MÉTADONNÉES VIENNENT AVEC LES JEUX (le porteur, 2026-11-16 : « La métadonnée vient toujours du serveur.
-                            C'est toujours autorisé comme les jeux. C'est l'utilisation des fournisseurs metadata du serveur qui doit
-                            être autorisée ») : la même portée que les jeux, `catalog`. */}
-                        <InfoRow icon="bi-card-text" label={t("fed.scopeMetadata")} help={t("fed.metadataHelp")} value={opened("catalog")} />
-                        <InfoRow icon={CONSOLE_ICON} label={t("members.consolesTitle")} help={t("fed.consolesGrantHelp")}
-                            value={consolesSummary(facts.granted, t)} />
-                        <InfoRow icon="bi-images" label={t("fed.scopeProviders")} help={t("fed.providersGrantHelp")}
-                            value={opened("metadata-providers")} />
+                        <AccessGrantRows side="received" grants={{ scopes, consoles: facts.granted, remoteAdmin: adminThereNow, relayAllowed: facts.relayAllowed, relayed: relayedToUs }}
+                            onRelayed={() => open(`${JOINED}/${encodeURIComponent(server.id)}/relayed`, "fd-grant-relayed", { server })} />
                     </Rows>
                 </Section>
             )}

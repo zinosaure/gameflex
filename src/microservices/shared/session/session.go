@@ -32,6 +32,10 @@ type Player struct {
 	SlotID   int
 	Username string
 	SocketID string
+	// Pad — LA MANETTE DE CET APPAREIL qui tient ce siège, numérotée à partir de 1 (chantier 84). Un appareil tient un
+	// siège par manette activée : `Gino (Pad 1)`, `Gino (Pad 2)`, sans priorité entre elles. Le socket reste
+	// l'identité : ces sièges naissent et meurent avec lui. 1 pour le clavier et la manette à l'écran.
+	Pad      int
 	JoinedAt time.Time
 	// LastBeatAt — last 30s beat, proves the tab's JS still runs (a frozen
 	// tab keeps its socket open, so the socket alone cannot tell).
@@ -66,6 +70,18 @@ type Player struct {
 	// invité qui passe sa manette donne sa place (Handover).
 	LentTo       string
 	LentToSocket string
+	// LentToPad — la manette de l'emprunteur qui pilote ce siège (chantier 84).
+	LentToPad int
+}
+
+// Waiter — UNE MANETTE EN ATTENTE d'un siège (chantier 84 ; le porteur, 2026-11-26 : « Pad 2 reste en attente qu'une
+// place se libère »). Seule une manette d'un appareil qui tient déjà un siège attend ; elle prend d'elle-même le
+// prochain siège libéré, la plus ancienne d'abord, la plus petite manette à égalité.
+type Waiter struct {
+	Username string
+	SocketID string
+	Pad      int
+	Since    time.Time
 }
 
 // Participant is an open tab, player or not. It exists to answer "who is
@@ -94,6 +110,8 @@ type Session struct {
 
 	Players      []Player
 	Participants []Participant
+	// Waiting — les manettes en attente d'un siège (chantier 84), dans l'ordre où elles le prendront.
+	Waiting []Waiter
 
 	// IdleSince starts when the queue empties and stops when anybody plays.
 	IdleSince *time.Time
@@ -126,6 +144,9 @@ var (
 	// ErrNoSlot — invariants 2 and 3: the queue is full for this caller. The
 	// owner never sees this: their slot is reserved.
 	ErrNoSlot = errors.New("no slot available")
+	// ErrWaiting — pas de siège libre pour cette manette, mais son appareil en tient déjà un : elle attend le prochain
+	// (chantier 84).
+	ErrWaiting = errors.New("waiting for a free slot")
 	// ErrNotPlaying — the caller holds no slot.
 	ErrNotPlaying = errors.New("not in the players queue")
 	// ErrSameSocket — a takeover from the socket that already holds the slot

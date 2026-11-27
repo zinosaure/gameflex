@@ -86,6 +86,9 @@ export default (env = {}, argv = {}) => ({
         publicPath: '/',
         chunkFilename: '[name].[contenthash].bundle.js',
         clean: true,
+        // TOUJOURS RÉÉCRIT : la construction de l'APK refuse un bundle plus vieux que le code (docker-entrypoint.sh).
+        // Une modification sans effet sur le paquet (un import retiré) le laissait à son ancienne date, et bloquait l'APK.
+        compareBeforeEmit: false,
     },
     devServer: {
         static: [{ directory: path.join(DIRNAME, 'public'), publicPath: '/' }],

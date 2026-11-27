@@ -32,7 +32,7 @@ func TestMoveGrantedByTheHoldingTab(t *testing.T) {
 	if !session.IsPlaying("dave", "sock-D2") || session.IsPlaying("dave", "sock-D") {
 		t.Fatalf("players = %+v — want the place on the phone (sock-D2), the PC watching", session.Players)
 	}
-	if session.ControlledSlot("sock-D2") != slot {
+	if session.ControlledSlot("sock-D2", 1) != slot {
 		t.Fatal("the phone must drive the pad at once")
 	}
 }

@@ -54,7 +54,9 @@ export const imageKey = (image) => `${image.source}:${image.server || ""}:${imag
 export const imageOrigin = (image, t) => (image.source === "server" ? image.serverName || t("images.services.server")
     : [t(`images.services.${image.source}`), image.serverName].filter(Boolean).join(", "));
 
-export function ImageSearch({ initial = "", search, confirmOf, onChoose, fit = "contain" }) {
+// `success(image)` — le texte de la réussite : la fenêtre de réponse le dit, une fois pour toutes les pages qui choisissent
+// une image (un fond de console, une image de jeu, un fond Remote Play).
+export function ImageSearch({ initial = "", search, confirmOf, onChoose, success, fit = "contain" }) {
     const { t } = useTranslation();
     const feedback = useFeedback();
     const confirm = useConfirm();
@@ -98,9 +100,7 @@ export function ImageSearch({ initial = "", search, confirmOf, onChoose, fit = "
             const result = await onChoose(image);
             setBusy(null);
 
-            if (!result.ok) {
-                feedback.failed(refusalOf(result, t));
-            }
+            feedback.result(result.ok, success(image), refusalOf(result, t));
         },
     });
 

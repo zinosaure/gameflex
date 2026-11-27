@@ -58,6 +58,7 @@ import { forgetBand } from "../screens/library/ConsoleVisual.jsx";
 import SettingsPage, { useQueryState, useSettingsNavigation } from "./SettingsPage.jsx";
 import { pill } from "../bricks/Pill.jsx";
 import { CONSOLE_ICON } from "../globals/icons.js";
+import { byName } from "../libs/data.jsx";
 
 // Les consoles émulées (le Remote Play n'a ni cœur, ni BIOS, ni paramètres), par nom.
 export function useEmulated() {
@@ -67,7 +68,7 @@ export function useEmulated() {
 }
 
 export const consolePath = (consoleId) => `/settings/consoles/${encodeURIComponent(consoleId)}`;
-export const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+export { byName };
 
 // LES ÉMULATEURS OU LES BIOS D'UNE CONSOLE, ICI (`/retrogaming/storage/cores|bios`, filtré sur elle) : les cœurs de
 // son registre, installés ou non ; les fichiers des émulateurs de bureau (`package` : « server » ou « phone ») ; le
@@ -234,7 +235,7 @@ export function SlotPreview({ consoleId, name, server = null }) {
 // ce que dit `onOpen(console, rowId)`.
 //
 // SES FILTRES (le porteur, 2026-11-23), dans le panneau de la liste comme ceux des jeux d'une source : les consoles sans
-// jeu (`?empty=1`, éteint par défaut : la liste montre d'abord les consoles qui en ont), les consoles activées et les
+// jeu (montrées par défaut depuis le 2026-11-26, `?noempty=1` les cache), les consoles activées et les
 // désactivées (`?nostate=`, toutes deux montrées par défaut).
 export function ConsoleList({ countOf, onOpen }) {
     const { t } = useTranslation();
@@ -243,7 +244,9 @@ export function ConsoleList({ countOf, onOpen }) {
     const [read, update] = useQueryState({ page: "1" });
     const search = read("q");
     const needle = search.trim().toLowerCase();
-    const showEmpty = read("empty") === "1";
+    // TOUTES LES CONSOLES PAR DÉFAUT (le porteur, 2026-11-26 : « Il faut par défaut afficher toutes les consoles ») :
+    // `?noempty=1` cache celles sans jeu.
+    const showEmpty = read("noempty") !== "1";
     const hiddenStates = hiddenOf(read("nostate"));
     const stateOf = (entry) => (entry.disabled ? "disabled" : "enabled");
     const shown = emulated.filter((entry) => (!needle || `${entry.name} ${entry.id}`.toLowerCase().includes(needle))
@@ -251,12 +254,12 @@ export function ConsoleList({ countOf, onOpen }) {
 
     return (
         <Section title={t("consoles.listTitle")} sense="modify">
-            <Listing items={shown} loading={!consoles} search={search} onSearch={(q) => update({ q })} page={read("page")} onPage={(page) => update({ page })}
+            <Listing items={shown} overall={emulated.length} loading={!consoles} search={search} onSearch={(q) => update({ q })} page={read("page")} onPage={(page) => update({ page })}
                 placeholder={t("consoles.search")} found={t("consoles.found", { count: shown.length })} empty={t("consoles.none")}
-                filterCount={(showEmpty ? 1 : 0) + hiddenStates.length} filters={[
+                filterCount={(showEmpty ? 0 : 1) + hiddenStates.length} filters={[
                     {
                         key: "games", title: t("consoles.games"), rows: (
-                            <SwitchRow id="cs-filter-empty" label={t("settings.showEmpty")} checked={showEmpty} onChange={(on) => update({ empty: on ? "1" : null, page: null })} />
+                            <SwitchRow id="cs-filter-empty" label={t("settings.showEmpty")} checked={showEmpty} onChange={(on) => update({ noempty: on ? null : "1", page: null })} />
                         ),
                     },
                     switchGroup({ key: "states", title: t("games.status"), id: "cs-filter", hidden: hiddenStates, onChange: (state, on) => update({ nostate: toggleHidden(hiddenStates, state, on), page: null }),

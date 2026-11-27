@@ -157,15 +157,19 @@ export function allows(grants, console) {
 }
 
 // Une partie est-elle la mienne ? Le nom sous lequel le kernel me connaît
-// (`me.username`), sinon le mien d'ici (libs/SessionPool.js, isOwnSession).
+// (`me.username`), sinon le mien d'ici. La seule définition : libs/SessionPool.js la réexporte.
 export const isOwnSession = (session, username) => {
     const name = session?.me?.username || username || "";
 
     return Boolean(name) && session?.owner === name;
 };
 
-const normalize = (text) => String(text || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-export const matchesQuery = (rom, query) => !query || normalize(rom.title).includes(normalize(query));
+// L'ORDRE DES NOMS, chiffres compris (« PS2 » avant « PS10 ») : les consoles, partout.
+export const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+
+// UN TEXTE PLIÉ POUR LA RECHERCHE : sans accents ni casse — la bibliothèque et le Catalogue cherchent pareil.
+export const fold = (text) => String(text || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+export const matchesQuery = (rom, query) => !query || fold(rom.title).includes(fold(query));
 
 // AFFICHER LES CONSOLES SANS JEU (Réglages › Application › Apparence) : oui par défaut,
 // gardé dans CE navigateur, comme le thème et la langue de la webapp — le compte n'a pas
@@ -482,7 +486,6 @@ export function usePlatforms() {
         if (!consoles) {
             return null;
         }
-        const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
         const recent = consoles.filter((entry) => entry.method === "streamex").sort(byName);
         const retro = consoles.filter((entry) => entry.method === "retrogaming").sort(byName);
         const remote = [];

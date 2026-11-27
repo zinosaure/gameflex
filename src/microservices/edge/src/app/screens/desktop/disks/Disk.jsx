@@ -45,11 +45,10 @@ export default function Disk() {
                 confirmLabel={t("desktop.remove")} onConfirm={async () => {
                     const answer = await call(`/disks/${encodeURIComponent(disk.name)}`, "DELETE");
 
+                    feedback.result(answer.ok, t("desktop.diskRemoved", { name: disk.name }), t("settings.actionFailed"));
                     if (answer.ok) {
                         setState(answer);
                         navigate("/desktop/disks");
-                    } else {
-                        feedback.failed(t("settings.actionFailed"));
                     }
                 }} />
         </DesktopPage>

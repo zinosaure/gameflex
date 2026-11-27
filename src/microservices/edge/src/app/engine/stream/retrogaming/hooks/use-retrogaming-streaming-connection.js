@@ -4,6 +4,7 @@ import { useGatewayWebrtcConnection } from "../../shared/hooks/use-gateway-webrt
 import { useManagedWebSocket } from "../../shared/hooks/use-managed-websocket.js";
 import { useRetrogamingSaveStates } from "./use-retrogaming-save-states.js";
 import { streamAuthToken, wsUrl } from "../../../../libs/serverBase.js";
+import { withPad } from "../../../libs/gamepadPresence.js";
 
 // Connects to the Go backend's server-side libretro emulation, streamed
 // over WebRTC — signaling here is a single WebSocket carrying
@@ -339,7 +340,8 @@ export function useRetrogamingStreamingConnection({ screenRef, toast, onRumble, 
 								break;
 							}
 							case "rumble": {
-								onRumble?.(msg.rumbleWeak || 0, msg.rumbleStrong || 0);
+								// Le port voyage avec la vibration (chantier 84) : la manette de ce siège.
+								onRumble?.(msg.rumbleWeak || 0, msg.rumbleStrong || 0, msg.port || 0);
 								break;
 							}
 							// Broadcast when ANY player (owner or a joiner,
@@ -419,9 +421,10 @@ export function useRetrogamingStreamingConnection({ screenRef, toast, onRumble, 
 	// DataChannel — no polling interval needed the way the reference
 	// client's keyboard/physical-gamepad handling does, since the virtual
 	// controller already only fires on real press/release events.
-	const sendButton = useCallback((buttonId, value) => {
+	// `pad` — la manette de l'appareil (chantier 84) : son numéro voyage devant l'appui (withPad).
+	const sendButton = useCallback((buttonId, value, pad = 1) => {
 		if (buttonId === undefined) return;
-		screenRef.current?.sendMessage(JSON.stringify([{ button: buttonId, value }]));
+		screenRef.current?.sendMessage(withPad(pad, JSON.stringify([{ button: buttonId, value }])));
 	}, [screenRef]);
 
 	// Sends an analog stick position — axis 0/1 matches libretro's
@@ -429,12 +432,12 @@ export function useRetrogamingStreamingConnection({ screenRef, toast, onRumble, 
 	// handleInput). x/y are normalized -1..1 from VirtualJoystick, scaled
 	// here to the int16 range the backend's analogStates array expects
 	// (RETRO_DEVICE_ID_ANALOG_X/Y), matching real libretro analog range.
-	const sendAnalog = useCallback((axis, x, y) => {
-		screenRef.current?.sendMessage(
+	const sendAnalog = useCallback((axis, x, y, pad = 1) => {
+		screenRef.current?.sendMessage(withPad(pad,
 			JSON.stringify([
 				{ axis, x: Math.round(x * 32767), y: Math.round(y * 32767) },
 			]),
-		);
+		));
 	}, [screenRef]);
 
 	// L'ÉCRAN TACTILE — la Nintendo DS et les siens.

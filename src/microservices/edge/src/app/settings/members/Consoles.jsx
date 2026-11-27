@@ -3,7 +3,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { isAdministrator } from "../../globals/accounts.js";
 import { updateUser } from "../../libs/api.js";
-import { ConsoleGrantsSections, formToGrants, MemberSubPage } from "../Members.jsx";
+import { ConsoleGrantsSections, MemberSubPage } from "../Members.jsx";
 
 // /settings/members/<id>/consoles : CE QU'IL PEUT LANCER (le porteur, 2026-11-14 : « All rétro, streamex et remoteplay
 // doit être un lien dans more qui ouvre la page des "Console access" ») — tout le rétro, puis chaque console récente,

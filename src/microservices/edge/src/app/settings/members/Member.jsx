@@ -19,7 +19,7 @@ import { createUser, deleteUser, newMemberLink, resetMember, resetMemberMfa, upd
 import { useAuth } from "../../libs/data.jsx";
 import { counted, dateTime } from "../../libs/format.js";
 import { InvitationReveal, useMemberLink } from "../../screens/access/Invitation.jsx";
-import { Form, FormButton, formContext, Ruleset } from "../../ui/Forms.jsx";
+import { Form, FormButton, formContext, Ruleset, shownProblem as shownProblemOf } from "../../ui/Forms.jsx";
 import SettingsPage, { useSettingsNavigation } from "../SettingsPage.jsx";
 import { awaiting, day, lockReason, memberName, MemberPending, MEMBERS, MEMBERS_GUIDES, passwordState, ROLE_ADMIN, ROLE_USER, tokenLive, useMember, withoutCode } from "../Members.jsx";
 import { CONSOLE_ICON } from "../../globals/icons.js";
@@ -76,7 +76,7 @@ export function MemberForm({ member: given, locked = null }) {
         display_name: values.display_name.length < 3 ? t("members.displayNameMinChars", { min: 3 }) : values.display_name.length > 25 ? t("members.displayNameMaxChars", { max: 25 }) : "",
     };
     // L'erreur d'un champ se montre une fois qu'on y a écrit (un champ vide n'est pas faux, il manque).
-    const shownProblem = (name) => (data) => (data[name] && problems[name] ? Ruleset.isInvalid(problems[name]) : null);
+    const shownProblem = shownProblemOf(problems);
     const greyed = () => Ruleset.isDisabled(null);
     const form = formContext(values, setValues, {
         username: editing ? greyed : shownProblem("username"),

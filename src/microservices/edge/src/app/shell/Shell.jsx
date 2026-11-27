@@ -8,6 +8,7 @@ import { lastTabPath, tabById, TABS } from "../libs/tabs.js";
 import { BAR_EVENTS, focusHeader } from "../libs/input.js";
 import { ICON_BUTTON, useBarToggle } from "../libs/ui.js";
 import { useFederatedSessions } from "../libs/SessionPool.js";
+import { timeOf } from "../libs/format.js";
 
 // LA BARRE DU HAUT, la même sur chaque écran : les quatre onglets (L2 / R2), la
 // marque « Beta », les aides des boutons, la cloche, l'engrenage, l'heure.
@@ -54,7 +55,7 @@ function Clock() {
         return () => clearInterval(timer);
     }, []);
 
-    return <span className="clock small fw-semibold text-body-secondary">{now.toLocaleTimeString(i18n.language === "fr" ? "fr-FR" : "en-GB", { hour: "2-digit", minute: "2-digit" })}</span>;
+    return <span className="clock small fw-semibold text-body-secondary">{timeOf(now, i18n.language)}</span>;
 }
 
 // L'EN-TÊTE : « GameFlex », et la pastille « staging » quand l'hôte se déclare banc

@@ -42,8 +42,11 @@ export function FederatedTokenForm({ server, refused = false }) {
         const result = mode === "code" ? await typeFederationCode(server.id, pasted) : await pasteFederationToken(server.id, pasted);
         setPending(false);
 
+        // LA RÉUSSITE SE DIT AUSSI (le porteur, 2026-11-26 : « j'ai rajouté mon jeton pour me connecter sur un serveur fédéré
+        // et ça n'a rien affiché comme message de réussite ») : la fenêtre de réponse, comme tout formulaire.
         if (result.ok) {
             setValues({ invitation: "", code: "", token: "" });
+            feedback.success(t("federation.signedIn", { server: server.name }));
         } else if (mode === "code") {
             feedback.failed(result.code === "pairingClosed" ? t("pairing.errors.accountPairingClosed", { server: server.name }) : pairingRefusal(t, result.code, server.name));
         } else {

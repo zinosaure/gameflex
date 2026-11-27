@@ -14,6 +14,7 @@ import { Section } from "../bricks/Section.jsx";
 import { SelectRow } from "../bricks/SelectRow.jsx";
 import { SwitchRow } from "../bricks/SwitchRow.jsx";
 import { fact } from "../libs/format.js";
+import { fullscreenElement } from "../libs/orientation.js";
 
 // APPLICATION (Settings.jsx en fait l'entrée et la route) : une seule page. Les Manettes ont leur entrée
 // (Gamepads.jsx), leur disposition sa page (Layout.jsx) ; les notifications de cet appareil viennent de Push.jsx.
@@ -22,7 +23,6 @@ import { fact } from "../libs/format.js";
 // un geste seul en ligne.
 
 // LE PLEIN ÉCRAN : l'API Fullscreen, préfixée webkit en repli.
-const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement || null;
 
 const enterFullscreen = async () => {
     const root = document.documentElement;
@@ -95,7 +95,10 @@ function FederatedServers() {
             list={{
                 items: servers, textOf: (server) => `${server.hostname || ""} ${server.link}`, placeholder: t("fed.searchServer"),
                 render: (server, values, set) => (
-                    <SwitchRow key={server.id} id={`ap-server-${server.id}`} label={server.hostname || server.link} texts="shown" help={server.hostname ? fact(t("fed.urlLabel"), server.link) : null}
+                    // UN SERVEUR RELAYÉ (chantier 83 ; le porteur, 2026-11-26 : « on puisse voir les relations des serveurs fédérés
+                    // aussi ») : par qui il passe, au lieu de son adresse (celle du relais).
+                    <SwitchRow key={server.id} id={`ap-server-${server.id}`} label={server.hostname || server.link} texts="shown"
+                        help={server.relayedBy ? t("fed.relayedBy", { name: server.relayedBy }) : server.hostname ? fact(t("fed.urlLabel"), server.link) : null}
                         checked={values[server.id]} onChange={(on) => set({ [server.id]: on })} />
                 ),
             }} />

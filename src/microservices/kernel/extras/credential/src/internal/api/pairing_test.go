@@ -542,3 +542,33 @@ func TestRemoteAdministrationTravelsWithInvitationAndPairingCode(t *testing.T) {
 		t.Fatalf("depuis une session venue d'ailleurs : %d, attendu 403", code)
 	}
 }
+
+// « PEUT ME RELAYER » CHOISI À LA CRÉATION (chantier 83 ; le porteur, 2026-11-26) suit l'invitation et le code d'appairage
+// comme l'administration ; coupé, l'accès naît sans. Jamais accordé depuis une session venue d'ailleurs.
+func TestRelayTravelsWithInvitationAndPairingCode(t *testing.T) {
+	server, _ := pairingServer(t)
+	relayOf := func(token string) int {
+		var allowed int
+		_ = server.db.QueryRow(`SELECT relay_allowed FROM federation_tokens WHERE token_hash = ?`, hashToken(token)).Scan(&allowed)
+		return allowed
+	}
+	_, link := createInvitation(t, server, inviter, `{"kind":"federation","label":"Tablette","relay_allowed":true}`)
+	redeemed, err := server.RedeemInvitation(link.Code, InvitationFederation, "", "a")
+	if err != nil || relayOf(redeemed.Token) != 1 {
+		t.Fatalf("invitation avec le relais : %v, droit %d", err, relayOf(redeemed.Token))
+	}
+	_, plain := createInvitation(t, server, inviter, `{"kind":"federation","label":"Télé"}`)
+	if redeemed, _ := server.RedeemInvitation(plain.Code, InvitationFederation, "", "a"); relayOf(redeemed.Token) != 0 {
+		t.Fatal("une invitation sans le relais le donne")
+	}
+	as(server.withAdmin(server.handleOpenServerPairing), inviter, "", "")
+	code := newCode(t, server, inviter, `{"kind":"federation","label":"Téléphone","relay_allowed":true}`)
+	if redeemed, err := server.RedeemInvitation(code.Code, InvitationFederation, "Gamebox", "a"); err != nil || relayOf(redeemed.Token) != 1 {
+		t.Fatalf("code d'appairage avec le relais : %v", err)
+	}
+	federated := inviter
+	federated.Federated = true
+	if code, _ := createInvitation(t, server, federated, `{"kind":"federation","label":"x","relay_allowed":true}`); code != http.StatusForbidden {
+		t.Fatalf("depuis une session venue d'ailleurs : %d, attendu 403", code)
+	}
+}

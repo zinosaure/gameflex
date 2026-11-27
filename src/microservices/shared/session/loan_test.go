@@ -38,13 +38,13 @@ func TestALoanKeepsTheOwnersPlace(t *testing.T) {
 	if session.Owner != "gino" || session.Borrower() != "gixi" {
 		t.Fatalf("owner = %q, borrower = %q — want gino, gixi", session.Owner, session.Borrower())
 	}
-	if got := session.ControlledSlot("sock-X"); got != 1 {
+	if got := session.ControlledSlot("sock-X", 1); got != 1 {
 		t.Fatalf("the borrower's keys drive pad %d, want 1", got)
 	}
-	if got := session.ControlledSlot("sock-G"); got != 0 {
+	if got := session.ControlledSlot("sock-G", 1); got != 0 {
 		t.Fatalf("the owner's keys drive pad %d during the loan, want none", got)
 	}
-	if got := session.ControllerOf(1); got != "sock-X" {
+	if got := controllerSocket(session, 1); got != "sock-X" {
 		t.Fatalf("pad 1 is driven from %q, want the borrower's tab", got)
 	}
 	if session.IdleSince != nil {
@@ -76,7 +76,7 @@ func TestTheOwnerTakesTheirPadBack(t *testing.T) {
 	if outcomes[0].Err != nil || outcomes[0].Slot != 1 {
 		t.Fatalf("reclaim = (%d, %v), want (1, nil)", outcomes[0].Slot, outcomes[0].Err)
 	}
-	if session.Lent() || session.ControlledSlot("sock-G") != 1 || session.ControlledSlot("sock-X") != 0 {
+	if session.Lent() || session.ControlledSlot("sock-G", 1) != 1 || session.ControlledSlot("sock-X", 1) != 0 {
 		t.Fatalf("players = %+v — want gino driving pad 1 again, gixi watching", session.Players)
 	}
 }
@@ -130,7 +130,7 @@ func TestTheOwnerOnlyTakesBackTheirOwnPad(t *testing.T) {
 	if outcomes[0].Err != nil || outcomes[1].Err != nil {
 		t.Fatalf("ask then deny = (%v, %v), want both accepted", outcomes[0].Err, outcomes[1].Err)
 	}
-	if session.ControlledSlot("sock-D") != 2 || session.ControlledSlot("sock-G") != 1 {
+	if session.ControlledSlot("sock-D", 1) != 2 || session.ControlledSlot("sock-G", 1) != 1 {
 		t.Fatalf("players = %+v — want dave still on pad 2, gino on pad 1", session.Players)
 	}
 }
@@ -143,7 +143,7 @@ func TestTheOwnerTakesThePadBackFromAnotherTab(t *testing.T) {
 	if outcomes := drain(session, now, Command{Kind: CmdReclaim, Username: "gino", SocketID: "sock-G2"}); outcomes[0].Err != nil {
 		t.Fatalf("reclaim from another tab = %v", outcomes[0].Err)
 	}
-	if !session.IsPlaying("gino", "sock-G2") || session.ControlledSlot("sock-G2") != 1 {
+	if !session.IsPlaying("gino", "sock-G2") || session.ControlledSlot("sock-G2", 1) != 1 {
 		t.Fatalf("players = %+v — want the place on the tab that took the pad back", session.Players)
 	}
 }
@@ -155,7 +155,7 @@ func TestTheBorrowerGivesThePadBack(t *testing.T) {
 	if outcomes[0].Err != nil || outcomes[0].Slot != 1 {
 		t.Fatalf("return = (%d, %v), want (1, nil)", outcomes[0].Slot, outcomes[0].Err)
 	}
-	if session.Lent() || session.ControlledSlot("sock-G") != 1 {
+	if session.Lent() || session.ControlledSlot("sock-G", 1) != 1 {
 		t.Fatalf("players = %+v — want gino driving pad 1 again", session.Players)
 	}
 }
@@ -183,7 +183,7 @@ func TestTheBorrowerLeavingGivesThePadBack(t *testing.T) {
 	session := lend(t)
 	session.DropSocket("sock-X", now)
 
-	if session.Lent() || session.ControlledSlot("sock-G") != 1 {
+	if session.Lent() || session.ControlledSlot("sock-G", 1) != 1 {
 		t.Fatalf("players = %+v — want gino driving pad 1 again", session.Players)
 	}
 	if session.IdleSince != nil {
@@ -197,7 +197,7 @@ func TestTheOwnerLeavingEndsTheLoan(t *testing.T) {
 	session := lend(t)
 	session.DropSocket("sock-G", now)
 
-	if session.Lent() || session.ControlledSlot("sock-X") != 0 || session.PlayerOf("gino") != nil {
+	if session.Lent() || session.ControlledSlot("sock-X", 1) != 0 || session.PlayerOf("gino") != nil {
 		t.Fatalf("players = %+v — the place falls, and the loan with it", session.Players)
 	}
 	if session.IdleSince == nil {
@@ -252,7 +252,7 @@ func TestABorrowerWhoJoinsStopsBorrowing(t *testing.T) {
 	if slot, err := session.Join("gixi", "sock-X", now); err != nil || slot != 2 {
 		t.Fatalf("join = (%d, %v), want (2, nil)", slot, err)
 	}
-	if session.Lent() || session.ControlledSlot("sock-X") != 2 || session.ControlledSlot("sock-G") != 1 {
+	if session.Lent() || session.ControlledSlot("sock-X", 1) != 2 || session.ControlledSlot("sock-G", 1) != 1 {
 		t.Fatalf("players = %+v — gixi on their own pad, gino back on theirs", session.Players)
 	}
 }
@@ -266,7 +266,7 @@ func TestATakeoverKeepsTheLoan(t *testing.T) {
 	if _, err := session.Takeover("gino", "sock-G2", now); err != nil {
 		t.Fatalf("takeover = %v", err)
 	}
-	if session.Borrower() != "gixi" || session.ControlledSlot("sock-X") != 1 || session.ControlledSlot("sock-G2") != 0 {
+	if session.Borrower() != "gixi" || session.ControlledSlot("sock-X", 1) != 1 || session.ControlledSlot("sock-G2", 1) != 0 {
 		t.Fatalf("players = %+v — the loan stays with the place", session.Players)
 	}
 }

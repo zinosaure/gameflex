@@ -76,7 +76,7 @@ function LogLines({ log }) {
             <Section title={t("logs.lastLines")} help={t("logs.lastLinesHelp")} sense="modify">
                 {/* Un journal illisible : la raison en ligne atténuée, plus en alerte (le porteur, 2026-11-16). */}
                 {failed ? <Note className="mt-0">{failed}</Note> : (
-                    <Listing items={filtered} loading={entries === null} search={read("q")} onSearch={(q) => update({ q, page: 1 })} placeholder={t("logs.searchLine")} pageSize={25}
+                    <Listing items={filtered} overall={(entries || []).length} loading={entries === null} search={read("q")} onSearch={(q) => update({ q, page: 1 })} placeholder={t("logs.searchLine")} pageSize={25}
                         placeholderRow={() => <PlaceholderRow lead={null} chevron={false} />}
                         page={Number(read("page")) || 1} onPage={(page) => update({ page })} found={t("logs.linesFound", { count: filtered.length })} empty={t("logs.noLine")}
                         filterCount={hiddenLevels.length} filters={[switchGroup({ key: "levels", title: t("logs.filterLevel"), id: "lg-filter-level", hidden: hiddenLevels,
@@ -111,7 +111,6 @@ function LogLines({ log }) {
 
 // Le journal que la liste a passé, sinon relu dans la liste du kernel.
 export default function Log() {
-    const { t } = useTranslation();
     const location = useLocation();
     const path = useParams()["*"] || "";
     const given = location.state?.log?.path === path ? location.state.log : null;

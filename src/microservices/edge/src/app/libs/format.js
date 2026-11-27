@@ -47,15 +47,23 @@ export const counted = (t, unit, count, values = {}) => (count === null || count
 
 // UNE DATE ET SON HEURE, dans la langue de la page (« 20 nov. 2026, 00:25 ») ; un tiret quand on ne la connaît pas — la
 // même partout (Membres, Fédération, Mes sauvegardes).
-export const dateTime = (iso, language) => (iso ? new Date(iso).toLocaleString(language === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "—");
+// `missing` — ce qui s'écrit sans date : un tiret dans une valeur, rien dans une phrase. LE JOUR SEUL (`day`) et L'HEURE
+// SEULE (`timeOf`, « 14:05 ») se lisent ici aussi : aucune page n'écrit sa propre date.
+const localeOf = (language) => (language === "fr" ? "fr-FR" : "en-GB");
+export const dateTime = (iso, language, missing = "—") => (iso ? new Date(iso).toLocaleString(localeOf(language), { dateStyle: "medium", timeStyle: "short" }) : missing);
+export const day = (iso, language, missing = "—") => (iso ? new Date(iso).toLocaleDateString(localeOf(language), { dateStyle: "medium" }) : missing);
+export const timeOf = (iso, language, missing = "") => (iso ? new Date(iso).toLocaleTimeString(localeOf(language), { hour: "2-digit", minute: "2-digit" }) : missing);
 
 export const fact = (label, value) => (value === null || value === undefined || value === "" || value === false ? null : { label, value });
 
 // Le nom d'un serveur fédéré, celui de sa ligne dans la Fédération (son nom, sinon son adresse).
-export const serverName = (servers, id) => {
+// LE NOM D'UN SERVEUR FÉDÉRÉ, une fois : son nom, son adresse, sinon « Serveur n° … » (avec `t`) ou son numéro.
+// `serverName` le cherche dans la liste ; `serverNamed` le lit sur le serveur déjà trouvé.
+export const serverNamed = (server, id, t = null) => server?.hostname || server?.link || (t ? t("consoles.serverNamed", { id }) : String(id));
+export const serverName = (servers, id, t = null) => {
     const server = (servers || []).find((entry) => String(entry.id) === String(id));
 
-    return server?.hostname || server?.link || String(id);
+    return serverNamed(server, id, t);
 };
 
 // D'OÙ VIENT UN JEU, LA SEULE FORME (le porteur, 2026-11-23 : « tout doit rester cohérent ») : le serveur fédéré, la
@@ -73,3 +81,10 @@ export function formatDuration(startedAt, now = Date.now()) {
 
     return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60].map((part) => String(part).padStart(2, "0")).join(":");
 }
+
+export const MEGABYTE = 1024 * 1024;
+
+// POURQUOI LA FICHE D'UN JEU FÉDÉRÉ NE SE LIT PAS : notre jeton refusé (403), un jeu qu'il ne prête pas (404), ou le
+// serveur injoignable. Une fois, pour le Catalogue et les Réglages des consoles.
+export const sheetRefusalOf = (status, server, t) => (status === 403 ? t("gameAdmin.sheetDenied", { server })
+    : status === 404 ? t("gameAdmin.sheetNotLent", { server }) : t("gameAdmin.sheetUnreachable", { server }));

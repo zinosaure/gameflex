@@ -247,7 +247,7 @@ func TestTheKeysAndTheRumbleFollowTheLoan(t *testing.T) {
 		}
 		deadline := time.Now().Add(3 * time.Second)
 		for {
-			if _, managed := host.PortForViewer(viewerID); managed {
+			if _, managed := host.PortForViewer(viewerID, 1); managed {
 				return
 			}
 			if time.Now().After(deadline) {
@@ -258,7 +258,7 @@ func TestTheKeysAndTheRumbleFollowTheLoan(t *testing.T) {
 	}
 	expect := func(when, viewerID string, want int) {
 		t.Helper()
-		if slot, _ := host.PortForViewer(viewerID); slot != want {
+		if slot, _ := host.PortForViewer(viewerID, 1); slot != want {
 			t.Fatalf("%s: %s drives pad %d, want %d", when, viewerID, slot, want)
 		}
 	}
@@ -285,7 +285,7 @@ func TestTheKeysAndTheRumbleFollowTheLoan(t *testing.T) {
 	}
 	expect("during the loan", "viewer-gixi", 1)
 	expect("during the loan", "viewer-gino", 0)
-	if viewer := host.ViewerForSlot(1); viewer != "viewer-gixi" {
+	if viewer := viewerOnly(host.ViewerForSlot(1)); viewer != "viewer-gixi" {
 		t.Fatalf("pad 1 rumbles for %q during the loan, want the borrower", viewer)
 	}
 
@@ -295,7 +295,7 @@ func TestTheKeysAndTheRumbleFollowTheLoan(t *testing.T) {
 	}
 	expect("after taking it back", "viewer-gino", 1)
 	expect("after taking it back", "viewer-gixi", 0)
-	if viewer := host.ViewerForSlot(1); viewer != "viewer-gino" {
+	if viewer := viewerOnly(host.ViewerForSlot(1)); viewer != "viewer-gino" {
 		t.Fatalf("pad 1 rumbles for %q after the reclaim, want the owner", viewer)
 	}
 }

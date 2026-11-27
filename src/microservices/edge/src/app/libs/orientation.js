@@ -27,7 +27,7 @@ import { getScreenOrientation, setScreenOrientation } from "./screenOrientation.
 // L'application Android n'est pas concernée : son activité tourne d'elle-même.
 const LOCKS = { landscape: "landscape-primary", "landscape-reverse": "landscape-secondary" };
 
-const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+export const fullscreenElement = () => document.fullscreenElement || document.webkitFullscreenElement || null;
 // Un choix en cours verrouille lui-même (il lui faut la réponse) : le plein écran qu'il allume ne verrouille pas deux fois.
 let choosing = false;
 

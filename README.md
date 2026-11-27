@@ -41,7 +41,8 @@ people you choose.
 - **Nothing to install to play.** A web browser is enough: Windows, macOS, Linux, Android, iOS, a smart TV. The
   screen in your hands only shows a video, so a modest phone plays a PlayStation 3 game.
 - **On an Android TV.** The Android app installs on the TV box: it runs the retro consoles itself, and the heavy
-  ones play from your server, or a friend's, through federation.
+  ones play from your server, or a friend's, through federation. Several controllers on the same device each take
+  their own place, for a couch full of players.
 - **Low latency.** The picture travels by WebRTC, straight from your server to your screen; at home, it takes a few
   milliseconds. Up to 1440p and 120 frames per second, and the picture adapts when the network weakens.
 - **On the TV.** Send a game to a Chromecast, from Chrome, the Android app or the PC.
@@ -87,7 +88,6 @@ people you choose.
 ### Coming soon
 
 - **Plugins**, in their own space.
-- **Several Bluetooth controllers** on the same device, for a couch full of players in front of an Android TV.
 - **PC ports** of games, playable from GameFlex.
 - **Watching sessions and data** from the administration.
 
@@ -202,8 +202,8 @@ should work, but has not been tried.
     shaders compile).
   - **PlayStation 4:** Final Fantasy VII Remake, Final Fantasy XV Pocket Edition, Grand Theft Auto
     V, Kingdom Hearts III, Kingdom Hearts HD 2.8 Final Chapter Prologue, Driveclub, FIFA 22, EA
-    Sports FC 27 (its matches play, with some stutter), Sonic Mania Plus. FIFA 22 and FC 27 need
-    their patch, which GameFlex offers.
+    Sports FC 27 (it plays, with minor glitches), Sonic Mania Plus. FIFA 22 and FC 27 need their
+    patch, which GameFlex offers.
   - **PlayStation 3:** Final Fantasy XIII. **Switch:** Mini Metro, EA Sports FC 27. **Switch 2:** The
     Legend of Zelda: Ocarina of Time, with its saves. **Wii U:** New Super Mario Bros. U (as a disc
     image and extracted). **Xbox:** Dead or Alive 3. **Xbox 360:** Halo 3.
@@ -233,8 +233,8 @@ should work, but has not been tried.
   yet on a real desktop with a double-click, nor on Wayland.
 - **Send to the TV (Google Cast):** not tried up to a TV yet. The Android app opens its TV picker, and the PC
   window opens the cast page in the browser.
-- **Android TV:** the Android app on a friend's TV box, the heavy consoles played through federation. One
-  controller per screen for now.
+- **Android TV:** the Android app on a friend's TV box, the heavy consoles played through federation. Several
+  controllers on one device: tried with simulated controllers in a browser, not yet with real ones on a TV.
 - **Not tried yet:** playing with friends over the phone's own hotspot, without Internet.
 
 ## Quick start

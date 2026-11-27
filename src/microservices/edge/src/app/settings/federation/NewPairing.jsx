@@ -23,7 +23,7 @@ export default function NewPairing() {
     const levels = useLevels();
     const pairing = usePairing();
     const { back } = useSettingsNavigation();
-    const [values, setValues] = useState({ label: "", providers: false, remoteAdmin: false });
+    const [values, setValues] = useState({ label: "", providers: false, remoteAdmin: false, relayAllowed: false });
     const [pending, setPending] = useState(false);
     const [created, setCreated] = useState(null);
     const form = formContext(values, setValues);
@@ -32,7 +32,7 @@ export default function NewPairing() {
 
     const create = async () => {
         setPending(true);
-        const answer = await createPairingCode({ kind: "federation", label, scopes: scopesFor(values), remoteAdmin: values.remoteAdmin });
+        const answer = await createPairingCode({ kind: "federation", label, scopes: scopesFor(values), remoteAdmin: values.remoteAdmin, relayAllowed: values.relayAllowed });
         setPending(false);
 
         if (!answer.ok || !answer.item) {
@@ -69,7 +69,7 @@ export default function NewPairing() {
                         </Section>
                         <Section title={t("fed.remoteRights")} help={t("fed.remoteRightsHelp")} sense="modify">
                             <Rows>
-                                <RemoteRightsRows values={values} setValues={setValues} />
+                                <RemoteRightsRows values={values} set={(patch) => setValues((previous) => ({ ...previous, ...patch }))} />
                                 <SubmitRow>
                                     <FormButton id="fd-pairing-create" label={t("pairing.create")} isReplaced={Boolean(label)} disabled={!open} pending={pending} />
                                 </SubmitRow>

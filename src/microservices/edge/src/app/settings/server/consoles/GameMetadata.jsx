@@ -3,7 +3,7 @@ import { useNames } from "../../../libs/displayNames.js";
 import { useTranslation } from "react-i18next";
 import { dropMetadataSource, fetchGameStatus, fetchMetadataSource, metadataCandidates, putManualImage, removeGameStatus, reportGameStatus, saveManualMetadata, searchGameImages } from "../../../libs/api.js";
 import { useData } from "../../../libs/data.jsx";
-import { fact, GAME_STATUSES, STATUS_TONE } from "../../../libs/format.js";
+import { dateTime, fact, GAME_STATUSES, STATUS_TONE } from "../../../libs/format.js";
 import { forgetGameImages, gamePath, useImage } from "../../../libs/images.js";
 import { forgetGameMetadata, setGameMetadata, useGameMetadata } from "../../../libs/metadata.js";
 import { toast } from "../../../shell/Shell.jsx";
@@ -212,12 +212,12 @@ export function GameImageSearch({ consoleId, reference, game = {}, kind, title, 
                         message: t("appearance.chosenConfirm", { game: image.game, source: imageOrigin(image, t) }),
                         confirmLabel: t("appearance.setAction"),
                     })}
+                    success={() => t("appearance.imageSet", { kind: kindName })}
                     onChoose={async (image) => {
                         const answer = await putManualImage(consoleId, reference, game, kind, image);
 
                         if (answer.ok) {
                             reread(consoleId, reference, game);
-                            toast(t("appearance.imageSet", { kind: kindName }));
                             onDone();
                         }
 
@@ -593,7 +593,7 @@ function GameStatusForm({ consoleId, reference }) {
             patchHere(consoleId, reference, { status: settled.data?.view || null });
         }
     };
-    const dated = (at) => (at ? new Date(at).toLocaleString(i18n.language === "fr" ? "fr-FR" : "en-GB", { dateStyle: "medium", timeStyle: "short" }) : "");
+    const dated = (at) => dateTime(at, i18n.language, "");
     // RETIRER UN SIGNALEMENT (chantier 68 ; le porteur, 2026-11-19 : « il faut pouvoir supprimer les historiques ») : toucher
     // sa ligne le demande (la fenêtre de Skeleton) ; le statut du jeu se recalcule de ceux qui restent.
     const remove = (report) => confirm({

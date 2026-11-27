@@ -18,7 +18,7 @@ import { standbyConsole, stopSession } from "../../engine/api/spawnSessions.js";
 import { setGameInputSuspended } from "../../engine/libs/gameInput.js";
 import { connectedGamepads } from "../../engine/libs/keyMapping.js";
 import { useScreenOrientation } from "../../libs/screenOrientation.js";
-import { usePhysicalGamepad } from "../../engine/libs/gamepadPresence.js";
+import { setPadSeats, usePhysicalGamepad } from "../../engine/libs/gamepadPresence.js";
 import { useNames } from "../../libs/displayNames.js";
 import { onDeviceFailed, recentDeviceFailure } from "../../engine/libs/deviceStream.js";
 import { streamHostUsername } from "../../libs/serverBase.js";
@@ -93,14 +93,14 @@ const WATCH_LAUNCH_STEPS = [
 // L'AIGUILLAGE PAR PLATEFORME — une seule forme pour les trois (useStreamingInput de la webapp). La
 // partie du téléphone (`device`) fait du rétro : le même hook la pilote.
 function useStreamingInput({ screenRef, session, context, t, options = {} }) {
-    const { isWatching, drivesPad, childSlot, onConnectionError, onProgress } = options;
+    const { isWatching, drivesPad, childSlot, onConnectionError, onProgress, onPadPress } = options;
 
     switch (session.platform) {
         case "device":
         case "retrogaming":
-            return useRetrogamingInput({ screenRef, session, context, t, options: { isWatching, childSlot, onConnectionError, onProgress } });
+            return useRetrogamingInput({ screenRef, session, context, t, options: { isWatching, childSlot, onConnectionError, onProgress, onPadPress } });
         case "streamex":
-            return useStreamexInput({ screenRef, session, t, options: { isWatching, drivesPad } });
+            return useStreamexInput({ screenRef, session, t, options: { isWatching, drivesPad, onPadPress } });
         default:
             return useRemotePlayInput({ screenRef, session, context, t, options: {} });
     }
@@ -189,6 +189,13 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     // QUELLE MANETTE pilotent les touches de cet onglet (`you.controls`) ; pendant un prêt, le
     // propriétaire garde sa place et ne pilote rien, l'emprunteur regarde et pilote.
     const [childControls, setChildControls] = useState(null);
+    // LES MANETTES DE CET APPAREIL (chantier 84), telles que le child les dit : le siège de chacune (`you.pads`), celles
+    // qui attendent (`you.waiting`).
+    const [childPads, setChildPads] = useState(null);
+    const [childWaiting, setChildWaiting] = useState([]);
+    // Un appui d'une manette : la réponse vit plus bas, une fois le canal du child ouvert.
+    const padPressRef = useRef(null);
+    const onPadPress = useCallback((number) => padPressRef.current?.(number), []);
     const [childStateSeen, setChildStateSeen] = useState(false);
     const [sessionEnded, setSessionEnded] = useState(false);
     const [gameExited, setGameExited] = useState(false);
@@ -290,7 +297,8 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     const introStep = introPhase !== "hold" ? null : slowStart ? "game.loadingSlow" : gameLoading ? "game.loading" : heldLong ? "game.waitingPicture" : null;
 
     // Tout ce qui ENVOIE suit cette réponse-là ; avant que le child ait parlé, jouer, c'est piloter.
-    const drivesPad = childControls == null ? !isWatching : childControls > 0;
+    // Une manette de l'appareil qui tient un siège suffit (chantier 84) : la manette 1 a pu rendre le sien.
+    const drivesPad = childPads == null ? (childControls == null ? !isWatching : childControls > 0) : childPads.length > 0;
     const input = useStreamingInput({
         screenRef,
         session,
@@ -300,6 +308,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
             isWatching,
             drivesPad,
             childSlot,
+            onPadPress,
             onProgress: noteChildStep,
             // « Personne ne joue encore » est un état NORMAL pour qui regarde : le flux de la plateforme
             // échoue tant que personne n'a pris la manette.
@@ -331,8 +340,11 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         setWatching(watching);
         setChildSlot(message.you?.slotId ?? null);
         setChildControls(message.you?.controls ?? 0);
+        setChildPads(message.you?.pads ?? []);
+        setChildWaiting(message.you?.waiting ?? []);
+        setPadSeats(message.you?.pads ?? []);
         setChildLoan({ canReclaim: message.you?.canReclaim === true, canReturn: message.you?.canReturn === true, lentTo: message.lentTo || "", otherTabs: message.you?.otherTabs || 0 });
-        const players = (message.players ?? []).map((player) => ({ username: player.username, role: player.isOwner ? "owner" : "player", slot: player.slotId, lentTo: player.lentTo || "", joinedAt: player.joinedAt || null }));
+        const players = (message.players ?? []).map((player) => ({ username: player.username, role: player.isOwner ? "owner" : "player", slot: player.slotId, pad: player.pad || 1, lentTo: player.lentTo || "", joinedAt: player.joinedAt || null }));
         const maxPlayers = message.maxPlayers || 0;
         setBroadcastPlayers(players);
         setBroadcastWatchers(message.watchers ?? []);
@@ -437,6 +449,10 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         if (message.status === "granted") {
             return;
         }
+        // UNE MANETTE EN ATTENTE (chantier 84) : pas un refus — le menu la dit « en attente », elle prendra le prochain siège.
+        if (message.action === "join" && message.reason === "waiting for a free slot") {
+            return;
+        }
         // MA PLACE EST SUR UN AUTRE APPAREIL (chantier 65) : le child refuse un second `join` du même compte. La page
         // demande alors à l'autre appareil de la libérer — c'est lui qui répond.
         if (message.action === "join" && message.reason === "already in the players queue") {
@@ -490,8 +506,9 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
         const actions = { cedeslot: "grant-handover", slotrequestdenied: "deny-handover", reclaimslot: "reclaim", returnslot: "return", releaseslot: "leave" };
         const action = message.type === "requestslot" ? (message.to ? "request-handover" : "join") : actions[message.type];
 
+        // La manette visée (`pad` : celle qui rend sa place) et le siège demandé (`slot`), chantier 84.
         if (action) {
-            childSocket.intent(action, message.to ?? null);
+            childSocket.intent(action, message.to ?? null, { ...(message.pad ? { pad: message.pad } : {}), ...(message.slot ? { slot: message.slot } : {}) });
         }
         // MA DEMANDE À UN JOUEUR : sans réponse avant que le child ne l'oublie (HandoverTTL, 30 s), « n'a pas donné suite ».
         if (action === "request-handover" && message.to && message.to !== user?.username) {
@@ -508,6 +525,23 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     // LA VOIX DE LA PARTIE (chantier 71) : un compte qui joue ou regarde, jamais le spectateur sans compte (la file ne le
     // connaît pas). Un geste refusé se dit en toast.
     const voiceIntent = useCallback((action, target) => childSocket.intent(action, target), [childSocket]);
+
+    // LE PREMIER APPUI D'UNE MANETTE SANS SIÈGE (chantier 84 ; le porteur : « Premier appui ») : l'appareil tient déjà un
+    // siège, cette manette n'en a pas et n'attend pas — elle en demande un ; le child la place, ou la met en attente. Une
+    // demande à la fois par manette, jusqu'à l'état suivant du child.
+    const askedPadsRef = useRef(new Set());
+    useEffect(() => {
+        askedPadsRef.current.clear();
+    }, [childPads, childWaiting]);
+    padPressRef.current = (number) => {
+        const pads = childPads || [];
+        if (!pads.length || pads.some((entry) => entry.pad === number) || childWaiting.includes(number) || askedPadsRef.current.has(number)) {
+            return;
+        }
+        if (childSocket.intent("join", null, { pad: number })) {
+            askedPadsRef.current.add(number);
+        }
+    };
     const voiceRefused = useCallback((reason) => {
         const reasons = {
             denied: "play.voice.refused.denied",
@@ -1317,6 +1351,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
                         watchOnly={watchOnly}
                         hostName={hostName}
                         voice={voice}
+                        seats={{ pads: childPads || [], waiting: childWaiting }}
                     />
                 )}
         </div>

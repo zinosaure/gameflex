@@ -9,7 +9,7 @@ import { listLentResources, romSource } from "../../../libs/api.js";
 import { useData } from "../../../libs/data.jsx";
 import { useGameMetadata } from "../../../libs/metadata.js";
 import SettingsPage, { NotFound } from "../../SettingsPage.jsx";
-import { CATALOG, GameSheet, peerOfReference, readGames, readResourceGames, resourceOfReference } from "../Games.jsx";
+import { CATALOG, catalogConsole, GameSheet, peerOfReference, readGames, readResourceGames, resourceOfReference } from "../Games.jsx";
 
 // /settings/catalog/games/game?console=&ref= : UN JEU — celui que la liste a passé (l'historique), sinon relu chez sa
 // source (un lien direct, un rechargement) : d'ici par la liste de sa console, d'un serveur fédéré par la sienne.
@@ -20,7 +20,7 @@ export default function CatalogGame() {
     const { consoles, loadHere } = useData();
     const consoleId = params.get("console") || "";
     const reference = params.get("ref") || "";
-    const console = (consoles || []).find((entry) => entry.id === consoleId && entry.method !== "remoteplay") || null;
+    const console = catalogConsole(consoles, consoleId);
     const given = location.state?.game?.consoleId === consoleId && location.state.game.reference === reference ? location.state.game : null;
     const [game, setGame] = useState(given || undefined);
     const metadata = useGameMetadata(console && game ? console.id : null, game?.reference, romSource(game));

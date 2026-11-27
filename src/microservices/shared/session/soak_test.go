@@ -51,8 +51,8 @@ func TestLoanPingPong(t *testing.T) {
 		}
 
 		// The borrower's NEW socket drives the pad, and only it.
-		if host.Session().ControlledSlot(borrowerSocket) != 1 || host.Session().ControlledSlot(ownerSocket) != 0 {
-			failAt(t, round, "pad 1 driven from %q, want %s", host.Session().ControllerOf(1), borrowerSocket)
+		if host.Session().ControlledSlot(borrowerSocket, 1) != 1 || host.Session().ControlledSlot(ownerSocket, 1) != 0 {
+			failAt(t, round, "pad 1 driven from %q, want %s", firstOf(host.Session().ControllerOf(1)), borrowerSocket)
 		}
 		// One entry, the owner's, on slot 1.
 		players := host.Session().Players
@@ -72,7 +72,7 @@ func TestLoanPingPong(t *testing.T) {
 			host.Detach(borrowerSocket, now.Add(time.Duration(round)*time.Second))
 		}
 
-		if host.Session().Lent() || host.Session().ControlledSlot(ownerSocket) != 1 {
+		if host.Session().Lent() || host.Session().ControlledSlot(ownerSocket, 1) != 1 {
 			failAt(t, round, "the pad did not come back to its owner (end %d)", round%3)
 		}
 		if round%3 != 2 {
@@ -282,7 +282,7 @@ func TestCapacitySurvivesTakeoverAndHandover(t *testing.T) {
 	if len(host.Session().Players) != 2 {
 		t.Fatalf("after the loan: players = %+v, want still 2", host.Session().Players)
 	}
-	if !host.Session().IsPlaying("gino", "sock-gino-2") || host.Session().ControlledSlot("sock-zoe") != 1 {
+	if !host.Session().IsPlaying("gino", "sock-gino-2") || host.Session().ControlledSlot("sock-zoe", 1) != 1 {
 		t.Fatal("the loan kept the owner's place and put the pad in the watcher's hands")
 	}
 }

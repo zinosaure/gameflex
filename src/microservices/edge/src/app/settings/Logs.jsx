@@ -39,7 +39,6 @@ const logPath = (path) => `${LOGS}/view/${path.split("/").map(encodeURIComponent
 // (`cursor: pointer`), sont marqués pour la croix (useCalendarDays, Forms.jsx : `data-nav`, `role="button"`) — et
 // démarqués quand une borne les grise.
 function DateRangeRow({ from, to, onChange }) {
-    const { t } = useTranslation();
     const days = useRef(null);
     const name = "lg-dates";
     const context = {
@@ -110,7 +109,7 @@ export default function Logs() {
     return (
         <SettingsPage title={t("settings.items.logs.label")}>
             <Section title={t("logs.listTitle")} help={t("logs.listHelp")} sense="modify">
-                <Listing items={filtered} loading={loading} search={search} onSearch={(q) => update({ q, page: 1 })} placeholder={t("logs.searchLog")} page={Number(read("page")) || 1} onPage={(page) => update({ page })}
+                <Listing items={filtered} overall={logs.length} loading={loading} search={search} onSearch={(q) => update({ q, page: 1 })} placeholder={t("logs.searchLog")} page={Number(read("page")) || 1} onPage={(page) => update({ page })}
                     found={t("logs.logsFound", { count: filtered.length })} empty={t(logs.length ? "logs.noMatch" : "logs.noLogs")} noMatch={t("logs.noMatch")}
                     filterCount={from || to ? 1 : 0} filters={[{ key: "dates", title: t("logs.filterDates"), rows: <DateRangeRow from={from} to={to} onChange={(start, end) => update({ from: start, to: end, page: 1 })} /> }]}
                     render={(log) => (
