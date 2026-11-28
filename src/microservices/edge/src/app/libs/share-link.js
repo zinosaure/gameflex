@@ -1,6 +1,5 @@
 import qrcode from "qrcode-generator";
 import { can } from "./capabilities.js";
-import { homeOrigin } from "./serverBase.js";
 // Sharing a session link — clipboard and native share, both of which are
 // gated behind a SECURE CONTEXT and therefore absent on this app's most
 // common origin.
@@ -77,11 +76,11 @@ export function canShareLink() {
 export async function shareLink({ url, title, text }) {
     if (can("nativeShare")) {
         try {
-            // LA FEUILLE DE PARTAGE EST CELLE DE CET APPAREIL : la demande va à SON kernel (`homeOrigin`), jamais à l'hôte
+            // LA FEUILLE DE PARTAGE EST CELLE DE CET APPAREIL : la demande va à SON kernel (le chemin relatif), jamais à l'hôte
             // que vise la page de jeu (`apiUrl` suit `setStreamBase`). Une partie jouée au téléphone chez un serveur fédéré
             // l'envoyait au serveur, qui n'a pas cette route (404) : « Envoyer le lien » ne faisait rien (le porteur,
             // 2026-11-16 : « sur mobileapp, le lien partager le lien ne fonctionne pas »).
-            const response = await fetch(`${homeOrigin()}/api/v1/device/share`, {
+            const response = await fetch(`/api/v1/device/share`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ url, title, text }),

@@ -17,22 +17,11 @@
 // device, or a KeyboardEvent.code (string) for the keyboard device.
 // virtualButtonName matches CONTROLLER_PRESETS[controllerName].buttons[].name
 // (e.g. "CROSS", "DPAD_UP", "L1").
-import { getKeyMapping as fetchKeyMapping } from "../../libs/profileApi.js";
-import { streamAuthToken } from "../../libs/serverBase.js";
+import { fetchKeyMapping } from "../../libs/api.js";
 
-// LE JETON DE L'HÔTE QUAND LA PAGE EN VISE UN, sinon celui de l'appelant.
-//
-// Ces requêtes suivent la surcharge de la page (apiUrl) : sur une partie
-// jouée chez un serveur fédéré, elles partent CHEZ LUI. Y présenter notre
-// jeton ne pouvait que revenir 401 — et l'envoyer à une machine que ça ne
-// regarde pas (lu dans la console d'un téléphone le 2026-09-07).
-//
-// Posé ici plutôt que chez les quatre appelants : c'est le même besoin pour
-// tous, et un oubli dans un seul d'entre eux se manifesterait par une manette
-// qui ne répond pas — la panne la plus coûteuse à relier à sa cause.
-function playerToken(token) {
-    return streamAuthToken() || token;
-}
+// LA CORRESPONDANCE SE LIT CHEZ NOUS, avec notre jeton (libs/api.js, chantier 85) : là où les Réglages l'écrivent, même
+// dans une partie chez un serveur fédéré. Elle y partait avec le jeton de l'hôte, sur notre adresse : un 401, et une
+// manette sans sa correspondance.
 
 import { positionalButtonIndex } from "../controllers/default-mapping.js";
 
@@ -139,8 +128,8 @@ export function subscribeKeyMapping(physicalDeviceId, controllerName, callback) 
 // Fetches the user's saved mapping for (device, controller) and seeds the
 // local cache — a no-op (empty mapping, meaning "fall back to per-console
 // defaults") if the user never configured one for this pair.
-export async function loadKeyMapping(token, physicalDeviceId, controllerName) {
-    const result = await fetchKeyMapping(playerToken(token), physicalDeviceId, controllerName);
+export async function loadKeyMapping(physicalDeviceId, controllerName) {
+    const result = await fetchKeyMapping(physicalDeviceId, controllerName);
     const mapping = (result.ok && result.items?.[0]?.mapping) || {};
     setCachedKeyMapping(physicalDeviceId, controllerName, mapping);
     return mapping;

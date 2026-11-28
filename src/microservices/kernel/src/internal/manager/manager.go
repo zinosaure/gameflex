@@ -459,6 +459,11 @@ func (manager *Manager) InternalDisks(ctx context.Context) []docker.InternalDisk
 	return manager.dockerHandler.InternalDisks(ctx)
 }
 
+// SessionsUsingDisk — les jeux des parties en cours qui montent un dossier du disque (chantier 86).
+func (manager *Manager) SessionsUsingDisk(ctx context.Context, disk docker.InternalDisk) ([]string, error) {
+	return manager.dockerHandler.SessionsUsing(ctx, disk)
+}
+
 // resolveOnDisks — un jeu streamex cherché sur les disques internes présents,
 // dans l'ordre de leur nom. Rend le jeu et le dossier de la console sur
 // l'hôte, à monter sur /opt/game.

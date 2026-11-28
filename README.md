@@ -191,9 +191,10 @@ the same skeleton.
 GameFlex is tested on one setup so far. What follows has been seen working there; anything else
 should work, but has not been tried.
 
-- **The server:** a Linux PC with an AMD Ryzen 7 255 and its Radeon 780M graphics, which encode
-  the video (VA-API). NVIDIA and Intel graphics have not been tried, nor Windows and macOS (Docker
-  Desktop).
+- **The server:** a Linux PC with an AMD Ryzen 7 5700X and a Radeon RX 6700 XT, which encodes the
+  video (VA-API). Most games below were first played on a smaller one, a Ryzen 7 255 with its
+  Radeon 780M graphics; the frame rates given are from it. NVIDIA and Intel graphics have not been
+  tried, nor Windows and macOS (Docker Desktop).
 - **The browser:** Google Chrome, on Linux and on Android.
 - **Recent consoles,** games played in game on the server, with the on-screen controller or a real one:
   - **PlayStation 5:** Astro Bot, Black Myth: Wukong, Clair Obscur: Expedition 33, Final Fantasy VII

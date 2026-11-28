@@ -1,6 +1,5 @@
 import { useSyncExternalStore } from "react";
 import { can } from "./capabilities.js";
-import { homeOrigin } from "./serverBase.js";
 import { hasPhysicalGamepad, onGamepadPresence } from "../engine/libs/gamepadPresence.js";
 
 // L'ORIENTATION DE L'ÉCRAN — une préférence de l'APPAREIL (#406, 2026-10-19).
@@ -70,14 +69,14 @@ export function setScreenOrientation(mode) {
 // garde le réglage. Rendu : vrai si l'hôte l'a pris. Hors de l'application,
 // rien à demander : la page de jeu s'en charge pendant une partie.
 //
-// Vers NOTRE serveur (homeOrigin), jamais vers l'hôte d'une partie fédérée
+// Vers NOTRE serveur (le chemin relatif), jamais vers l'hôte d'une partie fédérée
 // qu'une page de jeu aurait posé en surcharge : c'est ce téléphone qui tourne.
 export function applyScreenOrientation() {
     if (!can("screenOrientation")) {
         return Promise.resolve(false);
     }
 
-    return fetch(`${homeOrigin()}/api/v1/device/orientation`, {
+    return fetch(`/api/v1/device/orientation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: current }),

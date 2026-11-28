@@ -1,14 +1,50 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createSession } from "../engine/api/retrogaming.js";
-import { launchSession, stopSession } from "../engine/api/spawnSessions.js";
+import i18n from "../i18n.js";
+import { kernelRequest, kernelTarget } from "./kernelChannel.js";
 import { can, loadHostCapabilities } from "./capabilities.js";
 import { federatedId } from "./federatedHost.js";
 import { withStep } from "../engine/stream/shared/hooks/use-launch-progress.js";
 import { withNetworkBitrate } from "../engine/stream/shared/libs/network-probe.js";
 import { connectedGamepads } from "../engine/libs/keyMapping.js";
 import { menuGestureOf } from "../engine/libs/gameInput.js";
-import { explained, readToken } from "./api.js";
-import { getStoredUsername } from "./sharedHost.js";
+import { explained, readToken, tokenUsername } from "./api.js";
+
+// LES COMMANDES D'UNE PARTIE, par le canal du kernel (le centre de messages) : le serveur ET le téléphone les servent sous
+// la même forme, la page ne choisit pas lequel lui répond. Elles vivaient dans engine/api/retrogaming.js et
+// spawnSessions.js (chantier 85). `host` : la partie vit chez un serveur fédéré (`{origin, token}`, notre compte de
+// là-bas) — un jeu fédéré peut s'y émuler (C9-P5).
+//
+// LE FLUX DE LA CONSOLE DANS CE NAVIGATEUR (#150 ; `streamOf`, GameSettings.jsx), son débit « Auto » déjà mesuré
+// (withNetworkBitrate) ; absent, le kernel prend le défaut de toutes les consoles (720p à 60). LA LANGUE DE LA PAGE
+// voyage avec chaque lancement (chantier 21) : la console démarre dans la langue de l'application.
+const launchSettings = (settings) => ({
+    language: i18n.language,
+    ...(settings?.resolution ? { resolution: settings.resolution } : {}),
+    ...(settings?.frameRate ? { fps: Number(settings.frameRate) } : {}),
+    ...(settings?.bitrate && settings.bitrate !== "auto" ? { bitrate: Number(settings.bitrate) } : {}),
+});
+
+// Un jeu rétro, rendu `{data: {sessionId}}` avant tout travail WebRTC ; ses étapes reviennent sur le même canal
+// (`onProgress`). Chez `host`, `reference` est la sienne (sans le préfixe `srv<id>:` d'ici) et `username` le nom qu'on
+// porte chez lui (sa file de joueurs est indexée par nom). `bios` : un BIOS choisi ("" garde celui de la console).
+export function createSession(consoleId, reference, title, core, bios, username, host = null, settings = null, { onProgress } = {}) {
+    return kernelRequest(kernelTarget(host, readToken()), "launch", {
+        platform: "retrogaming", consoleId, reference, title, core, bios, username, ...launchSettings(settings),
+    }, { onProgress });
+}
+
+// Un jeu d'une console récente (streamex) ; `core` : l'émulateur choisi dans la fiche — un serveur qui ne l'a pas le
+// refuse au lieu de lancer le sien.
+export function launchSession(game, consoleId, token, settings = null, host = null, { onProgress, core } = {}) {
+    return kernelRequest(kernelTarget(host, token), "launch", {
+        platform: "streamex", game, console_id: consoleId, ...(core ? { core } : {}), ...launchSettings(settings),
+    }, { onProgress });
+}
+
+// L'arrêt pour tout le monde (réservé au propriétaire, le kernel en juge) ; la console Remote Play mise en veille, la
+// partie finit quand elle s'éteint (chantier 69).
+export const stopSession = (platform, sessionId, token, host = null) => kernelRequest(kernelTarget(host, token), "session.stop", { platform, sessionId });
+export const standbyConsole = (sessionId, token, host = null) => kernelRequest(kernelTarget(host, token), "session.standby", { sessionId });
 
 // LANCER UNE PARTIE ET L'OUVRIR — la page de jeu du launcher (chantier 52), à la place de celle de la
 // webapp.
@@ -84,7 +120,7 @@ export function useLaunch() {
         const progress = {
             onProgress: (message, frame) => {
                 if (frame?.launchId) {
-                    update((current) => (current.backdrop ? {} : { backdrop: { launch: { streamId: frame.launchId, host: host ? { origin: host.origin, token: host.token } : null, username: (host ? host.username : getStoredUsername()) || null } } }));
+                    update((current) => (current.backdrop ? {} : { backdrop: { launch: { streamId: frame.launchId, host: host ? { origin: host.origin, token: host.token } : null, username: (host ? host.username : tokenUsername()) || null } } }));
                 }
                 if (!message) {
                     return;

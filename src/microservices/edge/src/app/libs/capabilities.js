@@ -14,7 +14,7 @@
 // Par défaut — donc dans un navigateur — tout est disponible : c'est le
 // comportement d'aujourd'hui, et rien ne bouge.
 
-const WEB_DEFAULTS = {
+export const WEB_DEFAULTS = {
     // Y a-t-il un annuaire d'utilisateurs ? Sans lui : pas d'administration
     // des membres, pas de réglages de compte, pas de connexion.
     accounts: true,
@@ -158,6 +158,15 @@ const WEB_DEFAULTS = {
     emulatorPackage: "server",
 
     platform: "web",
+
+    // CE QUI S'ÉCRIT DANS LES JOURNAUX se règle de la page (Réglages › Journaux) : le serveur le déclare ; le téléphone
+    // non, son journal a son interrupteur sur la console d'accueil.
+    logSettings: false,
+    // LES SIGNALEMENTS S'ÉCRIVENT : l'écran d'erreur d'un lancement propose « Signaler l'erreur ». Le serveur le déclare
+    // selon Réglages › Journaux ; le téléphone ne le déclare pas, les siens s'écrivent toujours.
+    reports: true,
+    // Un téléchargement confié au navigateur du téléphone (handToBrowser, libs/api.js).
+    nativeBrowse: false,
 };
 
 
@@ -187,35 +196,29 @@ export function capabilities() {
  * fetch échoue vite et ne retarde rien de visible.
  */
 export async function loadHostCapabilities() {
-    if (bootPromise) {
-        return bootPromise;
+    if (!bootPromise) {
+        bootPromise = refreshCapabilities();
     }
 
-    bootPromise = (async () => {
-        if (cached) {
-            return cached;
-        }
-
-        try {
-            const response = await fetch("/api/v1/capabilities", { cache: "no-store" });
-            if (response.ok) {
-                const payload = await response.json();
-                const declared = payload?.capabilities;
-                if (declared && typeof declared === "object") {
-                    cached = { ...WEB_DEFAULTS, ...declared };
-
-                    return cached;
-                }
-            }
-        } catch {
-            // L'hôte ne déclare rien : les défauts web s'appliquent, comme
-            // avant ce changement.
-        }
-
-        return capabilities();
-    })();
-
     return bootPromise;
+}
+
+// RELIRE CE QUE L'HÔTE DÉCLARE (chantier 85) — la seule lecture de `GET /api/v1/capabilities` : au démarrage
+// (loadHostCapabilities), et quand le launcher recharge ce qu'il sait (data.jsx). Le moteur (`can`) et les écrans
+// (`can(capabilities, …)` de data.jsx) lisent donc la même déclaration, complétée par la même table.
+export async function refreshCapabilities() {
+    try {
+        const response = await fetch("/api/v1/capabilities", { cache: "no-store" });
+        const declared = response.ok ? (await response.json())?.capabilities : null;
+
+        if (declared && typeof declared === "object") {
+            cached = { ...WEB_DEFAULTS, ...declared };
+        }
+    } catch {
+        // L'hôte ne dit rien : la déclaration d'avant, ou les défauts.
+    }
+
+    return capabilities();
 }
 
 /** Le guide d'un sujet propre à cet hôte (`hostGuides`), sinon `fallback` (null : aucun). */

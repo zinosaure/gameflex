@@ -1,15 +1,13 @@
+import { useConsoles } from "../../libs/data.jsx";
 import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { listSaveSlots, deleteSaveSlot, screenshotUrl } from "../../engine/api/retrogaming.js";
-import { listMembers, sendInvite } from "../../libs/profileApi.js";
 import { isOwnSession, nameIn } from "../../libs/SessionPool.js";
 import { useNames } from "../../libs/displayNames.js";
 import { can, capabilities } from "../../libs/capabilities.js";
-import { canInvite, shareOrigin, streamAuthToken, streamHostOrigin } from "../../libs/serverBase.js";
+import { canInvite, shareOrigin, streamHostOrigin } from "../../libs/serverBase.js";
 import { copyTextToClipboard, canShareLink, qrImage, shareLink } from "../../libs/share-link.js";
-import { readToken } from "../../libs/api.js";
+import { deleteSaveSlot, fetchStateScreenshot, listMembers, listSaveSlots, playedHost, sendInvite } from "../../libs/api.js";
 import { dateTime, fact, formatDuration } from "../../libs/format.js";
-import { authHeaders, useConsoles } from "../../libs/sharedHost.js";
 import { focusElement } from "../../libs/input.js";
 import { setHapticFeedback, setInvisibleSticks, setRumbleEnabled, useGamepadPreferences } from "../../engine/libs/gamepadPreferences.js";
 import { useDevicePads } from "../../engine/libs/gamepadPresence.js";
@@ -446,7 +444,7 @@ function SaveStates({ session, saves, context, onClose, onDone }) {
     const confirmWith = useConfirm();
     const [slots, setSlots] = useState(null);
     const [open, setOpen] = useState(null);
-    const refresh = () => listSaveSlots(session.consoleId, session.reference).then((answer) => setSlots(answer.ok ? answer.data || [] : []));
+    const refresh = () => listSaveSlots(session.consoleId, session.reference, "", playedHost()).then((answer) => setSlots(answer.ok ? answer.data || [] : []));
 
     useEffect(() => {
         refresh();
@@ -473,7 +471,7 @@ function SaveStates({ session, saves, context, onClose, onDone }) {
         setTimeout(() => focusElement(document.querySelector(`.npanel [data-key="ps-slot-${slot}"]`), true), 0);
     };
     const remove = async (slot) => {
-        const answer = await deleteSaveSlot(session.consoleId, session.reference, slot);
+        const answer = await deleteSaveSlot(session.consoleId, session.reference, slot, "", playedHost());
 
         if (!answer.ok) {
             context.toast.open(t("play.states.deleteFailed"), { variant: "error" });
@@ -541,9 +539,8 @@ function SlotThumbnail({ session, slot, info }) {
         }
         let cancelled = false;
         let made = null;
-        fetch(`${screenshotUrl(session.consoleId, session.reference, slot)}&v=${encodeURIComponent(info.timestamp || "")}`, { headers: authHeaders(streamAuthToken() || readToken()) })
-            .then((response) => (response.ok ? response.blob() : null))
-            .then((blob) => {
+        fetchStateScreenshot(session.consoleId, session.reference, slot, info.timestamp || "", playedHost())
+            .then(({ blob }) => {
                 if (!cancelled && blob) {
                     made = URL.createObjectURL(blob);
                     setUrl(made);
@@ -780,7 +777,7 @@ function InvitePanel({ session, self, ask, context, onClose }) {
 
     useEffect(() => {
         let cancelled = false;
-        listMembers(readToken()).then((answer) => !cancelled && setMembers(answer.ok ? answer.item?.members || [] : []));
+        listMembers().then((answer) => !cancelled && setMembers(answer.ok ? answer.item?.members || [] : []));
 
         return () => {
             cancelled = true;
@@ -794,7 +791,7 @@ function InvitePanel({ session, self, ask, context, onClose }) {
             message: t("play.invite.confirm", { name }),
             confirm: t("play.invite.send"),
             onConfirm: async () => {
-                const answer = await sendInvite(readToken(), member.username, session.platform, session.consoleId, session.reference, session.id);
+                const answer = await sendInvite({ username: member.username, platform: session.platform, consoleId: session.consoleId, reference: session.reference, sessionId: session.id });
                 context.toast.open(t(answer.ok ? "play.invite.sent" : "play.invite.failed", { name }), { variant: answer.ok ? "success" : "error" });
             },
         });

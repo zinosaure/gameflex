@@ -1,4 +1,4 @@
-import { credential } from "./api.js";
+import { deleteKeyMapping, saveKeyMapping } from "./api.js";
 import { AUTO_MAP_CONTROLLERS, defaultMappingForController } from "../engine/controllers/default-mapping.js";
 
 // LA CORRESPONDANCE DES TOUCHES D'UNE MANETTE PHYSIQUE (libs/keyMapping.js de la webapp) : pour un
@@ -11,21 +11,9 @@ import { AUTO_MAP_CONTROLLERS, defaultMappingForController } from "../engine/con
 // une seule définition — les Réglages et une partie reconnaissent un appareil de la même façon, sinon une correspondance
 // enregistrée ici ne serait jamais relue là. Les retours tactiles, les vibrations et les sticks : une seule source,
 // engine/libs/gamepadPreferences.js (#758).
-export { connectedGamepads, gamepadDeviceId, getKeyboardDeviceId as keyboardDeviceId } from "../engine/libs/keyMapping.js";
-
-export async function loadKeyMapping(deviceId, controllerName) {
-    const answer = await credential(`/key-mapping?${new URLSearchParams({ physical_device_id: deviceId, controller_name: controllerName })}`);
-
-    return (answer.ok && answer.items?.[0]?.mapping) || {};
-}
-
-const saveKeyMapping = (deviceId, deviceType, controllerName, mapping) => credential("/key-mapping", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ physical_device_id: deviceId, physical_device_type: deviceType, controller_name: controllerName, mapping }),
-});
-
-export const deleteKeyMapping = (deviceId, controllerName) => credential(`/key-mapping?${new URLSearchParams({ physical_device_id: deviceId, controller_name: controllerName })}`, { method: "DELETE" });
+// LA LECTURE AUSSI, une seule (chantier 85) : celle du moteur, qui garde la correspondance lue pour la partie.
+export { connectedGamepads, gamepadDeviceId, getKeyboardDeviceId as keyboardDeviceId, loadKeyMapping } from "../engine/libs/keyMapping.js";
+export { deleteKeyMapping };
 
 // Lier un bouton virtuel à une entrée : celle qu'il avait part, l'entrée prend ce seul bouton.
 export function remapKey(mapping, deviceId, deviceType, controllerName, buttonName, input) {

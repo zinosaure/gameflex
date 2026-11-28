@@ -1,5 +1,5 @@
+import { readToken } from "../../../../libs/api.js";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useAuth } from "../../../../libs/sharedHost.js";
 import { useStreamexStreamingConnection } from "./use-streamex-streaming-connection.js";
 import { absoluteApiUrl } from "../../../../libs/serverBase.js";
 import { useSessionStats } from "../../shared/hooks/use-session-stats.js";
@@ -49,7 +49,7 @@ export function useStreamexInput({ screenRef, session, t, options = {} }) {
 	// drivesPad — the child's answer to "do my keys reach a pad?". It differs
 	// from !isWatching during a loan only (#274).
 	const { isWatching = false, drivesPad = !isWatching, onPadPress = null } = options;
-	const { token } = useAuth();
+	const token = readToken();
 	const [profileButtons, setProfileButtons] = useState([]);
 	// The page says when to connect (onConnect): once this tab's gateway
 	// viewer exists, or after its deadline (StreamingShell's gate).

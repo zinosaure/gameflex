@@ -4,16 +4,15 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import { SessionPoolProvider, isOwnSession, useResolvedSession } from "../../libs/SessionPool.js";
 import { useDownloadProgress } from "../../engine/libs/deviceStream.js";
 import { federatedHostOf, parseFederatedId } from "../../libs/federatedHost.js";
-import { clearStreamBase, homeOrigin, setStreamBase } from "../../libs/serverBase.js";
+import { clearStreamBase, setStreamBase } from "../../libs/serverBase.js";
 import { kernelSnapshot } from "../../libs/kernelChannel.js";
 import { loadHostCapabilities } from "../../libs/capabilities.js";
 import { useLaunchProgress } from "../../engine/stream/shared/hooks/use-launch-progress.js";
-import { stopSession } from "../../engine/api/spawnSessions.js";
+import { stopSession } from "../../libs/play.js";
 import { GamepadProvider } from "../../engine/hooks/use-gamepad.jsx";
 import { LAUNCH_SCREEN_BACKGROUND } from "../../engine/stream/shared/launch-backdrop.js";
-import { readToken, reportPresence } from "../../libs/api.js";
+import { readToken, reportPresence, tokenUsername } from "../../libs/api.js";
 import { useAuth } from "../../libs/data.jsx";
-import { getStoredUsername } from "../../libs/sharedHost.js";
 import Skeleton from "../../skeleton/skeleton.js";
 import { useScreenInput } from "../../libs/input.js";
 import PlayLaunch from "./Launch.jsx";
@@ -213,7 +212,7 @@ function PlayRoute() {
     // ANNULER AVANT QUE LA PAGE N'AIT SA PARTIE (#287) : la partie existe déjà chez son hôte ; à nous,
     // elle s'arrête, à quelqu'un d'autre, elle continue sans nous.
     const cancelBeforeSession = async () => {
-        const target = federatedHost?.link ? { origin: federatedHost.link, token: federatedHost.token } : { origin: homeOrigin(), token: authToken || "" };
+        const target = federatedHost?.link ? { origin: federatedHost.link, token: federatedHost.token } : { origin: "", token: authToken || "" };
         const id = lookupSessionId;
         onTerminate();
 
@@ -235,7 +234,7 @@ function PlayRoute() {
                     label={launchFailure ? t("play.failed") : t(launchSteps.length ? "play.launching" : "play.connecting")}
                     steps={launchSteps}
                     failure={launchFailure}
-                    backdrop={launchId ? { launch: { streamId: launchId, username: getStoredUsername() } } : null}
+                    backdrop={launchId ? { launch: { streamId: launchId, username: tokenUsername() } } : null}
                     onCancel={cancelBeforeSession}
                 />
             </div>

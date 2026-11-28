@@ -1122,7 +1122,7 @@
             "introDevice": "Les disques de jeux de cet appareil. Ils s'ajoutent depuis l'écran d'accueil de l'application.",
             "present_one": "{{count}} jeu",
             "present_other": "{{count}} jeux",
-            "absent": "Absent : disque débranché, ou pas monté au démarrage du serveur",
+            "absent": "Absent : disque débranché, ou sans dossier de jeux",
             "absentDevice": "Absent : disque débranché, ou dossier sans jeux",
             "empty": "Aucun disque interne.",
             "emptyDevice": "Aucun disque interne.",
@@ -1131,7 +1131,13 @@
             "rescanFailed": "Le disque n'a pas pu être relu.",
             "loadFailed": "Les disques internes n'ont pas pu être lus.",
             "contentsTitle": "Ses jeux",
-            "rescanHelp": "Retrouver ce qui a été ajouté au disque à la main."
+            "rescanHelp": "Retrouver ce qui a été ajouté au disque à la main.",
+            "switchTitle": "Disque",
+            "switchLabel": "Disque activé",
+            "switchHelp": "Désactivé, GameFlex ne s'en sert plus : ses jeux disparaissent des listes, et vous pouvez le débrancher.",
+            "switchedOn": "{{name}} est activé.",
+            "switchedOff": "{{name}} est désactivé : vous pouvez le débrancher.",
+            "disabled": "Désactivé : vous pouvez débrancher ce disque"
         },
         "filePath": "Chemin",
         "gpu": "Carte graphique {{gpu}}",
@@ -2416,7 +2422,8 @@
         "server_config_serverName": "40 caractères au plus.",
         "server_config_consoleLimits": "Entre 0 et 8 par console.",
         "server_config_gpu": "Une adresse PCI, par exemple 0000:c4:00.0.",
-        "server_config_players": "Entre 1 et 8 par console."
+        "server_config_players": "Entre 1 et 8 par console.",
+        "disk_in_use": "Une partie en cours se sert de ce disque : terminez-la avant de le désactiver."
     },
     "download": {
         "title": "Application"

@@ -20,18 +20,18 @@ Most of it is in **Settings**, for administrators:
 Your games don't all fit on one disk? Add others, as many as you like.
 
 1. Lay out the disk like a library: `roms/<console>/`, and if you want `bios/`, `cores/`,
-   `patches/`, `params/`.
-2. Add one volume line per disk to the `gameflex-kernel` service in `docker-compose.yml`, under
-   `/mnt/<name>`:
+   `patches/`, `params/` — at its root, or in a `gameflex` folder if the disk holds other things.
+2. Mount your disks on the server's computer inside one folder, one mount point per disk (for
+   example with `/etc/fstab`): `/mnt/gameflex/games`, `/mnt/gameflex/archive`… Each mount point is a
+   disk, under its name (`games` here: it starts with a letter or a digit, and uses letters, digits,
+   `.`, `-` and `_`).
+3. Tell GameFlex where that folder is, in `.env`, then restart (`docker compose up -d`):
 
-   ```yaml
-       volumes:
-           - /media/games:/mnt/games
+   ```
+   GAMEFLEX_DISKS=/mnt/gameflex
    ```
 
-   The name (`games` here) starts with a letter or a digit, and uses letters, digits, `.`, `-` and `_`.
-   `./launch.sh update` keeps these lines when it brings a new `docker-compose.yml`.
-3. Restart: `docker compose up -d`.
+   This is the only setting: a disk mounted there later shows up by itself.
 
 **What you should see:** the disk in **Settings › Resources**, with its number of games. Open it
 to see its games; **Rescan the disk** finds what you added to it by hand. Its games show in the
@@ -46,8 +46,16 @@ library of their console, next to the others.
 - **A game on two disks** plays from your library first, then from the disks in the order of their
   names. It keeps its saves.
 - **Your friends** see the games of your disks with the rest of your library.
-- **A disk shown as *Missing*** was unplugged, or not mounted when GameFlex started. For an external
-  disk, prefer a fixed mount point (`/etc/fstab`) to the one your desktop creates when you sign in.
+- **A disk shown as *Missing*** is unplugged, or has no games folder. For an external disk, prefer a
+  fixed mount point (`/etc/fstab`) to the one your desktop creates when you sign in.
+
+### Unplug a disk
+
+Open the disk in **Settings › Resources** and turn off **Disk enabled**: GameFlex stops using it,
+its games leave the lists, and you can unmount and unplug it. GameFlex refuses while a game in
+progress plays from it. Plug it back in and mount it at the same place: it shows up by itself; turn
+**Disk enabled** back on and its games return. Always turn the disk off first — the computer itself
+lets you unplug a disk that a game is reading.
 
 ## Games on a network share
 
@@ -74,9 +82,8 @@ of games. Open it to see its games by console; **Read again** reads it after you
   refused, or the folder is not found. An empty one suggests a folder where it found games.
 
 You can also mount a share on the server's computer yourself (for example NFS, with a line in
-`/etc/fstab`), then declare it like a disk (see above): its games then play from it. Mount it before
-GameFlex starts, or it shows as *Missing* until the next restart. If the share is read-only, turn
-off **Keep metadata on the games' disk** (above).
+`/etc/fstab`), inside your disks folder (see above): it is then a disk, and its games play from it.
+If the share is read-only, turn off **Keep metadata on the games' disk** (above).
 
 ## Saves
 

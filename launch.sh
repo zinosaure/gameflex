@@ -66,34 +66,9 @@ files_url() {
     esac
 }
 
-# carry_disks OLD NEW — prints NEW with the disks added to OLD: every
-# `<folder>:/mnt/<name>` line, with the comments just above it, goes after
-# the example line `# - /media/games:/mnt/games` of its own service
-# (gameflex-kernel). Fails when that service of NEW has no
-# such line to put them after.
-carry_disks() {
-    awk -v example='# - /media/games:/mnt/games' '
-        FNR == 1 { file++ }
-        /^    [^ #][^ ]*:[ \t]*$/ { service = $1 }
-        file == 1 { seen[$0] = 1; next }
-        file == 2 {
-            if ($0 ~ /^[ \t]*#/) {
-                if (!($0 in seen)) comments = comments $0 "\n"
-                next
-            }
-            if ($0 ~ /^[ \t]*-[ \t]*[^# \t][^#]*:\/mnt\// && !($0 in seen)) disks[service] = disks[service] comments $0 "\n"
-            comments = ""
-            next
-        }
-        { print }
-        index($0, example) && !(service in done) { printf "%s", disks[service]; done[service] = 1 }
-        END { for (s in disks) if (!(s in done)) exit 1 }
-    ' "$2" "$1" "$2"
-}
-
 # update_files — docker-compose.yml, launch.sh and .env.example of the version
-# to run. The disks you added move into the new compose file, and the previous
-# one stays in docker-compose.yml.old.
+# to run; the previous compose file stays in docker-compose.yml.old. Your
+# settings, disks included, live in .env, which is never touched.
 update_files() {
     local base temporary self
     base=$(files_url)
@@ -110,17 +85,10 @@ update_files() {
     fi
     mv "$temporary/.env.example" .env.example
 
-    if carry_disks docker-compose.yml "$temporary/docker-compose.yml" > "$temporary/merged" &&
-        docker compose -f "$temporary/merged" --project-directory . config --quiet 2>/dev/null; then
-        if ! cmp -s "$temporary/merged" docker-compose.yml; then
-            cp docker-compose.yml docker-compose.yml.old
-            mv "$temporary/merged" docker-compose.yml
-            say "docker-compose.yml updated, with your disks; the previous one is in docker-compose.yml.old."
-        fi
-    else
-        mv "$temporary/docker-compose.yml" docker-compose.yml.new
-        say "Warning: docker-compose.yml could not be updated by itself. The new one is"
-        say "docker-compose.yml.new: copy your changes into it, then rename it docker-compose.yml."
+    if ! cmp -s "$temporary/docker-compose.yml" docker-compose.yml; then
+        cp docker-compose.yml docker-compose.yml.old
+        mv "$temporary/docker-compose.yml" docker-compose.yml
+        say "docker-compose.yml updated; the previous one is in docker-compose.yml.old."
     fi
 
     if ! cmp -s "$temporary/launch.sh" "$self"; then

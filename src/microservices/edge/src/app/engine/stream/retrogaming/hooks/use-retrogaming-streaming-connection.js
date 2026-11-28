@@ -1,5 +1,5 @@
+import { readToken } from "../../../../libs/api.js";
 import { useCallback, useEffect, useRef } from "react";
-import { getStoredToken } from "../../../../libs/sharedHost.js";
 import { useGatewayWebrtcConnection } from "../../shared/hooks/use-gateway-webrtc-connection.js";
 import { useManagedWebSocket } from "../../shared/hooks/use-managed-websocket.js";
 import { useRetrogamingSaveStates } from "./use-retrogaming-save-states.js";
@@ -168,7 +168,7 @@ export function useRetrogamingStreamingConnection({ screenRef, toast, onRumble, 
 	}, [cancelReconnect, cleanup, sendSignaling]);
 
 	// A session is always created FIRST via a plain REST call
-	// (createSession, engine/api/retrogaming.js — see CreateSession's doc,
+	// (createSession, libs/play.js — see CreateSession's doc,
 	// golang/internal/retrogaming/handlers.go) — this hook only ever
 	// ATTACHES to an already-existing sessionId, never starts one from
 	// scratch itself. That split is what makes a copy-pasted or refreshed
@@ -225,7 +225,7 @@ export function useRetrogamingStreamingConnection({ screenRef, toast, onRumble, 
 			// jamais. Même règle que input.service.js, qui l'avait déjà.
 			openManaged(
 				wsUrl("/api/v1/retrogaming/stream/ws") +
-					`?token=${encodeURIComponent(streamAuthToken() || getStoredToken() || "")}`,
+					`?token=${encodeURIComponent(streamAuthToken() || readToken() || "")}`,
 				{
 					onOpen: async (sendJSON) => {
 						// The PAGE created the gateway viewer, once, from the

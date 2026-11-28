@@ -11,8 +11,7 @@ import { Section } from "../../bricks/Section.jsx";
 import { SubmitRow } from "../../bricks/SubmitRow.jsx";
 import { TextRow } from "../../bricks/TextRow.jsx";
 import { useFeedback } from "../../bricks/useFeedback.jsx";
-import { registerDevice } from "../../engine/api/remoteplay.js";
-import { playStationService } from "../../engine/stream/remoteplay/service/playstation.service.js";
+import { discoverDevices, registerDevice } from "../../libs/api.js";
 import { useData } from "../../libs/data.jsx";
 import { fact } from "../../libs/format.js";
 import { toast } from "../../shell/Shell.jsx";
@@ -56,20 +55,10 @@ export default function NewDevice() {
     const discover = async () => {
         setDiscovering(true);
         setFound([]);
-        let result;
-
-        try {
-            result = await playStationService.discoverDevices();
-        } catch (error) {
-            setDiscovering(false);
-            restoreLight("rp-discover");
-            toast(error?.message || t("remoteplay.register.discoverFailed"));
-
-            return;
-        }
+        const result = await discoverDevices();
         setDiscovering(false);
 
-        if (!result.success) {
+        if (!result.ok) {
             restoreLight("rp-discover");
             toast(result.errorMessage || t("remoteplay.register.discoverFailed"));
 

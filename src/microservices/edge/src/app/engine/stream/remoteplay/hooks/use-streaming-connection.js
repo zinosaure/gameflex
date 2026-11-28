@@ -248,7 +248,7 @@ export function useStreamingConnection({
 							reason,
 						});
 						const response = await streamingService.requestKeyframe(sessionId);
-						if (!response.success) {
+						if (!response.ok) {
 							console.warn("⚠️ HTTP keyframe request failed", {
 								reason,
 								message: response.message,
@@ -270,7 +270,7 @@ export function useStreamingConnection({
 					);
 					try {
 						const response = await streamingService.requestKeyframe(sessionId);
-						if (!response.success) {
+						if (!response.ok) {
 							console.warn("⚠️ HTTP keyframe request failed", {
 								reason,
 								message: response.message,
@@ -1034,7 +1034,7 @@ export function useStreamingConnection({
 					sessionId,
 					"H264",
 				);
-				if (!offerResponse.success || !offerResponse.data) {
+				if (!offerResponse.ok || !offerResponse.data) {
 					throw new Error(
 						offerResponse.errorMessage ||
 						t("streaming.connection.errors.offerCreateFailed"),
@@ -1376,7 +1376,7 @@ export function useStreamingConnection({
 			let sessionId = preCreatedSessionId;
 			if (!sessionId) {
 				const sessionResponse = await streamingService.startSession(hostId, username);
-				if (!sessionResponse.success) {
+				if (!sessionResponse.ok) {
 					throw new Error(
 						sessionResponse.errorMessage ||
 						sessionResponse.message ||
@@ -1398,14 +1398,14 @@ export function useStreamingConnection({
 				remotePlaySessionId: sessionId,
 				preferLanCandidates: isLikelyLan,
 			});
-			if (!offerResponse.success) {
+			if (!offerResponse.ok) {
 				throw new Error(
 					offerResponse.errorMessage ||
 					offerResponse.message ||
 					t("streaming.connection.errors.offerCreateFailed"),
 				);
 			}
-			const offerData = offerResponse.data || offerResponse.result;
+			const offerData = offerResponse.data;
 			if (!offerData) {
 				throw new Error(t("streaming.connection.errors.offerDataMissing"));
 			}
@@ -1447,7 +1447,7 @@ export function useStreamingConnection({
 			// Phase 3: gateway mode — the streamId IS the session id;
 			// ConnectWebRTC resolves the gateway-mode StreamState by it.
 			const connectResponse = await streamingService.connectToRemotePlaySession(sessionId, sessionId);
-			if (!connectResponse.success) {
+			if (!connectResponse.ok) {
 				throw new Error(
 					connectResponse.errorMessage ||
 					connectResponse.message ||

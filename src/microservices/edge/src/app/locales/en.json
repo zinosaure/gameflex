@@ -1122,7 +1122,7 @@
             "introDevice": "This device's game disks. They are added from the app's home screen.",
             "present_one": "{{count}} game",
             "present_other": "{{count}} games",
-            "absent": "Missing: disk unplugged, or not mounted when the server started",
+            "absent": "Missing: disk unplugged, or without a games folder",
             "absentDevice": "Missing: disk unplugged, or a folder without games",
             "empty": "No internal disk.",
             "emptyDevice": "No internal disk.",
@@ -1131,7 +1131,13 @@
             "rescanFailed": "The disk could not be read again.",
             "loadFailed": "The internal disks could not be read.",
             "contentsTitle": "Its games",
-            "rescanHelp": "Find what was added to the disk by hand."
+            "rescanHelp": "Find what was added to the disk by hand.",
+            "switchTitle": "Disk",
+            "switchLabel": "Disk enabled",
+            "switchHelp": "Disabled, GameFlex stops using it: its games leave the lists, and you can unplug it.",
+            "switchedOn": "{{name}} is enabled.",
+            "switchedOff": "{{name}} is disabled: you can unplug it.",
+            "disabled": "Disabled: you can unplug this disk"
         },
         "filePath": "Path",
         "gpu": "{{gpu}} graphics card",
@@ -2416,7 +2422,8 @@
         "server_config_serverName": "40 characters at most.",
         "server_config_consoleLimits": "Between 0 and 8 per console.",
         "server_config_gpu": "A PCI address, for example 0000:c4:00.0.",
-        "server_config_players": "Between 1 and 8 per console."
+        "server_config_players": "Between 1 and 8 per console.",
+        "disk_in_use": "A game in progress uses this disk: end it before disabling the disk."
     },
     "download": {
         "title": "App"

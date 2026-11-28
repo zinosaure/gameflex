@@ -4,15 +4,14 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { LAUNCH_BACKGROUND } from "../../engine/stream/shared/launch-backdrop.js";
 import { SessionStream } from "../../engine/stream/shared/SessionStream.jsx";
-import { stopSession } from "../../engine/api/spawnSessions.js";
-import { kernelCommand, romSource } from "../../libs/api.js";
+import { readToken, romSource } from "../../libs/api.js";
 import { isOwnSession, useAuth, useData } from "../../libs/data.jsx";
 import { useDownloadNotices } from "../../libs/downloads.js";
 import { federatedHostOf, parseFederatedId } from "../../libs/federatedHost.js";
 import { counted, fact, formatDuration } from "../../libs/format.js";
 import { probeGameImage } from "../../libs/images.js";
 import { focusElement, useScreenInput } from "../../libs/input.js";
-import { playPath } from "../../libs/play.js";
+import { playPath, stopSession } from "../../libs/play.js";
 import { useFederatedSessions } from "../../libs/SessionPool.js";
 import { useNames } from "../../libs/displayNames.js";
 import { gameScreenPath, rememberTab } from "../../libs/tabs.js";
@@ -179,7 +178,7 @@ function useStopSession(session, host) {
 
     const stop = async () => {
         setStopping(true);
-        const answer = !parseFederatedId(session.id) ? await kernelCommand("session.stop", { platform: session.platform, sessionId: session.id })
+        const answer = !parseFederatedId(session.id) ? await stopSession(session.platform, session.id, readToken())
             : host?.token ? await stopSession(session.platform, host.id, null, { origin: host.link, token: host.token })
                 : { ok: false };
 

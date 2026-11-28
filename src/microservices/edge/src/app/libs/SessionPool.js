@@ -1,9 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { getStoredToken, useAuth } from "./sharedHost.js";
 import { isOwnSession } from "./data.jsx";
 import { useNames } from "./displayNames.js";
-import { getPublicSession } from "../engine/api/spawnSessions.js";
-import { homeOrigin, streamAuthToken } from "./serverBase.js";
+import { getPublicSession, readToken } from "./api.js";
+import { streamAuthToken } from "./serverBase.js";
 import { federatedId, federatedServers } from "./federatedHost.js";
 import { onDeviceGameStarted } from "../engine/libs/deviceStream.js";
 import { federationSession, onFederationSessionChanged } from "./federation.js";
@@ -21,7 +20,7 @@ import { kernelChannel, kernelReachable, useKernelChannel, useKernelTopic } from
 const SessionPoolContext = createContext({ sessions: [] });
 
 export function SessionPoolProvider({ children }) {
-    const { token } = useAuth();
+    const token = readToken();
     const [sessions, setSessions] = useState([]);
 
     // LES NOMS AFFICHÉS des propriétaires, des joueurs et des spectateurs (libs/displayNames.js, la table de toute
@@ -77,14 +76,14 @@ export function SessionPoolProvider({ children }) {
     // la même forme et un `me` calculé depuis le jeton. Il n'y a donc plus
     // qu'un seul chemin, et c'est celui d'en dessous.
 
-    // NOTRE KERNEL — chez nous, quoi que regarde la page (`homeOrigin`, qui ne
+    // NOTRE KERNEL — chez nous, quoi que regarde la page (le chemin relatif, qui ne
     // suit pas la surcharge d'une page de streaming fédérée : ce qui vit plus
     // longtemps qu'une page ne suit pas la surcharge d'une page).
     //
     // Sur un téléphone sans comptes, la page n'a pas de jeton : son propre
     // kernel la reconnaît, et le canal s'ouvre quand même (`kernelReachable`).
     const home = useKernelChannel(
-        kernelReachable(token) ? { origin: homeOrigin(), token: token || "" } : null,
+        kernelReachable(token) ? { origin: "", token: token || "" } : null,
     );
     useKernelTopic(home, "sessions", null, (list) => setSessions(Array.isArray(list) ? list : []));
 
@@ -143,7 +142,7 @@ export function useFederatedSessions() {
             }
             drop();
             setFederatedSessions({});
-            const homeToken = getStoredToken() || "";
+            const homeToken = readToken() || "";
 
             for (const [server, result] of opened) {
                 // Avec un compte chez lui, son canal ; sans (pas de jeton collé,
@@ -154,7 +153,7 @@ export function useFederatedSessions() {
                     continue;
                 }
                 const channel = watchOnly
-                    ? kernelChannel({ origin: homeOrigin(), token: homeToken })
+                    ? kernelChannel({ origin: "", token: homeToken })
                     : kernelChannel({ origin: server.link, token: result.session.token });
                 channel.retain();
                 const unsubscribe = channel.subscribe(watchOnly ? `servers/${server.id}/sessions` : "sessions", null, (list) => {
@@ -268,9 +267,8 @@ const SESSION_LOOKUP_TIMEOUT_MS = 5000;
 // façon chez lui pour y jouer (même origine, même jeton, même socket).
 //
 // L'ADRESSE ET LE JETON ARRIVENT DANS L'APPEL, jamais lus dans un état
-// global : même règle que `api()` (voir engine/api/spawnSessions.js, qui explique ce
-// que la forme ambiante a coûté le 2026-09-08 — notre hôte recevant le jeton
-// d'un autre, un 401 toutes les cinq secondes).
+// global (le 2026-09-08, la forme ambiante a fait recevoir à notre hôte le jeton
+// d'un autre : un 401 toutes les cinq secondes).
 //
 // UNE ÉCOUTE, PLUS UNE REPRISE BORNÉE. Il y avait ici huit questions à deux
 // secondes d'intervalle, tant que l'enfant n'avait pas enregistré son miroir
@@ -294,7 +292,7 @@ const SESSION_LOOKUP_TIMEOUT_MS = 5000;
 // zéro — la session a droit à ses cinq secondes à partir du moment où on peut
 // vraiment l'attendre.
 export function useResolvedSession(sessionId, { host = null, waitingOn = null } = {}) {
-    const { token: ownToken } = useAuth();
+    const ownToken = readToken();
     // LE JETON DE L'HÔTE QU'ON VISE, quand la page en vise un (C9-P4c).
     //
     // Sans lui, la façade d'un serveur fédéré nous refusait — et le repli

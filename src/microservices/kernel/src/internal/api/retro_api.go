@@ -960,6 +960,7 @@ func (server *Server) retroRouter() http.Handler {
 		guarded.Post("/resources/{id}/rescan", adminOnly(server.handleRescanResource))
 		guarded.Post("/resources/{id}/storage/{section}", adminOnly(server.handleResourceStorageImport))
 		guarded.Post("/disks/{name}/rescan", adminOnly(server.handleInternalDiskRescan))
+		guarded.Put("/disks/{name}/enabled", adminOnly(server.handleInternalDiskEnabled))
 		// Ce qu'un disque apporte d'autre que des jeux (chantier 24) — ses
 		// cœurs, BIOS, paramètres et correctifs. L'importer dans le dossier
 		// est la commande `download` (facadeDownload, route `disk`), qui

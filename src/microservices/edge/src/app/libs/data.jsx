@@ -1,8 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
-    fetchCapabilities, fetchConsoles, fetchMe, listConsoleCounts, listDevices, listDisks, listEmulatorParams, listFederatedDevices, listRoms,
-    listHiddenServers, listServers, login as loginRequest, onAuthLost, readToken, setServerHidden, subscribeInvites, subscribeSessions, writeToken,
+    fetchConsoles, fetchMe, listConsoleCounts, listDevices, listDisks, listEmulatorParams, listFederatedDevices, listRoms,
+    listHiddenServers, listServers, login as loginRequest, onAuthLost, readToken, setServerHidden, subscribeInvites, writeToken,
 } from "./api.js";
+import { capabilities as hostCapabilities, refreshCapabilities, WEB_DEFAULTS } from "./capabilities.js";
+import { subscribeSessions, subscribeTopic } from "./kernelChannel.js";
 
 // CE QUE LE BACKEND FOURNIT, chargé une fois pour toute la page : le compte,
 // le registre des consoles, les disques internes, les serveurs fédérés, les
@@ -13,32 +15,15 @@ const AuthContext = createContext(null);
 const DataContext = createContext(null);
 
 export const useAuth = () => useContext(AuthContext);
+// Le registre des consoles déjà lu (le moteur, la page de jeu).
+const NO_CONSOLES = [];
+export const useConsoles = () => useContext(DataContext)?.consoles || NO_CONSOLES;
 
-// CE QUE L'HÔTE DÉCLARE (`GET /api/v1/capabilities`) — et, pour ce qu'il ne dit pas, les
-// valeurs par défaut de la webapp (libs/capabilities.js, WEB_DEFAULTS : « l'hôte déclare,
-// l'interface obéit »). Seules celles que le launcher lit sont recopiées ici.
-const CAPABILITY_DEFAULTS = {
-    accounts: true,
-    serverAdmin: true,
-    appDownload: true,
-    staging: false,
-    appHome: false,
-    appHomeLink: false,
-    fullscreen: true,
-    metadataServices: false,
-    // CE QUI S'ÉCRIT DANS LES JOURNAUX se règle de la page (Réglages › Journaux) : le serveur le déclare ; le téléphone
-    // non, son journal a son interrupteur sur la console d'accueil.
-    logSettings: false,
-    // LES SIGNALEMENTS S'ÉCRIVENT : l'écran d'erreur d'un lancement propose « Signaler l'erreur ». Le serveur le déclare
-    // selon Réglages › Journaux ; le téléphone ne le déclare pas, les siens s'écrivent toujours.
-    reports: true,
-    issuesCatalogTokens: true,
-    pushNotifications: false,
-    onlyAdminsLaunch: false,
-    nativeBrowse: false,
-};
-
-export const can = (capabilities, name) => Boolean(capabilities?.[name] ?? CAPABILITY_DEFAULTS[name]);
+// CE QUE L'HÔTE DÉCLARE (`GET /api/v1/capabilities`), complété par les défauts — une seule table et une seule lecture,
+// celles de libs/capabilities.js (chantier 85) : le moteur (`can(name)`) et les écrans (`can(capabilities, name)`, la
+// déclaration tenue dans le contexte, qui redessine quand elle change) lisent la même chose. Il y avait ici une copie
+// de la table, et une seconde lecture.
+export const can = (capabilities, name) => Boolean(capabilities?.[name] ?? WEB_DEFAULTS[name]);
 
 // CE QUE L'HÔTE REFUSE DE LANCER (chantier 56, T1 et T3 ; le porteur, 2026-11-14 : « Oui ») — deux capacités que le
 // téléphone déclare et que la webapp lisait :
@@ -200,7 +185,7 @@ const readDevices = (declared) => Promise.all([declared.pairsConsoles !== false 
 export function DataProvider({ children, idle = false, remote = false }) {
     const { user } = useAuth();
     const [consoles, setConsoles] = useState(null);
-    const [capabilities, setCapabilities] = useState({});
+    const [capabilities, setCapabilities] = useState(hostCapabilities);
     const [disks, setDisks] = useState([]);
     const [servers, setServers] = useState([]);
     // LA LISTE DES SERVEURS FÉDÉRÉS EST-ELLE LUE ? Une fiche demandée par son adresse attend ses sources (Library.jsx,
@@ -245,7 +230,7 @@ export function DataProvider({ children, idle = false, remote = false }) {
         });
         // Les nombres de jeux arrivent AVEC le registre : un écran de consoles qui cache
         // celles sans jeu ne se dessine pas d'abord avec, puis sans.
-        Promise.all([fetchConsoles(), fetchCapabilities(), listConsoleCounts()]).then(([registry, declared, counted]) => {
+        Promise.all([fetchConsoles(), refreshCapabilities(), listConsoleCounts()]).then(([registry, declared, counted]) => {
             if (cancelled) {
                 return;
             }
@@ -271,6 +256,12 @@ export function DataProvider({ children, idle = false, remote = false }) {
     }, [idle]);
 
     useEffect(() => (idle || remote || !channelReady ? undefined : subscribeSessions(setSessions)), [idle, remote, channelReady]);
+    // UN DISQUE BRANCHÉ, DÉBRANCHÉ OU COUPÉ (chantier 86) : ses jeux arrivent ou partent des listes sans recharger.
+    useEffect(() => (idle || remote || !channelReady ? undefined : subscribeTopic("disks", (data) => {
+        if (Array.isArray(data)) {
+            setDisks(data.filter((disk) => disk.present));
+        }
+    })), [idle, remote, channelReady]);
 
     // LES CONSOLES QUI ONT DES RÉGLAGES D'ÉMULATEUR (Réglages › Stockage ›
     // Paramètres des émulateurs, #347) : la liste n'est servie qu'aux

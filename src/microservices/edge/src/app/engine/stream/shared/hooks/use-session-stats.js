@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { can } from "../../../../libs/capabilities.js";
 import { kernelReachable, kernelTarget, useKernelChannel, useKernelTopic } from "../../../../libs/kernelChannel.js";
-import { homeOrigin, streamAuthToken } from "../../../../libs/serverBase.js";
+import { streamAuthToken } from "../../../../libs/serverBase.js";
 
 // The performance-panel plumbing every platform's useXInput hook rebuilt on
 // its own: a statsOpen toggle, syncing it into the connection hook's own
@@ -77,12 +77,12 @@ export function useSessionStats({ platform, sessionId, startedAt = null, token, 
 		(status) => setServerStatus({ success: true, data: status }),
 	);
 
-	// CHEZ NOUS, avec NOTRE jeton — pas celui de l'hôte (`homeOrigin`, comme
+	// CHEZ NOUS, avec NOTRE jeton — pas celui de l'hôte (le chemin relatif, comme
 	// SessionPool). La clé dit la partie, son heure de départ comprise : le
 	// kernel garde le départ de la mesure, et un identifiant réutilisé le
 	// lendemain repart du sien.
 	const homeChannel = useKernelChannel(followDevice && sessionId && kernelReachable(token)
-		? { origin: homeOrigin(), token: token || "" }
+		? { origin: "", token: token || "" }
 		: null);
 	useKernelTopic(
 		homeChannel,

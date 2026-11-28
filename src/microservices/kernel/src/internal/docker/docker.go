@@ -776,6 +776,10 @@ func (dockerClient *Client) CreateAndStart(ctx context.Context, spec SpawnSpec) 
 	// Les paramètres de l'émulateur, s'il en a (emulator_params.go, #347).
 	var patchDirs []string
 	for _, disk := range dockerClient.InternalDisks(ctx) {
+		// Un disque coupé ou débranché n'apporte rien (chantier 86).
+		if !disk.Present {
+			continue
+		}
 		patchDirs = append(patchDirs, disk.Section("patches"))
 	}
 	if entry, ok := emulatorParamsEnv(config.StorageDir, patchDirs, spec.Console, spec.Core, spec.Engine, spec.GameID); ok {

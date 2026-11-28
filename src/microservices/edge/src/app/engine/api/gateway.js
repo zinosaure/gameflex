@@ -5,15 +5,11 @@
 // gateway-webrtc (no JWT: the gateway is reachable plain like the other
 // backends).
 //
-// serverBase-aware (C7-P2) : sur le téléphone la page vit sur l'origine de
-// l'application et le gateway sur le kernel local — apiUrl() préfixe par
-// http://127.0.0.1:10200. Sur le web, serverOrigin() est vide et rien ne
-// change.
+// La passerelle du serveur que la page vise : la nôtre (un chemin relatif), ou celle de l'hôte d'une partie fédérée
+// pendant sa page (apiUrl, wsUrl : serverBase.js).
 import { apiUrl, wsUrl } from "../../libs/serverBase.js";
 
-// Lazy, never frozen at module load : index.js pose window.GAMEFLEX_SERVER
-// (127.0.0.1:10200 sur un téléphone avec gateway) AVANT le premier rendu,
-// et une constante évaluée à l'import le raterait.
+// Lue à chaque appel, jamais figée à l'import : la page de jeu pose l'hôte d'une partie fédérée en arrivant.
 const BASE = () => apiUrl("/api/v1/gateway-webrtc/streams");
 
 // `origin` — L'HÔTE DE CE FLUX, quand ce n'est pas celui que la page vise :

@@ -73,8 +73,10 @@ services:
             - /var/run/docker.sock:/var/run/docker.sock
             - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}:/gameflex
             - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}/cache/profiles:/profiles
-            # More disks with games: one line each, <folder on this machine>:/mnt/<name>.
-            # - /media/games:/mnt/games
+            # More disks with games: mount them on this machine inside one folder
+            # (GAMEFLEX_DISKS in .env), one mount point per disk. A disk plugged in
+            # or unplugged while GameFlex runs appears or disappears by itself.
+            - ${GAMEFLEX_DISKS:-./disks}:/mnt:rslave
 
     # Accounts and sign-in.
     gameflex-credential:

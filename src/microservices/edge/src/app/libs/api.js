@@ -10,6 +10,7 @@
 
 import i18n from "../i18n.js";
 import { capabilities } from "./capabilities.js";
+import { streamAuthToken, streamHostOrigin } from "./serverBase.js";
 
 const TOKEN_KEY = "gameflex-edge-token";
 const AUTH_LOST = "gameflex-edge:auth-lost";
@@ -21,6 +22,22 @@ export const readToken = () => {
         return null;
     }
 };
+
+// LE NOM DU COMPTE, LU DANS LE JETON sans attendre `/auth/me` : la page de jeu le met dans son offre WebRTC dès le premier
+// rendu. Il vivait dans libs/sharedHost.js (`getStoredUsername`).
+export function tokenUsername() {
+    const segments = (readToken() || "").split(".");
+
+    if (segments.length !== 3) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(atob(segments[1].replace(/-/g, "+").replace(/_/g, "/"))).username || null;
+    } catch {
+        return null;
+    }
+}
 
 export const writeToken = (token) => {
     try {
@@ -89,14 +106,14 @@ const lose = async (status, used = readToken()) => {
     }
 };
 
-// Le jeton refusé ailleurs (le canal du kernel de la page de jeu, libs/sharedHost.js).
-export const loseAuth = () => lose(401);
+// Le jeton `used` refusé ailleurs (un canal du kernel, libs/kernelChannel.js) : la session ne se ferme que s'il est
+// encore le jeton courant — un canal resté sur celui d'avant un jeton neuf ne déconnecte pas l'appareil.
+export const loseAuth = (used = readToken()) => lose(401, used);
 
 // UN CANAL FERMÉ EN 1008, OU REFUSÉ À SA POIGNÉE DE MAIN (chantier 55) : la session est-elle finie ? `/auth/me` avec le
-// jeton courant le dit — un 401 la ferme (lose), sinon le canal se reconnecte. La règle du moteur de la page de jeu
-// (kernelChannel.js, `diagnose`), écrite ici une fois pour les canaux du launcher : le centre de messages
-// (subscribeTopic) et la présence (subscribeInvites). Un seul examen à la fois, quel que soit le nombre de canaux
-// fermés ensemble.
+// jeton courant le dit — un 401 la ferme (lose), sinon le canal se reconnecte. La règle du canal du kernel
+// (kernelChannel.js, `diagnose`), pour le canal de présence (subscribeInvites). Un seul examen à la fois, quel que soit
+// le nombre de canaux fermés ensemble.
 let examining = null;
 
 export function examineSession() {
@@ -182,15 +199,43 @@ export const setRemoteTarget = (target) => {
 // La cible du moment, pour qui ouvre son propre canal (`kernelTarget`) : null en local.
 export const remoteTargetNow = () => remoteTarget;
 
-export async function kernel(path, options = {}, given = null) {
-    const host = given || remoteTarget;
+// CHEZ QUI PART L'APPEL — une seule réponse pour toute la page (chantier 85). Deux portées :
+//   - LA PAGE (les Réglages, la bibliothèque, ce qui vit plus longtemps qu'une page) : la cible donnée par l'appelant
+//     (`{origin, token}`), sinon le serveur administré à distance (chantier 73), sinon le nôtre ;
+//   - LA PARTIE (`game`) : la cible donnée, sinon LE SERVEUR OÙ L'ON JOUE — la page de jeu d'une partie chez un serveur
+//     fédéré (setStreamBase, serverBase.js), avec notre jeton de là-bas —, sinon le nôtre.
+// Rend `{origin, token}` d'un autre serveur, ou null pour le nôtre (un chemin relatif, notre jeton). Les clients du
+// moteur choisissaient chacun (`api()` de engine/api/*) : quatre copies d'une règle qui devait rester la même.
+export function targetOf(given = null, { game = false } = {}) {
+    if (given?.origin) {
+        return given;
+    }
+    if (game) {
+        const origin = streamHostOrigin();
+
+        return origin ? { origin, token: streamAuthToken() || readToken() || "" } : null;
+    }
+
+    return remoteTarget;
+}
+
+// Le serveur où l'on joue (`{origin, token}`), ou null quand c'est le nôtre : pour un appel de la page de jeu à une
+// fonction que les Réglages appellent aussi (les sauvegardes d'état).
+export const playedHost = () => targetOf(null, { game: true });
+
+export const kernel = (path, options = {}, given = null) => kernelAt(targetOf(given), path, options);
+
+// LA MÊME, POUR LA PARTIE : le serveur où l'on joue d'abord.
+export const gameKernel = (path, options = {}, given = null) => kernelAt(targetOf(given, { game: true }), path, options);
+
+async function kernelAt(host, path, options) {
     const used = readToken();
     let response;
 
     try {
         response = await fetch(host ? `${host.origin}/api/v1${path}` : `/api/v1${path}`, {
             ...options,
-            headers: host ? { Authorization: `Bearer ${host.token}`, ...(options.headers || {}) } : headers(options.headers),
+            headers: host ? { ...(host.token ? { Authorization: `Bearer ${host.token}` } : {}), ...(options.headers || {}) } : headers(options.headers),
         });
     } catch {
         return { ok: false, status: 0, data: null, errorCode: "serverUnreachable", errorMessage: explained("serverUnreachable") };
@@ -418,6 +463,26 @@ export const readInvitationImage = (file) => kernel("/qr/read", { method: "POST"
 
 // Les types de notification de ce compte (`notification_type`, `enabled`) ; tous rendus, activés
 // par défaut (Notifications.jsx de la webapp).
+// LES PRÉFÉRENCES DU COMPTE, TOUJOURS CHEZ NOUS (chantier 85) : la correspondance des touches d'une manette physique et la
+// disposition de la manette à l'écran se lisent là où les Réglages les écrivent — notre serveur, notre jeton — y compris
+// dans une partie chez un serveur fédéré. La page de jeu y présentait le jeton de l'ami, sur notre propre adresse : un 401,
+// et la manette retombait en silence sur ses réglages par défaut.
+const keyMappingQuery = (deviceId, controllerName) => new URLSearchParams({ physical_device_id: deviceId, controller_name: controllerName });
+export const fetchKeyMapping = (deviceId, controllerName) => credential(`/key-mapping?${keyMappingQuery(deviceId, controllerName)}`);
+export const saveKeyMapping = (deviceId, deviceType, controllerName, mapping) => credential("/key-mapping",
+    jsonBody("POST", { physical_device_id: deviceId, physical_device_type: deviceType, controller_name: controllerName, mapping }));
+export const deleteKeyMapping = (deviceId, controllerName) => credential(`/key-mapping?${keyMappingQuery(deviceId, controllerName)}`, { method: "DELETE" });
+// Les emplacements de disposition d'une manette virtuelle (cinq au plus) ; `is_default` : celui de la partie.
+export const listButtonPositioning = (controllerName) => credential(`/key-positioning?${new URLSearchParams({ controller_name: controllerName })}`);
+export const saveButtonPositioning = (controllerName, slotIndex, layout, isDefault, opacity) => credential("/key-positioning",
+    jsonBody("POST", { controller_name: controllerName, slot_index: slotIndex, layout, is_default: isDefault, opacity }));
+
+// Les membres à inviter dans une partie (le plus récemment connecté d'abord), et l'invitation : par le canal si le membre
+// est là, par une notification sinon (le service des comptes choisit).
+export const listMembers = () => credential("/users/members");
+export const sendInvite = ({ username, platform, consoleId, reference, sessionId }) => credential("/invites",
+    jsonBody("POST", { to_username: username, platform, console_id: consoleId, reference, session_id: sessionId }));
+
 export const listNotificationPreferences = () => credential("/notification-preferences");
 
 // ─── L'administration (Réglages), les mêmes routes que la webapp ─────────────
@@ -497,17 +562,6 @@ export async function fetchConsoles() {
     }
 }
 
-export async function fetchCapabilities() {
-    try {
-        const response = await fetch("/api/v1/capabilities", { cache: "no-store" });
-        const body = await response.json();
-
-        return body?.capabilities || {};
-    } catch {
-        return {};
-    }
-}
-
 // Les jeux d'une console, d'UNE source (Games.jsx) : la bibliothèque, un
 // disque interne (`disk`), ou un serveur fédéré (`server`).
 export function listRoms(consoleId, { query = "", disk = null, server = null, resource = null } = {}) {
@@ -536,6 +590,8 @@ export function listRoms(consoleId, { query = "", disk = null, server = null, re
 
 export const listDisks = () => kernel("/retrogaming/disks");
 export const rescanDisk = (name) => kernel(`/retrogaming/disks/${encodeURIComponent(name)}/rescan`, { method: "POST" });
+// Couper un disque, ou le réactiver (chantier 86) : coupé, GameFlex ne s'en sert plus, et on peut le débrancher.
+export const setDiskEnabled = (name, enabled) => kernel(`/retrogaming/disks/${encodeURIComponent(name)}/enabled`, jsonBody("PUT", { enabled }));
 
 // LES RESSOURCES EXTERNES (`#808`, kernel : resources_api.go) — Samba, WebDAV, kDrive, FTP, SFTP ; administrateur. Leur
 // liste vit aussi sur le sujet `resources` du centre de messages (Resources.jsx), qui la repousse à chaque parcours.
@@ -605,7 +661,7 @@ const postJson = (body) => ({ method: "POST", headers: { "Content-Type": "applic
 
 export const listSaveSources = () => kernel("/saves/sources");
 export const listSaveSlots = (consoleId, reference, source = "", host = null) => kernel(`/retrogaming/savestate/slots?${withSource({ consoleId, reference }, source)}`, {}, host);
-export const deleteSaveSlot = (consoleId, reference, slot, source = "") => kernel(`/retrogaming/savestate?${withSource({ consoleId, reference, slot }, source)}`, { method: "DELETE" });
+export const deleteSaveSlot = (consoleId, reference, slot, source = "", host = null) => kernel(`/retrogaming/savestate?${withSource({ consoleId, reference, slot }, source)}`, { method: "DELETE" }, host);
 export const deleteGameSaves = (consoleId, reference, source = "") => kernel(`/retrogaming/savestate/game?${withSource({ consoleId, reference }, source)}`, { method: "DELETE" });
 // Un backup emporte sa note (`note`, facultative : pourquoi on le fait), posée à côté de chaque sauvegarde copiée.
 export const backupStates = (items, note = "") => kernel("/saves/states/backup", postJson({ items, note }));
@@ -655,6 +711,8 @@ export async function fetchBytes(path, host = null, { onProgress = null, signal 
     }
 }
 
+// La vignette d'une sauvegarde d'état, ici ou chez `host` ; `version` (sa date) change l'adresse quand elle change.
+export const fetchStateScreenshot = (consoleId, reference, slot, version = "", host = null) => fetchBytes(`/retrogaming/savestate/screenshot?${new URLSearchParams({ consoleId, reference, slot: String(slot), v: version })}`, host);
 export const fetchStateFile = (consoleId, reference, slot, source, host, screenshot = false, options = {}) => fetchBytes(`/retrogaming/savestate/${screenshot ? "screenshot" : "file"}?${withSource({ consoleId, reference, slot }, source)}`, host, options);
 export const fetchStreamexSave = (console, id, source, host, options = {}) => fetchBytes(`/saves/streamex/game?${withSource({ console, id }, source)}`, host, options);
 
@@ -803,134 +861,40 @@ export const writeEmulatorParams = (consoleId, emulator, { enabled, values, pres
 });
 export const deleteEmulatorPreset = (consoleId, emulator, presetId) => kernel(`${emulatorPath(consoleId, emulator)}/presets/${encodeURIComponent(presetId)}`, { method: "DELETE" });
 export const listServers = () => kernel("/servers");
+
+// LE SIGNALEMENT D'UN LANCEMENT MANQUÉ (#191) : une ligne dans `logs/reports.log` du serveur où il a manqué. Le nom de
+// l'utilisateur ne part pas : le serveur le prend du jeton.
+export const reportLaunchFailure = ({ context, steps, detail = null }) => gameKernel("/retrogaming/storage/logs/report", postJson({ context, steps, detail }));
+
+// UNE PARTIE, SANS COMPTE (la page publique d'une partie, `#747`), ici ou chez `host` (`{origin, token: ""}`).
+export const getPublicSession = (sessionId, host = null) => gameKernel(`/sessions/${encodeURIComponent(sessionId)}`, {}, host);
+
+// UN TÉLÉCHARGEMENT CONFIÉ AU NAVIGATEUR DU TÉLÉPHONE (chantier 14 ; « c'est l'utilisateur qui décide dans son
+// navigateur ») : la WebView consommerait le ticket à usage unique avant que le navigateur ne le présente, le kernel du
+// téléphone demande donc à l'application de l'ouvrir. L'adresse part ABSOLUE : le kernel du téléphone n'ouvre que ses
+// propres liens (handleBrowse). Faux quand l'hôte ne le sait pas ou le refuse : la page télécharge alors elle-même.
+export async function handToBrowser(url) {
+    if (!capabilities().nativeBrowse) {
+        return false;
+    }
+    const answer = await kernelAt(null, "/device/browse", jsonBody("POST", { url: new URL(url, window.location.href).href }));
+
+    return answer.ok;
+}
 export const listDevices = () => kernel("/playstation/my-devices");
 export const listFederatedDevices = () => kernel("/servers/remoteplay/devices");
 // L'ÉTAT DES CONSOLES D'UN SERVEUR FÉDÉRÉ, POUSSÉ (`#750`) : le sujet `servers/<id>/devices` de notre kernel, qui relaie
 // celles que le serveur pousse, sous SES identifiants ; une liste vide quand il est perdu. Un refus (un serveur absent du
 // registre) ferme l'abonnement.
-export const subscribeFederatedDevices = (serverId, onList) => subscribeTopic(`servers/${serverId}/devices`, (data) => onList(Array.isArray(data) ? data : []), () => {});
 // Allumer une console Remote Play (un paquet de réveil) : ici, ou chez un serveur fédéré (`host`), sous
 // l'identifiant que CET hôte lui connaît.
+// Chercher les consoles PlayStation du réseau local (le serveur les découvre) ; enregistrer l'une d'elles (son code
+// d'appairage) ; la retirer.
+export const discoverDevices = (timeoutMs) => kernel(`/playstation/discover${timeoutMs ? `?timeoutMs=${timeoutMs}` : ""}`);
+export const registerDevice = ({ name, ip, identifier, pin, hostType = "PS5" }) => kernel("/playstation/bind",
+    jsonBody("POST", { deviceName: name, hostIp: ip, accountId: identifier, pin, hostType }));
+export const deleteDevice = (deviceId) => kernel(`/playstation/devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
 export const wakeDevice = (deviceId, host = null) => kernel(`/playstation/wake/${encodeURIComponent(deviceId)}`, { method: "POST" }, host);
-
-// Le canal du kernel (`/api/v1/facade/ws`, libs/kernelChannel.js de la
-// webapp) : on s'abonne au sujet `sessions`, la liste vivante des parties.
-// Pas de sondage (règle du projet) ; une reconnexion qui s'espace si le
-// kernel se tait.
-// Les parties en cours, en direct (le sujet `sessions`).
-export const subscribeSessions = (onList) => subscribeTopic("sessions", (data) => onList(Array.isArray(data) ? data : []));
-
-// L'adresse du canal du kernel, le jeton en paramètre (une poignée de main WebSocket ne porte pas d'en-tête).
-// LE CANAL DU KERNEL VISÉ : le nôtre, ou celui du serveur fédéré qu'on administre d'ici (chantier 73) — une commande
-// (un téléchargement) partie de ses réglages se fait chez lui, pas sur cet appareil.
-const facadeAddress = () => {
-    if (remoteTarget) {
-        const origin = new URL(remoteTarget.origin);
-
-        return `${origin.protocol === "https:" ? "wss:" : "ws:"}//${origin.host}/api/v1/facade/ws?token=${encodeURIComponent(remoteTarget.token)}`;
-    }
-    const token = readToken();
-
-    return `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/api/v1/facade/ws${token ? `?token=${encodeURIComponent(token)}` : ""}`;
-};
-
-// UN SUJET DU CANAL DU KERNEL (`/facade/ws`) : `sessions`, `download/<id>` (un téléchargement)… ; reconnecté de lui-même. `onRefused(raison)` : le kernel
-// refuse l'abonnement (un téléchargement qu'il ne connaît plus) — on ne se réabonne pas. Rend de quoi se
-// désabonner.
-export function subscribeTopic(topic, onData, onRefused = null) {
-    let socket = null;
-    let closed = false;
-    let retryMs = 1000;
-    let timer = null;
-
-    const connect = () => {
-        if (closed) {
-            return;
-        }
-        let opened = false;
-        socket = new WebSocket(facadeAddress());
-        socket.onopen = () => {
-            opened = true;
-            retryMs = 1000;
-            socket.send(JSON.stringify({ type: "subscribe", id: "subscribe", data: { topic } }));
-        };
-        socket.onmessage = (event) => {
-            try {
-                const frame = JSON.parse(event.data);
-
-                if (frame.topic === topic) {
-                    onData(frame.data);
-                } else if (frame.type === "reply" && frame.id === "subscribe" && frame.status >= 400 && onRefused) {
-                    closed = true;
-                    socket.close(1000);
-                    onRefused(frame.data?.errorMessage || "");
-                }
-            } catch {
-                // Une trame illisible ne casse pas la liste.
-            }
-        };
-        // Fermé en 1008 (la session est finie), ou refusé à sa poignée de main (un jeton que le kernel ne prend plus,
-        // un appareil qui sort de veille) : la session s'examine d'abord (examineSession), puis le canal se reconnecte
-        // — sauf si elle est fermée entre-temps.
-        socket.onclose = (event) => {
-            if (closed) {
-                return;
-            }
-            const wait = event.code === SESSION_ENDED || !opened ? examineSession() : Promise.resolve();
-            wait.then(() => {
-                if (!closed) {
-                    timer = setTimeout(connect, retryMs);
-                    retryMs = Math.min(retryMs * 2, 10000);
-                }
-            });
-        };
-    };
-    connect();
-
-    return () => {
-        closed = true;
-        clearTimeout(timer);
-        socket?.close(1000);
-    };
-}
-
-// UNE COMMANDE DU CANAL DU KERNEL (`{type, id, data}` → la réponse `reply` du même `id`, CODE_CONVENTIONS.md, « le
-// centre de messages ») : le temps de sa réponse, puis le canal se referme. Rend la forme de `kernel` — le corps de
-// la réponse est celui qu'aurait rendu la route. `download` en est une (libs/downloads.js).
-export function kernelCommand(type, data) {
-    return new Promise((resolve) => {
-        let socket;
-
-        try {
-            socket = new WebSocket(facadeAddress());
-        } catch {
-            resolve({ ok: false, status: 0, data: null, errorCode: "serverUnreachable", errorMessage: explained("serverUnreachable") });
-
-            return;
-        }
-        let answered = false;
-        const answer = (result) => {
-            if (!answered) {
-                answered = true;
-                socket.close(1000);
-                resolve(result);
-            }
-        };
-        socket.onopen = () => socket.send(JSON.stringify({ type, id: "command", data }));
-        socket.onmessage = (event) => {
-            try {
-                const frame = JSON.parse(event.data);
-
-                if (frame.type === "reply" && frame.id === "command") {
-                    answer(kernelAnswer(frame.status, frame.data));
-                }
-            } catch {
-                // Une trame illisible n'est pas la réponse.
-            }
-        };
-        socket.onclose = () => answer({ ok: false, status: 0, data: null, errorCode: "serverUnreachable", errorMessage: explained("serverUnreachable") });
-    });
-}
 
 // LE CANAL DE PRÉSENCE (`/api/v1/presence/ws`, PresenceContext.jsx de la
 // webapp) : on y lit les invitations (« X t'invite à regarder ») ; comme dans la

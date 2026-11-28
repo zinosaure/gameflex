@@ -167,7 +167,7 @@ once. A new value applies from the next game.
 | `GAMEFLEX_LIBRARY/keys` | `/keys` (gameflex-credential) | The key that seals two-step verification secrets, created on first use. Deleting it turns two-step verification off for everyone, who sets it up again at their next sign-in. |
 | `GAMEFLEX_LIBRARY/cache/profiles` | `/profiles` (gameflex-kernel) | Controller layouts, written by GameFlex when it starts. |
 | `/var/run/docker.sock` | same (gameflex-kernel) | Lets GameFlex start a container for each game. |
-| any other disk | `/mnt/<name>` (gameflex-kernel) | More games: add one line per disk to the volumes of `gameflex-kernel`. |
+| `GAMEFLEX_DISKS` | `/mnt` (gameflex-kernel) | More disks of games, one mount point per disk; they can be plugged and unplugged while GameFlex runs (see [Storage](storage.md#more-disks-of-games)). |
 | the Docker volume `gameflex_wireguard` | `/etc/wireguard` (gameflex-wireguard) | The optional VPN's keys and devices, once you turn it on. |
 
 **Back up `GAMEFLEX_LIBRARY`**: it holds everything that is yours, saves and accounts included.
@@ -265,8 +265,10 @@ services:
             - /var/run/docker.sock:/var/run/docker.sock
             - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}:/gameflex
             - ${GAMEFLEX_LIBRARY:?set GAMEFLEX_LIBRARY in .env}/cache/profiles:/profiles
-            # More disks with games: one line each, <folder on this machine>:/mnt/<name>.
-            # - /media/games:/mnt/games
+            # More disks with games: mount them on this machine inside one folder
+            # (GAMEFLEX_DISKS in .env), one mount point per disk. A disk plugged in
+            # or unplugged while GameFlex runs appears or disappears by itself.
+            - ${GAMEFLEX_DISKS:-./disks}:/mnt:rslave
 
     # Accounts and sign-in.
     gameflex-credential:
@@ -453,6 +455,13 @@ GAMEFLEX_ROOT_PASSWORD=
 GAMEFLEX_SECRET=
 
 # ── Optional ─────────────────────────────────────────────────────────
+
+# More disks with games: the folder of this machine where you mount them, one
+# mount point per disk (for example /mnt/gameflex, with a disk mounted on
+# /mnt/gameflex/games). GameFlex reads each disk's gameflex folder if it has
+# one, its root otherwise. Disable a disk in Settings › Resources before you
+# unplug it. Empty: a "disks" folder next to docker-compose.yml.
+GAMEFLEX_DISKS=
 
 # The GameFlex version to run, such as 0.3.0. "latest" follows new releases.
 GAMEFLEX_VERSION=latest

@@ -15,9 +15,9 @@
 // C'est la même discipline que pour les jeux fédérés (`srv<id>:<référence>`,
 // chantier 6) : le préfixe dit CHEZ QUI, et rien de plus. Ce qu'il faut pour
 // y aller se demande, il ne se transporte pas.
+import { readToken } from "./api.js";
 import { apiUrl } from "./serverBase.js";
 import { federationSession } from "./federation.js";
-import { getStoredToken } from "./sharedHost.js";
 
 // Le préfixe qui dit « ceci vit chez le serveur numéro N ».
 //
@@ -105,7 +105,7 @@ async function serverDirectory() {
         return directory;
     }
 
-    const token = getStoredToken();
+    const token = readToken();
     try {
         const response = await fetch(apiUrl("/api/v1/servers"), {
             headers: token ? { Authorization: `Bearer ${token}` } : {},

@@ -109,7 +109,7 @@ export function useRetroPhysicalGamepadInput(enabled, sendButton, sendAnalog, co
         const keyMappingOf = (deviceId) => {
             if (!keyMappings.has(deviceId)) {
                 keyMappings.set(deviceId, getCachedKeyMapping(deviceId, controllerName));
-                loadKeyMapping(token, deviceId, controllerName).then((m) => { keyMappings.set(deviceId, m); });
+                loadKeyMapping(deviceId, controllerName).then((m) => { keyMappings.set(deviceId, m); });
                 unsubscribers.push(subscribeKeyMapping(deviceId, controllerName, (m) => { keyMappings.set(deviceId, m); }));
             }
 

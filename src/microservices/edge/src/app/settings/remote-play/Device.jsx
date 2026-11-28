@@ -9,7 +9,7 @@ import NavRow from "../../bricks/NavRow.jsx";
 import { Note } from "../../bricks/Note.jsx";
 import { Rows } from "../../bricks/Rows.jsx";
 import { Section } from "../../bricks/Section.jsx";
-import { deleteDevice } from "../../engine/api/remoteplay.js";
+import { deleteDevice } from "../../libs/api.js";
 import { useData } from "../../libs/data.jsx";
 import { toast } from "../../shell/Shell.jsx";
 import SettingsPage, { NotFound, useSettingsNavigation } from "../SettingsPage.jsx";

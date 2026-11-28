@@ -7,16 +7,19 @@ package docker
 // comme ressources distantes mais ressources internes. Les ressources internes
 // ont le droit de lancer des jeux/consoles entre eux. »
 //
-// UN DISQUE SE DÉCLARE PAR UN VOLUME DU COMPOSE, et rien d'autre :
+// LES DISQUES SE MONTENT SUR L'HÔTE DANS UN MÊME DOSSIER, que le compose déclare une fois, en `rslave` (chantier 86) :
 //
 //	volumes:
-//	  - /un/disque/jeux:/mnt/<nom>
+//	  - /mnt/gameflex:/mnt:rslave
 //
-// Le kernel les découvre en lisant /mnt. Pour monter un disque dans le
-// conteneur d'une partie, il lui faut pourtant son chemin SUR L'HÔTE — c'est
-// le démon Docker qui résout une source de montage, pas ce conteneur. Ce
-// chemin, il le lit sur son propre conteneur, par l'API Docker qu'il a déjà :
-// aucune variable à tenir à jour à côté du volume.
+// Chaque point de montage dessous est un disque, sous son nom ; GameFlex y lit son dossier `gameflex/` s'il en a un,
+// sinon sa racine. `rslave` fait suivre au kernel les montages de l'hôte : un disque débranché se vide, rebranché il
+// revient, sans recréer le conteneur. Monter le disque lui-même (ou un de ses dossiers, la forme d'avant) l'y gardait
+// tenu pour toujours — l'essai du 2026-11-27, docs/roadmap/chantier-86-debrancher-un-disque-a-chaud.md.
+//
+// Pour monter un disque dans le conteneur d'une partie, il faut son chemin SUR L'HÔTE — c'est le démon Docker qui
+// résout une source de montage, pas ce conteneur. Le kernel lit celui du dossier des disques sur son propre conteneur,
+// par l'API Docker qu'il a déjà : aucune variable à tenir à jour à côté du volume.
 //
 // GÉNÉRIQUE : aucun nom de disque n'est écrit ici, l'ordre est celui des
 // noms, et un disque n'est qu'un dossier rangé comme la bibliothèque.
@@ -45,12 +48,18 @@ type InternalDisk struct {
 	// est pas un montage : le disque ne peut alors pas être monté dans une
 	// partie.
 	HostDir string `json:"-"`
-	// Present — le disque apporte au moins une section (config.DiskFolders :
-	// jeux, BIOS, cœurs, paramètres, correctifs) et peut être monté dans une
-	// partie. Un disque débranché au démarrage de la pile laisse un dossier
-	// vide : il apparaît, absent, et rien ne s'en lit.
+	// Present — le disque est activé, apporte au moins une section (config.DiskFolders : jeux, BIOS, cœurs, paramètres,
+	// correctifs) et peut être monté dans une partie. Un disque débranché laisse un point de montage vide : il apparaît,
+	// absent, et rien ne s'en lit.
 	Present bool `json:"present"`
+	// Enabled — l'administrateur ne l'a pas coupé (chantier 86) : coupé, GameFlex ne s'en sert plus, comme d'un disque
+	// absent, et on peut le débrancher.
+	Enabled bool `json:"enabled"`
 }
+
+// gameflexFolder — le dossier que GameFlex lit sur un disque qui porte autre chose à côté.
+const gameflexFolder = "gameflex"
+
 
 // Section — une section de ce disque (`cores`, `bios`…), dans le kernel.
 func (disk InternalDisk) Section(name string) string {
@@ -81,16 +90,25 @@ func (dockerClient *Client) InternalDisks(ctx context.Context) []InternalDisk {
 	if err != nil {
 		return []InternalDisk{}
 	}
-	sources := dockerClient.selfMountSources(ctx)
+	hostRoot := dockerClient.selfMountSources(ctx)[filepath.Clean(internalDisksDir)]
+	disabled := disabledDisks()
 
 	disks := []InternalDisk{}
 	for _, entry := range entries {
 		if !entry.IsDir() || !diskName.MatchString(entry.Name()) {
 			continue
 		}
-		dir := filepath.Join(internalDisksDir, entry.Name())
-		disk := InternalDisk{Name: entry.Name(), Dir: dir, HostDir: sources[dir]}
-		disk.Present = disk.HostDir != "" && disk.bringsAnything()
+		disk := InternalDisk{Name: entry.Name(), Dir: filepath.Join(internalDisksDir, entry.Name()), Enabled: !disabled[entry.Name()]}
+		if hostRoot != "" {
+			disk.HostDir = filepath.Join(hostRoot, entry.Name())
+		}
+		if info, err := os.Stat(filepath.Join(disk.Dir, gameflexFolder)); err == nil && info.IsDir() {
+			disk.Dir = filepath.Join(disk.Dir, gameflexFolder)
+			if disk.HostDir != "" {
+				disk.HostDir = filepath.Join(disk.HostDir, gameflexFolder)
+			}
+		}
+		disk.Present = disk.Enabled && disk.HostDir != "" && disk.bringsAnything()
 		disks = append(disks, disk)
 	}
 

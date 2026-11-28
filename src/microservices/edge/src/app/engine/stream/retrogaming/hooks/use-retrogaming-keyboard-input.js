@@ -34,7 +34,7 @@ export function useRetroKeyboardInput(enabled, sendButton, consoleId, token) {
 
     useEffect(() => {
         keyMappingRef.current = getCachedKeyMapping(keyboardId, controllerName);
-        loadKeyMapping(token, keyboardId, controllerName).then((m) => {
+        loadKeyMapping(keyboardId, controllerName).then((m) => {
             keyMappingRef.current = m;
         });
         return subscribeKeyMapping(keyboardId, controllerName, (mapping) => {

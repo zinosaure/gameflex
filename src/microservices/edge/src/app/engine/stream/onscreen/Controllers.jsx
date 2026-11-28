@@ -1,7 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from "react";
-import { useAuth } from "../../../libs/sharedHost.js";
-import { listButtonPositioning } from "../../../libs/profileApi.js";
-import { streamAuthToken } from "../../../libs/serverBase.js";
+import { listButtonPositioning, readToken } from "../../../libs/api.js";
 import { getHapticFeedback, useGamepadPreferences } from "../../libs/gamepadPreferences.js";
 import { DEFAULT_PAD_OPACITY, forgetPadOpacity, publishPadOpacity, usePadOpacity } from "./padOpacity.js";
 import { logThrottled } from "../../../libs/log-store.js";
@@ -629,7 +627,7 @@ export default function ControllerLayout({
 	const [isLandscape, setIsLandscape] = useState(
 		window.innerWidth > window.innerHeight,
 	);
-	const { token } = useAuth();
+	const token = readToken();
 	const layout = layoutOverride || internalLayout;
 	const drawn = canDrawButton ? layout.filter((b) => canDrawButton(b.name)) : layout;
 	const padLift = PAD_BOTTOM + (isLandscape ? LANDSCAPE_PAD_LIFT : PORTRAIT_PAD_LIFT);
@@ -656,22 +654,15 @@ export default function ControllerLayout({
 		setFetchedOpacity(null);
 		if (!token) return undefined;
 		let cancelled = false;
-		// LE JETON DE L'HÔTE QUAND LA PAGE EN VISE UN.
-		//
-		// La disposition part chez celui qui tient la partie — c'est là que
-		// va cette requête (apiUrl suit la surcharge de la page). Y présenter
-		// NOTRE jeton ne pouvait que revenir 401, en plus de l'envoyer à une
-		// machine que ça ne regarde pas (lu dans la console d'un téléphone le
-		// 2026-09-07). Sans compte là-bas, la disposition enregistrée du
-		// preset s'applique, ce qui est déjà le repli prévu.
-		const authToken = streamAuthToken() || token;
-		listButtonPositioning(authToken, name).then((result) => {
+		// LA DISPOSITION SE LIT CHEZ NOUS, avec notre jeton (libs/api.js, chantier 85) : là où Réglages › Manettes l'écrit,
+		// même dans une partie chez un serveur fédéré (elle y partait avec le jeton de l'hôte, sur notre adresse : un 401).
+		listButtonPositioning(name).then((result) => {
 			if (cancelled) return;
-			// LA DISPOSITION NE SE LIT PAS (une partie chez un autre hôte, où ce jeton n'a pas de compte) : la manette garde
-			// celle par défaut, et l'opacité se règle quand même depuis le menu, pour cette page seulement (sans jeton, rien
-			// ne s'enregistre ; le porteur, 2026-11-17 : « dans mobileapp je ne vois pas […] l'opacité des boutons »).
+			// LA DISPOSITION NE SE LIT PAS (un invité sans compte, le serveur injoignable) : la manette garde celle par défaut,
+			// et l'opacité se règle quand même depuis le menu, pour cette page seulement (rien ne s'enregistre ; le porteur,
+			// 2026-11-17 : « dans mobileapp je ne vois pas […] l'opacité des boutons »).
 			if (!result.ok) {
-				publishPadOpacity({ name, opacity, slot: null, slots: [], token: null });
+				publishPadOpacity({ name, opacity, slot: null, slots: [], saves: false });
 
 				return;
 			}
@@ -687,7 +678,7 @@ export default function ControllerLayout({
 				opacity: typeof defaultSlot?.opacity === "number" ? defaultSlot.opacity : opacity,
 				slot: defaultSlot || null,
 				slots: result.items || [],
-				token: authToken,
+				saves: true,
 			});
 		});
 		return () => {

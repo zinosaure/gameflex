@@ -1,9 +1,9 @@
 import { useSyncExternalStore } from "react";
-import { explained, kernelCommand, subscribeTopic } from "./api.js";
+import { explained, handToBrowser } from "./api.js";
+import { kernelCommand, subscribeTopic } from "./kernelChannel.js";
 import { can } from "./data.jsx";
 import { fact } from "./format.js";
 import { followLink } from "./links.js";
-import { handToBrowser } from "../engine/api/retrogaming.js";
 
 // UN TÉLÉCHARGEMENT PAR LE NAVIGATEUR, JAMAIS DANS LA BIBLIOTHÈQUE (le porteur, 2026-11-16 : « Les téléchargement sont
 // par navigateur et non directement dans la librairie ») — un jeu, l'archive de ses métadonnées (le Catalogue des

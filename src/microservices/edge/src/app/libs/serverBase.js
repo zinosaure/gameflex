@@ -1,49 +1,19 @@
 import { capabilities } from "./capabilities.js";
-// D'où vient le serveur GameFlex — et pourquoi ce n'est pas toujours « ici ».
+// D'OÙ VIENT LE SERVEUR GAMEFLEX — et pourquoi ce n'est pas toujours « ici ».
 //
-// Dans un navigateur, la page ET l'API viennent de la même origine : un chemin
-// relatif suffit, et c'est ce que tout le frontend fait depuis le début.
+// La page ET l'API viennent de la même origine : dans un navigateur, et dans l'application Android, qui charge la page
+// servie par son propre kernel (chantier 7, MainActivity). Un chemin relatif suffit. L'adresse que l'application
+// déclarait autrefois (`window.GAMEFLEX_SERVER`) n'est plus posée par personne : sa lecture est partie avec le
+// chantier 85.
 //
-// Dans l'application Android, la page est servie DEPUIS L'APPLICATION (des
-// assets embarqués, sur une origine locale) tandis que le serveur est ailleurs,
-// sur le réseau. « /api/v1/sessions » y désignerait l'application elle-même,
-// qui n'a pas d'API. Il faut donc une origine explicite — mais UNIQUEMENT là.
-//
-// D'où la règle : par défaut, rien ne change. `serverOrigin()` rend une chaîne
-// vide, les URL restent relatives, le comportement du web est intact. L'hôte
-// n'est utilisé que si quelqu'un l'a posé, et personne ne le fait dans un
-// navigateur.
-//
-// Pourquoi une variable globale plutôt qu'une variable de build : la même APK
-// doit pouvoir viser un autre serveur sans être recompilée, et c'est le pont
-// natif qui la renseigne au chargement de la page.
+// SEULE EXCEPTION : la page de jeu d'une partie chez un AUTRE serveur (un serveur fédéré, C9) — tant qu'elle la montre,
+// l'API, la passerelle et le canal du kernel visent l'hôte (`setStreamBase`), puis la surcharge part avec la page. Ce qui
+// vit plus longtemps qu'une page ne la suit pas : le chemin relatif, chez nous (le défaut du 2026-09-07 — un abonnement
+// reconnecté pendant une page fédérée y restait rebranché, avec notre jeton, refusé là-bas).
 
-/**
- * L'origine du serveur : "" en usage normal (même origine), ou
- * "http://192.168.1.20:10200" quand l'application l'a déclarée.
- */
+/** L'origine du serveur visé : celle de l'hôte d'une partie fédérée pendant sa page, sinon "" (la nôtre). */
 export function serverOrigin() {
-    if (typeof window === "undefined") {
-        return "";
-    }
-
-    // Une session chez un AUTRE appareil (C7-P4) : tant que la page de
-    // streaming la montre, tout — API, gateway, façade v4 — vise l'hôte,
-    // pas le kernel local. La surcharge vit le temps de la page, posée par
-    // Streaming.jsx et retirée à son démontage.
-    if (streamBase) {
-        return streamBase;
-    }
-
-    const declared = window.GAMEFLEX_SERVER;
-
-    // Une origine vide, absente ou égale à l'origine courante revient au même :
-    // le chemin relatif. Autant ne pas allonger toutes les URL pour rien.
-    if (!declared || declared === window.location.origin) {
-        return "";
-    }
-
-    return String(declared).replace(/\/+$/, "");
+    return streamBase || "";
 }
 
 let streamBase = null;
@@ -109,38 +79,7 @@ export function streamHostUsername() {
     return streamUsername;
 }
 
-/**
- * CHEZ NOUS, quoi que cette page regarde.
- *
- * `serverOrigin()` suit la surcharge posée par une page qui montre la partie
- * de quelqu'un d'autre. C'est juste pour CETTE page — et faux pour tout ce qui
- * lui survit.
- *
- * Le défaut qui l'a fait naître (2026-09-07) : l'abonnement app-wide aux
- * sessions construit son URL AU MOMENT DE SE CONNECTER, et il se reconnecte
- * tout seul quand le lien tombe. Une reconnexion survenue pendant qu'une page
- * de streaming fédérée était ouverte le rebranchait sur l'hôte — avec NOTRE
- * jeton, que celui-ci refuse — et il y restait après la fermeture de la page.
- * Plus de « Live Now », plus de « Mes sessions », donc plus aucun moyen de
- * rejoindre quoi que ce soit, y compris ses propres parties locales.
- *
- * La règle : ce qui vit plus longtemps qu'une page ne suit pas la surcharge
- * d'une page.
- */
-export function homeOrigin() {
-    if (typeof window === "undefined") {
-        return "";
-    }
-
-    const declared = window.GAMEFLEX_SERVER;
-    if (!declared || declared === window.location.origin) {
-        return "";
-    }
-
-    return String(declared).replace(/\/+$/, "");
-}
-
-/** Une URL d'API, relative comme avant si aucun serveur n'a été déclaré. */
+/** Une URL d'API : relative, ou chez l'hôte d'une partie fédérée pendant sa page. */
 export function apiUrl(path) {
     return `${serverOrigin()}${path}`;
 }

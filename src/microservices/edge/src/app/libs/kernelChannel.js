@@ -3,10 +3,23 @@ import { serverOrigin } from "./serverBase.js";
 import { can } from "./capabilities.js";
 import { federatedServerName } from "./federatedHost.js";
 import { forgetFederationToken } from "./federation.js";
-import { invalidateAuth } from "./auth-invalidation.js";
-import {
-    channelRefused, connectionLost, getTranslatedErrorMessage, serverUnreachable, sessionRefused,
-} from "./error-code-translator.js";
+import i18n from "../i18n.js";
+import { explained, loseAuth, readToken, remoteTargetNow } from "./api.js";
+
+// LES ÉCHECS DU CANAL DISENT CE QUI EST ARRIVÉ, ET CHEZ QUI (le porteur, 2026-10-21 : « enlever les messages d'erreur
+// génériques comme "backend injoignable" ») — un serveur arrêté, l'adresse d'un ami muette, un jeton refusé. `server` :
+// le nom d'un serveur fédéré ; vide, c'est le nôtre. Ils vivaient dans libs/error-code-translator.js, dont ce canal
+// était le dernier utilisateur (chantier 85).
+const failure = (errorCode, errorMessage) => ({ success: false, ok: false, status: 0, errorCode, errorMessage });
+const peerOrOwn = (server, peerKey, ownKey) => i18n.t(server ? `common.errorCodes.${peerKey}` : `common.errorCodes.${ownKey}`, server ? { server } : {});
+/** Pas de réponse du tout : le serveur est arrêté, ou l'adresse est muette. */
+const serverUnreachable = (server = "") => failure("unreachable", peerOrOwn(server, "peerUnreachable", "serverUnreachable"));
+/** Le serveur répond, et refuse le jeton : la connexion est à refaire. */
+const sessionRefused = (server = "") => failure("sessionRefused", peerOrOwn(server, "peerSessionRefused", "sessionRefused"));
+/** Le serveur répond, accepte le jeton, mais le canal de commandes ne passe pas. */
+const channelRefused = (server = "") => failure("channelRefused", peerOrOwn(server, "peerChannelRefused", "channelRefused"));
+/** Le canal s'est coupé pendant une commande : elle a pu aboutir quand même. */
+const connectionLost = () => failure("connectionLost", i18n.t("common.errorCodes.connectionLost"));
 
 // LE CENTRE DE MESSAGES — UN WebSocket par onglet et par kernel.
 //
@@ -33,7 +46,7 @@ import {
 // jeton différent est une autre identité, donc une autre connexion.
 //
 // L'ADRESSE ET LE JETON SONT DONNÉS, JAMAIS LUS DANS UN ÉTAT GLOBAL. Le défaut
-// qui a fait naître `homeOrigin` (2026-09-07) : un abonnement qui reconstruisait
+// de la règle « ce qui vit plus longtemps qu'une page ne suit pas sa surcharge » (2026-09-07) : un abonnement qui reconstruisait
 // son URL à chaque reconnexion se rebranchait sur l'hôte d'une page fédérée
 // ouverte entre-temps — avec notre jeton, que celui-ci refuse. Une connexion
 // d'ici garde l'adresse qu'on lui a donnée en la créant.
@@ -68,7 +81,7 @@ function asResult(frame) {
         ...body,
         // UN REFUS SE DIT DANS LA LANGUE DE LA PAGE (chantier 20, chantier 59 P5) :
         // le kernel rend un code, l'écran lit sa traduction — jamais son anglais.
-        ...(body.errorCode || body.errorMessage ? { errorMessage: getTranslatedErrorMessage(body) } : {}),
+        ...(body.errorCode || body.errorMessage ? { errorMessage: explained(body.errorCode ?? "", body.errorMessage || "") } : {}),
         status,
         ok: status >= 200 && status < 300 && body.success !== false,
         ...(frame.launchId ? { launchId: frame.launchId } : {}),
@@ -134,7 +147,7 @@ class KernelChannel {
             // RIEN NE SE RATTRAPE, TOUT SE RENVOIE : chaque abonnement repart
             // d'un instantané frais.
             for (const [topic, entry] of this.topics) {
-                this.write({ type: "subscribe", data: { topic, ...(entry.params || {}) } });
+                this.write({ type: "subscribe", id: `subscribe:${topic}`, data: { topic, ...(entry.params || {}) } });
             }
             for (const message of this.outbox.splice(0)) {
                 this.write(message);
@@ -199,6 +212,17 @@ class KernelChannel {
     }
 
     route(frame) {
+        if (frame.type === "reply" && String(frame.id || "").startsWith("subscribe:")) {
+            // UN ABONNEMENT REFUSÉ (un téléchargement que le kernel ne connaît plus, un sujet réservé) : ses abonnés le
+            // savent, et il ne se redemande pas à la reconnexion.
+            const topic = frame.id.slice("subscribe:".length);
+            const entry = this.topics.get(topic);
+            if (entry && frame.status >= 400) {
+                this.topics.delete(topic);
+                entry.refused.forEach((onRefused) => onRefused(frame.data?.errorMessage || ""));
+            }
+            return;
+        }
         if (frame.type === "reply") {
             const entry = this.pending.get(frame.id);
             if (entry) {
@@ -226,12 +250,12 @@ class KernelChannel {
 
     // subscribe — un abonnement, partagé entre ceux qui veulent le même
     // sujet. Rend de quoi s'en défaire.
-    subscribe(topic, params, handler) {
+    subscribe(topic, params, handler, onRefused = null) {
         let entry = this.topics.get(topic);
         if (!entry) {
-            entry = { params, handlers: new Set(), last: null };
+            entry = { params, handlers: new Set(), refused: new Set(), last: null };
             this.topics.set(topic, entry);
-            this.write({ type: "subscribe", data: { topic, ...(params || {}) } });
+            this.write({ type: "subscribe", id: `subscribe:${topic}`, data: { topic, ...(params || {}) } });
         } else if (entry.last) {
             // UN ABONNÉ TARDIF REÇOIT L'ÉTAT DU MOMENT. Un sujet ne pousse
             // qu'au changement : qui rejoignait un abonnement déjà ouvert
@@ -248,6 +272,9 @@ class KernelChannel {
             });
         }
         entry.handlers.add(handler);
+        if (onRefused) {
+            entry.refused.add(onRefused);
+        }
 
         return () => {
             const current = this.topics.get(topic);
@@ -255,6 +282,7 @@ class KernelChannel {
                 return;
             }
             current.handlers.delete(handler);
+            current.refused.delete(onRefused);
             if (current.handlers.size === 0) {
                 this.topics.delete(topic);
                 this.write({ type: "unsubscribe", data: { topic } });
@@ -343,7 +371,9 @@ class KernelChannel {
             const refused = sessionRefused(server);
             this.stop(refused);
             if (own) {
-                invalidateAuth("401 on the facade channel");
+                // NOTRE JETON N'EST PLUS RECONNU : la session se ferme (libs/api.js), au lieu d'un écran qui continue
+                // pendant que chaque commande échoue en silence — seulement si c'est encore le jeton courant.
+                loseAuth(this.token);
             } else {
                 forgetFederationToken(this.token);
             }
@@ -475,3 +505,32 @@ export function kernelTarget(host, token) {
 export function kernelReachable(token) {
     return Boolean(token) || !can("accounts");
 }
+
+// LE CANAL DE LA PAGE (chantier 85) — le nôtre, ou celui du serveur fédéré qu'on administre d'ici (chantier 73) : une
+// commande partie de ses réglages se fait chez lui. Le même canal partagé que la page de jeu ; `libs/api.js` en ouvrait
+// un à lui, un WebSocket par sujet et un par commande.
+const pageTarget = () => remoteTargetNow() || { origin: "", token: readToken() || "" };
+
+// UN SUJET DU CANAL (`sessions`, `disks`, `download/<id>`…) : repoussé à chaque changement, l'abonnement renvoyé à chaque
+// reconnexion. `onRefused(raison)` : le kernel le refuse (un téléchargement qu'il ne connaît plus). Rend de quoi se
+// désabonner.
+export function subscribeTopic(topic, onData, onRefused = null) {
+    const channel = kernelChannel(pageTarget());
+    channel.retain();
+    const unsubscribe = channel.subscribe(topic, null, (data) => onData(data), onRefused);
+
+    return () => {
+        unsubscribe();
+        channel.release();
+    };
+}
+
+// UNE COMMANDE DU CANAL (`{type, id, data}` → la réponse `reply` du même `id`, CODE_CONVENTIONS.md, « le centre de
+// messages ») : le corps qu'aurait rendu la route, plus `status` et `ok`. `download` en est une (libs/downloads.js).
+export const kernelCommand = (type, data) => kernelRequest(pageTarget(), type, data);
+
+// Les parties en cours, en direct (le sujet `sessions`).
+export const subscribeSessions = (onList) => subscribeTopic("sessions", (data) => onList(Array.isArray(data) ? data : []));
+
+// Les consoles Remote Play d'un serveur fédéré, en direct (le sujet `servers/<id>/devices`).
+export const subscribeFederatedDevices = (serverId, onList) => subscribeTopic(`servers/${serverId}/devices`, (data) => onList(Array.isArray(data) ? data : []));

@@ -1,4 +1,4 @@
-import { apiRequest } from "../../../../libs/api-client";
+import { gameKernel } from "../../../../libs/api.js";
 
 /**
  * Viewer service — watch-only viewers of an already-running streaming
@@ -13,7 +13,7 @@ export const viewerService = {
 	 * the reply names the gateway stream to attach to.
 	 */
 	createOffer: async (sessionId, codec) => {
-		return apiRequest("/remoteplay/webrtc/viewer/offer", {
+		return gameKernel("/remoteplay/webrtc/viewer/offer", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ sessionId, codec }),

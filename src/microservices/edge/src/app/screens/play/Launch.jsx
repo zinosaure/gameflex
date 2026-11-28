@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LaunchBackdrop } from "../../engine/stream/shared/SessionStream.jsx";
 import { LAUNCH_SCREEN_BACKGROUND } from "../../engine/stream/shared/launch-backdrop.js";
-import { reportLaunchFailure } from "../../engine/api/retrogaming.js";
+import { reportLaunchFailure } from "../../libs/api.js";
 import { can, useData } from "../../libs/data.jsx";
 import { useScreenInput } from "../../libs/input.js";
 import { useButton } from "../../libs/ui.js";

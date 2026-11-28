@@ -118,6 +118,8 @@ func (server *Server) diskNamed(w http.ResponseWriter, r *http.Request, name str
 type internalDiskView struct {
 	Name    string `json:"name"`
 	Present bool   `json:"present"`
+	// Enabled — l'administrateur ne l'a pas coupé (chantier 86).
+	Enabled bool `json:"enabled"`
 	// Consoles — le nombre de jeux par console, lu dans son catalogue.
 	Consoles map[string]int `json:"consoles"`
 	// ScannedAt — quand son catalogue a été construit.
@@ -129,21 +131,22 @@ type internalDiskView struct {
 // comptes, comme la liste des jeux : c'est le sélecteur de la page des jeux
 // qui s'en sert.
 func (server *Server) handleInternalDisks(w http.ResponseWriter, r *http.Request) {
-	views := []internalDiskView{}
-	for _, disk := range server.disks(r.Context()) {
-		view := internalDiskView{Name: disk.Name, Present: disk.Present, Consoles: map[string]int{}}
-		if disk.Present {
-			for _, summary := range retro_files.CountCatalog(disk.RomsDir()) {
-				view.Consoles[summary.ID] = summary.Count
-			}
-			if at := retro_files.CatalogScannedAt(disk.RomsDir()); !at.IsZero() {
-				view.ScannedAt = &at
-			}
+	writeJSON(w, http.StatusOK, server.diskViews(r.Context()))
+}
+
+// diskView — un disque, son état et ses jeux par console.
+func (server *Server) diskView(disk docker.InternalDisk) internalDiskView {
+	view := internalDiskView{Name: disk.Name, Present: disk.Present, Enabled: disk.Enabled, Consoles: map[string]int{}}
+	if disk.Present {
+		for _, summary := range retro_files.CountCatalog(disk.RomsDir()) {
+			view.Consoles[summary.ID] = summary.Count
 		}
-		views = append(views, view)
+		if at := retro_files.CatalogScannedAt(disk.RomsDir()); !at.IsZero() {
+			view.ScannedAt = &at
+		}
 	}
 
-	writeJSON(w, http.StatusOK, views)
+	return view
 }
 
 // handleInternalDiskRescan — POST /api/v1/retrogaming/disks/{name}/rescan :

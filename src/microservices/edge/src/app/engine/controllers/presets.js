@@ -19,7 +19,7 @@ const replace_nameicontexts = (presets, replacements = { name: { name: null, ico
 // owns the rendering and the input plumbing.
 //
 // A layout a user has repositioned themselves is persisted as a FULL
-// snapshot of one of these arrays (see libs/profileApi.js's
+// snapshot of one of these arrays (see libs/api.js's
 // saveButtonPositioning, and ControllerLayout's own loading effect) and is
 // never re-merged with the preset. Editing a preset therefore only affects
 // players who have no saved layout for it — and renaming a button silently

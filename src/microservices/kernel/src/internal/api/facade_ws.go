@@ -168,6 +168,12 @@ func (server *Server) facadeTopic(conn *facade.Conn, wanted facade.Subscription)
 			})
 		}, 0, ""
 
+	case wanted.Topic == "disks":
+		// LES DISQUES INTERNES, présents, absents, coupés (chantier 86) : repoussés à chaque changement.
+		return func(ctx context.Context) {
+			server.followDisks(ctx, conn)
+		}, 0, ""
+
 	case wanted.Topic == "resources":
 		// LES RESSOURCES EXTERNES ET LEURS PARCOURS (`#808`, resources_api.go) : un administrateur seulement.
 		if !server.connAdmin(conn) {

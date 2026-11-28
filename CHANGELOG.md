@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-28
+
+### Added
+
+- **Unplug a disk**: **Settings › Resources ›** a disk **› Disk enabled** turns a disk off — GameFlex stops using it,
+  its games leave the lists, and it can be unplugged; GameFlex refuses while a game in progress plays from it. Plugged
+  back in, it shows up by itself, and its games return once it is turned back on.
+
+### Changed
+
+- **More disks of games are declared by one folder**: mount them inside one folder of the server's computer, one mount
+  point per disk, and set it as `GAMEFLEX_DISKS` in `.env` (see [Storage](docs/storage.md#more-disks-of-games)). The
+  `<folder>:/mnt/<name>` lines of `docker-compose.yml` are no longer read: move such a disk into the disks folder.
+
+### Fixed
+
+- In a game played on a federated server, the controller keeps its button mapping and its on-screen layout.
+- A device is no longer signed out by a page still open from before a password change, nor by a Remote Play error.
+
 ## [0.20.0] - 2026-11-27
 
 ### Added

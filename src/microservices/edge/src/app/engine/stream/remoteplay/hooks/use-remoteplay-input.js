@@ -1,10 +1,11 @@
+import { useAuth } from "../../../../libs/data.jsx";
+import { readToken } from "../../../../libs/api.js";
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { useSessionStats } from "../../shared/hooks/use-session-stats.js";
 import { resolveControllerLayout } from "../../shared/controller-layout.js";
 import { remoteplayInputService as controllerService } from "../service/input.service.js";
 import { useStreamingConnection } from "./use-streaming-connection.js";
 import { setVirtualStick, setVirtualStickActive } from "./use-streaming-connection/virtual-joystick-state.js";
-import { useAuth } from "../../../../libs/sharedHost.js";
 import {
 	getKeyboardDeviceId,
 	getCachedKeyMapping,
@@ -40,7 +41,7 @@ function useRemotePlayKeyMapping(token) {
 		};
 
 		project(getCachedKeyMapping(keyboardId, "dualsense"));
-		loadKeyMapping(token, keyboardId, "dualsense").then((m) => {
+		loadKeyMapping(keyboardId, "dualsense").then((m) => {
 			if (!cancelled) {
 				project(m);
 			}
@@ -127,7 +128,8 @@ export function useRemotePlayInput({ screenRef, session, context, t, options = {
 			return screenRef.current?.videoElement ?? null;
 		},
 	}).current;
-	const { token, user } = useAuth();
+	const { user } = useAuth();
+	const token = readToken();
 	const isLikelyLan = useMemo(detectIsLikelyLan, []);
 
 	// Stable identity (useCallback, not a plain arrow function recreated

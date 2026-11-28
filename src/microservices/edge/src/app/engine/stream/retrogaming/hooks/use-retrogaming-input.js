@@ -1,7 +1,8 @@
+import { useAuth, useConsoles } from "../../../../libs/data.jsx";
+import { readToken } from "../../../../libs/api.js";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { RETRO_BUTTON_INDEX, RETRO_DIAGONAL_BUTTONS, RETRO_CONTROLLER_PRESET_MAP } from "../../../controllers/Controllers.jsx";
 import { resolveControllerLayout } from "../../shared/controller-layout.js";
-import { useAuth, useConsoles } from "../../../../libs/sharedHost.js";
 import { useRetroPhysicalGamepadInput } from "./use-retrogaming-physical-gamepad.js";
 import { useRetroKeyboardInput } from "./use-retrogaming-keyboard-input.js";
 import { useRetrogamingStreamingConnection } from "./use-retrogaming-streaming-connection.js";
@@ -65,7 +66,8 @@ export function useRetrogamingInput({ screenRef, session, context, t, options = 
 	} = options;
 	// This page is player-only now — watching (spectating) went to
 	// gameflex/Watch.jsx, which handles all 3 platforms' spectate flows.
-	const { token, user } = useAuth();
+	const { user } = useAuth();
+	const token = readToken();
 	const [isFastForwarding, setIsFastForwarding] = useState(false);
 	const [isRewinding, setIsRewinding] = useState(false);
 	// PS1 controller type — 1, la manette d'origine (numérique) : c'est ce

@@ -20,7 +20,7 @@ import { Listing } from "../bricks/Listing.jsx";
 import NavRow from "../bricks/NavRow.jsx";
 import { Rows } from "../bricks/Rows.jsx";
 import { Section } from "../bricks/Section.jsx";
-import { listDisks, readToken } from "../libs/api.js";
+import { listDisks, readToken, remoteTargetNow } from "../libs/api.js";
 import { useData } from "../libs/data.jsx";
 import { counted, dateTime, fact } from "../libs/format.js";
 import { kernelReachable, kernelTarget, useKernelChannel, useKernelTopic } from "../libs/kernelChannel.js";
@@ -45,7 +45,7 @@ export function Disks() {
                 page={read("page")} onPage={(page) => update({ page })}
                 render={(disk) => (
                     <NavRow key={disk.name} id={`dk-${disk.name}`} icon={disk.present ? "bi-device-hdd" : "bi-exclamation-triangle"} label={disk.name}
-                        help={disk.present ? counted(t, "games", diskGames(disk)) : text("absent")}
+                        help={disk.present ? counted(t, "games", diskGames(disk)) : disk.enabled === false ? t("resources.disks.disabled") : text("absent")}
                         onOpen={() => open(`/settings/resources/disks/${encodeURIComponent(disk.name)}`, `dk-${disk.name}`, { disk })} />
                 )} />
         </Section>
@@ -155,9 +155,14 @@ export const EXTERNAL_GUIDES = [["storage", "games-on-a-network-share"]];
 // Route : /settings/resources — les disques et les ressources externes.
 // La liste des disques, puis le guide : comment un disque s'ajoute — au compose d'un serveur, ou sur le téléphone.
 // LES DISQUES DE CE SERVEUR, lus une fois par page (leur listing, leur nombre sur l'index) ; `null` le temps de la lecture.
+// LES DISQUES INTERNES, SUIVIS (chantier 86) : lus une fois, puis repoussés par le sujet `disks` à chaque branchement,
+// débranchement ou coupure — jamais relus à intervalle. Un hôte qui ne sert pas ce sujet (le téléphone) garde la
+// première lecture. Sous l'administration à distance, ceux du serveur administré.
 export function useDisks() {
     const { t } = useTranslation();
     const [disks, setDisks] = useState(null);
+    const token = readToken();
+    const channel = useKernelChannel(kernelReachable(token) ? remoteTargetNow() || kernelTarget(null, token) : null);
 
     useEffect(() => {
         listDisks().then((answer) => {
@@ -167,6 +172,7 @@ export function useDisks() {
             setDisks(answer.ok ? answer.data || [] : []);
         });
     }, [t]);
+    useKernelTopic(channel, "disks", null, (data) => Array.isArray(data) && setDisks(data));
 
     return disks;
 }

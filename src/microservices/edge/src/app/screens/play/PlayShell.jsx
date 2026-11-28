@@ -1,3 +1,4 @@
+import { useConsoles } from "../../libs/data.jsx";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { SessionStream, OVERLAY_HIDDEN } from "../../engine/stream/shared/SessionStream.jsx";
@@ -14,7 +15,6 @@ import { markActivity, takeActivityStamp } from "../../engine/stream/shared/acti
 import { createSwitchesStore } from "../../engine/stream/shared/switches-store.js";
 import { castErrorKey, castSender } from "../../engine/stream/onscreen/cast.js";
 import { TouchpadOnlyContext, PAD_COLUMN_WIDTH, PadLookContext } from "../../engine/stream/onscreen/Controllers.jsx";
-import { standbyConsole, stopSession } from "../../engine/api/spawnSessions.js";
 import { setGameInputSuspended } from "../../engine/libs/gameInput.js";
 import { connectedGamepads } from "../../engine/libs/keyMapping.js";
 import { useScreenOrientation } from "../../libs/screenOrientation.js";
@@ -23,12 +23,11 @@ import { useNames } from "../../libs/displayNames.js";
 import { onDeviceFailed, recentDeviceFailure } from "../../engine/libs/deviceStream.js";
 import { streamHostUsername } from "../../libs/serverBase.js";
 import { requestFullscreen, exitFullscreen, isFullscreen, isMobileDevice, isTabletDevice } from "../../libs/device-detection.js";
-import { getStoredUsername, useConsoles } from "../../libs/sharedHost.js";
 import { PAD_LOOK } from "../../libs/padLook.jsx";
-import { useMenuHotkey } from "../../libs/play.js";
+import { standbyConsole, stopSession, useMenuHotkey } from "../../libs/play.js";
 import { menuGestureOf } from "../../engine/libs/gameInput.js";
 import { can } from "../../libs/capabilities.js";
-import { fetchCastSettings } from "../../libs/api.js";
+import { fetchCastSettings, tokenUsername } from "../../libs/api.js";
 import { focusElement, suspendNavigation, useScreenInput } from "../../libs/input.js";
 import PlayLaunch from "./Launch.jsx";
 import { Bell, useSessionNotifications } from "./Bell.jsx";
@@ -245,7 +244,7 @@ export default function PlayShell({ user, token, session, notices, setTerminateR
     const viewerUsernameRef = useRef(null);
 
     if (viewerUsernameRef.current === null) {
-        viewerUsernameRef.current = watchOnly ? "" : streamHostUsername() || getStoredUsername() || "";
+        viewerUsernameRef.current = watchOnly ? "" : streamHostUsername() || tokenUsername() || "";
     }
     const viewerUsername = viewerUsernameRef.current || null;
 

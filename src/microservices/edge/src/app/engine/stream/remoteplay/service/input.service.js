@@ -11,7 +11,7 @@
 // four consumers (use-streaming-connection,
 // use-device-status, Streaming.jsx) only change their import line.
 
-import { getStoredToken } from "../../../../libs/sharedHost.js";
+import { readToken } from "../../../../libs/api.js";
 import { onGameInputSuspension } from "../../../libs/gameInput.js";
 import { PS5_BUTTON_MAP } from "./gamepad.service.js";
 
@@ -115,7 +115,7 @@ class RemoteplayInputService {
 		// Ce socket porte la manette. Présenter notre jeton à un serveur
 		// fédéré le fait refuser la poignée de main — et le symptôme n'est
 		// pas « refusé », c'est une partie sans manette du tout.
-		const token = streamAuthToken() || getStoredToken();
+		const token = streamAuthToken() || readToken();
 		if (token) params.set("token", token);
 		const query = params.toString();
 		// Under /api/v1/remoteplay like the rest of a game's stream: that

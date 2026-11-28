@@ -1,6 +1,7 @@
-import { apiRequest } from "../../../../libs/api-client";
+import { gameKernel, readToken } from "../../../../libs/api.js";
 import { kernelRequest, kernelTarget } from "../../../../libs/kernelChannel.js";
-import { getStoredToken } from "../../../../libs/sharedHost.js";
+// LES APPELS DE LA PARTIE, CHEZ LE SERVEUR OÙ L'ON JOUE (`gameKernel`, libs/api.js — chantier 85) : la réponse du
+// kernel, `{ok, status, data, errorMessage}`. Ils passaient par libs/api-client.js, un client de plus, retiré.
 
 // WebRTC Offer request
 
@@ -23,7 +24,7 @@ export const streamingService = {
 	 */
 	createOffer: async (payload) => {
 		const hasPayload = payload && Object.keys(payload).length > 0;
-		return apiRequest("/remoteplay/webrtc/offer", {
+		return gameKernel("/remoteplay/webrtc/offer", {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
@@ -47,17 +48,16 @@ export const streamingService = {
 	// console ne traversent jamais le kernel (voir `launch_remoteplay.go`).
 	//
 	// La réponse garde l'enveloppe d'avant (`data.sessionId`), et un refus
-	// LÈVE une erreur portant le message du kernel, comme le faisait
-	// `apiRequest` : `RemotePlay.jsx` y reconnaît le temps de repos de la
-	// console (« init/ctrl rejected »).
+	// LÈVE une erreur portant le message du kernel : Platforms.jsx y reconnaît le
+	// temps de repos de la console (« init/ctrl rejected »).
 	//
 	// `settings` — le flux de la console dans ce navigateur (Platforms.jsx,
 	// streamOf), son débit « Auto » déjà mesuré (withNetworkBitrate), dans le
 	// vocabulaire et les champs du lancement d'un jeu (`launchSession`,
-	// spawnSessions.js) : le kernel le revalide, puis le runtime le traduit
+	// libs/play.js) : le kernel le revalide, puis le runtime le traduit
 	// pour la console. Absent : le défaut de toutes les consoles, 720p à 60.
 	startSession: async (hostId, username, host = null, settings = null) => {
-		const result = await kernelRequest(kernelTarget(host, getStoredToken()), "launch", {
+		const result = await kernelRequest(kernelTarget(host, readToken()), "launch", {
 			platform: "remoteplay",
 			hostId,
 			...(username ? { username } : {}),
@@ -80,7 +80,7 @@ export const streamingService = {
 	 * Connect WebRTC Session to Remote Play Session
 	 */
 	connectToRemotePlaySession: async (webrtcSessionId, remotePlaySessionId) => {
-		return apiRequest(
+		return gameKernel(
 			`/remoteplay/webrtc/connect/${webrtcSessionId}/${remotePlaySessionId}`,
 			{
 				method: "POST",
@@ -92,7 +92,7 @@ export const streamingService = {
 	 * Delete WebRTC Session
 	 */
 	deleteSession: async (sessionId) => {
-		return apiRequest(`/remoteplay/webrtc/session/${sessionId}`, {
+		return gameKernel(`/remoteplay/webrtc/session/${sessionId}`, {
 			method: "DELETE",
 		});
 	},
@@ -101,7 +101,7 @@ export const streamingService = {
 	 * Request a keyframe
 	 */
 	requestKeyframe: async (sessionId) => {
-		return apiRequest(
+		return gameKernel(
 			`/remoteplay/webrtc/session/${encodeURIComponent(sessionId)}/keyframe`,
 			{
 				method: "POST",

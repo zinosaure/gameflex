@@ -157,6 +157,8 @@ func NewServer(sessionManager *manager.Manager, gameCatalog *catalog.Catalog, cf
 	// The unified 5-min idle shutdown (étape 3) — replaces the manager's
 	// per-platform TTL/grace rules.
 	go server.idleWatchdog()
+	// Les disques internes branchés, débranchés : la table des montages (chantier 86).
+	server.followMounts()
 	// Le listing de ce serveur (chantier 15) : construit s'il manque.
 	server.startSelfListing()
 
